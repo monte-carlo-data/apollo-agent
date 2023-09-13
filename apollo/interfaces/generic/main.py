@@ -5,6 +5,7 @@ from uuid import uuid4
 from flask import Flask, request
 
 from apollo.agent.agent import Agent
+from apollo.agent.models import AgentOperation
 from apollo.interfaces.generic.logging_utils import LoggingUtils
 
 app = Flask(__name__)
@@ -15,11 +16,18 @@ logging_utils = LoggingUtils()
 @app.route("/api/v1/agent/execute/<connection_type>", methods=["POST"])
 def agent_execute(connection_type: str) -> Tuple[Optional[Dict], int]:
     json_request = request.json
-    client = _get_proxy_client(connection_type, json_request.get("credentials", {}))
-    trace_id = json_request.get("trace_id", str(uuid4()))
-    commands = json_request["commands"]
+    credentials = json_request.get("credentials", {})
+    operation_dict = json_request.get("operation")
+    if not operation_dict:
+        return {"__error__": "operation is a required parameter"}, 400
+    try:
+        operation = AgentOperation.from_dict(operation_dict)
+    except Exception as ex:
+        return {"__error__": f"Failed to read operation: {ex}"}, 400
 
-    return _execute_commands(connection_type, trace_id, client, commands)
+    client = _get_proxy_client(connection_type, credentials)
+
+    return _execute_commands(connection_type, client, operation)
 
 
 def _get_proxy_client(connection_type: str, credentials: Dict) -> Any:
@@ -38,20 +46,19 @@ def _get_proxy_client_bigquery(credentials: Dict) -> Any:
 
 
 def _execute_commands(
-    connection_type: str, trace_id: str, client: Any, commands: List[Union[Dict, List]]
+    connection_type: str,
+    client: Any,
+    operation: AgentOperation,
 ) -> Tuple[Optional[Dict], int]:
     logger.info(
         f"Executing {connection_type} commands",
         extra=logging_utils.build_extra(
-            trace_id,
-            {
-                "connection_type": connection_type,
-                "commands": commands,
-            },
+            operation.trace_id,
+            operation.to_dict(),
         ),
     )
     agent = Agent()
-    result = agent.execute(client, commands)
+    result = agent.execute(client, operation)
     return result, 200
 
 

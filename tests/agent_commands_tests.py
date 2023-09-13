@@ -1,6 +1,7 @@
 from unittest import TestCase
 
 from apollo.agent.agent import Agent
+from apollo.agent.models import AgentOperation
 from tests.sample_proxy_client import SampleProxyClient
 
 
@@ -15,12 +16,18 @@ class AgentCommandsTests(TestCase):
     def test_single_call_wrapper_method(self):
         result = self._agent.execute(
             self._client,
-            commands=[
+            AgentOperation.from_dict(
                 {
-                    "method": "execute_and_fetch",
-                    "args": [self._query],
+                    "operation_name": "test",
+                    "trace_id": "1",
+                    "commands": [
+                        {
+                            "method": "execute_and_fetch",
+                            "args": [self._query],
+                        }
+                    ],
                 }
-            ],
+            ),
         )
         self.assertEqual(self._expected_result, result)
 
@@ -30,17 +37,23 @@ class AgentCommandsTests(TestCase):
 
         result = self._agent.execute(
             self._client,
-            commands=[
+            AgentOperation.from_dict(
                 {
-                    "method": "execute_query",
-                    "kwargs": {
-                        "query": self._query,
-                    },
-                },
-                {
-                    "method": "fetch_results",
-                },
-            ],
+                    "operation_name": "test",
+                    "trace_id": "1",
+                    "commands": [
+                        {
+                            "method": "execute_query",
+                            "kwargs": {
+                                "query": self._query,
+                            },
+                        },
+                        {
+                            "method": "fetch_results",
+                        },
+                    ],
+                }
+            ),
         )
         self.assertEqual(self._expected_result, result)
 
@@ -50,23 +63,29 @@ class AgentCommandsTests(TestCase):
         # _cursor.cursor_fetch_results()
         result = self._agent.execute(
             self._client,
-            commands=[
+            AgentOperation.from_dict(
                 {
-                    "method": "cursor",
-                    "store": "_cursor",
-                },
-                {
-                    "target": "_cursor",
-                    "method": "cursor_execute_query",
-                    "kwargs": {
-                        "query": self._query,
-                    },
-                },
-                {
-                    "target": "_cursor",
-                    "method": "cursor_fetch_results",
-                },
-            ],
+                    "operation_name": "test",
+                    "trace_id": "1",
+                    "commands": [
+                        {
+                            "method": "cursor",
+                            "store": "_cursor",
+                        },
+                        {
+                            "target": "_cursor",
+                            "method": "cursor_execute_query",
+                            "kwargs": {
+                                "query": self._query,
+                            },
+                        },
+                        {
+                            "target": "_cursor",
+                            "method": "cursor_fetch_results",
+                        },
+                    ],
+                }
+            ),
         )
         self.assertEqual(self._expected_result, result)
 
@@ -75,23 +94,27 @@ class AgentCommandsTests(TestCase):
         # _cursor.cursor_execute_query(query).cursor_fetch_results()
         result = self._agent.execute(
             self._client,
-            commands=[
+            AgentOperation.from_dict(
                 {
-                    "method": "cursor",
-                    "store": "_cursor",
-                },
-                [
-                    {
-                        "target": "_cursor",
-                        "method": "cursor_execute_query",
-                        "kwargs": {
-                            "query": self._query,
+                    "operation_name": "test",
+                    "trace_id": "1",
+                    "commands": [
+                        {
+                            "method": "cursor",
+                            "store": "_cursor",
                         },
-                    },
-                    {
-                        "method": "query_results",
-                    },
-                ],
-            ],
+                        {
+                            "target": "_cursor",
+                            "method": "cursor_execute_query",
+                            "kwargs": {
+                                "query": self._query,
+                            },
+                            "next": {
+                                "method": "query_results",
+                            },
+                        },
+                    ],
+                }
+            ),
         )
         self.assertEqual(self._expected_result, result)

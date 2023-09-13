@@ -19,6 +19,7 @@ COPY requirements-dev.txt ./
 RUN pip install --no-cache-dir -r requirements-dev.txt --target ${PYTHON_PACKAGES_DIR}
 
 COPY tests ./tests
+ARG CACHEBUST=1
 RUN python -m pytest tests/*
 
 FROM base AS generic
