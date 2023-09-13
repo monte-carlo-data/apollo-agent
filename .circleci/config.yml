@@ -67,7 +67,10 @@ jobs:
       - docker/check:
           use-docker-credentials-store: true
       - docker/build:
-          image: mcd/apollo-agent
+          image: montecarlodata/apollo-pre-release-agent
+      - docker/push:
+          image: montecarlodata/apollo-pre-release-agent
+          tag: latest, << pipeline.number >>
 
 workflows:
   version: 2
