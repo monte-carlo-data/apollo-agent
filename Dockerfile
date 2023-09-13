@@ -21,6 +21,13 @@ RUN pip install --no-cache-dir -r requirements-dev.txt --target ${PYTHON_PACKAGE
 COPY tests ./tests
 RUN python -m pytest tests/*
 
-FROM base AS final
+FROM base AS generic
 
 CMD python -m gunicorn --bind :$PORT --workers 1 --threads 8 --timeout 0 apollo.interfaces.generic.main:app
+
+FROM base AS cloudrun
+
+COPY requirements-cloudrun.txt ./
+RUN pip install --no-cache-dir -r requirements-cloudrun.txt --target ${PYTHON_PACKAGES_DIR}
+
+CMD python -m gunicorn --bind :$PORT --workers 1 --threads 8 --timeout 0 apollo.interfaces.cloudrun.main:app

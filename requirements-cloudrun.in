@@ -1,0 +1,2 @@
+-c requirements.txt
+google-cloud-logging==3.6.0
