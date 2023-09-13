@@ -9,6 +9,9 @@ WORKDIR $APP_HOME
 COPY apollo/ ./apollo
 COPY requirements.txt ./
 
+#CVE-2022-40897, upgrade setuptools in the global packages
+RUN pip install setuptools==65.5.1
+
 RUN python -m venv $VENV_DIR
 RUN . $VENV_DIR/bin/activate
 RUN pip install --no-cache-dir -r requirements.txt

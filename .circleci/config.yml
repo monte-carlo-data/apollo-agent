@@ -74,6 +74,8 @@ jobs:
       - docker/push:
           image: montecarlodata/apollo-pre-release-agent
           tag: latest,${PIPELINE_NUMBER}
+      - docker/update-description:
+          image: montecarlodata/apollo-pre-release-agent
 
 workflows:
   version: 2
