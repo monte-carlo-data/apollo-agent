@@ -57,7 +57,7 @@ jobs:
       - checkout
       - docker/build:
           image: apollo-agent
-          extra-build-args: --target tests
+          extra_build_args: --target tests
 
 workflows:
   version: 2
