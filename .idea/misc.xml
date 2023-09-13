@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="Black">
+    <option name="enabledOnSave" value="true" />
+    <option name="executionMode" value="BINARY" />
+    <option name="pathToExecutable" value="/opt/homebrew/bin/black" />
+    <option name="sdkUUID" value="9fb7fd3c-e517-4fda-826d-a0a3ba8aa795" />
+  </component>
+  <component name="ProjectRootManager" version="2" project-jdk-name="Python 3.8 (apollo-agent)" project-jdk-type="Python SDK" />
+</project>
