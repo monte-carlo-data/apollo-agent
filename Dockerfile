@@ -18,7 +18,7 @@ RUN . $VENV_DIR/bin/activate && pip install setuptools==65.5.1
 FROM base AS tests
 
 COPY requirements-dev.txt ./
-RUN . $VENV_DIR/bin/activate && RUN pip install --no-cache-dir -r requirements-dev.txt
+RUN . $VENV_DIR/bin/activate && pip install --no-cache-dir -r requirements-dev.txt
 
 COPY tests ./tests
 ARG CACHEBUST=1
