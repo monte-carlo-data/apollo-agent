@@ -71,7 +71,7 @@ jobs:
           tag: << pipeline.number >>
       - docker/push:
           image: montecarlodata/apollo-pre-release-agent
-          tag: "<< pipeline.number >>"
+          tag: ${CIRCLE_BUILD_NUM}
 
 workflows:
   version: 2
