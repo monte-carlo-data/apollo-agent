@@ -64,7 +64,8 @@ jobs:
       image: ubuntu-2004:202201-02
     steps:
       - checkout
-      - docker/check
+      - docker/check:
+          use-docker-credentials-store: true
       - docker/build:
           image: mcd/apollo-agent
 
@@ -81,5 +82,4 @@ workflows:
           context:
             - docker
           requires:
-            - run-trufflehog-scan
             - run-test-docker
