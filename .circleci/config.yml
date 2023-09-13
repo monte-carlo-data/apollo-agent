@@ -68,7 +68,7 @@ jobs:
           use-docker-credentials-store: true
       - docker/build:
           image: montecarlodata/apollo-pre-release-agent
-          tag: << pipeline.number >>
+          tag: ${CIRCLE_BUILD_NUM}
       - docker/push:
           image: montecarlodata/apollo-pre-release-agent
           tag: ${CIRCLE_BUILD_NUM}
