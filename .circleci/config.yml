@@ -1,0 +1,70 @@
+version: 2.1
+
+orbs:
+  docker: circleci/docker@2.2.0
+
+commands:
+  cmd-trufflehog-scan:
+    parameters:
+      disable_entropy:
+        default: true
+        description: Should we disable truffleHog's entropy detection?
+        type: boolean
+      max_history:
+        default: "1"
+        description: How far back to scan in git revisions
+        type: string
+      regexp_rules:
+        default: ""
+        description: Override default regexp rules with this file.
+        type: string
+      allowlist_file:
+        default: ".circleci/trufflehog_config/allowlist.json"
+        description: Add items to this file to allow you to override specific findings.
+        type: string
+      repo_path:
+        default: .
+        description: Scan alternate local or remote repo
+        type: string
+    steps:
+    - run:
+        command: >
+          trufflehog --regex --json \
+                     --branch ${CIRCLE_BRANCH} \
+                     <<# parameters.allowlist_file >> --allow << parameters.allowlist_file >> <</ parameters.allowlist_file >> \
+                     <<# parameters.max_history >> --max_depth=<< parameters.max_history >> <</ parameters.max_history>> \
+                     <<# parameters.disable_entropy >> --entropy=False <</ parameters.disable_entropy >> \
+                     <<# parameters.regexp_rules >> --rules=<< parameters.regexp_rules >> <</ parameters.regexp_rules >> \
+                     << parameters.repo_path >> \
+                     | jq '{"reason":.reason,"path": .path}'
+        name: Scan using truffleHog
+
+jobs:
+  run-trufflehog-scan:
+    docker:
+    - image: cimg/python:3.10
+    steps:
+    - checkout
+    - run:
+        command: pip install truffleHog
+        name: Install truffleHog
+    - cmd-trufflehog-scan
+
+  run-test-docker:
+    machine:
+      image: ubuntu-2004:202201-02
+    steps:
+      - checkout
+      - docker/build:
+          image: apollo-agent
+          extra-build-args: --target tests
+
+workflows:
+  version: 2
+
+  build-and-deploy:
+    jobs:
+      - run-trufflehog-scan
+      - run-test-docker:
+          requires:
+            - run-trufflehog-scan
