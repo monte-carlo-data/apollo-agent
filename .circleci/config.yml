@@ -62,16 +62,18 @@ jobs:
   build-and-push:
     machine:
       image: ubuntu-2004:202201-02
+    environment:
+      PIPELINE_NUMBER: << pipeline.number >>
     steps:
       - checkout
       - docker/check:
           use-docker-credentials-store: true
       - docker/build:
           image: montecarlodata/apollo-pre-release-agent
-          tag: ${CIRCLE_BUILD_NUM}
+          tag: ${PIPELINE_NUMBER}
       - docker/push:
           image: montecarlodata/apollo-pre-release-agent
-          tag: ${CIRCLE_BUILD_NUM}
+          tag: ${PIPELINE_NUMBER}
 
 workflows:
   version: 2
