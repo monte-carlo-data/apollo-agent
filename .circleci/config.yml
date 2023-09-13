@@ -56,8 +56,17 @@ jobs:
     steps:
       - checkout
       - docker/build:
-          image: apollo-agent
+          image: mcd/apollo-agent-tests
           extra_build_args: --target tests
+
+  build-and-push:
+    machine:
+      image: ubuntu-2004:202201-02
+    steps:
+      - checkout
+      - docker/check
+      - docker/build:
+          image: mcd/apollo-agent
 
 workflows:
   version: 2
@@ -68,3 +77,9 @@ workflows:
       - run-test-docker:
           requires:
             - run-trufflehog-scan
+      - build-and-push:
+          context:
+            - docker
+          requires:
+            - run-trufflehog-scan
+            - run-test-docker
