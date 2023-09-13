@@ -22,7 +22,7 @@ RUN . $VENV_DIR/bin/activate && pip install --no-cache-dir -r requirements-dev.t
 
 COPY tests ./tests
 ARG CACHEBUST=1
-RUN python -m pytest tests/*
+RUN . $VENV_DIR/bin/activate && python -m pytest tests/*
 
 FROM base AS generic
 
