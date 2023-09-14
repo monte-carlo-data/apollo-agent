@@ -95,8 +95,19 @@ workflows:
             - docker
           requires:
             - run-test-docker
-#          filters:
-#            branches:
-#              only:
-#                - dev
-
+          filters:
+            branches:
+              only:
+                - dev
+      - build-and-push:
+          name: build-and-push-prod
+          docker_hub_repository: apollo-agent
+          context:
+            - docker
+          requires:
+            - run-test-docker
+          filters:
+            tags:
+              only: /^v.*/
+            branches:
+              ignore: /.*/
