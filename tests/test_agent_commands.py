@@ -7,14 +7,13 @@ from tests.sample_proxy_client import SampleProxyClient
 
 class AgentCommandsTests(TestCase):
     def setUp(self) -> None:
-        self._agent = Agent()
         self._query = "SELECT * FROM table"
         self._expected_result = SampleProxyClient().execute_and_fetch(self._query)
 
         self._client = SampleProxyClient()
 
     def test_single_call_wrapper_method(self):
-        result = self._agent.execute(
+        result = Agent._execute(
             self._client,
             AgentOperation.from_dict(
                 {
@@ -35,7 +34,7 @@ class AgentCommandsTests(TestCase):
         # _client.execute_query(query)
         # _client.fetch_results()
 
-        result = self._agent.execute(
+        result = Agent._execute(
             self._client,
             AgentOperation.from_dict(
                 {
@@ -61,7 +60,7 @@ class AgentCommandsTests(TestCase):
         # _cursor = _client.cursor()
         # _cursor.cursor_execute_query(query)
         # _cursor.cursor_fetch_results()
-        result = self._agent.execute(
+        result = Agent._execute(
             self._client,
             AgentOperation.from_dict(
                 {
@@ -92,7 +91,7 @@ class AgentCommandsTests(TestCase):
     def test_store_and_chained_cursor_methods(self):
         # _cursor = _client.cursor()
         # _cursor.cursor_execute_query(query).cursor_fetch_results()
-        result = self._agent.execute(
+        result = Agent._execute(
             self._client,
             AgentOperation.from_dict(
                 {

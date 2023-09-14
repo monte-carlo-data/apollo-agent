@@ -1,74 +1,63 @@
 import logging
-from typing import Any, List, Dict, Union, Optional, Callable
+from typing import Any, Dict, Optional
 
-from apollo.agent.models import AgentOperation, AgentCommand
+from apollo.agent.evaluation_utils import AgentEvaluationUtils
+from apollo.agent.logging_utils import LoggingUtils
+from apollo.agent.models import AgentOperation, AgentOperationResponse
+from apollo.agent.proxy_client_factory import ProxyClientFactory
+from apollo.agent.utils import AgentUtils
 
 logger = logging.getLogger(__name__)
 
 
-class AgentError(Exception):
-    pass
+class Agent:
+    def __init__(self, logging_utils: LoggingUtils):
+        self._logging_utils = logging_utils
 
-
-class AgentEvaluationUtils:
-    @classmethod
-    def execute(cls, context: Dict, commands: List[AgentCommand]) -> Optional[Any]:
-        try:
-            last_result: Optional[Any] = None
-            for command in commands:
-                last_result = cls._execute_command(command, context)
-            return last_result
-        except Exception as ex:
-            logger.exception(
-                "Exception occurred executing commands",
-                extra={
-                    "commands": commands,
-                },
+    def execute_operation(
+        self,
+        connection_type: str,
+        operation_dict: Optional[Dict],
+        credentials: Optional[Dict],
+    ) -> AgentOperationResponse:
+        if not operation_dict:
+            return AgentOperationResponse(
+                AgentUtils.response_for_error("operation is a required parameter"),
+                400,
             )
-            return {"__error__": str(ex)}
+        try:
+            operation = AgentOperation.from_dict(operation_dict)
+        except Exception:
+            logger.exception("Failed to read operation")
+            return AgentOperationResponse(
+                AgentUtils.response_for_last_exception("Failed to read operation:"),
+                400,
+            )
 
-    @classmethod
-    def _execute_command(
-        cls, command: AgentCommand, context: Dict, target: Optional[Any] = None
-    ) -> Optional[Any]:
-        to_execute_command: Optional[AgentCommand] = command
-        result: Optional[Any] = None
-        while to_execute_command:
-            result = cls._execute_single_command(to_execute_command, context, target)
-            target = result
-            to_execute_command = to_execute_command.next
-        return result
+        try:
+            client = ProxyClientFactory.get_proxy_client(connection_type, credentials)
+            return self._execute_commands(connection_type, client, operation)
+        except Exception:
+            return AgentOperationResponse(AgentUtils.response_for_last_exception(), 500)
 
-    @classmethod
-    def _execute_single_command(
-        cls, command: AgentCommand, context: Dict, target: Optional[Any] = None
-    ) -> Optional[Any]:
-        if not target:
-            target_name = command.target or "_client"
-            if target_name not in context:
-                raise AgentError(f"{target} not found in context")
-            target = context[target_name]
-        method = cls._resolve_method(target, command.method)
-        args = command.args or []
-        kwargs = command.kwargs or {}
-        result = method(*args, **kwargs)
-        if store := command.store:
-            context[store] = result
-        return result
+    def _execute_commands(
+        self,
+        connection_type: str,
+        client: Any,
+        operation: AgentOperation,
+    ) -> AgentOperationResponse:
+        logger.info(
+            f"Executing {connection_type} commands",
+            extra=self._logging_utils.build_extra(
+                operation.trace_id,
+                operation.to_dict(),
+            ),
+        )
+        result = self._execute(client, operation)
+        return AgentOperationResponse(result, 200)
 
     @staticmethod
-    def _resolve_method(target: Any, method_name: str) -> Callable:
-        if hasattr(target, method_name):
-            return getattr(target, method_name)
-        if hasattr(target, "wrapped_client"):
-            client = getattr(target, "wrapped_client")
-            if hasattr(client, method_name):
-                return getattr(client, method_name)
-        raise AttributeError(f"Failed to resolve method {method_name}")
-
-
-class Agent:
-    def execute(self, client: Any, operation: AgentOperation) -> Optional[Any]:
+    def _execute(client: Any, operation: AgentOperation) -> Optional[Any]:
         context = {
             "_client": client,
         }

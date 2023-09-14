@@ -6,7 +6,6 @@ ENV PYTHONUNBUFFERED True
 ENV APP_HOME /app
 ENV VENV_DIR .venv
 WORKDIR $APP_HOME
-COPY apollo/ ./apollo
 COPY requirements.txt ./
 
 RUN python -m venv $VENV_DIR
@@ -14,6 +13,10 @@ RUN . $VENV_DIR/bin/activate && pip install --no-cache-dir -r requirements.txt
 
 # CVE-2022-40897
 RUN . $VENV_DIR/bin/activate && pip install setuptools==65.5.1
+
+# copy sources in the last step so we don't install python libraries due to a change in source code
+COPY apollo/ ./apollo
+
 
 FROM base AS tests
 

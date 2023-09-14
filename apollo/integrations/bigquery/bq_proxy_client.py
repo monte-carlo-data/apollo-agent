@@ -4,11 +4,13 @@ from typing import Optional, Dict
 import googleapiclient.discovery
 from google.oauth2.service_account import Credentials
 
+from apollo.integrations.base_proxy_client import BaseProxyClient
+
 _API_SERVICE_NAME = "bigquery"
 _API_VERSION = "v2"
 
 
-class BqProxyClient:
+class BqProxyClient(BaseProxyClient):
     def __init__(self, **kwargs):
         bq_credentials: Optional[Credentials] = None
         sa_file = os.getenv("SA_FILE")

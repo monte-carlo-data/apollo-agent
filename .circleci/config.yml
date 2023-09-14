@@ -58,6 +58,7 @@ jobs:
       - docker/build:
           image: mcd/apollo-agent-tests
           extra_build_args: --target tests
+          step-name: Run tests in docker build
 
   build-and-push:
     machine:
