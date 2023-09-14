@@ -65,15 +65,18 @@ jobs:
       image: ubuntu-2004:202201-02
     environment:
       PIPELINE_NUMBER: << pipeline.number >>
+    parameters:
+      docker_hub_repository:
+        type: string
     steps:
       - checkout
       - docker/check:
           use-docker-credentials-store: true
       - docker/build:
-          image: montecarlodata/apollo-pre-release-agent
+          image: montecarlodata/<< parameters.docker_hub_repository >>
           tag: latest,${PIPELINE_NUMBER}
       - docker/push:
-          image: montecarlodata/apollo-pre-release-agent
+          image: montecarlodata/<< parameters.docker_hub_repository >>
           tag: latest,${PIPELINE_NUMBER}
 
 workflows:
@@ -86,7 +89,14 @@ workflows:
           requires:
             - run-trufflehog-scan
       - build-and-push:
+          name: build-and-push-dev
+          docker_hub_repository: apollo-pre-release-agent
           context:
             - docker
           requires:
             - run-test-docker
+#          filters:
+#            branches:
+#              only:
+#                - dev
+
