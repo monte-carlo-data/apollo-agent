@@ -12,13 +12,17 @@ logging_utils = LoggingUtils()
 agent = Agent(logging_utils)
 
 
-@app.route("/api/v1/agent/execute/<connection_type>", methods=["POST"])
-def agent_execute(connection_type: str) -> Tuple[Optional[Dict], int]:
+@app.route("/api/v1/agent/execute/<connection_type>/<operation_name>", methods=["POST"])
+def agent_execute(
+    connection_type: str, operation_name: str
+) -> Tuple[Optional[Dict], int]:
     json_request = request.json
     credentials = json_request.get("credentials", {})
     operation = json_request.get("operation")
 
-    response = agent.execute_operation(connection_type, operation, credentials)
+    response = agent.execute_operation(
+        connection_type, operation_name, operation, credentials
+    )
     return response.result, response.status_code
 
 

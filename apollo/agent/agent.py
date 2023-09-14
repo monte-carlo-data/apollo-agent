@@ -17,6 +17,7 @@ class Agent:
     def execute_operation(
         self,
         connection_type: str,
+        operation_name: str,
         operation_dict: Optional[Dict],
         credentials: Optional[Dict],
     ) -> AgentOperationResponse:
@@ -26,6 +27,7 @@ class Agent:
                 400,
             )
         try:
+            operation_dict["operation_name"] = operation_name
             operation = AgentOperation.from_dict(operation_dict)
         except Exception:
             logger.exception("Failed to read operation")
