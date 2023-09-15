@@ -93,16 +93,12 @@ workflows:
 
   build-and-deploy:
     jobs:
-      - run-trufflehog-scan:
+      - run-trufflehog-scan
+      - run-test-docker:
           # run for all tags and branches, we need to add this so the job is available for build-and-push-prod
-          filters: &filters-all-branches-and-tags
+          filters:
             tags:
               only: /.*/
-      - run-test-docker:
-          requires:
-            - run-trufflehog-scan
-          filters:
-            <<: *filters-all-branches-and-tags
       - build-and-push:
           name: build-and-push-dev
           docker_hub_repository: apollo-pre-release-agent
