@@ -5,6 +5,7 @@ from apollo.agent.evaluation_utils import AgentEvaluationUtils
 from apollo.agent.logging_utils import LoggingUtils
 from apollo.agent.models import AgentOperation, AgentOperationResponse
 from apollo.agent.proxy_client_factory import ProxyClientFactory
+from apollo.agent.settings import VERSION, BUILD_NUMBER
 from apollo.agent.utils import AgentUtils
 
 logger = logging.getLogger(__name__)
@@ -13,6 +14,13 @@ logger = logging.getLogger(__name__)
 class Agent:
     def __init__(self, logging_utils: LoggingUtils):
         self._logging_utils = logging_utils
+
+    @staticmethod
+    def health_information() -> Dict:
+        return {
+            "version": VERSION,
+            "build": BUILD_NUMBER,
+        }
 
     def execute_operation(
         self,

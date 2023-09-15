@@ -63,50 +63,59 @@ jobs:
   build-and-push:
     machine:
       image: ubuntu-2004:202201-02
-    environment:
-      PIPELINE_NUMBER: << pipeline.number >>
     parameters:
       docker_hub_repository:
+        type: string
+      code_version:
         type: string
     steps:
       - checkout
       - docker/check:
           use-docker-credentials-store: true
       - docker/build:
+          extra_build_args: --build-arg code_version=<< parameters.code_version >> --build-arg build_number=<< pipeline.number >>
           image: montecarlodata/<< parameters.docker_hub_repository >>
-          tag: latest,${PIPELINE_NUMBER}
-      - docker/push:
-          image: montecarlodata/<< parameters.docker_hub_repository >>
-          tag: latest,${PIPELINE_NUMBER}
+          tag: latest,<< parameters.code_version >>
+#      - docker/push:
+#          image: montecarlodata/<< parameters.docker_hub_repository >>
+#          tag: latest,<< parameters.code_version >>
 
 workflows:
   version: 2
 
   build-and-deploy:
     jobs:
-      - run-trufflehog-scan
+      - run-trufflehog-scan:
+          # run for all tags and branches, we need to add this so the job is available for build-and-push-prod
+          filters: &filters-all-branches-and-tags
+            tags:
+              only: /.*/
       - run-test-docker:
           requires:
             - run-trufflehog-scan
+          filters:
+            <<: *filters-all-branches-and-tags
       - build-and-push:
           name: build-and-push-dev
           docker_hub_repository: apollo-pre-release-agent
+          code_version: dev-<< pipeline.number >>
           context:
             - docker
           requires:
             - run-test-docker
-          filters:
-            branches:
-              only:
-                - dev
+#          filters:
+#            branches:
+#              only:
+#                - dev
       - build-and-push:
           name: build-and-push-prod
           docker_hub_repository: apollo-agent
+          code_version: ${CIRCLE_TAG}
           context:
             - docker
           requires:
             - run-test-docker
-          filters:
+          filters: # run only for tags starting with v, don't run for branches
             tags:
               only: /^v.*/
             branches:
