@@ -18,6 +18,8 @@ class ProxyClientFactory:
 
     @staticmethod
     def _get_proxy_client_bigquery(credentials: Optional[Dict]) -> BaseProxyClient:
+        # import driver modules only when needed
+        # in subsequent versions we might not want to bundle all dependencies in a single image
         from apollo.integrations.bigquery.bq_proxy_client import BqProxyClient
 
         return BqProxyClient(credentials=credentials)
