@@ -73,12 +73,16 @@ jobs:
       - docker/check:
           use-docker-credentials-store: true
       - docker/build:
-          extra_build_args: --build-arg code_version=<< parameters.code_version >> --build-arg build_number=<< pipeline.number >>
+          extra_build_args: --target generic --build-arg code_version=<< parameters.code_version >> --build-arg build_number=<< pipeline.number >>
           image: montecarlodata/<< parameters.docker_hub_repository >>
-          tag: latest,<< parameters.code_version >>
+          tag: latest-generic,<< parameters.code_version >>-generic
+      - docker/build:
+          extra_build_args: --target cloudrun --build-arg code_version=<< parameters.code_version >> --build-arg build_number=<< pipeline.number >>
+          image: montecarlodata/<< parameters.docker_hub_repository >>
+          tag: latest-cloudrun,<< parameters.code_version >>-cloudrun
 #      - docker/push:
 #          image: montecarlodata/<< parameters.docker_hub_repository >>
-#          tag: latest,<< parameters.code_version >>
+#          tag: latest-generic,<< parameters.code_version >>-generic,latest-cloudrun,<< parameters.code_version >>-cloudrun
 
 workflows:
   version: 2
