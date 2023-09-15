@@ -28,7 +28,6 @@ class AgentCommand:
 @dataclass_json
 @dataclass
 class AgentOperation:
-    operation_name: str
     trace_id: str
     commands: List[AgentCommand]
 
