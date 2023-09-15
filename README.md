@@ -29,7 +29,7 @@
     }
 }
 ```
-- For example to list all projects in a BigQuery connection:
+- For example to list all projects in a BigQuery connection, send a POST to http://localhost:8081/api/v1/agent/execute/bigquery/list-projects with the following body:
 ```json
 {
     "operation": {
