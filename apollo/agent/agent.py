@@ -1,12 +1,14 @@
 import logging
+import os
 from typing import Any, Dict, Optional
 
 from apollo.agent.evaluation_utils import AgentEvaluationUtils
 from apollo.agent.logging_utils import LoggingUtils
-from apollo.agent.models import AgentOperation, AgentOperationResponse
+from apollo.agent.models import AgentOperation
 from apollo.agent.proxy_client_factory import ProxyClientFactory
 from apollo.agent.settings import VERSION, BUILD_NUMBER
 from apollo.agent.utils import AgentUtils
+from apollo.interfaces.agent_response import AgentResponse
 
 logger = logging.getLogger(__name__)
 
@@ -14,12 +16,28 @@ logger = logging.getLogger(__name__)
 class Agent:
     def __init__(self, logging_utils: LoggingUtils):
         self._logging_utils = logging_utils
+        self._integration = "generic"
+        self._integration_health_info = {}
 
-    @staticmethod
-    def health_information() -> Dict:
+    def set_integration_info(
+        self, integration: str, health_info: Optional[Dict] = None
+    ):
+        self._integration = integration
+        if health_info:
+            self._integration_health_info = {
+                "integration_info": {**health_info},
+            }
+
+    def health_information(self) -> Dict:
         return {
             "version": VERSION,
             "build": BUILD_NUMBER,
+            "integration": self._integration,
+            "env": {
+                "python_version": os.getenv("PYTHON_VERSION", "unknown"),
+                "server": os.getenv("SERVER_SOFTWARE", "unknown"),
+            },
+            **self._integration_health_info,
         }
 
     def execute_operation(
@@ -28,7 +46,7 @@ class Agent:
         operation_name: str,
         operation_dict: Optional[Dict],
         credentials: Optional[Dict],
-    ) -> AgentOperationResponse:
+    ) -> AgentResponse:
         """
         Executes an operation for the given connection type using the provided credentials.
         The proxy client factory is used to get a proxy client for the given connection type
@@ -40,7 +58,7 @@ class Agent:
         :return: the result of executing the given operation
         """
         if not operation_dict:
-            return AgentOperationResponse(
+            return AgentResponse(
                 AgentUtils.response_for_error("operation is a required parameter"),
                 400,
             )
@@ -48,7 +66,7 @@ class Agent:
             operation = AgentOperation.from_dict(operation_dict)
         except Exception:
             logger.exception("Failed to read operation")
-            return AgentOperationResponse(
+            return AgentResponse(
                 AgentUtils.response_for_last_exception("Failed to read operation:"),
                 400,
             )
@@ -59,7 +77,7 @@ class Agent:
                 connection_type, client, operation_name, operation
             )
         except Exception:
-            return AgentOperationResponse(AgentUtils.response_for_last_exception(), 500)
+            return AgentResponse(AgentUtils.response_for_last_exception(), 500)
 
     def _execute_client_operation(
         self,
@@ -67,7 +85,7 @@ class Agent:
         client: Any,
         operation_name: str,
         operation: AgentOperation,
-    ) -> AgentOperationResponse:
+    ) -> AgentResponse:
         logger.info(
             f"Executing commands: {connection_type}/{operation_name}",
             extra=self._logging_utils.build_extra(
@@ -77,7 +95,7 @@ class Agent:
             ),
         )
         result = self._execute(client, operation)
-        return AgentOperationResponse(result, 200)
+        return AgentResponse(result, 200)
 
     @staticmethod
     def _execute(client: Any, operation: AgentOperation) -> Optional[Any]:

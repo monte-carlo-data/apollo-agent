@@ -1,10 +1,11 @@
 import logging
-from typing import Optional, Dict, Tuple
+from typing import Dict, Tuple
 
 from flask import Flask, request
 
 from apollo.agent.agent import Agent
 from apollo.agent.logging_utils import LoggingUtils
+from apollo.validators.validate_network import ValidateNetwork
 
 app = Flask(__name__)
 logger = logging.getLogger(__name__)
@@ -26,11 +27,23 @@ def agent_execute(connection_type: str, operation_name: str) -> Tuple[Dict, int]
 
 @app.route("/api/v1/test/health")
 def test_health() -> Tuple[Dict, int]:
-    return Agent.health_information(), 200
+    return agent.health_information(), 200
 
 
-@app.route("/api/v1/test/network")
-def test_network() -> Tuple[Dict, int]:
+@app.route("/api/v1/test/network/open", methods=["GET", "POST"])
+def test_network_open() -> Tuple[Dict, int]:
+    request_dict = request.json if request.method == "POST" else request.args
+
+    response = ValidateNetwork.validate_tcp_open_connection(
+        host=request_dict.get("host"),
+        port_str=request_dict.get("port"),
+        timeout_str=request_dict.get("timeout"),
+    )
+    return response.result, response.status_code
+
+
+@app.route("/api/v1/test/network/telnet")
+def test_network_telnet() -> Tuple[Dict, int]:
     return {}, 200
 
 

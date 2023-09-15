@@ -8,12 +8,6 @@ class AgentError(Exception):
     pass
 
 
-@dataclass
-class AgentOperationResponse:
-    result: Dict
-    status_code: int
-
-
 @dataclass_json
 @dataclass
 class AgentCommand:
