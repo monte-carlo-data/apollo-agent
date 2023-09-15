@@ -27,7 +27,6 @@ class Agent:
                 400,
             )
         try:
-            operation_dict["operation_name"] = operation_name
             operation = AgentOperation.from_dict(operation_dict)
         except Exception:
             logger.exception("Failed to read operation")
@@ -38,7 +37,9 @@ class Agent:
 
         try:
             client = ProxyClientFactory.get_proxy_client(connection_type, credentials)
-            return self._execute_commands(connection_type, client, operation)
+            return self._execute_commands(
+                connection_type, client, operation_name, operation
+            )
         except Exception:
             return AgentOperationResponse(AgentUtils.response_for_last_exception(), 500)
 
@@ -46,12 +47,14 @@ class Agent:
         self,
         connection_type: str,
         client: Any,
+        operation_name: str,
         operation: AgentOperation,
     ) -> AgentOperationResponse:
         logger.info(
-            f"Executing {connection_type} commands",
+            f"Executing commands: {connection_type}/{operation_name}",
             extra=self._logging_utils.build_extra(
                 operation.trace_id,
+                operation_name,
                 operation.to_dict(),
             ),
         )
