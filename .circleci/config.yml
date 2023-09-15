@@ -84,9 +84,9 @@ jobs:
           extra_build_args: --target cloudrun --build-arg code_version=<< parameters.code_version >> --build-arg build_number=<< pipeline.number >>
           image: montecarlodata/<< parameters.docker_hub_repository >>
           tag: latest-cloudrun,<< parameters.code_version >>-cloudrun
-#      - docker/push:
-#          image: montecarlodata/<< parameters.docker_hub_repository >>
-#          tag: latest-generic,<< parameters.code_version >>-generic,latest-cloudrun,<< parameters.code_version >>-cloudrun
+      - docker/push:
+          image: montecarlodata/<< parameters.docker_hub_repository >>
+          tag: latest-generic,<< parameters.code_version >>-generic,latest-cloudrun,<< parameters.code_version >>-cloudrun
 
 workflows:
   version: 2
@@ -111,10 +111,10 @@ workflows:
             - docker
           requires:
             - run-test-docker
-#          filters:
-#            branches:
-#              only:
-#                - dev
+          filters:
+            branches:
+              only:
+                - dev
       - build-and-push:
           name: build-and-push-prod
           docker_hub_repository: apollo-agent
