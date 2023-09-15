@@ -21,6 +21,16 @@ class Agent:
         operation_dict: Optional[Dict],
         credentials: Optional[Dict],
     ) -> AgentOperationResponse:
+        """
+        Executes an operation for the given connection type using the provided credentials.
+        The proxy client factory is used to get a proxy client for the given connection type
+        and then the list of commands in the operation are executed on the client object.
+        :param connection_type: for example "bigquery"
+        :param operation_name: operation name, just for logging purposes
+        :param operation_dict: the required dictionary containing the definition of the operation to run, if None an error will be raised
+        :param credentials: the optional credentials dictionary
+        :return: the result of executing the given operation
+        """
         if not operation_dict:
             return AgentOperationResponse(
                 AgentUtils.response_for_error("operation is a required parameter"),
@@ -37,13 +47,13 @@ class Agent:
 
         try:
             client = ProxyClientFactory.get_proxy_client(connection_type, credentials)
-            return self._execute_commands(
+            return self._execute_client_operation(
                 connection_type, client, operation_name, operation
             )
         except Exception:
             return AgentOperationResponse(AgentUtils.response_for_last_exception(), 500)
 
-    def _execute_commands(
+    def _execute_client_operation(
         self,
         connection_type: str,
         client: Any,

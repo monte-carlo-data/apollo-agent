@@ -24,6 +24,5 @@ class BqProxyClient(BaseProxyClient):
             cache_discovery=False,
         )
 
-    @property
     def wrapped_client(self):
         return self._client
