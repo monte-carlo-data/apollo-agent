@@ -18,10 +18,9 @@ dataclasses-json==0.6.0
     # via -r requirements.in
 flask==2.3.3
     # via -r requirements.in
-google-api-core[grpc]==2.11.1
+google-api-core==2.11.1
     # via
     #   google-api-python-client
-    #   google-cloud-bigquery
     #   google-cloud-core
     #   google-cloud-storage
 google-api-python-client==2.98.0
@@ -35,30 +34,15 @@ google-auth==2.22.0
     #   google-cloud-storage
 google-auth-httplib2==0.1.0
     # via google-api-python-client
-google-cloud-bigquery==3.11.4
-    # via -r requirements.in
 google-cloud-core==2.3.3
-    # via
-    #   google-cloud-bigquery
-    #   google-cloud-storage
+    # via google-cloud-storage
 google-cloud-storage==2.10.0
     # via -r requirements.in
 google-crc32c==1.5.0
     # via google-resumable-media
-google-resumable-media==2.5.0
-    # via
-    #   google-cloud-bigquery
-    #   google-cloud-storage
+google-resumable-media==2.6.0
+    # via google-cloud-storage
 googleapis-common-protos==1.60.0
-    # via
-    #   google-api-core
-    #   grpcio-status
-grpcio==1.57.0
-    # via
-    #   google-api-core
-    #   google-cloud-bigquery
-    #   grpcio-status
-grpcio-status==1.57.0
     # via google-api-core
 gunicorn==21.2.0
     # via -r requirements.in
@@ -84,18 +68,12 @@ mypy-extensions==1.0.0
     # via typing-inspect
 packaging==23.1
     # via
-    #   google-cloud-bigquery
     #   gunicorn
     #   marshmallow
-proto-plus==1.22.3
-    # via google-cloud-bigquery
 protobuf==4.24.2
     # via
     #   google-api-core
-    #   google-cloud-bigquery
     #   googleapis-common-protos
-    #   grpcio-status
-    #   proto-plus
 pyasn1==0.5.0
     # via
     #   pyasn1-modules
@@ -104,12 +82,9 @@ pyasn1-modules==0.3.0
     # via google-auth
 pyparsing==3.1.1
     # via httplib2
-python-dateutil==2.8.2
-    # via google-cloud-bigquery
 requests==2.31.0
     # via
     #   google-api-core
-    #   google-cloud-bigquery
     #   google-cloud-storage
 rsa==4.9
     # via google-auth
@@ -117,7 +92,6 @@ six==1.16.0
     # via
     #   google-auth
     #   google-auth-httplib2
-    #   python-dateutil
 typing-extensions==4.7.1
     # via typing-inspect
 typing-inspect==0.9.0

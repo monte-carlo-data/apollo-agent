@@ -4,7 +4,8 @@ from typing import Any, Dict, Optional
 
 from apollo.agent.evaluation_utils import AgentEvaluationUtils
 from apollo.agent.logging_utils import LoggingUtils
-from apollo.agent.models import AgentOperation
+from apollo.agent.models import AgentOperation, CONTEXT_VAR_UTILS, CONTEXT_VAR_CLIENT
+from apollo.agent.operation_utils import OperationUtils
 from apollo.agent.proxy_client_factory import ProxyClientFactory
 from apollo.agent.settings import VERSION, BUILD_NUMBER
 from apollo.agent.utils import AgentUtils
@@ -95,11 +96,12 @@ class Agent:
             ),
         )
         result = self._execute(client, operation)
-        return AgentResponse(result, 200)
+        return AgentResponse(result or {}, 200)
 
     @staticmethod
     def _execute(client: Any, operation: AgentOperation) -> Optional[Any]:
         context = {
-            "_client": client,
+            CONTEXT_VAR_CLIENT: client,
+            CONTEXT_VAR_UTILS: OperationUtils(),
         }
         return AgentEvaluationUtils.execute(context, operation.commands)

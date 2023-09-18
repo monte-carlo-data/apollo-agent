@@ -11,6 +11,8 @@ class ProxyClientFactory:
     ) -> BaseProxyClient:
         if connection_type == "bigquery":
             return cls._get_proxy_client_bigquery(credentials)
+        elif connection_type == "gcs":
+            return cls._get_proxy_client_gcs(credentials)
         else:
             raise AgentError(
                 f"Connection type not supported by this agent: {connection_type}"
@@ -23,3 +25,11 @@ class ProxyClientFactory:
         from apollo.integrations.bigquery.bq_proxy_client import BqProxyClient
 
         return BqProxyClient(credentials=credentials)
+
+    @staticmethod
+    def _get_proxy_client_gcs(credentials: Optional[Dict]) -> BaseProxyClient:
+        # import driver modules only when needed
+        # in subsequent versions we might not want to bundle all dependencies in a single image
+        from apollo.integrations.gcs.gcs_proxy_client import GcsProxyClient
+
+        return GcsProxyClient(credentials=credentials)
