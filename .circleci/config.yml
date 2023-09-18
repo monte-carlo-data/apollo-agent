@@ -101,7 +101,7 @@ workflows:
               only: /.*/
       - build-and-push:
           name: build-and-push-dev
-          docker_hub_repository: apollo-pre-release-agent
+          docker_hub_repository: pre-release-agent
           code_version: ${NEXT_VERSION}
           pre-steps:
             - checkout
@@ -122,7 +122,7 @@ workflows:
                 - dev
       - build-and-push:
           name: build-and-push-prod
-          docker_hub_repository: apollo-agent
+          docker_hub_repository: agent
           code_version: ${VERSION_TAG}
           pre-steps:
             - checkout
