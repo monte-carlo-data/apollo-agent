@@ -109,18 +109,18 @@ class AgentEvaluationUtils:
     def _resolve_args(cls, args: Optional[List[Any]], context: Dict) -> List[Any]:
         if not args:
             return []
-        return [cls._resolve_arg_value(arg, context) for arg in args]
+        return [cls.resolve_arg_value(arg, context) for arg in args]
 
     @classmethod
     def _resolve_kwargs(cls, kwargs: Optional[Dict], context: Dict) -> Dict:
         if not kwargs:
             return {}
         return {
-            key: cls._resolve_arg_value(value, context) for key, value in kwargs.items()
+            key: cls.resolve_arg_value(value, context) for key, value in kwargs.items()
         }
 
     @classmethod
-    def _resolve_arg_value(cls, value: Any, context: Dict) -> Any:
+    def resolve_arg_value(cls, value: Any, context: Dict) -> Any:
         if isinstance(value, Dict):
             if ATTRIBUTE_NAME_REFERENCE in value:
                 return cls._resolve_context_variable(

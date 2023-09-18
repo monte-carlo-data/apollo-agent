@@ -2,10 +2,32 @@ import logging
 from datetime import datetime
 from typing import Optional, List, Any, Dict, Iterable, Callable
 
+from apollo.agent.evaluation_utils import AgentEvaluationUtils
+
 logger = logging.getLogger(__name__)
 
 
 class OperationUtils:
+    def __init__(self, context: Dict):
+        self._context = context
+
+    @classmethod
+    def to_json(
+        cls,
+        o: Any,
+        properties: Optional[List[str]] = None,
+        include: bool = True,
+    ) -> Any:
+        return SerializationUtils.to_json(o, properties, include)
+
+    def build_dict(self, dict: Dict) -> Dict:
+        return {
+            key: AgentEvaluationUtils.resolve_arg_value(value, self._context)
+            for key, value in dict.items()
+        }
+
+
+class SerializationUtils:
     @classmethod
     def to_json(
         cls,
