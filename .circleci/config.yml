@@ -104,7 +104,7 @@ workflows:
           docker_hub_repository: apollo-pre-release-agent
           code_version: ${NEXT_VERSION}
           pre-steps:
-            -run:
+            - run:
               command: |
                 PIPELINE_NUMBER=<< pipeline.number >>
                 if git describe --tags --abbrev=0; then TAG=$(git describe --tags --abbrev=0); else exit 1; fi
@@ -124,7 +124,7 @@ workflows:
           docker_hub_repository: apollo-agent
           code_version: ${VERSION_TAG}
           pre-steps:
-            -run:
+            - run:
               command: |
                 if git describe --tags --abbrev=0; then TAG=$(git describe --tags --abbrev=0); else exit 1; fi
                 echo "VERSION_TAG=${TAG#v}" >> $BASH_ENV
