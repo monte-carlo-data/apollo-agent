@@ -102,6 +102,7 @@ class Agent:
     def _execute(client: Any, operation: AgentOperation) -> Optional[Any]:
         context = {
             CONTEXT_VAR_CLIENT: client,
-            CONTEXT_VAR_UTILS: OperationUtils(),
         }
+        context[CONTEXT_VAR_UTILS] = OperationUtils(context)
+
         return AgentEvaluationUtils.execute(context, operation.commands)
