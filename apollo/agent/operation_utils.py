@@ -20,10 +20,10 @@ class OperationUtils:
     ) -> Any:
         return SerializationUtils.to_json(o, properties, include)
 
-    def build_dict(self, dict: Dict) -> Dict:
+    def build_dict(self, **kwargs) -> Dict:
         return {
             key: AgentEvaluationUtils.resolve_arg_value(value, self._context)
-            for key, value in dict.items()
+            for key, value in kwargs.items()
         }
 
 
