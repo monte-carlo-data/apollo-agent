@@ -1,7 +1,14 @@
 import logging
-from typing import Any, Callable, Optional, Dict, List
+from typing import Any, Callable, Optional, Dict, List, Iterable
 
-from apollo.agent.models import AgentError, AgentCommand
+from apollo.agent.models import (
+    AgentError,
+    AgentCommand,
+    ATTRIBUTE_NAME_REFERENCE,
+    ATTRIBUTE_NAME_TYPE,
+    ATTRIBUTE_VALUE_TYPE_CALL,
+    CONTEXT_VAR_CLIENT,
+)
 from apollo.agent.utils import AgentUtils
 
 logger = logging.getLogger(__name__)
@@ -67,14 +74,16 @@ class AgentEvaluationUtils:
         :return: the result of the command
         """
         if not target:
-            target_name = command.target or "_client"
-            if target_name not in context:
-                raise AgentError(f"{target} not found in context")
-            target = context[target_name]
+            target_name = command.target or CONTEXT_VAR_CLIENT
+            target = cls._resolve_context_variable(context, target_name)
         method = cls._resolve_method(target, command.method)
-        args = command.args or []
-        kwargs = command.kwargs or {}
-        result = method(*args, **kwargs)
+        if isinstance(method, Callable):
+            result = method(
+                *cls._resolve_args(command.args, context),
+                **cls._resolve_kwargs(command.kwargs, context),
+            )
+        else:
+            result = method  # assume it is a property
         if store := command.store:
             context[store] = result
         return result
@@ -95,3 +104,36 @@ class AgentEvaluationUtils:
             if hasattr(client, method_name):
                 return getattr(client, method_name)
         raise AttributeError(f"Failed to resolve method {method_name}")
+
+    @classmethod
+    def _resolve_args(cls, args: Optional[List[Any]], context: Dict) -> List[Any]:
+        if not args:
+            return []
+        return [cls.resolve_arg_value(arg, context) for arg in args]
+
+    @classmethod
+    def _resolve_kwargs(cls, kwargs: Optional[Dict], context: Dict) -> Dict:
+        if not kwargs:
+            return {}
+        return {
+            key: cls.resolve_arg_value(value, context) for key, value in kwargs.items()
+        }
+
+    @classmethod
+    def resolve_arg_value(cls, value: Any, context: Dict) -> Any:
+        if isinstance(value, Dict):
+            if ATTRIBUTE_NAME_REFERENCE in value:
+                return cls._resolve_context_variable(
+                    context, value[ATTRIBUTE_NAME_REFERENCE]
+                )
+            elif value.get(ATTRIBUTE_NAME_TYPE) == ATTRIBUTE_VALUE_TYPE_CALL:
+                return cls._execute_single_command(
+                    AgentCommand.from_dict(value), context
+                )
+        return value
+
+    @staticmethod
+    def _resolve_context_variable(context: Dict, var_name: str) -> Any:
+        if var_name not in context:
+            raise AgentError(f"{var_name} not found in context")
+        return context[var_name]

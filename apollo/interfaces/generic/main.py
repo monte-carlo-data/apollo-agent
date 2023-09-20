@@ -1,4 +1,5 @@
 import logging
+import os
 from typing import Dict, Tuple, Callable
 
 from flask import Flask, request
@@ -52,5 +53,5 @@ def _execute_network_validation(method: Callable) -> Tuple[Dict, int]:
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=logging.DEBUG if os.getenv("DEBUG") else logging.INFO)
     app.run(host="0.0.0.0", port=8081, debug=True)
