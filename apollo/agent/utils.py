@@ -38,7 +38,7 @@ class AgentUtils:
         )
         if prefix:
             error = f"{prefix} {error}"
-        stack_trace = traceback.format_stack()
+        stack_trace = traceback.format_tb(last_value.__traceback__)
         return cls.response_for_error(
             error, exception_message=exception_message, stack_trace=stack_trace
         )
