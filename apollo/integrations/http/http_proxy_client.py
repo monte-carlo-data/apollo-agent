@@ -32,8 +32,8 @@ class HttpRetryableError(Exception):
 
 
 class HttpProxyClient(BaseProxyClient):
-    def __init__(self, **kwargs):
-        pass
+    def __init__(self, credentials: Optional[Dict], **kwargs):
+        self._credentials = credentials
 
     @property
     def wrapped_client(self):
@@ -50,7 +50,6 @@ class HttpProxyClient(BaseProxyClient):
         payload: Optional[Dict] = None,
         content_type: Optional[str] = None,
         timeout: Optional[int] = None,
-        token: Optional[str] = None,
         user_agent: Optional[str] = None,
         additional_headers: Optional[Dict] = None,
         retry_status_code_ranges: Optional[List[Tuple]] = None,
@@ -70,8 +69,8 @@ class HttpProxyClient(BaseProxyClient):
             request_args["timeout"] = timeout
 
         headers = {**additional_headers} if additional_headers else {}
-        if token:
-            headers["Authorization"] = f"Bearer {token}"
+        if self._credentials and "token" in self._credentials:
+            headers["Authorization"] = f"Bearer {self._credentials['token']}"
         if content_type:
             headers["Content-Type"] = content_type
         if user_agent:
@@ -104,7 +103,6 @@ class HttpProxyClient(BaseProxyClient):
         payload: Optional[Dict] = None,
         content_type: Optional[str] = None,
         timeout: Optional[int] = None,
-        token: Optional[str] = None,
         user_agent: Optional[str] = None,
         additional_headers: Optional[Dict] = None,
         retry_status_code_ranges: Optional[List[Tuple]] = None,
@@ -122,7 +120,6 @@ class HttpProxyClient(BaseProxyClient):
                 "payload": payload,
                 "content_type": content_type,
                 "timeout": timeout,
-                "token": token,
                 "user_agent": user_agent,
                 "additional_headers": additional_headers,
                 "retry_status_code_ranges": retry_status_code_ranges,
