@@ -14,13 +14,54 @@ logger = logging.getLogger(__name__)
 _CACHE_EXPIRATION_SECONDS = int(os.getenv("CLIENT_CACHE_EXPIRATION_SECONDS", "60"))
 
 
+def _get_proxy_client_bigquery(credentials: Optional[Dict]) -> BaseProxyClient:
+    # import driver modules only when needed
+    # in subsequent versions we might not want to bundle all dependencies in a single image
+    from apollo.integrations.bigquery.bq_proxy_client import BqProxyClient
+
+    return BqProxyClient(credentials=credentials)
+
+
+def _get_proxy_client_gcs(credentials: Optional[Dict]) -> BaseProxyClient:
+    from apollo.integrations.gcs.gcs_proxy_client import GcsProxyClient
+
+    return GcsProxyClient(credentials=credentials)
+
+
+def _get_proxy_client_databricks(credentials: Optional[Dict]) -> BaseProxyClient:
+    from apollo.integrations.databricks.databricks_sql_warehouse_proxy_client import (
+        DatabricksSqlWarehouseProxyClient,
+    )
+
+    return DatabricksSqlWarehouseProxyClient(credentials=credentials)
+
+
+def _get_proxy_client_http(credentials: Optional[Dict]) -> BaseProxyClient:
+    from apollo.integrations.http.http_proxy_client import HttpProxyClient
+
+    return HttpProxyClient(credentials=credentials)
+
+
 @dataclass
 class ProxyClientCacheEntry:
     created_time: datetime
     client: BaseProxyClient
 
 
+_CLIENT_FACTORY_MAPPING = {
+    "bigquery": _get_proxy_client_bigquery,
+    "gcs": _get_proxy_client_gcs,
+    "databricks": _get_proxy_client_databricks,
+    "http": _get_proxy_client_http,
+}
+
+
 class ProxyClientFactory:
+    """
+    Factory class used to create the proxy clients for a given connection type.
+    Clients are expected to extend :class:`BasedProxyClient` and have a constructor receiving a `credentials` object.
+    """
+
     _clients_cache: Dict[str, ProxyClientCacheEntry] = {}
 
     @classmethod
@@ -43,14 +84,9 @@ class ProxyClientFactory:
     def _create_proxy_client(
         cls, connection_type: str, credentials: Dict
     ) -> BaseProxyClient:
-        if connection_type == "bigquery":
-            return cls._get_proxy_client_bigquery(credentials)
-        elif connection_type == "gcs":
-            return cls._get_proxy_client_gcs(credentials)
-        elif connection_type == "databricks":
-            return cls._get_proxy_client_databricks(credentials)
-        elif connection_type == "http":
-            return cls._get_proxy_client_http(credentials)
+        factory_method = _CLIENT_FACTORY_MAPPING.get(connection_type)
+        if factory_method:
+            return factory_method(credentials)
         else:
             raise AgentError(
                 f"Connection type not supported by this agent: {connection_type}"
@@ -80,37 +116,3 @@ class ProxyClientFactory:
         ):
             return None
         return entry.client
-
-    @staticmethod
-    def _get_proxy_client_bigquery(credentials: Optional[Dict]) -> BaseProxyClient:
-        # import driver modules only when needed
-        # in subsequent versions we might not want to bundle all dependencies in a single image
-        from apollo.integrations.bigquery.bq_proxy_client import BqProxyClient
-
-        return BqProxyClient(credentials=credentials)
-
-    @staticmethod
-    def _get_proxy_client_gcs(credentials: Optional[Dict]) -> BaseProxyClient:
-        # import driver modules only when needed
-        # in subsequent versions we might not want to bundle all dependencies in a single image
-        from apollo.integrations.gcs.gcs_proxy_client import GcsProxyClient
-
-        return GcsProxyClient(credentials=credentials)
-
-    @staticmethod
-    def _get_proxy_client_databricks(credentials: Optional[Dict]) -> BaseProxyClient:
-        # import driver modules only when needed
-        # in subsequent versions we might not want to bundle all dependencies in a single image
-        from apollo.integrations.databricks.databricks_sql_warehouse_proxy_client import (
-            DatabricksSqlWarehouseProxyClient,
-        )
-
-        return DatabricksSqlWarehouseProxyClient(credentials=credentials)
-
-    @staticmethod
-    def _get_proxy_client_http(credentials: Optional[Dict]) -> BaseProxyClient:
-        # import driver modules only when needed
-        # in subsequent versions we might not want to bundle all dependencies in a single image
-        from apollo.integrations.http.http_proxy_client import HttpProxyClient
-
-        return HttpProxyClient(credentials=credentials)
