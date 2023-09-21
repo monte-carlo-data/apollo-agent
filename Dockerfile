@@ -35,4 +35,4 @@ FROM base AS cloudrun
 COPY requirements-cloudrun.txt ./
 RUN . $VENV_DIR/bin/activate && pip install --no-cache-dir -r requirements-cloudrun.txt
 
-CMD . $VENV_DIR/bin/activate && gunicorn --bind :$PORT --workers 1 --threads 8 --timeout 0 apollo.interfaces.cloudrun.main:app
+CMD . $VENV_DIR/bin/activate && gunicorn --bind :$PORT apollo.interfaces.cloudrun.main:app
