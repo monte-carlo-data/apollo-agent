@@ -22,6 +22,7 @@ class ProxyClientFactory:
     Factory class used to create the proxy clients for a given connection type.
     Clients are expected to extend :class:`BasedProxyClient` and have a constructor receiving a `credentials` object.
     """
+
     @classmethod
     def get_proxy_client(
         cls, connection_type: str, credentials: Dict
