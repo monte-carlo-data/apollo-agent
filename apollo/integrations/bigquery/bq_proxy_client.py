@@ -16,12 +16,15 @@ class BqProxyClient(BaseProxyClient):
         if credentials:
             bq_credentials = Credentials.from_service_account_info(credentials)
         else:
+            # check for a credentials file specified through BQ_CREDS_FILE
+            # env var, used for testing
             creds_file = os.getenv("BQ_CREDS_FILE")
             if creds_file:
                 bq_credentials = Credentials.from_service_account_file(creds_file)
 
         # if no credentials are specified then ADC (app default credentials) will be used
         # in the context of Cloud Run it comes from the service account used to run the service
+        # in local dev environments you can use gcloud CLI to set ADC.
         self._client = googleapiclient.discovery.build(
             _API_SERVICE_NAME,
             _API_VERSION,
