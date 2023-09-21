@@ -1,0 +1,4 @@
+-c requirements.txt
+pytest==7.4.2
+black==23.9.1
+pre-commit==3.4.0
