@@ -2,6 +2,8 @@ from typing import Dict
 
 import google.cloud.logging
 
+# CloudRun specific application that adds support for structured logging
+
 gcp_logging_client = google.cloud.logging.Client()
 gcp_logging_client.setup_logging()
 

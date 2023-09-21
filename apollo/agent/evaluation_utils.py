@@ -17,8 +17,8 @@ logger = logging.getLogger(__name__)
 class AgentEvaluationUtils:
     """
     Utility class that performs operation commands, it supports "chains" created using the "next"
-    attribute in a command and it means to use the result of a given command as the target for
-    the "next" call.
+    attribute in a command (which means to use the result of a given command as the target for
+    the "next" call).
     """
 
     @classmethod
