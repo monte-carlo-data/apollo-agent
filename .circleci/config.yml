@@ -50,6 +50,21 @@ jobs:
         name: Install truffleHog
     - cmd-trufflehog-scan
 
+  run-linter:
+    docker:
+      - image: cimg/python:3.8
+
+    steps:
+      - checkout
+      - run:
+          name: Install dependencies
+          command: |
+            pip install --no-cache-dir --upgrade pip
+            pip install --no-cache-dir -r requirements.txt -r requirements-dev.txt
+      - run:
+          name: 'Run linter'
+          command: python -m black --check .
+
   run-test-docker:
     machine:
       image: ubuntu-2004:202201-02
@@ -94,6 +109,7 @@ workflows:
   build-and-deploy:
     jobs:
       - run-trufflehog-scan
+      - run-linter
       - run-test-docker:
           # run for all tags and branches, we need to add this so the job is available for build-and-push-prod
           filters:
