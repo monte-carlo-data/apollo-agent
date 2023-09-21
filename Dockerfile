@@ -17,7 +17,6 @@ RUN . $VENV_DIR/bin/activate && pip install setuptools==65.5.1
 # copy sources in the last step so we don't install python libraries due to a change in source code
 COPY apollo/ ./apollo
 
-
 FROM base AS tests
 
 COPY requirements-dev.txt ./
