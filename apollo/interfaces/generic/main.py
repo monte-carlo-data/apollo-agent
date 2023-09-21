@@ -15,6 +15,17 @@ agent = Agent(logging_utils)
 
 @app.route("/api/v1/agent/execute/<connection_type>/<operation_name>", methods=["POST"])
 def agent_execute(connection_type: str, operation_name: str) -> Tuple[Dict, int]:
+    """
+    Executes the operation named "operation_name" in a connection of type "connection_type", for example bigquery.
+    The body is expected to be a JSON document including a "credentials" attribute with the credentials to use for
+    the connection and an "operation" attribute with the definition of the operation, as described in the README file.
+    :param connection_type: the connection type to use, for example bigquery.
+    :param operation_name: the name of the operation to execute, this is used only for logging purposes as the
+        definition of what is executed is included in the "operation" attribute in the body.
+    :return: the result of the operation (that is expected to be a Dictionary) and the status code to send in the
+        response. If there was an error executing the operation a dictionary containing: __error__ and __stack_trace__
+        will be returned, see :class:`AgentUtils` for more information.
+    """
     json_request = request.json
     credentials = json_request.get("credentials", {})
     operation = json_request.get("operation")
