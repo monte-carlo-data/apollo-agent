@@ -51,7 +51,7 @@ class Agent:
                 connection_type, client, operation_name, operation
             )
         except Exception:
-            return AgentOperationResponse(AgentUtils.response_for_last_exception(), 500)
+            return AgentOperationResponse(AgentUtils.response_for_last_exception(), 200)
 
     def _execute_client_operation(
         self,

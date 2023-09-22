@@ -1,0 +1,15 @@
+# To enable ssh & remote debugging on app service change the base image to the one below
+# FROM mcr.microsoft.com/azure-functions/python:4-python3.11-appservice
+FROM mcr.microsoft.com/azure-functions/python:4-python3.11
+
+ENV AzureWebJobsScriptRoot=/home/site/wwwroot \
+    AzureFunctionsJobHost__Logging__Console__IsEnabled=true
+
+COPY requirements.txt /
+COPY requirements-azure.txt /
+RUN pip install -r /requirements.txt -r /requirements-azure.txt
+
+COPY . /home/site/wwwroot
+
+# the files under apollo/interfaces/azure like function_app.py must be in the root folder of the app
+COPY apollo/interfaces/azure /home/site/wwwroot
