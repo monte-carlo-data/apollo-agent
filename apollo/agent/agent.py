@@ -17,28 +17,26 @@ logger = logging.getLogger(__name__)
 class Agent:
     def __init__(self, logging_utils: LoggingUtils):
         self._logging_utils = logging_utils
-        self._integration = "generic"
-        self._integration_health_info = {}
+        self._platform = "Generic"
+        self._platform_info = {}
 
-    def set_integration_info(
-        self, integration: str, health_info: Optional[Dict] = None
-    ):
-        self._integration = integration
-        if health_info:
-            self._integration_health_info = {
-                "integration_info": {**health_info},
+    def set_platform_info(self, platform: str, info: Optional[Dict] = None):
+        self._platform = platform
+        if info:
+            self._platform_info = {
+                "platform_info": {**info},
             }
 
     def health_information(self) -> Dict:
         return {
             "version": VERSION,
             "build": BUILD_NUMBER,
-            "integration": self._integration,
+            "platform": self._platform,
             "env": {
                 "python_version": os.getenv("PYTHON_VERSION", "unknown"),
                 "server": os.getenv("SERVER_SOFTWARE", "unknown"),
             },
-            **self._integration_health_info,
+            **self._platform_info,
         }
 
     def execute_operation(
