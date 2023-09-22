@@ -20,6 +20,13 @@ class Agent:
         self._platform_info = {}
 
     def set_platform_info(self, platform: str, info: Optional[Dict] = None):
+        """
+        Sets the name of the platform running this agent and optionally sets a `platform_info` dictionary
+        with platform specific information.
+        :param platform: the platform name, for example AWS or GCP. Defaults to Generic.
+        :param info: platform-specific information to be returned in `health_information`
+        :return:
+        """
         self._platform = platform
         if info:
             self._platform_info = {
@@ -27,6 +34,15 @@ class Agent:
             }
 
     def health_information(self) -> Dict:
+        """
+        Returns platform information about the agent:
+        - version
+        - build
+        - platform
+        - env (some relevant env vars like PYTHON_VERSION)
+        - specific platform information set using `set_platform_info`
+        :return: a dictionary with information about this agent.
+        """
         return {
             "version": VERSION,
             "build": BUILD_NUMBER,
