@@ -17,6 +17,10 @@ class BadRequestError(Exception):
 
 
 class ValidateNetwork:
+    """
+    Network test utilities, based on the same code in data-collector project
+    """
+
     @classmethod
     def validate_tcp_open_connection(
         cls, host: Optional[str], port_str: Optional[str], timeout_str: Optional[str]

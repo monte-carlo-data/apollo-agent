@@ -11,6 +11,10 @@ from apollo.interfaces.agent_response import AgentResponse
 
 
 class AgentUtils:
+    """
+    Helper methods to create success/failure responses.
+    """
+
     @staticmethod
     def agent_ok_response(result: Dict):
         return AgentResponse(result, 200)
