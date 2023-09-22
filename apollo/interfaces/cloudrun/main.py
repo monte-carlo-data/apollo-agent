@@ -24,4 +24,4 @@ def cloud_run_extra_builder(trace_id: str, operation_name: str, extra: Dict):
 
 main.logging_utils.extra_builder = cloud_run_extra_builder
 app = main.app
-main.agent.set_integration_info("cloudrun")
+main.agent.set_platform_info("GCP")
