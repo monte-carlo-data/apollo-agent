@@ -57,11 +57,6 @@ class HttpProxyClient(BaseProxyClient):
         """
         Throws HTTPError by calling response.raise_for_status internally.
         """
-        # used for testing, we configure "INVALID_host_name" in the connection
-        # so we're sure there's no connection established from the data collector
-        # and it connects only through the agent
-        url = url.replace("INVALID_", "")
-
         request_args = {}
         if payload:
             request_args["json"] = payload
