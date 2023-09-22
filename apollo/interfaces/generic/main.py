@@ -39,16 +39,36 @@ def agent_execute(connection_type: str, operation_name: str) -> Tuple[Dict, int]
 
 @app.route("/api/v1/test/health")
 def test_health() -> Tuple[Dict, int]:
+    """
+    Endpoint that returns health information about the agent, can be used as a "ping" endpoint.
+    :return: health information about this agent, includes version number and information about the platform
+    """
     return agent.health_information(), 200
 
 
 @app.route("/api/v1/test/network/open", methods=["GET", "POST"])
 def test_network_open() -> Tuple[Dict, int]:
+    """
+    Tests network connectivity to the given host in the specified port.
+    Supported parameters (both in a JSON body or as query params):
+    - host
+    - port
+    - timeout (in seconds)
+    :return: a message indicating if the connection was successful or not
+    """
     return _execute_network_validation(ValidateNetwork.validate_tcp_open_connection)
 
 
 @app.route("/api/v1/test/network/telnet", methods=["GET", "POST"])
 def test_network_telnet() -> Tuple[Dict, int]:
+    """
+    Tests network connectivity to the given host in the specified port using a Telnet connection.
+    Supported parameters (both in a JSON body or as query params):
+    - host
+    - port
+    - timeout (in seconds)
+    :return: a message indicating if the connection was successful or not
+    """
     return _execute_network_validation(ValidateNetwork.validate_telnet_connection)
 
 

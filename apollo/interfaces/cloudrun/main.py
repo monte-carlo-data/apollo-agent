@@ -4,6 +4,7 @@ import google.cloud.logging
 
 # CloudRun specific application that adds support for structured logging
 
+# initialize CloudRun logging
 gcp_logging_client = google.cloud.logging.Client()
 gcp_logging_client.setup_logging()
 
@@ -24,4 +25,6 @@ def cloud_run_extra_builder(trace_id: str, operation_name: str, extra: Dict):
 
 main.logging_utils.extra_builder = cloud_run_extra_builder
 app = main.app
+
+# set the container platform as GCP for the health endpoint
 main.agent.set_platform_info("GCP")
