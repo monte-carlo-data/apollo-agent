@@ -1,11 +1,4 @@
-from typing import Dict, Any, List
-
-_SENSITIVE_KEYWORDS = [
-    "credentials",
-    "password",
-    "pwd",
-    "token",
-]
+from typing import Dict
 
 
 class LoggingUtils:
@@ -25,34 +18,4 @@ class LoggingUtils:
         operation_name: str,
         extra: Dict,
     ) -> Dict:
-        redacted_extra = self._redact_dict(
-            self.extra_builder(trace_id, operation_name, extra)
-        )
-        return redacted_extra
-
-    @classmethod
-    def _redact_dict(cls, values: Dict) -> Dict:
-        return {
-            key: cls._redact_value_with_key(key, value) for key, value in values.items()
-        }
-
-    @classmethod
-    def _redact_value_with_key(cls, key: str, value: Any) -> Any:
-        if cls._is_sensitive_key(key):
-            return "[REDACTED]"
-        else:
-            return cls._redact_value(value)
-
-    @classmethod
-    def _redact_value(cls, value: Any) -> Any:
-        if isinstance(value, Dict):
-            return cls._redact_dict(value)
-        elif isinstance(value, List):
-            return [cls._redact_value(v) for v in value]
-        else:
-            return value
-
-    @staticmethod
-    def _is_sensitive_key(key: str) -> bool:
-        key_lower = key.lower()
-        return any(keyword in key_lower for keyword in _SENSITIVE_KEYWORDS)
+        return self.extra_builder(trace_id, operation_name, extra)
