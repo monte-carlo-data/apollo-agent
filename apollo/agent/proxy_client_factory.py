@@ -22,12 +22,6 @@ def _get_proxy_client_bigquery(credentials: Optional[Dict]) -> BaseProxyClient:
     return BqProxyClient(credentials=credentials)
 
 
-def _get_proxy_client_gcs(credentials: Optional[Dict]) -> BaseProxyClient:
-    from apollo.integrations.gcs.gcs_proxy_client import GcsProxyClient
-
-    return GcsProxyClient(credentials=credentials)
-
-
 def _get_proxy_client_databricks(credentials: Optional[Dict]) -> BaseProxyClient:
     from apollo.integrations.databricks.databricks_sql_warehouse_proxy_client import (
         DatabricksSqlWarehouseProxyClient,
@@ -50,7 +44,6 @@ class ProxyClientCacheEntry:
 
 _CLIENT_FACTORY_MAPPING = {
     "bigquery": _get_proxy_client_bigquery,
-    "gcs": _get_proxy_client_gcs,
     "databricks": _get_proxy_client_databricks,
     "http": _get_proxy_client_http,
 }
@@ -69,15 +62,17 @@ class ProxyClientFactory:
         cls, connection_type: str, credentials: Dict
     ) -> BaseProxyClient:
         try:
-            key = cls._get_cache_key(connection_type, credentials)
-            client = cls._get_cached_client(key)
-            if not client:
-                client = cls._create_proxy_client(connection_type, credentials)
-                logger.info(f"Caching {connection_type} client")
-                cls._cache_client(key, client)
-            return client
+            # key = cls._get_cache_key(connection_type, credentials)
+            # client = cls._get_cached_client(key)
+            # if not client:
+            #     client = cls._create_proxy_client(connection_type, credentials)
+            #     logger.info(f"Caching {connection_type} client")
+            #     cls._cache_client(key, client)
+            # return client
+            return cls._create_proxy_client(connection_type, credentials)
         except Exception:
-            logger.exception("Failed to create or get client from cache")
+            # logger.exception("Failed to create or get client from cache")
+            logger.exception("Failed to create client")
             raise
 
     @classmethod

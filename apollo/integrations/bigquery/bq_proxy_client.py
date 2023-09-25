@@ -12,7 +12,7 @@ _API_VERSION = "v2"
 
 class BqProxyClient(BaseProxyClient):
     """
-    BigQuery Proxy Client, simple class that used the received credentials to create a BigQuery connection.
+    BigQuery Proxy Client, simple class that uses the received credentials to create a BigQuery connection.
     This connection is returned as the `wrapped_client` attribute and the agent will take care of executing methods
     there.
     If no credentials are specified in the constructor (received in the request) the credentials file specified by
