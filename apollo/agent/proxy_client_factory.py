@@ -22,12 +22,6 @@ def _get_proxy_client_bigquery(credentials: Optional[Dict]) -> BaseProxyClient:
     return BqProxyClient(credentials=credentials)
 
 
-def _get_proxy_client_gcs(credentials: Optional[Dict]) -> BaseProxyClient:
-    from apollo.integrations.gcs.gcs_proxy_client import GcsProxyClient
-
-    return GcsProxyClient(credentials=credentials)
-
-
 def _get_proxy_client_databricks(credentials: Optional[Dict]) -> BaseProxyClient:
     from apollo.integrations.databricks.databricks_sql_warehouse_proxy_client import (
         DatabricksSqlWarehouseProxyClient,
@@ -50,7 +44,6 @@ class ProxyClientCacheEntry:
 
 _CLIENT_FACTORY_MAPPING = {
     "bigquery": _get_proxy_client_bigquery,
-    "gcs": _get_proxy_client_gcs,
     "databricks": _get_proxy_client_databricks,
     "http": _get_proxy_client_http,
 }
