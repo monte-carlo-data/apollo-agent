@@ -59,8 +59,15 @@ class ProxyClientFactory:
 
     @classmethod
     def get_proxy_client(
-        cls, connection_type: str, credentials: Dict
+        cls, connection_type: str, credentials: Dict, skip_cache: bool
     ) -> BaseProxyClient:
+        if skip_cache:
+            try:
+                return cls._create_proxy_client(connection_type, credentials)
+            except Exception:
+                logger.exception("Failed to create client")
+                raise
+
         try:
             key = cls._get_cache_key(connection_type, credentials)
             client = cls._get_cached_client(key)
@@ -70,8 +77,7 @@ class ProxyClientFactory:
                 cls._cache_client(key, client)
             return client
         except Exception:
-            # logger.exception("Failed to create or get client from cache")
-            logger.exception("Failed to create client")
+            logger.exception("Failed to create or get client from cache")
             raise
 
     @classmethod

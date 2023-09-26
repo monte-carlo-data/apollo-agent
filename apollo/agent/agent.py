@@ -87,7 +87,9 @@ class Agent:
             )
 
         try:
-            client = ProxyClientFactory.get_proxy_client(connection_type, credentials)
+            client = ProxyClientFactory.get_proxy_client(
+                connection_type, credentials, operation.skip_cache
+            )
             return self._execute_client_operation(
                 connection_type, client, operation_name, operation
             )
