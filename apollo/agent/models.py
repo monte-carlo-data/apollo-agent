@@ -53,6 +53,7 @@ class AgentCommand:
 class AgentOperation:
     trace_id: str
     commands: List[AgentCommand]
+    skip_cache: bool = False
 
     @staticmethod
     def from_dict(param) -> "AgentOperation":
