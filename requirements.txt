@@ -4,16 +4,32 @@
 #
 #    pip-compile requirements.in
 #
+azure-core==1.29.4
+    # via
+    #   azure-identity
+    #   azure-storage-blob
+azure-identity==1.14.0
+    # via -r requirements.in
+azure-storage-blob==12.18.1
+    # via -r requirements.in
 blinker==1.6.2
     # via flask
 cachetools==5.3.1
     # via google-auth
 certifi==2023.7.22
     # via requests
+cffi==1.15.1
+    # via cryptography
 charset-normalizer==3.2.0
     # via requests
 click==8.1.7
     # via flask
+cryptography==41.0.4
+    # via
+    #   azure-identity
+    #   azure-storage-blob
+    #   msal
+    #   pyjwt
 dataclasses-json==0.6.0
     # via -r requirements.in
 flask==2.3.3
@@ -68,6 +84,8 @@ httplib2==0.22.0
     #   google-auth-httplib2
 idna==3.4
     # via requests
+isodate==0.6.1
+    # via azure-storage-blob
 itsdangerous==2.1.2
     # via flask
 jinja2==3.1.2
@@ -78,6 +96,12 @@ markupsafe==2.1.3
     #   werkzeug
 marshmallow==3.20.1
     # via dataclasses-json
+msal==1.24.0
+    # via
+    #   azure-identity
+    #   msal-extensions
+msal-extensions==1.0.0
+    # via azure-identity
 mypy-extensions==1.0.0
     # via typing-inspect
 packaging==23.1
@@ -85,6 +109,8 @@ packaging==23.1
     #   google-cloud-bigquery
     #   gunicorn
     #   marshmallow
+portalocker==2.8.2
+    # via msal-extensions
 proto-plus==1.22.3
     # via google-cloud-bigquery
 protobuf==4.24.2
@@ -100,24 +126,35 @@ pyasn1==0.5.0
     #   rsa
 pyasn1-modules==0.3.0
     # via google-auth
+pycparser==2.21
+    # via cffi
+pyjwt[crypto]==2.8.0
+    # via msal
 pyparsing==3.1.1
     # via httplib2
 python-dateutil==2.8.2
     # via google-cloud-bigquery
 requests==2.31.0
     # via
+    #   azure-core
     #   google-api-core
     #   google-cloud-bigquery
     #   google-cloud-storage
+    #   msal
 rsa==4.9
     # via google-auth
 six==1.16.0
     # via
+    #   azure-core
     #   google-auth
     #   google-auth-httplib2
+    #   isodate
     #   python-dateutil
 typing-extensions==4.7.1
-    # via typing-inspect
+    # via
+    #   azure-core
+    #   azure-storage-blob
+    #   typing-inspect
 typing-inspect==0.9.0
     # via dataclasses-json
 uritemplate==4.1.1
