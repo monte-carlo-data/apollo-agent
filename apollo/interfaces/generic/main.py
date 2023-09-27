@@ -42,7 +42,7 @@ def test_health() -> Tuple[Dict, int]:
     Endpoint that returns health information about the agent, can be used as a "ping" endpoint.
     :return: health information about this agent, includes version number and information about the platform
     """
-    return agent.health_information(), 200
+    return agent.health_information().to_dict(), 200
 
 
 @app.route("/api/v1/test/network/open", methods=["GET", "POST"])

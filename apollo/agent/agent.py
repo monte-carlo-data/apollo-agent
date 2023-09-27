@@ -1,6 +1,10 @@
 import logging
 import os
+import sys
+from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
+
+from dataclasses_json import dataclass_json, config
 
 from apollo.agent.evaluation_utils import AgentEvaluationUtils
 from apollo.agent.logging_utils import LoggingUtils
@@ -12,6 +16,36 @@ from apollo.interfaces.agent_response import AgentResponse
 
 logger = logging.getLogger(__name__)
 
+_ENV_VARS = [
+    "PYTHON_VERSION",
+    "SERVER_SOFTWARE",
+    "MCD_AGENT_IMAGE_TAG",
+    "MCD_AGENT_CLOUD_PLATFORM",
+    "MCD_AGENT_WRAPPER_TYPE",
+    "MCD_AGENT_WRAPPER_VERSION",
+    "MCD_AGENT_IS_REMOTE_UPGRADABLE",
+]
+
+
+# used so we don't include an empty platform info
+def _exclude_empty_values(value: Any) -> bool:
+    return not bool(value)
+
+
+@dataclass_json
+@dataclass
+class AgentHealthInformation:
+    platform: str
+    version: str
+    build: str
+    env: Dict
+    platform_info: Optional[Dict] = field(
+        metadata=config(exclude=_exclude_empty_values), default=None
+    )
+
+    def to_dict(self) -> Dict:
+        pass
+
 
 class Agent:
     def __init__(self, logging_utils: LoggingUtils):
@@ -19,40 +53,56 @@ class Agent:
         self._platform = "Generic"
         self._platform_info = {}
 
-    def set_platform_info(self, platform: str, info: Optional[Dict] = None):
+    @property
+    def platform(self) -> str:
         """
-        Sets the name of the platform running this agent and optionally sets a `platform_info` dictionary
-        with platform specific information.
-        :param platform: the platform name, for example AWS or GCP. Defaults to Generic.
-        :param info: platform-specific information to be returned in `health_information`
-        :return:
+        The name of the platform running this agent, for example: Generic, AWS, GCP, etc.
         """
-        self._platform = platform
-        if info:
-            self._platform_info = {
-                "platform_info": {**info},
-            }
+        return self._platform
 
-    def health_information(self) -> Dict:
+    @platform.setter
+    def platform(self, platform: str):
+        self._platform = platform
+
+    @property
+    def platform_info(self) -> Optional[Dict]:
         """
-        Returns platform information about the agent:
+        Dictionary containing platform specific information, it could be container information like versions or
+        some other settings relevant to the container.
+        """
+        return self._platform_info
+
+    @platform_info.setter
+    def platform_info(self, platform_info: Optional[Dict]):
+        self._platform_info = platform_info
+
+    def health_information(self) -> AgentHealthInformation:
+        """
+        Returns platform and environment information about the agent:
         - version
         - build
         - platform
-        - env (some relevant env vars like PYTHON_VERSION)
-        - specific platform information set using `set_platform_info`
-        :return: a dictionary with information about this agent.
+        - env (some relevant env information like sys.version or vars like PYTHON_VERSION and MCD_*)
+        - specific platform information set using `platform_info` setter
+        :return: an `AgentHealthInformation` object that can be converted to JSON.
         """
-        return {
-            "version": VERSION,
-            "build": BUILD_NUMBER,
-            "platform": self._platform,
-            "env": {
-                "python_version": os.getenv("PYTHON_VERSION", "unknown"),
-                "server": os.getenv("SERVER_SOFTWARE", "unknown"),
-            },
-            **self._platform_info,
+        return AgentHealthInformation(
+            version=VERSION,
+            build=BUILD_NUMBER,
+            platform=self._platform,
+            env=self._env_dictionary(),
+            platform_info=self._platform_info,
+        )
+
+    @staticmethod
+    def _env_dictionary() -> Dict:
+        env = {
+            "sys_version": sys.version,
         }
+        env.update(
+            {env_var: os.getenv(env_var) for env_var in _ENV_VARS if os.getenv(env_var)}
+        )
+        return env
 
     def execute_operation(
         self,
