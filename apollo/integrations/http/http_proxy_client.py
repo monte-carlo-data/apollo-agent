@@ -32,6 +32,11 @@ class HttpRetryableError(Exception):
 
 
 class HttpProxyClient(BaseProxyClient):
+    """
+    Proxy client class to perform HTTP requests from the agent.
+    It supports simple no-retry requests and requests with retries for a subset of status codes.
+    """
+
     def __init__(self, credentials: Optional[Dict], **kwargs):
         self._credentials = credentials
 
@@ -55,8 +60,22 @@ class HttpProxyClient(BaseProxyClient):
         retry_status_code_ranges: Optional[List[Tuple]] = None,
     ) -> Dict:
         """
+        Executes a single request with no retry, intended to be used for JSON request/response endpoints.
+        If the status code is included in `retry_status_code_ranges` then `HttpRetryableError` will be raised.
         Throws HTTPError by calling response.raise_for_status internally.
+        :param url: required URL for the request
+        :param http_method: HTTP method for the request, defaults to POST
+        :param payload: optional JSON payload
+        :param content_type: optional value for Content-Type header
+        :param timeout: optional timeout in seconds
+        :param user_agent: optional value for User-Agent header
+        :param additional_headers: optional headers
+        :param retry_status_code_ranges: optional list of ranges specifying status code to raise `HttpRetryableError`.
+            The ranges are expected to be specified in a list of tuples where each tuple includes two elements:
+            inclusive from and exclusive to, for example: [(500, 600)] means: `500 <= status_code < 600`.
+        :return: the JSON result of the request
         """
+
         request_args = {}
         if payload:
             request_args["json"] = payload
@@ -103,6 +122,13 @@ class HttpProxyClient(BaseProxyClient):
         retry_status_code_ranges: Optional[List[Tuple]] = None,
         retry_args: Optional[Dict] = None,
     ) -> Dict:
+        """
+        Same as `do_request` but retrying based on the status codes defined by `retry_status_code_ranges` and
+        `retry_args`.
+        `retry_status_code_args` defaults to 429 and 5xx errors
+        `retry_args` defaults to: tries=2, delay=2, backoff=2, max_delay=10
+        """
+
         retry_status_code_ranges = (
             retry_status_code_ranges or _DEFAULT_RETRY_STATUS_CODE_RANGES
         )
