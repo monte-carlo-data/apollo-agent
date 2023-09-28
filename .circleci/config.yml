@@ -53,7 +53,7 @@ commands:
           container_id=$(docker create << parameters.image >>)
           docker cp $container_id:/app/apollo/agent/version version.tmp
           docker rm -v $container_id
-          image_version = $(cat version.tmp) 
+          image_version=$(cat version.tmp) 
           if [ $image_version = "<< parameters.version >>" ]
             then exit 0
             else echo "Failed to find expected version, found: $image_version"; exit 1
