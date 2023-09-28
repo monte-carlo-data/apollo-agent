@@ -27,4 +27,4 @@ main.logging_utils.extra_builder = cloud_run_extra_builder
 app = main.app
 
 # set the container platform as GCP for the health endpoint
-main.agent.set_platform_info("GCP")
+main.agent.platform = "GCP"

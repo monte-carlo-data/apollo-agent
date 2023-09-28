@@ -25,6 +25,14 @@ class ValidateNetwork:
     def validate_tcp_open_connection(
         cls, host: Optional[str], port_str: Optional[str], timeout_str: Optional[str]
     ):
+        """
+        Tests if a destination is reachable and accepts requests. Opens a TCP Socket to the specified host and port.
+        :param host: Host to check, will raise `BadRequestError` if None.
+        :param port_str: Port to check as a string containing the numeric port value, will raise `BadRequestError`
+            if None or non-numeric.
+        :param timeout_str: Timeout in seconds as a string containing the numeric value, will raise `BadRequestError`
+            if non-numeric. Defaults to 5 seconds.
+        """
         return cls._call_validation_method(
             cls._internal_validate_tcp_open_connection,
             host=host,
@@ -36,6 +44,14 @@ class ValidateNetwork:
     def validate_telnet_connection(
         cls, host: Optional[str], port_str: Optional[str], timeout_str: Optional[str]
     ):
+        """
+        Checks if telnet connection is usable.
+        :param host: Host to check, will raise `BadRequestError` if None.
+        :param port_str: Port to check as a string containing the numeric port value, will raise `BadRequestError`
+            if None or non-numeric.
+        :param timeout_str: Timeout in seconds as a string containing the numeric value, will raise `BadRequestError`
+            if non-numeric. Defaults to 5 seconds.
+        """
         return cls._call_validation_method(
             cls._internal_validate_telnet_connection,
             host=host,
@@ -45,6 +61,11 @@ class ValidateNetwork:
 
     @staticmethod
     def _call_validation_method(method: Callable, **kwargs) -> AgentResponse:
+        """
+        Internal method to call one of the network validation methods: `internal_validate_tcp_connection` or
+        `_internal_validate_telnet_connection`.
+        Converts the different exceptions and the successful result to an `AgentResponse` object.
+        """
         try:
             result = method(**kwargs)
             return AgentUtils.agent_ok_response(result)
@@ -59,6 +80,10 @@ class ValidateNetwork:
     def _internal_validate_tcp_open_connection(
         cls, host: Optional[str], port_str: Optional[str], timeout_str: Optional[str]
     ) -> Dict:
+        """
+        Implementation for the TCP Open validation, first validates the parameters and convert port and timeout to
+        int values and then tries to open a TCP socket to the given destination.
+        """
         port, timeout_in_seconds = cls._internal_validate_network_parameters(
             host, port_str, timeout_str
         )
@@ -78,6 +103,10 @@ class ValidateNetwork:
     def _internal_validate_telnet_connection(
         cls, host: Optional[str], port_str: Optional[str], timeout_str: Optional[str]
     ) -> Dict:
+        """
+        Implementation for the Telnet access validation, first validates the parameters and convert port and timeout to
+        int values and then tries to open a Telnet connection to the given destination.
+        """
         port, timeout_in_seconds = cls._internal_validate_network_parameters(
             host, port_str, timeout_str
         )
@@ -107,6 +136,10 @@ class ValidateNetwork:
     def _internal_validate_network_parameters(
         host: Optional[str], port_str: Optional[str], timeout_str: Optional[str]
     ) -> Tuple[int, int]:
+        """
+        Internal method to validate the input parameters (host, port and timeout) and to convert port and timeout
+        to int values.
+        """
         if not host or not port_str:
             raise BadRequestError("host and port are required parameters")
         try:

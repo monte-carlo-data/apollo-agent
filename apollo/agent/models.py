@@ -27,6 +27,8 @@ class AgentError(Exception):
 @dataclass
 class AgentCommand:
     method: str
+
+    # configure fields to be excluded when value is None, to reduce size of log messages
     target: Optional[str] = field(
         metadata=config(exclude=_exclude_none_values), default=None
     )

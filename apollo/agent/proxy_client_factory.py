@@ -11,6 +11,9 @@ from apollo.integrations.base_proxy_client import BaseProxyClient
 
 logger = logging.getLogger(__name__)
 
+
+# configure the amount of time connections are cached in memory
+# a value < 0 is used to disable caching
 _CACHE_EXPIRATION_SECONDS = int(os.getenv("CLIENT_CACHE_EXPIRATION_SECONDS", "60"))
 
 
@@ -55,12 +58,16 @@ class ProxyClientFactory:
     Clients are expected to extend :class:`BasedProxyClient` and have a constructor receiving a `credentials` object.
     """
 
+    # cache clients in memory for this instance, clients are cached just for some time as configured by
+    # _CACHE_EXPIRATION_SECONDS
     _clients_cache: Dict[str, ProxyClientCacheEntry] = {}
 
     @classmethod
     def get_proxy_client(
         cls, connection_type: str, credentials: Dict, skip_cache: bool
     ) -> BaseProxyClient:
+        # skip_cache is a flag sent by the client, and can be used to force a new client to be created
+        # it defaults to False
         if skip_cache:
             try:
                 return cls._create_proxy_client(connection_type, credentials)
@@ -69,7 +76,11 @@ class ProxyClientFactory:
                 raise
 
         try:
+            # create a cache key to search/store the client in cache, it uses the connection type and
+            # a hash value derived from the credentials object
             key = cls._get_cache_key(connection_type, credentials)
+
+            # get a non expired client
             client = cls._get_cached_client(key)
             if not client:
                 client = cls._create_proxy_client(connection_type, credentials)
@@ -94,6 +105,14 @@ class ProxyClientFactory:
 
     @staticmethod
     def _get_cache_key(connection_type: str, credentials: Optional[Dict]) -> str:
+        """
+        Returns a cache key used to cache a client for the given connection type and credentials.
+        The key is calculated by concatenating the connection type with a sha-256 hash derived from the credentials
+        object.
+        :param connection_type:
+        :param credentials:
+        :return:
+        """
         if credentials:
             sha = hashlib.sha256()
             sha.update(bytes(json.dumps(credentials), "utf-8"))
@@ -110,6 +129,8 @@ class ProxyClientFactory:
         if _CACHE_EXPIRATION_SECONDS <= 0:  # cache disabled
             return None
         entry = cls._clients_cache.get(key)
+
+        # check that entry has not expired
         if (
             not entry
             or (datetime.now() - entry.created_time).seconds > _CACHE_EXPIRATION_SECONDS
