@@ -23,7 +23,11 @@ class ValidateNetwork:
 
     @classmethod
     def validate_tcp_open_connection(
-        cls, host: Optional[str], port_str: Optional[str], timeout_str: Optional[str]
+        cls,
+        host: Optional[str],
+        port_str: Optional[str],
+        timeout_str: Optional[str],
+        trace_id: Optional[str],
     ):
         """
         Tests if a destination is reachable and accepts requests. Opens a TCP Socket to the specified host and port.
@@ -32,17 +36,23 @@ class ValidateNetwork:
             if None or non-numeric.
         :param timeout_str: Timeout in seconds as a string containing the numeric value, will raise `BadRequestError`
             if non-numeric. Defaults to 5 seconds.
+        :param trace_id: Optional trace ID received from the client that will be included in the response, if present.
         """
         return cls._call_validation_method(
             cls._internal_validate_tcp_open_connection,
             host=host,
             port_str=port_str,
             timeout_str=timeout_str,
+            trace_id=trace_id,
         )
 
     @classmethod
     def validate_telnet_connection(
-        cls, host: Optional[str], port_str: Optional[str], timeout_str: Optional[str]
+        cls,
+        host: Optional[str],
+        port_str: Optional[str],
+        timeout_str: Optional[str],
+        trace_id: Optional[str] = None,
     ):
         """
         Checks if telnet connection is usable.
@@ -51,16 +61,20 @@ class ValidateNetwork:
             if None or non-numeric.
         :param timeout_str: Timeout in seconds as a string containing the numeric value, will raise `BadRequestError`
             if non-numeric. Defaults to 5 seconds.
+        :param trace_id: Optional trace ID received from the client that will be included in the response, if present.
         """
         return cls._call_validation_method(
             cls._internal_validate_telnet_connection,
             host=host,
             port_str=port_str,
             timeout_str=timeout_str,
+            trace_id=trace_id,
         )
 
     @staticmethod
-    def _call_validation_method(method: Callable, **kwargs) -> AgentResponse:
+    def _call_validation_method(
+        method: Callable, trace_id: Optional[str], **kwargs
+    ) -> AgentResponse:
         """
         Internal method to call one of the network validation methods: `internal_validate_tcp_connection` or
         `_internal_validate_telnet_connection`.
@@ -68,13 +82,19 @@ class ValidateNetwork:
         """
         try:
             result = method(**kwargs)
-            return AgentUtils.agent_ok_response(result)
+            return AgentUtils.agent_ok_response(result, trace_id=trace_id)
         except BadRequestError as ex:
-            return AgentUtils.agent_response_for_error(message=str(ex), status_code=400)
+            return AgentUtils.agent_response_for_error(
+                message=str(ex), status_code=400, trace_id=trace_id
+            )
         except ConnectionFailedError as ex:
-            return AgentUtils.agent_response_for_error(message=str(ex))
+            return AgentUtils.agent_response_for_error(
+                message=str(ex), trace_id=trace_id
+            )
         except Exception:
-            return AgentUtils.agent_response_for_last_exception(status_code=500)
+            return AgentUtils.agent_response_for_last_exception(
+                status_code=500, trace_id=trace_id
+            )
 
     @classmethod
     def _internal_validate_tcp_open_connection(
