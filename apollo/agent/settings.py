@@ -11,3 +11,7 @@ try:
 except:
     VERSION = "local"
     BUILD_NUMBER = "0"
+
+
+if __name__ == "__main__":
+    print(f"{VERSION},{BUILD_NUMBER}")
