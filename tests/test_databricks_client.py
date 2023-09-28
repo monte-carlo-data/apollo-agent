@@ -2,6 +2,7 @@ import os
 import socket
 import sys
 from telnetlib import Telnet
+from typing import Dict
 from unittest import TestCase
 from unittest.mock import patch, create_autospec, Mock, call
 
@@ -47,29 +48,12 @@ class DatabricksClientTests(TestCase):
         self._mock_connection.cursor.return_value = self._mock_cursor
 
     @patch("databricks.sql.connect")
-    def test_get_catalogs(self, mock_connect):
-        mock_connect.return_value = self._mock_connection
-
-        expected_data = [
-            [
-                "catalog_1",
-            ],
-            [
-                "catalog_2",
-            ],
-        ]
-        expected_description = [["catalog", "string"]]
-        expected_rows = 2
-
-        self._mock_cursor.fetchall.return_value = expected_data
-        self._mock_cursor.description.return_value = expected_description
-        self._mock_cursor.rowcount.return_value = expected_rows
-
-        response = self._agent.execute_operation(
-            "databricks",
-            "get_catalogs",
+    def test_get_catalogs_temp_vars(self, mock_connect):
+        self._test_get_catalogs(
+            mock_connect,
             {
                 "trace_id": "1234",
+                "skip_cache": True,
                 "commands": [
                     {"method": "cursor", "store": "_cursor"},
                     {
@@ -99,6 +83,77 @@ class DatabricksClientTests(TestCase):
                     },
                 ],
             },
+        )
+
+    @patch("databricks.sql.connect")
+    def test_get_catalogs_calls(self, mock_connect):
+        self._test_get_catalogs(
+            mock_connect,
+            {
+                "trace_id": "1234",
+                "skip_cache": True,
+                "commands": [
+                    {"method": "cursor", "store": "_cursor"},
+                    {
+                        "target": "_cursor",
+                        "method": "execute",
+                        "args": ["SET STATEMENT_TIMEOUT = 10;"],
+                    },
+                    {
+                        "target": "_cursor",
+                        "method": "execute",
+                        "args": [
+                            "SHOW CATALOGS",
+                            None,
+                        ],
+                    },
+                    {
+                        "target": "__utils",
+                        "method": "build_dict",
+                        "kwargs": {
+                            "all_results": {
+                                "__type__": "call",
+                                "target": "_cursor",
+                                "method": "fetchall",
+                            },
+                            "description": {
+                                "__type__": "call",
+                                "target": "_cursor",
+                                "method": "description",
+                            },
+                            "rowcount": {
+                                "__type__": "call",
+                                "target": "_cursor",
+                                "method": "rowcount",
+                            },
+                        },
+                    },
+                ],
+            },
+        )
+
+    def _test_get_catalogs(self, mock_connect: Mock, operation_dict: Dict):
+        mock_connect.return_value = self._mock_connection
+
+        expected_data = [
+            [
+                "catalog_1",
+            ],
+            [
+                "catalog_2",
+            ],
+        ]
+        expected_description = [["catalog", "string"]]
+        expected_rows = 2
+
+        self._mock_cursor.fetchall.return_value = expected_data
+        self._mock_cursor.description.return_value = expected_description
+        self._mock_cursor.rowcount.return_value = expected_rows
+
+        response = self._agent.execute_operation(
+            "databricks",
+            "get_catalogs",
+            operation_dict,
             {
                 "connect_args": _DATABRICKS_CREDENTIALS,
             },
