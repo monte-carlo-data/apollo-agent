@@ -13,6 +13,7 @@ from apollo.agent.proxy_client_factory import ProxyClientFactory
 from apollo.agent.settings import VERSION, BUILD_NUMBER
 from apollo.agent.utils import AgentUtils
 from apollo.interfaces.agent_response import AgentResponse
+from apollo.validators.validate_network import ValidateNetwork
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +41,9 @@ class AgentHealthInformation:
     build: str
     env: Dict
     platform_info: Optional[Dict] = field(
+        metadata=config(exclude=_exclude_empty_values), default=None
+    )
+    trace_id: Optional[str] = field(
         metadata=config(exclude=_exclude_empty_values), default=None
     )
 
@@ -76,7 +80,7 @@ class Agent:
     def platform_info(self, platform_info: Optional[Dict]):
         self._platform_info = platform_info
 
-    def health_information(self) -> AgentHealthInformation:
+    def health_information(self, trace_id: Optional[str]) -> AgentHealthInformation:
         """
         Returns platform and environment information about the agent:
         - version
@@ -84,14 +88,77 @@ class Agent:
         - platform
         - env (some relevant env information like sys.version or vars like PYTHON_VERSION and MCD_*)
         - specific platform information set using `platform_info` setter
+        - the received value for `trace_id` if any
         :return: an `AgentHealthInformation` object that can be converted to JSON.
         """
+        logger.info(
+            "Health information request received",
+            extra=self._logging_utils.build_extra(
+                trace_id=trace_id,
+                operation_name="health_information",
+            ),
+        )
         return AgentHealthInformation(
             version=VERSION,
             build=BUILD_NUMBER,
             platform=self._platform,
             env=self._env_dictionary(),
             platform_info=self._platform_info,
+            trace_id=trace_id,
+        )
+
+    def validate_tcp_open_connection(
+        self,
+        host: Optional[str],
+        port_str: Optional[str],
+        timeout_str: Optional[str],
+        trace_id: Optional[str] = None,
+    ):
+        """
+        Tests if a destination is reachable and accepts requests. Opens a TCP Socket to the specified host and port.
+        :param host: Host to check, will raise `BadRequestError` if None.
+        :param port_str: Port to check as a string containing the numeric port value, will raise `BadRequestError`
+            if None or non-numeric.
+        :param timeout_str: Timeout in seconds as a string containing the numeric value, will raise `BadRequestError`
+            if non-numeric. Defaults to 5 seconds.
+        :param trace_id: Optional trace ID received from the client that will be included in the response, if present.
+        """
+        logger.info(
+            "Validate TCP Open request received",
+            extra=self._logging_utils.build_extra(
+                trace_id=trace_id,
+                operation_name="test_network_open",
+            ),
+        )
+        return ValidateNetwork.validate_tcp_open_connection(
+            host, port_str, timeout_str, trace_id
+        )
+
+    def validate_telnet_connection(
+        self,
+        host: Optional[str],
+        port_str: Optional[str],
+        timeout_str: Optional[str],
+        trace_id: Optional[str] = None,
+    ):
+        """
+        Checks if telnet connection is usable.
+        :param host: Host to check, will raise `BadRequestError` if None.
+        :param port_str: Port to check as a string containing the numeric port value, will raise `BadRequestError`
+            if None or non-numeric.
+        :param timeout_str: Timeout in seconds as a string containing the numeric value, will raise `BadRequestError`
+            if non-numeric. Defaults to 5 seconds.
+        :param trace_id: Optional trace ID received from the client that will be included in the response, if present.
+        """
+        logger.info(
+            "Validate Telnet connection request received",
+            extra=self._logging_utils.build_extra(
+                trace_id=trace_id,
+                operation_name="test_network_telnet",
+            ),
+        )
+        return ValidateNetwork.validate_telnet_connection(
+            host, port_str, timeout_str, trace_id
         )
 
     @staticmethod
@@ -122,17 +189,15 @@ class Agent:
         :return: the result of executing the given operation
         """
         if not operation_dict:
-            return AgentResponse(
-                AgentUtils.response_for_error("operation is a required parameter"),
-                400,
+            return AgentUtils.agent_response_for_error(
+                "operation is a required parameter", status_code=400
             )
         try:
             operation = AgentOperation.from_dict(operation_dict)
         except Exception:
             logger.exception("Failed to read operation")
-            return AgentResponse(
-                AgentUtils.response_for_last_exception("Failed to read operation:"),
-                400,
+            return AgentUtils.agent_response_for_last_exception(
+                "Failed to read operation:", 400
             )
 
         try:
@@ -141,7 +206,7 @@ class Agent:
                 connection_type, client, operation_name, operation
             )
         except Exception:
-            return AgentResponse(AgentUtils.response_for_last_exception(), 500)
+            return AgentUtils.agent_response_for_last_exception(status_code=500)
 
     def _execute_client_operation(
         self,

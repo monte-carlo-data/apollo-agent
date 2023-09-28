@@ -11,20 +11,31 @@ class AgentUtils:
     """
 
     @staticmethod
-    def agent_ok_response(result: Dict):
-        return AgentResponse(result, 200)
+    def agent_ok_response(result: Dict, trace_id: Optional[str] = None):
+        return AgentResponse(result, 200, trace_id)
 
     @classmethod
     def agent_response_for_last_exception(
-        cls, prefix: Optional[str] = None, status_code: int = 500
+        cls,
+        prefix: Optional[str] = None,
+        status_code: int = 500,
+        trace_id: Optional[str] = None,
     ):
-        return AgentResponse(cls.response_for_last_exception(prefix), status_code)
+        return AgentResponse(
+            cls.response_for_last_exception(prefix), status_code, trace_id
+        )
 
     @classmethod
     def agent_response_for_error(
-        cls, message: str, stack_trace: Optional[List] = None, status_code: int = 200
+        cls,
+        message: str,
+        stack_trace: Optional[List] = None,
+        status_code: int = 200,
+        trace_id: Optional[str] = None,
     ):
-        return AgentResponse(cls.response_for_error(message, stack_trace), status_code)
+        return AgentResponse(
+            cls._response_for_error(message, stack_trace), status_code, trace_id
+        )
 
     @classmethod
     def response_for_last_exception(cls, prefix: Optional[str] = None) -> Dict:
@@ -33,10 +44,10 @@ class AgentUtils:
         if prefix:
             error = f"{prefix} {error}"
         stack_trace = traceback.format_tb(last_value.__traceback__)
-        return cls.response_for_error(error, stack_trace)
+        return cls._response_for_error(error, stack_trace)
 
     @staticmethod
-    def response_for_error(message: str, stack_trace: Optional[List] = None) -> Dict:
+    def _response_for_error(message: str, stack_trace: Optional[List] = None) -> Dict:
         response = {
             "__error__": message,
         }

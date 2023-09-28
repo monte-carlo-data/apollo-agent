@@ -1,4 +1,4 @@
-from typing import Dict
+from typing import Dict, Optional
 
 
 class LoggingUtils:
@@ -16,6 +16,6 @@ class LoggingUtils:
         self,
         trace_id: str,
         operation_name: str,
-        extra: Dict,
+        extra: Optional[Dict] = None,
     ) -> Dict:
-        return self.extra_builder(trace_id, operation_name, extra)
+        return self.extra_builder(trace_id, operation_name, extra or {})
