@@ -10,7 +10,7 @@ class DatabricksSqlWarehouseProxyClient(BaseProxyClient):
     """
     Proxy client for Databricks SQL Warehouse Client.
     Credentials are expected to be supplied under "connect_args" and will be passed directly to `sql.connect`, so
-    only attributes support as parameters by `sql.connect` should be passed.
+    only attributes supported as parameters by `sql.connect` should be passed.
     """
 
     def __init__(self, credentials: Dict, **kwargs):
