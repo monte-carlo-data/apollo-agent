@@ -121,7 +121,7 @@ jobs:
           tag: latest-cloudrun,<< parameters.code_version >>-cloudrun
       - verify-version-in-docker-image:
           image: montecarlodata/<< parameters.docker_hub_repository >>:latest-generic
-          version: << parameters.code_version >>,<< pipeline.number >>
+          version: << parameters.code_version >>,X<< pipeline.number >>
       - verify-version-in-docker-image:
           image: montecarlodata/<< parameters.docker_hub_repository >>:latest-cloudrun
           version: << parameters.code_version >>,<< pipeline.number >>
