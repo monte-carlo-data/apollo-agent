@@ -38,6 +38,26 @@ commands:
                      << parameters.repo_path >> \
                      | jq '{"reason":.reason,"path": .path}'
         name: Scan using truffleHog
+  verify-version-in-docker-image:
+    parameters:
+      image:
+        description: Image name to validate
+        type: string
+      version:
+        description: Expected contents for /app/apollo/agent/version file
+        type: string
+    steps:
+    - run:
+        name: Verify version in Docker image
+        command: >
+          container_id=$(docker create << parameters.image >>)
+          docker cp $container_id:/app/apollo/agent/version version.tmp
+          docker rm -v $container_id
+          image_version = $(cat version.tmp) 
+          if [ $image_version = "<< parameters.version >>" ]
+            then exit 0
+            else echo "Failed to find expected version, found: $image_version"; exit 1
+          fi
 
 jobs:
   run-trufflehog-scan:
@@ -99,9 +119,15 @@ jobs:
           extra_build_args: --target cloudrun --build-arg code_version=<< parameters.code_version >> --build-arg build_number=<< pipeline.number >>
           image: montecarlodata/<< parameters.docker_hub_repository >>
           tag: latest-cloudrun,<< parameters.code_version >>-cloudrun
-      - docker/push:
-          image: montecarlodata/<< parameters.docker_hub_repository >>
-          tag: latest-generic,<< parameters.code_version >>-generic,latest-cloudrun,<< parameters.code_version >>-cloudrun
+      - verify-version-in-docker-image:
+          image: latest-generic
+          version: << parameters.code_version >>,<< pipeline.number >>
+      - verify-version-in-docker-image:
+          image: latest-cloudrun
+          version: << parameters.code_version >>,<< pipeline.number >>
+#      - docker/push:
+#          image: montecarlodata/<< parameters.docker_hub_repository >>
+#          tag: latest-generic,<< parameters.code_version >>-generic,latest-cloudrun,<< parameters.code_version >>-cloudrun
 
 workflows:
   version: 2
@@ -132,10 +158,10 @@ workflows:
             - docker
           requires:
             - run-test-docker
-          filters:
-            branches:
-              only:
-                - dev
+#          filters:
+#            branches:
+#              only:
+#                - dev
       - build-and-push:
           name: build-and-push-prod
           docker_hub_repository: agent
