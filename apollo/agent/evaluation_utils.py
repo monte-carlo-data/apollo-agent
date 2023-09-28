@@ -108,8 +108,7 @@ class AgentEvaluationUtils:
     @classmethod
     def _resolve_args(cls, args: Optional[List[Any]], context: Dict) -> List[Any]:
         """
-        Utility method used to "resolve" a list of arguments, when resolving means processing calls and references
-        to variables.
+        Utility method used to "resolve" a list of arguments, processing method calls and references to variables.
         When a call is found as an argument, the call is performed and the result value used as the argument value.
         When a variable reference is found, the value is obtained from the context and used as the argument value.
         :param args: A list of arguments
@@ -137,14 +136,14 @@ class AgentEvaluationUtils:
     @classmethod
     def resolve_arg_value(cls, value: Any, context: Dict) -> Any:
         """
-        Resolves a single argument value, it checks for a variable references and method calls.
+        Resolves a single argument value, it checks for a variable reference or a method call.
         A variable reference is identified by a dictionary containing "__reference__", the value for this property is
         the name of the variable to look for. This method will return the value of the variable in "context" or fail
         if that variable is not present.
         A call is identified by a dictionary containing a "__type__" attribute with value "call", the rest of the
         attributes are expected to define an "AgentCommand" object defining the call to perform. This method will
         perform the call and return its result.
-        If value is not a variable reference or a method call, it is returned as the result of this method.
+        If value is not a variable reference or a method call, it is returned as the result for this method.
         :param value: the value present in args or kwargs
         :param context: the dictionary holding values for variables
         :return: The value for the referenced variable, the result of performing the specified call or just the input
