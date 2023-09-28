@@ -49,7 +49,7 @@ commands:
     steps:
     - run:
         name: Verify version in Docker image
-        command: >
+        command: |
           container_id=$(docker create << parameters.image >>)
           docker cp $container_id:/app/apollo/agent/version version.tmp
           docker rm -v $container_id
