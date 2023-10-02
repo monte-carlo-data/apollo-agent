@@ -1,5 +1,5 @@
 import logging
-from typing import Optional, Dict, Tuple
+from typing import Dict, Tuple, Callable
 
 from flask import Flask, request
 
@@ -13,9 +13,7 @@ agent = Agent(logging_utils)
 
 
 @app.route("/api/v1/agent/execute/<connection_type>/<operation_name>", methods=["POST"])
-def agent_execute(
-    connection_type: str, operation_name: str
-) -> Tuple[Optional[Dict], int]:
+def agent_execute(connection_type: str, operation_name: str) -> Tuple[Dict, int]:
     """
     Executes the operation named "operation_name" in a connection of type "connection_type", for example bigquery.
     The body is expected to be a JSON document including a "credentials" attribute with the credentials to use for
@@ -33,6 +31,55 @@ def agent_execute(
 
     response = agent.execute_operation(
         connection_type, operation_name, operation, credentials
+    )
+    return response.result, response.status_code
+
+
+@app.route("/api/v1/test/health", methods=["GET", "POST"])
+def test_health() -> Tuple[Dict, int]:
+    """
+    Endpoint that returns health information about the agent, can be used as a "ping" endpoint.
+    :return: health information about this agent, includes version number and information about the platform
+    """
+    request_dict = request.json if request.method == "POST" else request.args
+    trace_id = request_dict.get("trace_id")
+    return agent.health_information(trace_id).to_dict(), 200
+
+
+@app.route("/api/v1/test/network/open", methods=["GET", "POST"])
+def test_network_open() -> Tuple[Dict, int]:
+    """
+    Tests network connectivity to the given host in the specified port.
+    Supported parameters (both in a JSON body or as query params):
+    - host
+    - port
+    - timeout (in seconds)
+    :return: a message indicating if the connection was successful or not
+    """
+    return _execute_network_validation(agent.validate_tcp_open_connection)
+
+
+@app.route("/api/v1/test/network/telnet", methods=["GET", "POST"])
+def test_network_telnet() -> Tuple[Dict, int]:
+    """
+    Tests network connectivity to the given host in the specified port using a Telnet connection.
+    Supported parameters (both in a JSON body or as query params):
+    - host
+    - port
+    - timeout (in seconds)
+    :return: a message indicating if the connection was successful or not
+    """
+    return _execute_network_validation(agent.validate_telnet_connection)
+
+
+def _execute_network_validation(method: Callable) -> Tuple[Dict, int]:
+    request_dict = request.json if request.method == "POST" else request.args
+
+    response = method(
+        host=request_dict.get("host"),
+        port_str=request_dict.get("port"),
+        timeout_str=request_dict.get("timeout"),
+        trace_id=request_dict.get("trace_id"),
     )
     return response.result, response.status_code
 

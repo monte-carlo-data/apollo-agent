@@ -1,17 +1,13 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional, Any, List, Dict
 
-from dataclasses_json import dataclass_json
+from dataclasses_json import dataclass_json, config
+
+from apollo.agent.utils import exclude_empty_values
 
 
 class AgentError(Exception):
     pass
-
-
-@dataclass
-class AgentOperationResponse:
-    result: Dict
-    status_code: int
 
 
 @dataclass_json
@@ -34,6 +30,24 @@ class AgentOperation:
     @classmethod
     def from_dict(cls, param) -> "AgentOperation":
         pass
+
+    def to_dict(self) -> Dict:
+        pass
+
+
+@dataclass_json
+@dataclass
+class AgentHealthInformation:
+    platform: str
+    version: str
+    build: str
+    env: Dict
+    platform_info: Optional[Dict] = field(
+        metadata=config(exclude=exclude_empty_values), default=None
+    )
+    trace_id: Optional[str] = field(
+        metadata=config(exclude=exclude_empty_values), default=None
+    )
 
     def to_dict(self) -> Dict:
         pass
