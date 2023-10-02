@@ -44,7 +44,7 @@ class HealthNetworkTests(TestCase):
         self.assertEqual(
             "host and port are required parameters", response.result.get("__error__")
         )
-        self.assertEqual("1234", response.result.get("__trace_id__"))
+        self.assertEqual("1234", response.result.get("__mcd_trace_id__"))
         response = self._agent.validate_telnet_connection("localhost", None, None)
         self.assertEqual(
             "host and port are required parameters", response.result.get("__error__")
@@ -66,7 +66,7 @@ class HealthNetworkTests(TestCase):
         response = self._agent.validate_tcp_open_connection(
             "localhost", "123", None, trace_id="1234"
         )
-        self.assertEqual("1234", response.result.get("__trace_id__"))
+        self.assertEqual("1234", response.result.get("__mcd_trace_id__"))
         self.assertIsNone(response.result.get("__error__"))
         self.assertEqual(
             "Port 123 is open on localhost",

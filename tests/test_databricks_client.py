@@ -1,7 +1,3 @@
-import os
-import socket
-import sys
-from telnetlib import Telnet
 from typing import Dict
 from unittest import TestCase
 from unittest.mock import patch, create_autospec, Mock, call
@@ -10,8 +6,7 @@ from requests import Response, HTTPError
 
 from apollo.agent.agent import Agent
 from apollo.agent.logging_utils import LoggingUtils
-from apollo.agent.models import ATTRIBUTE_NAME_ERROR
-from apollo.validators.validate_network import _DEFAULT_TIMEOUT_SECS
+from apollo.agent.constants import ATTRIBUTE_NAME_ERROR
 
 
 _DATABRICKS_CREDENTIALS = {

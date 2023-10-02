@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from typing import Dict, Optional
 
 
-_TRACE_ID_ATTR = "__trace_id__"
+_TRACE_ID_ATTR = "__mcd_trace_id__"
 
 
 @dataclass
