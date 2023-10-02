@@ -4,6 +4,8 @@ from typing import Any, Callable, Optional, Dict, List, Iterable
 from apollo.agent.models import (
     AgentError,
     AgentCommand,
+)
+from apollo.agent.constants import (
     ATTRIBUTE_NAME_REFERENCE,
     ATTRIBUTE_NAME_TYPE,
     ATTRIBUTE_VALUE_TYPE_CALL,
