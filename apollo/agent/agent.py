@@ -1,14 +1,11 @@
 import logging
 import os
 import sys
-from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
-
-from dataclasses_json import dataclass_json, config
 
 from apollo.agent.evaluation_utils import AgentEvaluationUtils
 from apollo.agent.logging_utils import LoggingUtils
-from apollo.agent.models import AgentOperation
+from apollo.agent.models import AgentOperation, AgentHealthInformation
 from apollo.agent.proxy_client_factory import ProxyClientFactory
 from apollo.agent.settings import VERSION, BUILD_NUMBER
 from apollo.agent.utils import AgentUtils
@@ -26,29 +23,6 @@ _ENV_VARS = [
     "MCD_AGENT_WRAPPER_VERSION",
     "MCD_AGENT_IS_REMOTE_UPGRADABLE",
 ]
-
-
-# used so we don't include an empty platform info
-def _exclude_empty_values(value: Any) -> bool:
-    return not bool(value)
-
-
-@dataclass_json
-@dataclass
-class AgentHealthInformation:
-    platform: str
-    version: str
-    build: str
-    env: Dict
-    platform_info: Optional[Dict] = field(
-        metadata=config(exclude=_exclude_empty_values), default=None
-    )
-    trace_id: Optional[str] = field(
-        metadata=config(exclude=_exclude_empty_values), default=None
-    )
-
-    def to_dict(self) -> Dict:
-        pass
 
 
 class Agent:
@@ -128,6 +102,11 @@ class Agent:
             extra=self._logging_utils.build_extra(
                 trace_id=trace_id,
                 operation_name="test_network_open",
+                extra=dict(
+                    host=host,
+                    port=port_str,
+                    timeout=timeout_str,
+                ),
             ),
         )
         return ValidateNetwork.validate_tcp_open_connection(
@@ -155,6 +134,11 @@ class Agent:
             extra=self._logging_utils.build_extra(
                 trace_id=trace_id,
                 operation_name="test_network_telnet",
+                extra=dict(
+                    host=host,
+                    port=port_str,
+                    timeout=timeout_str,
+                ),
             ),
         )
         return ValidateNetwork.validate_telnet_connection(
@@ -224,7 +208,7 @@ class Agent:
             ),
         )
         result = self._execute(client, operation)
-        return AgentResponse(result, 200)
+        return AgentResponse(result, 200, operation.trace_id)
 
     @staticmethod
     def _execute(client: Any, operation: AgentOperation) -> Optional[Any]:

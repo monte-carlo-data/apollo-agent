@@ -1,8 +1,13 @@
 import sys
 import traceback
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Any
 
 from apollo.interfaces.agent_response import AgentResponse
+
+
+# used so we don't include an empty platform info
+def exclude_empty_values(value: Any) -> bool:
+    return not bool(value)
 
 
 class AgentUtils:
