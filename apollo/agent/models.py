@@ -4,6 +4,7 @@ from typing import Optional, Any, List, Dict
 from dataclasses_json import dataclass_json, config
 
 ATTRIBUTE_NAME_ERROR = "__error__"
+ATTRIBUTE_NAME_ERROR_TYPE = "__error_type__"
 ATTRIBUTE_NAME_EXCEPTION = "__exception__"
 ATTRIBUTE_NAME_STACK_TRACE = "__stack_trace__"
 ATTRIBUTE_NAME_REFERENCE = "__reference__"
@@ -21,6 +22,12 @@ def _exclude_none_values(value: Any) -> bool:
 
 class AgentError(Exception):
     pass
+
+
+class AgentWrappedError(Exception):
+    def __init__(self, message: str, error_type: str):
+        super().__init__(message)
+        self.error_type = error_type
 
 
 @dataclass_json

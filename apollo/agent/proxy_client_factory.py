@@ -39,6 +39,12 @@ def _get_proxy_client_http(credentials: Optional[Dict]) -> BaseProxyClient:
     return HttpProxyClient(credentials=credentials)
 
 
+def _get_proxy_client_gcs(credentials: Optional[Dict]) -> BaseProxyClient:
+    from apollo.integrations.gcs.gcs_proxy_client import GcsProxyClient
+
+    return GcsProxyClient(credentials=credentials)
+
+
 @dataclass
 class ProxyClientCacheEntry:
     created_time: datetime
@@ -49,6 +55,7 @@ _CLIENT_FACTORY_MAPPING = {
     "bigquery": _get_proxy_client_bigquery,
     "databricks": _get_proxy_client_databricks,
     "http": _get_proxy_client_http,
+    "gcs": _get_proxy_client_gcs,
 }
 
 

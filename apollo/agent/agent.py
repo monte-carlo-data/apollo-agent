@@ -13,6 +13,7 @@ from apollo.agent.operation_utils import OperationUtils
 from apollo.agent.proxy_client_factory import ProxyClientFactory
 from apollo.agent.settings import VERSION, BUILD_NUMBER
 from apollo.agent.utils import AgentUtils
+from apollo.integrations.base_proxy_client import BaseProxyClient
 from apollo.interfaces.agent_response import AgentResponse
 from apollo.validators.validate_network import ValidateNetwork
 
@@ -201,6 +202,7 @@ class Agent:
                 "Failed to read operation:", 400
             )
 
+        client: Optional[BaseProxyClient] = None
         try:
             client = ProxyClientFactory.get_proxy_client(
                 connection_type, credentials, operation.skip_cache
@@ -209,7 +211,9 @@ class Agent:
                 connection_type, client, operation_name, operation
             )
         except Exception:
-            return AgentUtils.agent_response_for_last_exception(status_code=500)
+            return AgentUtils.agent_response_for_last_exception(
+                status_code=500, client=client
+            )
 
     def _execute_client_operation(
         self,

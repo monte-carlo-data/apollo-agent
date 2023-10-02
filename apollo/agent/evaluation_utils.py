@@ -33,7 +33,7 @@ class AgentEvaluationUtils:
         try:
             last_result: Optional[Any] = None
             for command in commands:
-                last_result = cls._execute_command(command, context)
+                last_result = cls.execute_command(command, context)
             return last_result
         except Exception as ex:
             logger.exception(
@@ -42,10 +42,12 @@ class AgentEvaluationUtils:
                     "commands": commands,
                 },
             )
-            return AgentUtils.response_for_last_exception()
+            return AgentUtils.response_for_last_exception(
+                client=context.get(CONTEXT_VAR_CLIENT)
+            )
 
     @classmethod
-    def _execute_command(cls, command: AgentCommand, context: Dict) -> Optional[Any]:
+    def execute_command(cls, command: AgentCommand, context: Dict) -> Optional[Any]:
         """
         Execute a single command, if the command is the root of a chain (using next attribute)
         the whole chain is executed.
