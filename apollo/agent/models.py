@@ -2,22 +2,7 @@ from dataclasses import dataclass, field
 from typing import Optional, Any, List, Dict
 
 from dataclasses_json import dataclass_json, config
-
-ATTRIBUTE_NAME_ERROR = "__error__"
-ATTRIBUTE_NAME_ERROR_TYPE = "__error_type__"
-ATTRIBUTE_NAME_EXCEPTION = "__exception__"
-ATTRIBUTE_NAME_STACK_TRACE = "__stack_trace__"
-ATTRIBUTE_NAME_REFERENCE = "__reference__"
-ATTRIBUTE_NAME_TYPE = "__type__"
-
-ATTRIBUTE_VALUE_TYPE_CALL = "call"
-
-CONTEXT_VAR_CLIENT = "_client"
-CONTEXT_VAR_UTILS = "__utils"
-
-
-def _exclude_none_values(value: Any) -> bool:
-    return value is None
+from apollo.agent.utils import exclude_empty_values, exclude_none_values
 
 
 class AgentError(Exception):
@@ -37,19 +22,19 @@ class AgentCommand:
 
     # configure fields to be excluded when value is None, to reduce size of log messages
     target: Optional[str] = field(
-        metadata=config(exclude=_exclude_none_values), default=None
+        metadata=config(exclude=exclude_none_values), default=None
     )
     args: Optional[List[Any]] = field(
-        metadata=config(exclude=_exclude_none_values), default=None
+        metadata=config(exclude=exclude_none_values), default=None
     )
     kwargs: Optional[Dict] = field(
-        metadata=config(exclude=_exclude_none_values), default=None
+        metadata=config(exclude=exclude_none_values), default=None
     )
     store: Optional[str] = field(
-        metadata=config(exclude=_exclude_none_values), default=None
+        metadata=config(exclude=exclude_none_values), default=None
     )
     next: Optional["AgentCommand"] = field(
-        metadata=config(exclude=_exclude_none_values), default=None
+        metadata=config(exclude=exclude_none_values), default=None
     )
 
     @staticmethod
@@ -67,6 +52,24 @@ class AgentOperation:
     @staticmethod
     def from_dict(param) -> "AgentOperation":
         pass
+
+    def to_dict(self) -> Dict:
+        pass
+
+
+@dataclass_json
+@dataclass
+class AgentHealthInformation:
+    platform: str
+    version: str
+    build: str
+    env: Dict
+    platform_info: Optional[Dict] = field(
+        metadata=config(exclude=exclude_empty_values), default=None
+    )
+    trace_id: Optional[str] = field(
+        metadata=config(exclude=exclude_empty_values), default=None
+    )
 
     def to_dict(self) -> Dict:
         pass

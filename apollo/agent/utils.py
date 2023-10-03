@@ -1,16 +1,25 @@
 import sys
 import traceback
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Any
 
-from apollo.agent.models import (
+from apollo.agent.constants import (
     ATTRIBUTE_NAME_ERROR,
     ATTRIBUTE_NAME_EXCEPTION,
     ATTRIBUTE_NAME_STACK_TRACE,
     ATTRIBUTE_NAME_ERROR_TYPE,
-    AgentWrappedError,
 )
 from apollo.integrations.base_proxy_client import BaseProxyClient
 from apollo.interfaces.agent_response import AgentResponse
+
+
+# used so we don't include an empty platform info
+def exclude_empty_values(value: Any) -> bool:
+    return not bool(value)
+
+
+# used so we don't include null values in json objects
+def exclude_none_values(value: Any) -> bool:
+    return value is None
 
 
 class AgentUtils:
@@ -73,6 +82,8 @@ class AgentUtils:
     def _get_error_type(
         error: Exception, client: Optional[BaseProxyClient] = None
     ) -> Optional[str]:
+        from apollo.agent.models import AgentWrappedError  # avoid import loop
+
         if isinstance(error, AgentWrappedError):
             return error.error_type
         elif client:
