@@ -9,6 +9,10 @@ ATTRIBUTE_NAME_DATA = "__data__"
 
 ATTRIBUTE_VALUE_TYPE_CALL = "call"
 ATTRIBUTE_VALUE_TYPE_BYTES = "bytes"
+ATTRIBUTE_NAME_TRACE_ID = "__mcd_trace_id__"
+ATTRIBUTE_NAME_RESULT = "__mcd_result__"
 
 CONTEXT_VAR_CLIENT = "_client"
 CONTEXT_VAR_UTILS = "__utils"
+
+TRACE_ID_HEADER = "x-mcd-trace-id"

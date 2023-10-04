@@ -6,10 +6,13 @@ from unittest import TestCase
 from unittest.mock import patch, create_autospec
 
 from apollo.agent.agent import Agent
-from apollo.agent.constants import ATTRIBUTE_NAME_ERROR
+from apollo.agent.constants import (
+    ATTRIBUTE_NAME_ERROR,
+    ATTRIBUTE_NAME_TRACE_ID,
+    ATTRIBUTE_NAME_RESULT,
+)
 from apollo.agent.logging_utils import LoggingUtils
 from apollo.validators.validate_network import _DEFAULT_TIMEOUT_SECS
-from apollo.interfaces.agent_response import _TRACE_ID_ATTR, _RESULT_ATTR
 
 
 class HealthNetworkTests(TestCase):
@@ -47,7 +50,7 @@ class HealthNetworkTests(TestCase):
             "host and port are required parameters",
             response.result.get(ATTRIBUTE_NAME_ERROR),
         )
-        self.assertEqual("1234", response.result.get(_TRACE_ID_ATTR))
+        self.assertEqual("1234", response.result.get(ATTRIBUTE_NAME_TRACE_ID))
         response = self._agent.validate_telnet_connection("localhost", None, None)
         self.assertEqual(
             "host and port are required parameters",
@@ -71,11 +74,11 @@ class HealthNetworkTests(TestCase):
         response = self._agent.validate_tcp_open_connection(
             "localhost", "123", None, trace_id="1234"
         )
-        self.assertEqual("1234", response.result.get(_TRACE_ID_ATTR))
+        self.assertEqual("1234", response.result.get(ATTRIBUTE_NAME_TRACE_ID))
         self.assertIsNone(response.result.get(ATTRIBUTE_NAME_ERROR))
         self.assertEqual(
             "Port 123 is open on localhost",
-            response.result.get(_RESULT_ATTR).get("message"),
+            response.result.get(ATTRIBUTE_NAME_RESULT).get("message"),
         )
 
     @patch("socket.socket")
@@ -95,7 +98,7 @@ class HealthNetworkTests(TestCase):
         self.assertIsNone(response.result.get(ATTRIBUTE_NAME_ERROR))
         self.assertEqual(
             "Telnet connection for localhost:123 is usable.",
-            response.result.get(_RESULT_ATTR).get("message"),
+            response.result.get(ATTRIBUTE_NAME_RESULT).get("message"),
         )
 
     @patch("apollo.validators.validate_network.Telnet")

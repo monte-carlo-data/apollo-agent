@@ -6,6 +6,7 @@ from typing import Dict, Tuple, Callable, Optional, Union, Any, BinaryIO
 from flask import Flask, request, Response, send_file
 
 from apollo.agent.agent import Agent
+from apollo.agent.constants import TRACE_ID_HEADER
 from apollo.agent.logging_utils import LoggingUtils
 from apollo.interfaces.agent_response import AgentResponse
 
@@ -14,13 +15,11 @@ logger = logging.getLogger(__name__)
 logging_utils = LoggingUtils()
 agent = Agent(logging_utils)
 
-_TRACE_ID_HEADER = "x-mcd-trace-id"
-
 
 def _get_response_headers(response: AgentResponse) -> Dict:
     headers = {}
     if response.trace_id:
-        headers[_TRACE_ID_HEADER] = response.trace_id
+        headers[TRACE_ID_HEADER] = response.trace_id
     result = response.result
     if isinstance(result, bytes) or isinstance(result, io.IOBase):
         headers["Content-Type"] = "application/octet-stream"

@@ -2,10 +2,11 @@ from dataclasses import dataclass
 from io import BufferedReader
 from typing import Dict, Optional, Any, BinaryIO
 
-from apollo.agent.constants import ATTRIBUTE_NAME_ERROR
-
-_TRACE_ID_ATTR = "__mcd_trace_id__"
-_RESULT_ATTR = "__mcd_result__"
+from apollo.agent.constants import (
+    ATTRIBUTE_NAME_ERROR,
+    ATTRIBUTE_NAME_TRACE_ID,
+    ATTRIBUTE_NAME_RESULT,
+)
 
 
 @dataclass
@@ -22,9 +23,9 @@ class AgentResponse:
         if not self._is_binary_response(self.result) and not self._is_error_response(
             self.result
         ):
-            self.result = {_RESULT_ATTR: self.result}
+            self.result = {ATTRIBUTE_NAME_RESULT: self.result}
         if self.trace_id and isinstance(self.result, Dict):
-            self.result[_TRACE_ID_ATTR] = self.trace_id
+            self.result[ATTRIBUTE_NAME_TRACE_ID] = self.trace_id
 
     @staticmethod
     def _is_binary_response(result: Any):

@@ -6,8 +6,7 @@ from requests import Response, HTTPError
 
 from apollo.agent.agent import Agent
 from apollo.agent.logging_utils import LoggingUtils
-from apollo.agent.constants import ATTRIBUTE_NAME_ERROR
-from apollo.interfaces.agent_response import _RESULT_ATTR
+from apollo.agent.constants import ATTRIBUTE_NAME_ERROR, ATTRIBUTE_NAME_RESULT
 
 _DATABRICKS_CREDENTIALS = {
     "server_hostname": "www.test.com",
@@ -155,8 +154,8 @@ class DatabricksClientTests(TestCase):
         )
 
         self.assertIsNone(response.result.get(ATTRIBUTE_NAME_ERROR))
-        self.assertTrue(_RESULT_ATTR in response.result)
-        result = response.result.get(_RESULT_ATTR)
+        self.assertTrue(ATTRIBUTE_NAME_RESULT in response.result)
+        result = response.result.get(ATTRIBUTE_NAME_RESULT)
         mock_connect.assert_called_with(**_DATABRICKS_CREDENTIALS)
         self._mock_cursor.execute.assert_has_calls(
             [
@@ -201,8 +200,8 @@ class DatabricksClientTests(TestCase):
                 call.json(),
             ]
         )
-        self.assertTrue(_RESULT_ATTR in response.result)
-        self.assertEqual(expected_result, response.result.get(_RESULT_ATTR))
+        self.assertTrue(ATTRIBUTE_NAME_RESULT in response.result)
+        self.assertEqual(expected_result, response.result.get(ATTRIBUTE_NAME_RESULT))
 
     @patch("requests.request")
     def test_http_request_failed(self, mock_request):
