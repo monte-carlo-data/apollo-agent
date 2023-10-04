@@ -1,8 +1,5 @@
 import logging
-import os
-import tempfile
-import uuid
-from typing import Dict, List, Iterable, Any, Callable
+from typing import Dict, List, Iterable, Any
 
 from apollo.agent.evaluation_utils import AgentEvaluationUtils
 from apollo.agent.models import AgentCommand
@@ -29,14 +26,6 @@ class OperationUtils:
 
     def build_list(self, var_name: str, items: Iterable, item_call: Dict) -> List:
         return [self._single_call(item_call, var_name, value) for value in items]
-
-    @staticmethod
-    def temp_file_path():
-        return os.path.join(tempfile.gettempdir(), str(uuid.uuid4()))
-
-    @staticmethod
-    def open_file(path: str, mode: str = "rb"):
-        return open(path, mode)
 
     def _single_call(self, call: Dict, var_name: str, value: Any) -> Any:
         command = AgentCommand.from_dict(call)

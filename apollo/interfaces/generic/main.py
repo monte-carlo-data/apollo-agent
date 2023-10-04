@@ -14,13 +14,19 @@ logger = logging.getLogger(__name__)
 logging_utils = LoggingUtils()
 agent = Agent(logging_utils)
 
+_TRACE_ID_HEADER = "x-mcd-trace-id"
 
-def _get_response_headers(result: Any) -> Optional[Dict]:
+
+def _get_response_headers(response: AgentResponse) -> Dict:
+    headers = {}
+    if response.trace_id:
+        headers[_TRACE_ID_HEADER] = response.trace_id
+    result = response.result
     if isinstance(result, bytes) or isinstance(result, io.IOBase):
-        return {"Content-Type": "application/octet-stream"}
+        headers["Content-Type"] = "application/octet-stream"
     elif isinstance(result, str):
-        return {"Content-Type": "text/plain"}
-    return None
+        headers["Content-Type"] = "text/plain"
+    return headers
 
 
 def _get_flask_response(
@@ -29,7 +35,7 @@ def _get_flask_response(
     result = response.result
     if isinstance(result, BinaryIO):
         return send_file(result, mimetype="application/octet-stream")
-    return response.result, response.status_code, _get_response_headers(result)
+    return response.result, response.status_code, _get_response_headers(response)
 
 
 @app.route("/api/v1/agent/execute/<connection_type>/<operation_name>", methods=["POST"])

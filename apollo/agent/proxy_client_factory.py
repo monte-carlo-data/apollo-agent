@@ -39,10 +39,10 @@ def _get_proxy_client_http(credentials: Optional[Dict]) -> BaseProxyClient:
     return HttpProxyClient(credentials=credentials)
 
 
-def _get_proxy_client_gcs(credentials: Optional[Dict]) -> BaseProxyClient:
-    from apollo.integrations.gcs.gcs_proxy_client import GcsProxyClient
+def _get_proxy_client_storage(credentials: Optional[Dict]) -> BaseProxyClient:
+    from apollo.integrations.storage.storage_proxy_client import StorageProxyClient
 
-    return GcsProxyClient(credentials=credentials)
+    return StorageProxyClient(credentials=credentials)
 
 
 @dataclass
@@ -55,7 +55,7 @@ _CLIENT_FACTORY_MAPPING = {
     "bigquery": _get_proxy_client_bigquery,
     "databricks": _get_proxy_client_databricks,
     "http": _get_proxy_client_http,
-    "gcs": _get_proxy_client_gcs,
+    "storage": _get_proxy_client_storage,
 }
 
 

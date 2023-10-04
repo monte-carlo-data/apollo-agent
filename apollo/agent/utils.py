@@ -1,6 +1,9 @@
+import os
 import sys
+import tempfile
 import traceback
-from typing import Optional, Dict, List, Any
+import uuid
+from typing import Optional, Dict, List, Any, BinaryIO
 
 from apollo.agent.constants import (
     ATTRIBUTE_NAME_ERROR,
@@ -77,6 +80,14 @@ class AgentUtils:
             stack_trace=stack_trace,
             error_type=cls._get_error_type(last_value, client),
         )
+
+    @staticmethod
+    def temp_file_path() -> str:
+        return os.path.join(tempfile.gettempdir(), str(uuid.uuid4()))
+
+    @staticmethod
+    def open_file(path: str) -> BinaryIO:
+        return open(path, "rb")
 
     @staticmethod
     def _get_error_type(
