@@ -4,7 +4,7 @@ The Software contained herein (the “Software”) is the intellectual property 
 and Licensor retains all intellectual property rights in the Software, including any and all derivatives, changes and
 improvements thereto. Only customers who have entered into a commercial agreement with Licensor for use or
 purchase of the Software (“Licensee”) are licensed or otherwise authorized to use the Software, and any Licensee
-agrees that it obtains no copyright or other ntellectual property rights to the Software, except for the license
+agrees that it obtains no copyright or other intellectual property rights to the Software, except for the license
 expressly granted below or in accordance with the terms of their commercial agreement with Licensor (the
 “Agreement”). Subject to the terms and conditions of the Agreement, Licensor grants Licensee a non-exclusive,
 non-transferable, non-sublicensable, revocable, limited right and license to use the Software, in each case solely
