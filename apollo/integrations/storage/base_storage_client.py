@@ -5,6 +5,10 @@ from typing import Optional, Union, Dict, Tuple, List
 
 
 class BaseStorageClient(ABC):
+    """
+    The base class for storage clients with operations to list, read, write files and generate signed urls.
+    """
+
     _GZIP_MAGIC_NUMBER = (
         b"\x1f\x8b"  # Hex signature used to identify a gzip compressed files
     )

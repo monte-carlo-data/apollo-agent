@@ -58,6 +58,11 @@ class S3Acls(DataClassJsonMixin):
 
 
 class S3BaseReaderWriter(BaseStorageClient):
+    """
+    The base class for the S3 storage client, a subclass must provide the S3 client and resource by
+    implementing the abstract properties: `s3_client` and `s3_resource`.
+    """
+
     def __init__(
         self,
         bucket_name: str,
