@@ -1,6 +1,6 @@
 import gzip
 import os
-from datetime import timedelta
+from datetime import timedelta, datetime
 from typing import List, Dict, Optional, Union, Tuple
 
 from google.api_core.exceptions import (
@@ -8,6 +8,8 @@ from google.api_core.exceptions import (
     Forbidden,
     NotFound,
 )
+from google.auth.compute_engine import IDTokenCredentials
+from google.auth.transport.requests import Request
 from google.cloud.storage import (
     Bucket,
     Client,
@@ -15,18 +17,38 @@ from google.cloud.storage import (
 )
 from google.oauth2.service_account import Credentials
 
+from apollo.agent.constants import (
+    AUTH_TYPE_GCP_SERVICE_ACCOUNT,
+    AUTH_TYPE_GCP_DEFAULT_CREDENTIALS,
+)
 from apollo.integrations.storage.base_storage_client import BaseStorageClient
 
 CONFIGURATION_BUCKET = os.getenv("CONFIGURATION_BUCKET", "data-collector-configuration")
 
 
 class GcsReaderWriter(BaseStorageClient):
-    def __init__(self, credentials: Optional[Dict], **kwargs):
-        gcs_credentials = (
-            Credentials.from_service_account_info(credentials) if credentials else None
+    def __init__(
+        self,
+        connection: Optional[Dict] = None,
+        bucket_name: Optional[str] = None,
+        auth_type: str = AUTH_TYPE_GCP_DEFAULT_CREDENTIALS,
+        **kwargs,
+    ):
+        connection_credentials = {}
+        if connection and "credentials" in connection and connection["credentials"]:
+            connection_credentials = connection["credentials"]
+        self._bucket_name = (
+            bucket_name or connection_credentials.get("bucket") or CONFIGURATION_BUCKET
         )
-        self._bucket_name = CONFIGURATION_BUCKET
-        self._client = Client(credentials=gcs_credentials)
+        credentials: Optional[Credentials]
+        if auth_type == AUTH_TYPE_GCP_SERVICE_ACCOUNT:
+            credentials = Credentials.from_service_account_info(connection_credentials)
+        elif auth_type == AUTH_TYPE_GCP_DEFAULT_CREDENTIALS:
+            credentials = None
+        else:
+            raise ValueError(f"unsupported agent auth type: {auth_type}")
+        self._using_default_credentials = credentials is None
+        self._client = Client(credentials=credentials)
 
     @property
     def bucket_name(self) -> str:
@@ -139,7 +161,17 @@ class GcsReaderWriter(BaseStorageClient):
             blob = bucket.get_blob(blob_name=key)
             if not blob:
                 raise self.NotFoundError(f"blob with key {key} does not exist")
-            return blob.generate_signed_url(expiration=expiration)
+            if self._using_default_credentials:
+                # workaround needed to sign urls when running in CloudRun, more information:
+                # https://gist.github.com/jezhumble/91051485db4462add82045ef9ac2a0ec
+                # https://github.com/googleapis/google-cloud-python/issues/922
+                signing_credentials = IDTokenCredentials(Request(), "")
+                return blob.generate_signed_url(
+                    expiration=expiration,
+                    credentials=signing_credentials,
+                )
+            else:
+                return blob.generate_signed_url(expiration=expiration)
         except Forbidden as e:
             raise self.PermissionsError(extract_error_message(e)) from e
 
