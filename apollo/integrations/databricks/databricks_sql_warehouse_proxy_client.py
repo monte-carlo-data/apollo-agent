@@ -5,6 +5,8 @@ from databricks import sql
 
 from apollo.integrations.base_proxy_client import BaseProxyClient
 
+_ATTR_CONNECT_ARGS = "connect_args"
+
 
 class DatabricksSqlWarehouseProxyClient(BaseProxyClient):
     """
@@ -14,7 +16,11 @@ class DatabricksSqlWarehouseProxyClient(BaseProxyClient):
     """
 
     def __init__(self, credentials: Dict, **kwargs):
-        self._connection = sql.connect(**credentials["connect_args"])
+        if _ATTR_CONNECT_ARGS not in credentials:
+            raise ValueError(
+                f"Databricks agent client requires {_ATTR_CONNECT_ARGS} in credentials"
+            )
+        self._connection = sql.connect(**credentials[_ATTR_CONNECT_ARGS])
 
     @property
     def wrapped_client(self):
