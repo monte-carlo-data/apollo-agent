@@ -1,4 +1,4 @@
-boto3==1.28.59
+boto3==1.28.21
 databricks-sql-connector==2.8.0
 dataclasses-json==0.6.0
 flask==2.3.3

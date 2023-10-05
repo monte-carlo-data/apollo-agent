@@ -148,10 +148,21 @@ class GcsReaderWriter(BaseStorageClient):
 
             # specifying a deliminator results in a common prefix collection rather than any
             # contents but, can be utilized to roll up "sub-folders"
-            return (
-                page.prefixes if delimiter else [blob.name for blob in list(page)],
-                iterator.next_page_token,
-            )
+            # we're returning the same exact format returned by S3ReaderWriter for compatibility reasons
+            if delimiter:
+                result_list = [{"Prefix": prefix} for prefix in page.prefixes]
+            else:
+                result_list = [
+                    {
+                        "ETag": blob.etag,
+                        "Key": blob.name,
+                        "Size": blob.size,
+                        "LastModified": blob.updated,
+                        "StorageClass": blob.storage_class,
+                    }
+                    for blob in list(page)
+                ]
+            return result_list, iterator.next_page_token
         except Forbidden as e:
             raise self.PermissionsError(extract_error_message(e)) from e
 
