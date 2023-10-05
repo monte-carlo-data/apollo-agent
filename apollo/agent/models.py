@@ -9,6 +9,12 @@ class AgentError(Exception):
     pass
 
 
+class AgentWrappedError(Exception):
+    def __init__(self, message: str, error_type: str):
+        super().__init__(message)
+        self.error_type = error_type
+
+
 @dataclass_json
 @dataclass
 class AgentCommand:

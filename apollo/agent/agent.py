@@ -5,12 +5,17 @@ from typing import Any, Dict, Optional
 
 from apollo.agent.evaluation_utils import AgentEvaluationUtils
 from apollo.agent.logging_utils import LoggingUtils
-from apollo.agent.constants import CONTEXT_VAR_UTILS, CONTEXT_VAR_CLIENT
+from apollo.agent.constants import (
+    CONTEXT_VAR_UTILS,
+    CONTEXT_VAR_CLIENT,
+    PLATFORM_GENERIC,
+)
 from apollo.agent.operation_utils import OperationUtils
 from apollo.agent.models import AgentOperation, AgentHealthInformation
 from apollo.agent.proxy_client_factory import ProxyClientFactory
 from apollo.agent.settings import VERSION, BUILD_NUMBER
 from apollo.agent.utils import AgentUtils
+from apollo.integrations.base_proxy_client import BaseProxyClient
 from apollo.interfaces.agent_response import AgentResponse
 from apollo.validators.validate_network import ValidateNetwork
 
@@ -30,7 +35,7 @@ _ENV_VARS = [
 class Agent:
     def __init__(self, logging_utils: LoggingUtils):
         self._logging_utils = logging_utils
-        self._platform = "Generic"
+        self._platform = PLATFORM_GENERIC
         self._platform_info = {}
 
     @property
@@ -186,15 +191,18 @@ class Agent:
                 "Failed to read operation:", 400
             )
 
+        client: Optional[BaseProxyClient] = None
         try:
             client = ProxyClientFactory.get_proxy_client(
-                connection_type, credentials, operation.skip_cache
+                connection_type, credentials, operation.skip_cache, self._platform
             )
             return self._execute_client_operation(
                 connection_type, client, operation_name, operation
             )
         except Exception:
-            return AgentUtils.agent_response_for_last_exception(status_code=500)
+            return AgentUtils.agent_response_for_last_exception(
+                status_code=500, client=client
+            )
 
     def _execute_client_operation(
         self,

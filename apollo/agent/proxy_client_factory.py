@@ -17,7 +17,9 @@ logger = logging.getLogger(__name__)
 _CACHE_EXPIRATION_SECONDS = int(os.getenv("MCD_CLIENT_CACHE_EXPIRATION_SECONDS", "60"))
 
 
-def _get_proxy_client_bigquery(credentials: Optional[Dict]) -> BaseProxyClient:
+def _get_proxy_client_bigquery(
+    credentials: Optional[Dict], **kwargs
+) -> BaseProxyClient:
     # import driver modules only when needed
     # in subsequent versions we might not want to bundle all dependencies in a single image
     from apollo.integrations.bigquery.bq_proxy_client import BqProxyClient
@@ -25,7 +27,9 @@ def _get_proxy_client_bigquery(credentials: Optional[Dict]) -> BaseProxyClient:
     return BqProxyClient(credentials=credentials)
 
 
-def _get_proxy_client_databricks(credentials: Optional[Dict]) -> BaseProxyClient:
+def _get_proxy_client_databricks(
+    credentials: Optional[Dict], **kwargs
+) -> BaseProxyClient:
     from apollo.integrations.databricks.databricks_sql_warehouse_proxy_client import (
         DatabricksSqlWarehouseProxyClient,
     )
@@ -33,10 +37,18 @@ def _get_proxy_client_databricks(credentials: Optional[Dict]) -> BaseProxyClient
     return DatabricksSqlWarehouseProxyClient(credentials=credentials)
 
 
-def _get_proxy_client_http(credentials: Optional[Dict]) -> BaseProxyClient:
+def _get_proxy_client_http(credentials: Optional[Dict], **kwargs) -> BaseProxyClient:
     from apollo.integrations.http.http_proxy_client import HttpProxyClient
 
     return HttpProxyClient(credentials=credentials)
+
+
+def _get_proxy_client_storage(
+    credentials: Optional[Dict], platform: str, **kwargs
+) -> BaseProxyClient:
+    from apollo.integrations.storage.storage_proxy_client import StorageProxyClient
+
+    return StorageProxyClient(credentials=credentials, platform=platform)
 
 
 @dataclass
@@ -49,6 +61,7 @@ _CLIENT_FACTORY_MAPPING = {
     "bigquery": _get_proxy_client_bigquery,
     "databricks": _get_proxy_client_databricks,
     "http": _get_proxy_client_http,
+    "storage": _get_proxy_client_storage,
 }
 
 
@@ -64,14 +77,14 @@ class ProxyClientFactory:
 
     @classmethod
     def get_proxy_client(
-        cls, connection_type: str, credentials: Dict, skip_cache: bool
+        cls, connection_type: str, credentials: Dict, skip_cache: bool, platform: str
     ) -> BaseProxyClient:
         # skip_cache is a flag sent by the client, and can be used to force a new client to be created
         # it defaults to False
         if skip_cache:
             logger.info(f"Client cache for {connection_type} skipped")
             try:
-                return cls._create_proxy_client(connection_type, credentials)
+                return cls._create_proxy_client(connection_type, credentials, platform)
             except Exception:
                 logger.exception(f"Failed to create {connection_type} client")
                 raise
@@ -84,7 +97,9 @@ class ProxyClientFactory:
             # get a non expired client
             client = cls._get_cached_client(key)
             if not client:
-                client = cls._create_proxy_client(connection_type, credentials)
+                client = cls._create_proxy_client(
+                    connection_type, credentials, platform
+                )
                 logger.info(f"Caching {connection_type} client")
                 cls._cache_client(key, client)
             return client
@@ -94,11 +109,11 @@ class ProxyClientFactory:
 
     @classmethod
     def _create_proxy_client(
-        cls, connection_type: str, credentials: Dict
+        cls, connection_type: str, credentials: Dict, platform: str
     ) -> BaseProxyClient:
         factory_method = _CLIENT_FACTORY_MAPPING.get(connection_type)
         if factory_method:
-            return factory_method(credentials)
+            return factory_method(credentials, platform=platform)
         else:
             raise AgentError(
                 f"Connection type not supported by this agent: {connection_type}"
