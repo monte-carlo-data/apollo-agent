@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 # configure the amount of time connections are cached in memory
 # a value < 0 is used to disable caching
-_CACHE_EXPIRATION_SECONDS = int(os.getenv("CLIENT_CACHE_EXPIRATION_SECONDS", "60"))
+_CACHE_EXPIRATION_SECONDS = int(os.getenv("MCD_CLIENT_CACHE_EXPIRATION_SECONDS", "60"))
 
 
 def _get_proxy_client_bigquery(credentials: Optional[Dict]) -> BaseProxyClient:
@@ -69,10 +69,11 @@ class ProxyClientFactory:
         # skip_cache is a flag sent by the client, and can be used to force a new client to be created
         # it defaults to False
         if skip_cache:
+            logger.info(f"Client cache for {connection_type} skipped")
             try:
                 return cls._create_proxy_client(connection_type, credentials)
             except Exception:
-                logger.exception("Failed to create client")
+                logger.exception(f"Failed to create {connection_type} client")
                 raise
 
         try:
