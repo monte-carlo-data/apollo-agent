@@ -1,7 +1,20 @@
+import hashlib
+import json
+import logging
+import os
+from dataclasses import dataclass
+from datetime import datetime
 from typing import Optional, Dict
 
 from apollo.agent.models import AgentError
 from apollo.integrations.base_proxy_client import BaseProxyClient
+
+logger = logging.getLogger(__name__)
+
+
+# configure the amount of time connections are cached in memory
+# a value < 0 is used to disable caching
+_CACHE_EXPIRATION_SECONDS = int(os.getenv("MCD_CLIENT_CACHE_EXPIRATION_SECONDS", "60"))
 
 
 def _get_proxy_client_bigquery(credentials: Optional[Dict]) -> BaseProxyClient:
@@ -12,8 +25,30 @@ def _get_proxy_client_bigquery(credentials: Optional[Dict]) -> BaseProxyClient:
     return BqProxyClient(credentials=credentials)
 
 
+def _get_proxy_client_databricks(credentials: Optional[Dict]) -> BaseProxyClient:
+    from apollo.integrations.databricks.databricks_sql_warehouse_proxy_client import (
+        DatabricksSqlWarehouseProxyClient,
+    )
+
+    return DatabricksSqlWarehouseProxyClient(credentials=credentials)
+
+
+def _get_proxy_client_http(credentials: Optional[Dict]) -> BaseProxyClient:
+    from apollo.integrations.http.http_proxy_client import HttpProxyClient
+
+    return HttpProxyClient(credentials=credentials)
+
+
+@dataclass
+class ProxyClientCacheEntry:
+    created_time: datetime
+    client: BaseProxyClient
+
+
 _CLIENT_FACTORY_MAPPING = {
     "bigquery": _get_proxy_client_bigquery,
+    "databricks": _get_proxy_client_databricks,
+    "http": _get_proxy_client_http,
 }
 
 
@@ -23,8 +58,42 @@ class ProxyClientFactory:
     Clients are expected to extend :class:`BasedProxyClient` and have a constructor receiving a `credentials` object.
     """
 
+    # cache clients in memory for this instance, clients are cached just for some time as configured by
+    # _CACHE_EXPIRATION_SECONDS
+    _clients_cache: Dict[str, ProxyClientCacheEntry] = {}
+
     @classmethod
     def get_proxy_client(
+        cls, connection_type: str, credentials: Dict, skip_cache: bool
+    ) -> BaseProxyClient:
+        # skip_cache is a flag sent by the client, and can be used to force a new client to be created
+        # it defaults to False
+        if skip_cache:
+            logger.info(f"Client cache for {connection_type} skipped")
+            try:
+                return cls._create_proxy_client(connection_type, credentials)
+            except Exception:
+                logger.exception(f"Failed to create {connection_type} client")
+                raise
+
+        try:
+            # create a cache key to search/store the client in cache, it uses the connection type and
+            # a hash value derived from the credentials object
+            key = cls._get_cache_key(connection_type, credentials)
+
+            # get a non expired client
+            client = cls._get_cached_client(key)
+            if not client:
+                client = cls._create_proxy_client(connection_type, credentials)
+                logger.info(f"Caching {connection_type} client")
+                cls._cache_client(key, client)
+            return client
+        except Exception:
+            logger.exception("Failed to create or get client from cache")
+            raise
+
+    @classmethod
+    def _create_proxy_client(
         cls, connection_type: str, credentials: Dict
     ) -> BaseProxyClient:
         factory_method = _CLIENT_FACTORY_MAPPING.get(connection_type)
@@ -34,3 +103,38 @@ class ProxyClientFactory:
             raise AgentError(
                 f"Connection type not supported by this agent: {connection_type}"
             )
+
+    @staticmethod
+    def _get_cache_key(connection_type: str, credentials: Optional[Dict]) -> str:
+        """
+        Returns a cache key used to cache a client for the given connection type and credentials.
+        The key is calculated by concatenating the connection type with a sha-256 hash derived from the credentials
+        object.
+        :param connection_type:
+        :param credentials:
+        :return:
+        """
+        if credentials:
+            sha = hashlib.sha256()
+            sha.update(bytes(json.dumps(credentials), "utf-8"))
+            return f"{connection_type}_{sha.hexdigest()}"
+        else:
+            return connection_type
+
+    @classmethod
+    def _cache_client(cls, key: str, client: BaseProxyClient):
+        cls._clients_cache[key] = ProxyClientCacheEntry(datetime.now(), client)
+
+    @classmethod
+    def _get_cached_client(cls, key: str) -> Optional[BaseProxyClient]:
+        if _CACHE_EXPIRATION_SECONDS <= 0:  # cache disabled
+            return None
+        entry = cls._clients_cache.get(key)
+
+        # check that entry has not expired
+        if (
+            not entry
+            or (datetime.now() - entry.created_time).seconds > _CACHE_EXPIRATION_SECONDS
+        ):
+            return None
+        return entry.client

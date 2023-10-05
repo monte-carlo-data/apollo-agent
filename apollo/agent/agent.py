@@ -5,6 +5,8 @@ from typing import Any, Dict, Optional
 
 from apollo.agent.evaluation_utils import AgentEvaluationUtils
 from apollo.agent.logging_utils import LoggingUtils
+from apollo.agent.constants import CONTEXT_VAR_UTILS, CONTEXT_VAR_CLIENT
+from apollo.agent.operation_utils import OperationUtils
 from apollo.agent.models import AgentOperation, AgentHealthInformation
 from apollo.agent.proxy_client_factory import ProxyClientFactory
 from apollo.agent.settings import VERSION, BUILD_NUMBER
@@ -185,7 +187,9 @@ class Agent:
             )
 
         try:
-            client = ProxyClientFactory.get_proxy_client(connection_type, credentials)
+            client = ProxyClientFactory.get_proxy_client(
+                connection_type, credentials, operation.skip_cache
+            )
             return self._execute_client_operation(
                 connection_type, client, operation_name, operation
             )
@@ -208,11 +212,13 @@ class Agent:
             ),
         )
         result = self._execute(client, operation)
-        return AgentResponse(result, 200, operation.trace_id)
+        return AgentResponse(result or {}, 200, operation.trace_id)
 
     @staticmethod
     def _execute(client: Any, operation: AgentOperation) -> Optional[Any]:
         context = {
-            "_client": client,
+            CONTEXT_VAR_CLIENT: client,
         }
+        context[CONTEXT_VAR_UTILS] = OperationUtils(context)
+
         return AgentEvaluationUtils.execute(context, operation.commands)
