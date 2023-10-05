@@ -93,11 +93,7 @@ class AgentUtils:
     def _get_error_type(
         error: Exception, client: Optional[BaseProxyClient] = None
     ) -> Optional[str]:
-        from apollo.agent.models import AgentWrappedError  # avoid import loop
-
-        if isinstance(error, AgentWrappedError):
-            return error.error_type
-        elif client:
+        if client:
             return client.get_error_type(error)
         return None
 
