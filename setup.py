@@ -20,7 +20,7 @@ setup(
     name="mcd-agent",
     use_scm_version=True,
     license="Apache Software License (Apache 2.0)",
-    description="Monte Carlo's Python SDK",
+    description="Monte Carlo's Agent",
     long_description=get_long_description(),
     long_description_content_type="text/markdown",
     author="Monte Carlo Data, Inc",
