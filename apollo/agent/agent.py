@@ -1,6 +1,9 @@
+import json
 import logging
 import os
 import sys
+from datetime import datetime
+from json import JSONEncoder
 from typing import Any, Dict, Optional
 
 from apollo.agent.evaluation_utils import AgentEvaluationUtils
@@ -16,6 +19,7 @@ from apollo.agent.proxy_client_factory import ProxyClientFactory
 from apollo.agent.settings import VERSION, BUILD_NUMBER
 from apollo.agent.utils import AgentUtils
 from apollo.integrations.base_proxy_client import BaseProxyClient
+from apollo.integrations.storage.storage_proxy_client import StorageProxyClient
 from apollo.interfaces.agent_response import AgentResponse
 from apollo.validators.validate_network import ValidateNetwork
 
@@ -30,6 +34,14 @@ _ENV_VARS = [
     "MCD_AGENT_WRAPPER_VERSION",
     "MCD_AGENT_IS_REMOTE_UPGRADABLE",
 ]
+
+
+class ResultSerializer(JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+
+        return super().default(obj)
 
 
 class Agent:
@@ -196,9 +208,14 @@ class Agent:
             client = ProxyClientFactory.get_proxy_client(
                 connection_type, credentials, operation.skip_cache, self._platform
             )
-            return self._execute_client_operation(
+            response = self._execute_client_operation(
                 connection_type, client, operation_name, operation
             )
+            if operation.output and (object_result := response.object_result):
+                self._save_result(object_result, operation.output.output_file)
+                if not operation.output.return_result:
+                    response.object_result = operation.output.output_file
+            return response
         except Exception:
             return AgentUtils.agent_response_for_last_exception(
                 status_code=500, client=client
@@ -230,3 +247,8 @@ class Agent:
         context[CONTEXT_VAR_UTILS] = OperationUtils(context)
 
         return AgentEvaluationUtils.execute(context, operation.commands)
+
+    def _save_result(self, result: Any, file: str):
+        storage_client = StorageProxyClient(self._platform)
+        data = json.dumps(result, indent=True, cls=ResultSerializer)
+        storage_client.save_file(file, data.encode("utf-8"))

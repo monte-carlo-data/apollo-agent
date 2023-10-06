@@ -38,10 +38,18 @@ class AgentCommand:
 
 @dataclass_json
 @dataclass
+class AgentOperationOutput:
+    output_file: str
+    return_result: bool = True
+
+
+@dataclass_json
+@dataclass
 class AgentOperation:
     trace_id: str
     commands: List[AgentCommand]
     skip_cache: bool = False
+    output: Optional[AgentOperationOutput] = None
 
     @staticmethod
     def from_dict(param) -> "AgentOperation":

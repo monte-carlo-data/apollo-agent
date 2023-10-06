@@ -27,6 +27,16 @@ class AgentResponse:
         if self.trace_id and isinstance(self.result, Dict):
             self.result[ATTRIBUTE_NAME_TRACE_ID] = self.trace_id
 
+    @property
+    def object_result(self):
+        if isinstance(self.result, Dict):
+            return self.result.get(ATTRIBUTE_NAME_RESULT)
+        return None
+
+    @object_result.setter
+    def object_result(self, value: Any):
+        self.result[ATTRIBUTE_NAME_RESULT] = value
+
     @staticmethod
     def _is_binary_response(result: Any):
         return (

@@ -68,6 +68,9 @@ class StorageProxyClient(BaseProxyClient):
             return _ERROR_TYPE_NOTFOUND
         return super().get_error_type(error)
 
+    def save_file(self, key: str, data: bytes):
+        self._client.write(key, data)
+
     def download_file(self, key: str) -> BinaryIO:
         """
         Downloads the file to a temporary file and returns a BinaryIO object with the contents
