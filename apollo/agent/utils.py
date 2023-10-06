@@ -1,12 +1,17 @@
+import os
 import sys
+import tempfile
 import traceback
-from typing import Optional, Dict, List, Any
+import uuid
+from typing import Optional, Dict, List, Any, BinaryIO
 
 from apollo.agent.constants import (
     ATTRIBUTE_NAME_ERROR,
     ATTRIBUTE_NAME_EXCEPTION,
     ATTRIBUTE_NAME_STACK_TRACE,
+    ATTRIBUTE_NAME_ERROR_TYPE,
 )
+from apollo.integrations.base_proxy_client import BaseProxyClient
 from apollo.interfaces.agent_response import AgentResponse
 
 
@@ -35,9 +40,12 @@ class AgentUtils:
         prefix: Optional[str] = None,
         status_code: int = 500,
         trace_id: Optional[str] = None,
+        client: Optional[BaseProxyClient] = None,
     ):
         return AgentResponse(
-            cls.response_for_last_exception(prefix), status_code, trace_id
+            cls.response_for_last_exception(prefix=prefix, client=client),
+            status_code,
+            trace_id,
         )
 
     @classmethod
@@ -55,7 +63,9 @@ class AgentUtils:
         )
 
     @classmethod
-    def response_for_last_exception(cls, prefix: Optional[str] = None) -> Dict:
+    def response_for_last_exception(
+        cls, client: Optional[BaseProxyClient] = None, prefix: Optional[str] = None
+    ) -> Dict:
         last_type, last_value, _ = sys.exc_info()
         error = str(last_value)
         exception_message = " ".join(
@@ -65,14 +75,34 @@ class AgentUtils:
             error = f"{prefix} {error}"
         stack_trace = traceback.format_tb(last_value.__traceback__)  # type: ignore
         return cls._response_for_error(
-            error, exception_message=exception_message, stack_trace=stack_trace
+            error,
+            exception_message=exception_message,
+            stack_trace=stack_trace,
+            error_type=cls._get_error_type(last_value, client),
         )
+
+    @staticmethod
+    def temp_file_path() -> str:
+        return os.path.join(tempfile.gettempdir(), str(uuid.uuid4()))
+
+    @staticmethod
+    def open_file(path: str) -> BinaryIO:
+        return open(path, "rb")
+
+    @staticmethod
+    def _get_error_type(
+        error: Exception, client: Optional[BaseProxyClient] = None
+    ) -> Optional[str]:
+        if client:
+            return client.get_error_type(error)
+        return None
 
     @staticmethod
     def _response_for_error(
         message: str,
         exception_message: Optional[str] = None,
         stack_trace: Optional[List] = None,
+        error_type: Optional[str] = None,
     ) -> Dict:
         response: Dict[str, Any] = {
             ATTRIBUTE_NAME_ERROR: message,
@@ -81,4 +111,6 @@ class AgentUtils:
             response[ATTRIBUTE_NAME_EXCEPTION] = exception_message
         if stack_trace:
             response[ATTRIBUTE_NAME_STACK_TRACE] = stack_trace
+        if error_type:
+            response[ATTRIBUTE_NAME_ERROR_TYPE] = error_type
         return response

@@ -1,11 +1,14 @@
+import io
 import logging
 import os
-from typing import Dict, Tuple, Callable
+from typing import Dict, Tuple, Callable, Optional, Union, Any, BinaryIO
 
-from flask import Flask, request
+from flask import Flask, request, Response, send_file
 
 from apollo.agent.agent import Agent
+from apollo.agent.constants import TRACE_ID_HEADER
 from apollo.agent.logging_utils import LoggingUtils
+from apollo.interfaces.agent_response import AgentResponse
 
 app = Flask(__name__)
 logger = logging.getLogger(__name__)
@@ -13,8 +16,31 @@ logging_utils = LoggingUtils()
 agent = Agent(logging_utils)
 
 
+def _get_response_headers(response: AgentResponse) -> Dict:
+    headers = {}
+    if response.trace_id:
+        headers[TRACE_ID_HEADER] = response.trace_id
+    result = response.result
+    if isinstance(result, bytes) or isinstance(result, io.IOBase):
+        headers["Content-Type"] = "application/octet-stream"
+    elif isinstance(result, str):
+        headers["Content-Type"] = "text/plain"
+    return headers
+
+
+def _get_flask_response(
+    response: AgentResponse,
+) -> Union[Response, Tuple[Dict, int, Optional[Dict]]]:
+    result = response.result
+    if isinstance(result, BinaryIO):
+        return send_file(result, mimetype="application/octet-stream")
+    return response.result, response.status_code, _get_response_headers(response)
+
+
 @app.route("/api/v1/agent/execute/<connection_type>/<operation_name>", methods=["POST"])
-def agent_execute(connection_type: str, operation_name: str) -> Tuple[Dict, int]:
+def agent_execute(
+    connection_type: str, operation_name: str
+) -> Union[Response, Tuple[Dict, int, Optional[Dict]]]:
     """
     Executes the operation named "operation_name" in a connection of type "connection_type", for example bigquery.
     The body is expected to be a JSON document including a "credentials" attribute with the credentials to use for
@@ -33,7 +59,7 @@ def agent_execute(connection_type: str, operation_name: str) -> Tuple[Dict, int]
     response = agent.execute_operation(
         connection_type, operation_name, operation, credentials
     )
-    return response.result, response.status_code
+    return _get_flask_response(response)
 
 
 @app.route("/api/v1/test/health", methods=["GET", "POST"])
