@@ -5,7 +5,7 @@ exclude = [
   "**/.*",
   "tests",
   "examples",
-  "venv",
+  ".venv",
 ]
 reportMissingParameterType = true
 reportMissingTypeArgument = false
