@@ -10,3 +10,5 @@ exclude = [
 reportMissingParameterType = true
 reportMissingTypeArgument = false
 typeCheckingMode = "basic"
+venv = ".venv"
+venvPath = "."
