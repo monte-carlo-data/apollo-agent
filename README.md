@@ -7,10 +7,12 @@
 
 ### Prepare your local environment
 - Create a virtual env, for example: `python -m venv .venv` and activate it: `. .venv/bin/activate`
-- Install the required libraries: `pip install -r requirements.txt -r requirements-dev.txt`
+  - If you don't use the virtual env in `.venv` you must create a symbolic link: `ln -s VENV_DIR .venv` because pyright requires the virtual env to be in `.venv` directory.
+- Install the required libraries: `pip install -r requirements.txt -r requirements-dev.txt -r requirements-cloudrun.txt`
+- Install the pre-commit hooks: `pre-commit install`
 
 ### Tests execution
-- To run tests, use `pytest`: `pytest tests`, you might need to set PYTHONPATH env variable, like: `PYTHONPATH=. pytest tests`
+- To run tests, use `pytest` (the configuration for pytest in `pyproject.toml` configures `.` as the `pythonpath` and `tests` as the test folder).
 
 ### Local application execution
 - Apollo Agent uses a Flask application

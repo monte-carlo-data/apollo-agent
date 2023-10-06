@@ -12,3 +12,9 @@ reportMissingTypeArgument = false
 typeCheckingMode = "basic"
 venv = ".venv"
 venvPath = "."
+
+[tool.pytest.ini_options]
+testpaths = [
+    "tests",
+]
+pythonpath = "."
