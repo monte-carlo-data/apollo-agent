@@ -63,7 +63,7 @@ class AgentUtils:
         )
         if prefix:
             error = f"{prefix} {error}"
-        stack_trace = traceback.format_tb(last_value.__traceback__)
+        stack_trace = traceback.format_tb(last_value.__traceback__)  # type: ignore
         return cls._response_for_error(
             error, exception_message=exception_message, stack_trace=stack_trace
         )
@@ -74,7 +74,7 @@ class AgentUtils:
         exception_message: Optional[str] = None,
         stack_trace: Optional[List] = None,
     ) -> Dict:
-        response = {
+        response: Dict[str, Any] = {
             ATTRIBUTE_NAME_ERROR: message,
         }
         if exception_message:

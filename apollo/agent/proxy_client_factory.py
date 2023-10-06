@@ -64,7 +64,7 @@ class ProxyClientFactory:
 
     @classmethod
     def get_proxy_client(
-        cls, connection_type: str, credentials: Dict, skip_cache: bool
+        cls, connection_type: str, credentials: Optional[Dict], skip_cache: bool
     ) -> BaseProxyClient:
         # skip_cache is a flag sent by the client, and can be used to force a new client to be created
         # it defaults to False
@@ -94,7 +94,7 @@ class ProxyClientFactory:
 
     @classmethod
     def _create_proxy_client(
-        cls, connection_type: str, credentials: Dict
+        cls, connection_type: str, credentials: Optional[Dict]
     ) -> BaseProxyClient:
         factory_method = _CLIENT_FACTORY_MAPPING.get(connection_type)
         if factory_method:

@@ -32,7 +32,7 @@ class AgentCommand:
     )
 
     @staticmethod
-    def from_dict(param) -> "AgentCommand":
+    def from_dict(param: Dict) -> "AgentCommand":  # type: ignore
         pass
 
 
@@ -44,10 +44,10 @@ class AgentOperation:
     skip_cache: bool = False
 
     @staticmethod
-    def from_dict(param) -> "AgentOperation":
+    def from_dict(param) -> "AgentOperation":  # type: ignore
         pass
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> Dict:  # type: ignore
         pass
 
 
@@ -65,5 +65,5 @@ class AgentHealthInformation:
         metadata=config(exclude=exclude_empty_values), default=None
     )
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> Dict:  # type: ignore
         pass

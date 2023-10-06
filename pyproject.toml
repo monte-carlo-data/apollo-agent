@@ -1,0 +1,12 @@
+[tool.pyright]
+enableTypeIgnoreComments = true
+exclude = [
+  "**/__pycache__",
+  "**/.*",
+  "tests",
+  "examples",
+  "venv",
+]
+reportMissingParameterType = true
+reportMissingTypeArgument = false
+typeCheckingMode = "basic"
