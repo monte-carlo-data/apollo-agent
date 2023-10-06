@@ -22,7 +22,7 @@ class BaseStorageClient(ABC):
     class NotFoundError(GenericError):
         pass
 
-    def write(self, key: str, obj_to_write) -> None:
+    def write(self, key: str, obj_to_write: Union[bytes, str]) -> None:
         raise NotImplementedError()
 
     def read(
@@ -41,7 +41,7 @@ class BaseStorageClient(ABC):
 
     def read_json(self, key: str) -> Dict:
         data = self.read(key)
-        return json.loads(data.decode("utf-8"))
+        return json.loads(data.decode("utf-8") if isinstance(data, bytes) else data)
 
     def read_many_json(self, prefix: str) -> Dict:
         raise NotImplementedError()
@@ -55,8 +55,8 @@ class BaseStorageClient(ABC):
         batch_size: Optional[int] = None,
         continuation_token: Optional[str] = None,
         delimiter: Optional[str] = None,
-        *args,
-        **kwargs,
+        *args,  # type: ignore
+        **kwargs,  # type: ignore
     ) -> Tuple[Union[List, None], Union[str, None]]:
         raise NotImplementedError()
 

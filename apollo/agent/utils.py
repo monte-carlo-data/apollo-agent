@@ -78,7 +78,7 @@ class AgentUtils:
             error,
             exception_message=exception_message,
             stack_trace=stack_trace,
-            error_type=cls._get_error_type(last_value, client),
+            error_type=cls._get_error_type(last_value, client),  # type: ignore
         )
 
     @staticmethod

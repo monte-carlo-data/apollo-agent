@@ -37,7 +37,7 @@ def _get_flask_response(
     return response.result, response.status_code, _get_response_headers(response)
 
 
-@app.route("/api/v1/agent/execute/<connection_type>/<operation_name>", methods=["POST"])
+@app.route("/api/v1/agent/execute/<connection_type>/<operation_name>", methods=["POST"])  # type: ignore
 def agent_execute(
     connection_type: str, operation_name: str
 ) -> Union[Response, Tuple[Dict, int, Optional[Dict]]]:

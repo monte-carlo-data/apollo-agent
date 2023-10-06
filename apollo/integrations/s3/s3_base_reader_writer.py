@@ -25,33 +25,33 @@ _ACL_GRANTEE_URI_AUTH_USERS = (
 _ACL_GRANTEE_PUBLIC_GROUPS = [_ACL_GRANTEE_URI_ALL_USERS, _ACL_GRANTEE_URI_AUTH_USERS]
 
 
-@dataclass_json(letter_case=LetterCase.PASCAL)
+@dataclass_json(letter_case=LetterCase.PASCAL)  # type: ignore
 @dataclass
 class S3PublicAccessBlockConfiguration(DataClassJsonMixin):
     ignore_public_acls: bool
     restrict_public_buckets: bool
 
 
-@dataclass_json(letter_case=LetterCase.PASCAL)
+@dataclass_json(letter_case=LetterCase.PASCAL)  # type: ignore
 @dataclass
 class S3PolicyStatus(DataClassJsonMixin):
     is_public: bool
 
 
-@dataclass_json(letter_case=LetterCase.PASCAL)
+@dataclass_json(letter_case=LetterCase.PASCAL)  # type: ignore
 @dataclass
 class S3AclGrantee(DataClassJsonMixin):
     type: str
     uri: Optional[str] = field(metadata=config(field_name="URI"), default=None)
 
 
-@dataclass_json(letter_case=LetterCase.PASCAL)
+@dataclass_json(letter_case=LetterCase.PASCAL)  # type: ignore
 @dataclass
 class S3AclGrant(DataClassJsonMixin):
     grantee: S3AclGrantee
 
 
-@dataclass_json(letter_case=LetterCase.PASCAL)
+@dataclass_json(letter_case=LetterCase.PASCAL)  # type: ignore
 @dataclass
 class S3Acls(DataClassJsonMixin):
     grants: Optional[List[S3AclGrant]] = None
@@ -83,7 +83,7 @@ class S3BaseReaderWriter(BaseStorageClient):
     def bucket_name(self) -> str:
         return self._bucket_name
 
-    def write(self, key: str, obj_to_write) -> None:
+    def write(self, key: str, obj_to_write: Union[bytes, str]) -> None:
         try:
             self.s3_client.put_object(
                 Bucket=self._bucket_name,
@@ -154,10 +154,10 @@ class S3BaseReaderWriter(BaseStorageClient):
         batch_size: Optional[int] = None,
         continuation_token: Optional[str] = None,
         delimiter: Optional[str] = None,
-        *args,
-        **kwargs,
+        *args,  # type: ignore
+        **kwargs,  # type: ignore
     ) -> Tuple[Union[List, None], Union[str, None]]:
-        params_dict = {"Bucket": self._bucket_name}
+        params_dict: Dict[str, Any] = {"Bucket": self._bucket_name}
         if prefix:
             params_dict["Prefix"] = prefix
         if delimiter:

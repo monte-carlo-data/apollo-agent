@@ -166,7 +166,7 @@ class AgentEvaluationUtils:
                     AgentCommand.from_dict(value), context
                 )
             elif value.get(ATTRIBUTE_NAME_TYPE) == ATTRIBUTE_VALUE_TYPE_BYTES:
-                return base64.b64decode(value.get(ATTRIBUTE_NAME_DATA))
+                return base64.b64decode(value.get(ATTRIBUTE_NAME_DATA))  # type: ignore
         return value
 
     @staticmethod
