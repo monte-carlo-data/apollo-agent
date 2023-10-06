@@ -1,6 +1,6 @@
 import gzip
 import os
-from datetime import timedelta, datetime
+from datetime import timedelta
 from typing import List, Dict, Optional, Union, Tuple
 
 from google.api_core.exceptions import (
