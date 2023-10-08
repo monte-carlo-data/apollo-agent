@@ -134,3 +134,29 @@ A sample HTTP operation to get the status for a SQL Warehouse would look like:
     ]
 }
 ```
+
+## Storage client
+Storage operations like `list_objects` are regular operations returning a list of objects, but the storage client also
+uses operations that returns binary data, when the result of an operation is a binary type like `bytes` or `BinaryIO`
+the agent uses that content as the response (instead of wrapping the result in a JSON document) and sets the 
+content type in the response to `application/octet-stream`.
+
+For example, the following operation returns the contents of the `test.json` file:
+```json
+{
+   "trace_id": "1234",
+   "commands": [
+      {
+          "method": "read",
+          "args": [
+              "test.json"
+          ]
+      }
+  ]
+}
+```
+and these headers:
+```
+x-mcd-trace-id: 1234
+content-type: application/octet-stream
+```

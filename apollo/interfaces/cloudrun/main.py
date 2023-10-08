@@ -2,6 +2,8 @@ from typing import Dict
 
 import google.cloud.logging
 
+from apollo.agent.constants import PLATFORM_GCP
+
 # CloudRun specific application that adds support for structured logging
 
 # initialize CloudRun logging
@@ -29,4 +31,4 @@ main.logging_utils.extra_builder = cloud_run_extra_builder
 app = main.app
 
 # set the container platform as GCP for the health endpoint
-main.agent.platform = "GCP"
+main.agent.platform = PLATFORM_GCP

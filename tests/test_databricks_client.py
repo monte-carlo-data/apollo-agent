@@ -6,8 +6,7 @@ from requests import Response, HTTPError
 
 from apollo.agent.agent import Agent
 from apollo.agent.logging_utils import LoggingUtils
-from apollo.agent.constants import ATTRIBUTE_NAME_ERROR
-
+from apollo.agent.constants import ATTRIBUTE_NAME_ERROR, ATTRIBUTE_NAME_RESULT
 
 _DATABRICKS_CREDENTIALS = {
     "server_hostname": "www.test.com",
@@ -154,7 +153,9 @@ class DatabricksClientTests(TestCase):
             },
         )
 
-        self.assertIsNone(response.result.get("__error__"))
+        self.assertIsNone(response.result.get(ATTRIBUTE_NAME_ERROR))
+        self.assertTrue(ATTRIBUTE_NAME_RESULT in response.result)
+        result = response.result.get(ATTRIBUTE_NAME_RESULT)
         mock_connect.assert_called_with(**_DATABRICKS_CREDENTIALS)
         self._mock_cursor.execute.assert_has_calls(
             [
@@ -162,14 +163,14 @@ class DatabricksClientTests(TestCase):
                 call("SHOW CATALOGS", None),
             ]
         )
-        self.assertTrue("all_results" in response.result)
-        self.assertEqual(expected_data, response.result["all_results"])
+        self.assertTrue("all_results" in result)
+        self.assertEqual(expected_data, result["all_results"])
 
-        self.assertTrue("description" in response.result)
-        self.assertEqual(expected_description, response.result["description"])
+        self.assertTrue("description" in result)
+        self.assertEqual(expected_description, result["description"])
 
-        self.assertTrue("rowcount" in response.result)
-        self.assertEqual(expected_rows, response.result["rowcount"])
+        self.assertTrue("rowcount" in result)
+        self.assertEqual(expected_rows, result["rowcount"])
 
     @patch("requests.request")
     def test_http_request(self, mock_request):
@@ -199,7 +200,8 @@ class DatabricksClientTests(TestCase):
                 call.json(),
             ]
         )
-        self.assertEqual(expected_result, response.result)
+        self.assertTrue(ATTRIBUTE_NAME_RESULT in response.result)
+        self.assertEqual(expected_result, response.result.get(ATTRIBUTE_NAME_RESULT))
 
     @patch("requests.request")
     def test_http_request_failed(self, mock_request):
