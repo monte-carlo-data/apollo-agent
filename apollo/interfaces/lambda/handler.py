@@ -5,4 +5,4 @@ from apollo.interfaces.generic import main
 app = main.app
 main.agent.platform = "AWS"
 
-lambda_handler = make_lambda_handler(app.wsgi_app)
+lambda_handler = make_lambda_handler(app.wsgi_app, binary_support=True)
