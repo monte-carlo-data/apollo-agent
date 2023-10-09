@@ -52,5 +52,8 @@ COPY requirements-lambda.txt ./
 RUN pip install --no-cache-dir --target "${LAMBDA_TASK_ROOT}" -r requirements.txt -r requirements-lambda.txt
 
 COPY apollo "${LAMBDA_TASK_ROOT}/apollo"
+ARG code_version="local"
+ARG build_number="0"
+RUN echo $code_version,$build_number > ./apollo/agent/version
 
 CMD [ "apollo.interfaces.lambda.handler.lambda_handler" ]
