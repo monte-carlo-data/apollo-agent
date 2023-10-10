@@ -6,6 +6,10 @@
 #
 alembic==1.12.0
     # via databricks-sql-connector
+attrs==23.1.0
+    # via
+    #   cattrs
+    #   looker-sdk
 blinker==1.6.2
     # via flask
 boto3==1.28.21
@@ -16,6 +20,8 @@ botocore==1.31.61
     #   s3transfer
 cachetools==5.3.1
     # via google-auth
+cattrs==23.1.2
+    # via looker-sdk
 certifi==2023.7.22
     # via requests
 charset-normalizer==3.2.0
@@ -74,6 +80,8 @@ jmespath==1.0.1
     # via
     #   boto3
     #   botocore
+looker-sdk==23.16.0
+    # via -r requirements.in
 lz4==4.3.2
     # via databricks-sql-connector
 mako==1.2.4
@@ -127,6 +135,7 @@ requests==2.31.0
     #   databricks-sql-connector
     #   google-api-core
     #   google-cloud-storage
+    #   looker-sdk
 retry2==0.9.5
     # via -r requirements.in
 rsa==4.9
@@ -148,6 +157,7 @@ thrift==0.16.0
 typing-extensions==4.7.1
     # via
     #   alembic
+    #   looker-sdk
     #   typing-inspect
 typing-inspect==0.9.0
     # via dataclasses-json

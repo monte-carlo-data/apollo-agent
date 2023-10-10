@@ -51,6 +51,14 @@ def _get_proxy_client_storage(
     return StorageProxyClient(credentials=credentials, platform=platform)
 
 
+def _get_proxy_client_looker(
+    credentials: Optional[Dict], platform: str, **kwargs  # type: ignore
+) -> BaseProxyClient:
+    from apollo.integrations.looker.looker_proxy_client import LookerProxyClient
+
+    return LookerProxyClient(credentials=credentials, platform=platform)
+
+
 @dataclass
 class ProxyClientCacheEntry:
     created_time: datetime
@@ -62,6 +70,7 @@ _CLIENT_FACTORY_MAPPING = {
     "databricks": _get_proxy_client_databricks,
     "http": _get_proxy_client_http,
     "storage": _get_proxy_client_storage,
+    "looker": _get_proxy_client_looker,
 }
 
 

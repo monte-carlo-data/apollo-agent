@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import Optional, Any
 
 
 class BaseProxyClient(ABC):
@@ -10,3 +10,6 @@ class BaseProxyClient(ABC):
 
     def get_error_type(self, error: Exception) -> Optional[str]:
         return None
+
+    def process_result(self, value: Any) -> Any:
+        return value
