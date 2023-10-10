@@ -154,7 +154,7 @@ class Agent:
 
     @staticmethod
     def _env_dictionary() -> Dict:
-        env = {
+        env: Dict[str, Optional[str]] = {
             "sys_version": sys.version,
         }
         env.update(

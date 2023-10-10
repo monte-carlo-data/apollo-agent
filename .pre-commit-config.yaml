@@ -6,3 +6,8 @@ repos:
       entry: black
       language: python
       types_or: [python, pyi]
+
+  - repo: https://github.com/RobertCraigie/pyright-python
+    rev: v1.1.329
+    hooks:
+    - id: pyright

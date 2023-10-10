@@ -15,6 +15,7 @@ from apollo.agent.constants import (
     ATTRIBUTE_NAME_DATA,
 )
 from apollo.agent.utils import AgentUtils
+from apollo.integrations.base_proxy_client import BaseProxyClient
 
 logger = logging.getLogger(__name__)
 
@@ -38,8 +39,10 @@ class AgentEvaluationUtils:
         try:
             last_result: Optional[Any] = None
             for command in commands:
-                last_result = cls.execute_command(command, context)
-            return last_result
+                last_result = cls._execute_command(command, context)
+            return cls._process_result(
+                last_result, client=context.get(CONTEXT_VAR_CLIENT)
+            )
         except Exception as ex:
             logger.exception(
                 "Exception occurred executing commands",
@@ -52,7 +55,7 @@ class AgentEvaluationUtils:
             )
 
     @classmethod
-    def execute_command(cls, command: AgentCommand, context: Dict) -> Optional[Any]:
+    def _execute_command(cls, command: AgentCommand, context: Dict) -> Optional[Any]:
         """
         Execute a single command, if the command is the root of a chain (using next attribute)
         the whole chain is executed.
@@ -166,7 +169,7 @@ class AgentEvaluationUtils:
                     AgentCommand.from_dict(value), context
                 )
             elif value.get(ATTRIBUTE_NAME_TYPE) == ATTRIBUTE_VALUE_TYPE_BYTES:
-                return base64.b64decode(value.get(ATTRIBUTE_NAME_DATA))
+                return base64.b64decode(value.get(ATTRIBUTE_NAME_DATA))  # type: ignore
         return value
 
     @staticmethod
@@ -180,3 +183,10 @@ class AgentEvaluationUtils:
         if var_name not in context:
             raise AgentError(f"{var_name} not found in context")
         return context[var_name]
+
+    @staticmethod
+    def _process_result(value: Any, client: Optional[BaseProxyClient]) -> Any:
+        if client:
+            return client.process_result(value)
+        else:
+            return value

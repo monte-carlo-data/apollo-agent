@@ -1,5 +1,4 @@
-import os
-from typing import Dict
+from typing import Dict, Optional
 
 from databricks import sql
 
@@ -15,8 +14,8 @@ class DatabricksSqlWarehouseProxyClient(BaseProxyClient):
     only attributes supported as parameters by `sql.connect` should be passed.
     """
 
-    def __init__(self, credentials: Dict, **kwargs):
-        if _ATTR_CONNECT_ARGS not in credentials:
+    def __init__(self, credentials: Optional[Dict], **kwargs: Dict):
+        if not credentials or _ATTR_CONNECT_ARGS not in credentials:
             raise ValueError(
                 f"Databricks agent client requires {_ATTR_CONNECT_ARGS} in credentials"
             )

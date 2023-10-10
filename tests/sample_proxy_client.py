@@ -1,5 +1,7 @@
 from typing import Optional, List, Dict
 
+from apollo.integrations.base_proxy_client import BaseProxyClient
+
 
 class SampleQueryResult:
     def __init__(self, query: str):
@@ -49,7 +51,7 @@ class SampleInternalClient:
         return self._cursor
 
 
-class SampleProxyClient:
+class SampleProxyClient(BaseProxyClient):
     def __init__(self):
         self._client = SampleInternalClient()
 

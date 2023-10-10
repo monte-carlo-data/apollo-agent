@@ -18,7 +18,7 @@ _CACHE_EXPIRATION_SECONDS = int(os.getenv("MCD_CLIENT_CACHE_EXPIRATION_SECONDS",
 
 
 def _get_proxy_client_bigquery(
-    credentials: Optional[Dict], **kwargs
+    credentials: Optional[Dict], **kwargs  # type: ignore
 ) -> BaseProxyClient:
     # import driver modules only when needed
     # in subsequent versions we might not want to bundle all dependencies in a single image
@@ -28,7 +28,7 @@ def _get_proxy_client_bigquery(
 
 
 def _get_proxy_client_databricks(
-    credentials: Optional[Dict], **kwargs
+    credentials: Optional[Dict], **kwargs  # type: ignore
 ) -> BaseProxyClient:
     from apollo.integrations.databricks.databricks_sql_warehouse_proxy_client import (
         DatabricksSqlWarehouseProxyClient,
@@ -37,18 +37,26 @@ def _get_proxy_client_databricks(
     return DatabricksSqlWarehouseProxyClient(credentials=credentials)
 
 
-def _get_proxy_client_http(credentials: Optional[Dict], **kwargs) -> BaseProxyClient:
+def _get_proxy_client_http(credentials: Optional[Dict], **kwargs) -> BaseProxyClient:  # type: ignore
     from apollo.integrations.http.http_proxy_client import HttpProxyClient
 
     return HttpProxyClient(credentials=credentials)
 
 
 def _get_proxy_client_storage(
-    credentials: Optional[Dict], platform: str, **kwargs
+    credentials: Optional[Dict], platform: str, **kwargs  # type: ignore
 ) -> BaseProxyClient:
     from apollo.integrations.storage.storage_proxy_client import StorageProxyClient
 
     return StorageProxyClient(credentials=credentials, platform=platform)
+
+
+def _get_proxy_client_looker(
+    credentials: Optional[Dict], platform: str, **kwargs  # type: ignore
+) -> BaseProxyClient:
+    from apollo.integrations.looker.looker_proxy_client import LookerProxyClient
+
+    return LookerProxyClient(credentials=credentials, platform=platform)
 
 
 @dataclass
@@ -62,6 +70,7 @@ _CLIENT_FACTORY_MAPPING = {
     "databricks": _get_proxy_client_databricks,
     "http": _get_proxy_client_http,
     "storage": _get_proxy_client_storage,
+    "looker": _get_proxy_client_looker,
 }
 
 
@@ -77,7 +86,11 @@ class ProxyClientFactory:
 
     @classmethod
     def get_proxy_client(
-        cls, connection_type: str, credentials: Dict, skip_cache: bool, platform: str
+        cls,
+        connection_type: str,
+        credentials: Optional[Dict],
+        skip_cache: bool,
+        platform: str,
     ) -> BaseProxyClient:
         # skip_cache is a flag sent by the client, and can be used to force a new client to be created
         # it defaults to False
@@ -109,7 +122,7 @@ class ProxyClientFactory:
 
     @classmethod
     def _create_proxy_client(
-        cls, connection_type: str, credentials: Dict, platform: str
+        cls, connection_type: str, credentials: Optional[Dict], platform: str
     ) -> BaseProxyClient:
         factory_method = _CLIENT_FACTORY_MAPPING.get(connection_type)
         if factory_method:

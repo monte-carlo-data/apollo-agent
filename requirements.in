@@ -5,4 +5,5 @@ flask==2.3.3
 google-api-python-client==2.98.0
 google-cloud-storage==2.10.0
 gunicorn==21.2.0
+looker-sdk==23.16.0
 retry2==0.9.5

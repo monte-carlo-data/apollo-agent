@@ -24,7 +24,18 @@ _ERROR_TYPE_PERMISSIONS = "Permissions"
 
 
 class StorageProxyClient(BaseProxyClient):
-    def __init__(self, platform: str, **kwargs):
+    """
+    Proxy client for storage operations, it forwards calls to a `BaseStorageClient`, for example GCS or S3.
+    The storage client to use is automatically derived from the platform:
+    - AWS -> S3
+    - GCP -> GCS
+    - Generic -> S3/GCS as configured by MCD_STORAGE env var
+    Credentials to use by the storage client are derived from the environment, in the case of S3 from env vars as
+    supported by boto3, for GCS from ADC (Application Default Credentials) that are automatically set when
+    running in CloudRun and can be set with `gcloud` CLI or API in other cases.
+    """
+
+    def __init__(self, platform: str, **kwargs):  # type: ignore
         storage: Optional[str] = None
         if platform == PLATFORM_GCP:
             storage = STORAGE_TYPE_GCS
@@ -47,6 +58,10 @@ class StorageProxyClient(BaseProxyClient):
         return self._client
 
     def get_error_type(self, error: Exception) -> Optional[str]:
+        """
+        Returns an error type string for the given exception, this is used client side to create again the required
+        exception type.
+        """
         if isinstance(error, BaseStorageClient.PermissionsError):
             return _ERROR_TYPE_PERMISSIONS
         elif isinstance(error, BaseStorageClient.NotFoundError):
@@ -54,16 +69,27 @@ class StorageProxyClient(BaseProxyClient):
         return super().get_error_type(error)
 
     def download_file(self, key: str) -> BinaryIO:
+        """
+        Downloads the file to a temporary file and returns a BinaryIO object with the contents
+        """
         path = AgentUtils.temp_file_path()
         self._client.download_file(key, path)
         return AgentUtils.open_file(path)
 
     def managed_download(self, key: str) -> BinaryIO:
+        """
+        Downloads the file to a temporary file and returns a BinaryIO object with the contents
+        """
         path = AgentUtils.temp_file_path()
         self._client.managed_download(key, path)
         return AgentUtils.open_file(path)
 
-    def list_objects(self, *args, **kwargs):
+    def list_objects(self, *args, **kwargs):  # type: ignore
+        """
+        Returns the list of objects and the continuation token, the tuple (list, token) returned by the storage
+        client is converted to a dictionary with keys "list" and "page_token" so it can be serialized back
+        as a JSON document.
+        """
         result, page_token = self._client.list_objects(*args, **kwargs)
         return {
             "list": result,
@@ -71,6 +97,10 @@ class StorageProxyClient(BaseProxyClient):
         }
 
     def generate_presigned_url(self, key: str, expiration: int) -> str:
+        """
+        Generates a pre-signed URL, converts the received expiration seconds to timedelta as that's the
+        parameter type required by the storage client.
+        """
         return self._client.generate_presigned_url(
             key=key, expiration=timedelta(seconds=expiration)
         )

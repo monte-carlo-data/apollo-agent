@@ -1,6 +1,6 @@
 import gzip
 import os
-from datetime import timedelta, datetime
+from datetime import timedelta
 from typing import List, Dict, Optional, Union, Tuple
 
 from google.api_core.exceptions import (
@@ -32,7 +32,7 @@ class GcsReaderWriter(BaseStorageClient):
         connection: Optional[Dict] = None,
         bucket_name: Optional[str] = None,
         auth_type: str = AUTH_TYPE_GCP_DEFAULT_CREDENTIALS,
-        **kwargs,
+        **kwargs,  # type: ignore
     ):
         connection_credentials = {}
         if connection and "credentials" in connection and connection["credentials"]:
@@ -54,7 +54,7 @@ class GcsReaderWriter(BaseStorageClient):
     def bucket_name(self) -> str:
         return self._bucket_name
 
-    def write(self, key: str, obj_to_write) -> None:
+    def write(self, key: str, obj_to_write: Union[bytes, str]) -> None:
         try:
             bucket: Bucket = self._client.get_bucket(self._bucket_name)
             bucket.blob(key).upload_from_string(obj_to_write)
@@ -124,8 +124,8 @@ class GcsReaderWriter(BaseStorageClient):
         batch_size: Optional[int] = None,
         continuation_token: Optional[str] = None,
         delimiter: Optional[str] = None,
-        *args,
-        **kwargs,
+        *args,  # type: ignore
+        **kwargs,  # type: ignore
     ) -> Tuple[Union[List, None], Union[str, None]]:
         params_dict = {"bucket_or_name": self._bucket_name}
         if prefix:
@@ -143,7 +143,7 @@ class GcsReaderWriter(BaseStorageClient):
             # The resulting iterator iterates through multiple pages. What page_token actually
             # represents is which page the iterator should START at. It no page_token is provided it
             # will start at the first page.
-            iterator = self._client.list_blobs(**params_dict)
+            iterator = self._client.list_blobs(**params_dict)  # type: ignore
             page = next(iterator.pages)
 
             # specifying a deliminator results in a common prefix collection rather than any
@@ -215,8 +215,8 @@ class GcsReaderWriter(BaseStorageClient):
 
 def extract_error_message(error: ClientError) -> str:
     try:
-        payload = error.response.json()
+        payload = error.response.json()  # type: ignore
     except ValueError:
-        payload = {"error": {"message": error.response.text or "unknown error"}}
+        payload = {"error": {"message": error.response.text or "unknown error"}}  # type: ignore
 
     return payload.get("error", {}).get("message", "unknown error")

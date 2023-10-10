@@ -1,4 +1,4 @@
-from typing import Dict
+from typing import Dict, Optional
 
 import google.cloud.logging
 
@@ -17,13 +17,16 @@ from apollo.interfaces.generic import main
 # Trace id can be sent along "json_fields" in a "trace" attribute and it would replace the CloudRun trace id, but
 # we're logging it in a separate attribute ("mcd_trace_id" under "json_fields") so we can relate this log message with
 # other log messages logged by CloudRun for the same request.
-def cloud_run_extra_builder(trace_id: str, operation_name: str, extra: Dict):
+def cloud_run_extra_builder(trace_id: Optional[str], operation_name: str, extra: Dict):
+    json_fields = {
+        "operation_name": operation_name,
+        **extra,
+    }
+    if trace_id:
+        json_fields["mcd_trace_id"] = trace_id
+
     return {
-        "json_fields": {
-            "operation_name": operation_name,
-            "mcd_trace_id": trace_id,
-            **extra,
-        },
+        "json_fields": json_fields,
     }
 
 

@@ -73,12 +73,12 @@ class AgentUtils:
         )
         if prefix:
             error = f"{prefix} {error}"
-        stack_trace = traceback.format_tb(last_value.__traceback__)
+        stack_trace = traceback.format_tb(last_value.__traceback__)  # type: ignore
         return cls._response_for_error(
             error,
             exception_message=exception_message,
             stack_trace=stack_trace,
-            error_type=cls._get_error_type(last_value, client),
+            error_type=cls._get_error_type(last_value, client),  # type: ignore
         )
 
     @staticmethod
@@ -93,11 +93,7 @@ class AgentUtils:
     def _get_error_type(
         error: Exception, client: Optional[BaseProxyClient] = None
     ) -> Optional[str]:
-        from apollo.agent.models import AgentWrappedError  # avoid import loop
-
-        if isinstance(error, AgentWrappedError):
-            return error.error_type
-        elif client:
+        if client:
             return client.get_error_type(error)
         return None
 
@@ -108,7 +104,7 @@ class AgentUtils:
         stack_trace: Optional[List] = None,
         error_type: Optional[str] = None,
     ) -> Dict:
-        response = {
+        response: Dict[str, Any] = {
             ATTRIBUTE_NAME_ERROR: message,
         }
         if exception_message:
