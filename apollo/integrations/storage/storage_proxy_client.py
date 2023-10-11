@@ -8,8 +8,8 @@ from apollo.agent.constants import (
     PLATFORM_AWS,
     STORAGE_TYPE_GCS,
     STORAGE_TYPE_S3,
-    STORAGE_TYPE_ENV_VAR,
 )
+from apollo.agent.env_vars import STORAGE_TYPE_ENV_VAR
 from apollo.agent.utils import AgentUtils
 from apollo.integrations.base_proxy_client import BaseProxyClient
 from apollo.integrations.gcs.gcs_reader_writer import GcsReaderWriter

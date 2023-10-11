@@ -9,6 +9,10 @@ class AgentError(Exception):
     pass
 
 
+class AgentConfigurationError(AgentError):
+    pass
+
+
 @dataclass_json
 @dataclass
 class AgentCommand:
