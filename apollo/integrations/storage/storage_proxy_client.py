@@ -4,12 +4,12 @@ from typing import Optional, BinaryIO
 
 from apollo.agent.constants import (
     PLATFORM_GCP,
-    PLATFORM_GENERIC,
     PLATFORM_AWS,
     STORAGE_TYPE_GCS,
     STORAGE_TYPE_S3,
 )
 from apollo.agent.env_vars import STORAGE_TYPE_ENV_VAR
+from apollo.agent.models import AgentConfigurationError
 from apollo.agent.utils import AgentUtils
 from apollo.integrations.base_proxy_client import BaseProxyClient
 from apollo.integrations.gcs.gcs_reader_writer import GcsReaderWriter
@@ -21,6 +21,17 @@ _API_VERSION = "v1"
 
 _ERROR_TYPE_NOTFOUND = "NotFound"
 _ERROR_TYPE_PERMISSIONS = "Permissions"
+
+
+_DEFAULT_PLATFORM_STORAGE = {
+    PLATFORM_GCP: STORAGE_TYPE_GCS,
+    PLATFORM_AWS: STORAGE_TYPE_S3,
+}
+
+_STORAGE_CLIENTS = {
+    STORAGE_TYPE_GCS: GcsReaderWriter,
+    STORAGE_TYPE_S3: S3ReaderWriter,
+}
 
 
 class StorageProxyClient(BaseProxyClient):
@@ -36,22 +47,17 @@ class StorageProxyClient(BaseProxyClient):
     """
 
     def __init__(self, platform: str, **kwargs):
-        storage: Optional[str] = None
-        if platform == PLATFORM_GCP:
-            storage = STORAGE_TYPE_GCS
-        elif platform == PLATFORM_AWS:
-            storage = STORAGE_TYPE_S3
-        elif platform == PLATFORM_GENERIC:
-            storage = os.getenv(STORAGE_TYPE_ENV_VAR)
+        storage: Optional[str] = os.getenv(STORAGE_TYPE_ENV_VAR)
+        if not storage:
+            storage = _DEFAULT_PLATFORM_STORAGE.get(platform)
             if not storage:
                 raise ValueError(f"Missing {STORAGE_TYPE_ENV_VAR} env var")
 
-        if storage == STORAGE_TYPE_GCS:
-            self._client = GcsReaderWriter()
-        elif storage == STORAGE_TYPE_S3:
-            self._client = S3ReaderWriter()
-        else:
-            raise ValueError(f"Invalid storage type: {storage}")
+        storage_client = _STORAGE_CLIENTS.get(storage)
+        if not storage_client:
+            raise AgentConfigurationError(f"Invalid storage type: {storage}")
+
+        self._client = storage_client()
 
     @property
     def wrapped_client(self):
