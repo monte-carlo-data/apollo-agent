@@ -52,11 +52,6 @@ PLATFORM_GENERIC = "Generic"
 PLATFORM_GCP = "GCP"
 PLATFORM_AWS = "AWS"
 
-# Environment variable used in the `Generic` platform to select the storage type
-STORAGE_TYPE_ENV_VAR = "MCD_STORAGE"
-
-# The value for S3 storage type
+# Storage types
 STORAGE_TYPE_S3 = "S3"
-
-# The value for GCS (Google Cloud Storage) storage type
 STORAGE_TYPE_GCS = "GCS"

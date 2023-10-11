@@ -7,6 +7,7 @@ from flask import Flask, request, Response, send_file
 
 from apollo.agent.agent import Agent
 from apollo.agent.constants import TRACE_ID_HEADER
+from apollo.agent.env_vars import DEBUG_ENV_VAR
 from apollo.agent.logging_utils import LoggingUtils
 from apollo.interfaces.agent_response import AgentResponse
 
@@ -112,6 +113,6 @@ def _execute_network_validation(method: Callable) -> Tuple[Dict, int]:
 
 
 if __name__ == "__main__":
-    is_debug = os.getenv("MCD_DEBUG", "false").lower() == "true"
+    is_debug = os.getenv(DEBUG_ENV_VAR, "false").lower() == "true"
     logging.basicConfig(level=logging.DEBUG if is_debug else logging.INFO)
     app.run(host="0.0.0.0", port=8081, debug=is_debug)
