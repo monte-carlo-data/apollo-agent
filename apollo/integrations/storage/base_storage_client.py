@@ -43,6 +43,7 @@ class BaseStorageClient(ABC):
         :param key: path to the file, for example /dir/name.ext
         :param decompress: flag indicating if `gzip` contents should be decompressed automatically
         :param encoding: if set binary content will be decoded using this encoding and a string will be returned
+        :return: a bytes object, unless encoding is set, in which case it returns a string.
         """
         raise NotImplementedError()
 
