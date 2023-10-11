@@ -29,6 +29,10 @@ def _extract_error_message(error: ClientError) -> str:
 
 
 def convert_gcs_errors(func: Callable):
+    """
+    Decorator used to convert GCS specific errors into BaseStorageClient errors
+    """
+
     @wraps(func)
     def _impl(*args, **kwargs):  # type: ignore
         try:

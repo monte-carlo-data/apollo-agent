@@ -25,6 +25,9 @@ class BaseStorageClient(ABC):
     @property
     @abstractmethod
     def bucket_name(self) -> str:
+        """
+        Returns the bucket name referenced by this client
+        """
         pass
 
     @abstractmethod
