@@ -3,6 +3,7 @@ import os
 import sys
 from typing import Any, Dict, Optional
 
+from apollo.agent.env_vars import HEALTH_ENV_VARS
 from apollo.agent.evaluation_utils import AgentEvaluationUtils
 from apollo.agent.logging_utils import LoggingUtils
 from apollo.agent.constants import (
@@ -20,16 +21,6 @@ from apollo.interfaces.agent_response import AgentResponse
 from apollo.validators.validate_network import ValidateNetwork
 
 logger = logging.getLogger(__name__)
-
-_ENV_VARS = [
-    "PYTHON_VERSION",
-    "SERVER_SOFTWARE",
-    "MCD_AGENT_IMAGE_TAG",
-    "MCD_AGENT_CLOUD_PLATFORM",
-    "MCD_AGENT_WRAPPER_TYPE",
-    "MCD_AGENT_WRAPPER_VERSION",
-    "MCD_AGENT_IS_REMOTE_UPGRADABLE",
-]
 
 
 class Agent:
@@ -158,7 +149,11 @@ class Agent:
             "sys_version": sys.version,
         }
         env.update(
-            {env_var: os.getenv(env_var) for env_var in _ENV_VARS if os.getenv(env_var)}
+            {
+                env_var: os.getenv(env_var)
+                for env_var in HEALTH_ENV_VARS
+                if os.getenv(env_var)
+            }
         )
         return env
 
@@ -207,24 +202,24 @@ class Agent:
     def _execute_client_operation(
         self,
         connection_type: str,
-        client: Any,
+        client: BaseProxyClient,
         operation_name: str,
         operation: AgentOperation,
     ) -> AgentResponse:
         logger.info(
-            f"Executing commands: {connection_type}/{operation_name}",
+            f"Executing operation: {connection_type}/{operation_name}",
             extra=self._logging_utils.build_extra(
                 operation.trace_id,
                 operation_name,
-                operation.to_dict(),
+                client.log_payload(operation),
             ),
         )
         result = self._execute(client, operation)
         return AgentResponse(result or {}, 200, operation.trace_id)
 
     @staticmethod
-    def _execute(client: Any, operation: AgentOperation) -> Optional[Any]:
-        context = {
+    def _execute(client: BaseProxyClient, operation: AgentOperation) -> Optional[Any]:
+        context: Dict[str, Any] = {
             CONTEXT_VAR_CLIENT: client,
         }
         context[CONTEXT_VAR_UTILS] = OperationUtils(context)

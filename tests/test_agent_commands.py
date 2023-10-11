@@ -2,7 +2,7 @@ from unittest import TestCase
 
 from apollo.agent.agent import Agent
 from apollo.agent.models import AgentOperation
-from tests.sample_proxy_client import SampleProxyClient
+from sample_proxy_client import SampleProxyClient
 
 
 class AgentCommandsTests(TestCase):
