@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional, Dict
 
+from apollo.agent.env_vars import CLIENT_CACHE_EXPIRATION_SECONDS_ENV_VAR
 from apollo.agent.models import AgentError
 from apollo.integrations.base_proxy_client import BaseProxyClient
 
@@ -14,7 +15,9 @@ logger = logging.getLogger(__name__)
 
 # configure the amount of time connections are cached in memory
 # a value < 0 is used to disable caching
-_CACHE_EXPIRATION_SECONDS = int(os.getenv("MCD_CLIENT_CACHE_EXPIRATION_SECONDS", "60"))
+_CACHE_EXPIRATION_SECONDS = int(
+    os.getenv(CLIENT_CACHE_EXPIRATION_SECONDS_ENV_VAR, "60")
+)
 
 
 def _get_proxy_client_bigquery(

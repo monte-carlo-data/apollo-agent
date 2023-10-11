@@ -3,9 +3,9 @@ from functools import cached_property
 
 import boto3
 
+from apollo.agent.env_vars import STORAGE_BUCKET_NAME_ENV_VAR
+from apollo.agent.models import AgentConfigurationError
 from apollo.integrations.s3.s3_base_reader_writer import S3BaseReaderWriter
-
-CONFIGURATION_BUCKET = os.getenv("CONFIGURATION_BUCKET", "data-collector-configuration")
 
 
 class S3ReaderWriter(S3BaseReaderWriter):
@@ -15,12 +15,23 @@ class S3ReaderWriter(S3BaseReaderWriter):
     """
 
     def __init__(self):
-        super().__init__(CONFIGURATION_BUCKET)
+        bucket_name = os.getenv(STORAGE_BUCKET_NAME_ENV_VAR)
+        if not bucket_name:
+            raise AgentConfigurationError(
+                f"Bucket not configured, {STORAGE_BUCKET_NAME_ENV_VAR} env var expected"
+            )
+        super().__init__(bucket_name=bucket_name)
 
     @cached_property
     def s3_client(self):
+        """
+        Creates a new S3 client with the default settings and using credentials from the environment
+        """
         return boto3.client("s3")
 
     @cached_property
     def s3_resource(self):
+        """
+        Creates a new S3 resource with the default settings and using credentials from the environment
+        """
         return boto3.resource("s3")
