@@ -34,6 +34,9 @@ ATTRIBUTE_VALUE_TYPE_CALL = "call"
 # Value for the attribute __type__ to indicate this is a bytes array
 ATTRIBUTE_VALUE_TYPE_BYTES = "bytes"
 
+# Value to use when redacting sensitive data in log messages
+ATTRIBUTE_VALUE_REDACTED = "__redacted__"
+
 # Name of the client variable in the evaluation context, this is the default value for `target` in calls
 CONTEXT_VAR_CLIENT = "_client"
 
@@ -42,10 +45,6 @@ CONTEXT_VAR_UTILS = "__utils"
 
 # Header used to return the trace if received in the request when the result is binary
 TRACE_ID_HEADER = "x-mcd-trace-id"
-
-AUTH_TYPE_GCP_SERVICE_ACCOUNT = "GCP_JSON_SERVICE_ACCOUNT_KEY"
-AUTH_TYPE_GCP_DEFAULT_CREDENTIALS = "GCP_DEFAULT_CREDENTIALS"
-AUTH_TYPE_AWS_ASSUMABLE_ROLE = "AWS_ASSUMABLE_ROLE"
 
 # Platform names
 PLATFORM_GENERIC = "Generic"

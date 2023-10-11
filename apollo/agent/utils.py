@@ -3,26 +3,17 @@ import sys
 import tempfile
 import traceback
 import uuid
-from typing import Optional, Dict, List, Any, BinaryIO
+from typing import Optional, Dict, List, BinaryIO, Any
 
 from apollo.agent.constants import (
     ATTRIBUTE_NAME_ERROR,
     ATTRIBUTE_NAME_EXCEPTION,
     ATTRIBUTE_NAME_STACK_TRACE,
     ATTRIBUTE_NAME_ERROR_TYPE,
+    ATTRIBUTE_VALUE_REDACTED,
 )
 from apollo.integrations.base_proxy_client import BaseProxyClient
 from apollo.interfaces.agent_response import AgentResponse
-
-
-# used so we don't include an empty platform info
-def exclude_empty_values(value: Any) -> bool:
-    return not bool(value)
-
-
-# used so we don't include null values in json objects
-def exclude_none_values(value: Any) -> bool:
-    return value is None
 
 
 class AgentUtils:
@@ -88,6 +79,20 @@ class AgentUtils:
     @staticmethod
     def open_file(path: str) -> BinaryIO:
         return open(path, "rb")
+
+    @classmethod
+    def redact_attributes(cls, value: Any, attributes: List[str]) -> Any:
+        if isinstance(value, Dict):
+            return {
+                k: ATTRIBUTE_VALUE_REDACTED
+                if k in attributes
+                else cls.redact_attributes(v, attributes)
+                for k, v in value.items()
+            }
+        elif isinstance(value, List):
+            return [cls.redact_attributes(v, attributes) for v in value]
+        else:
+            return value
 
     @staticmethod
     def _get_error_type(

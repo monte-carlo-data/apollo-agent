@@ -202,23 +202,23 @@ class Agent:
     def _execute_client_operation(
         self,
         connection_type: str,
-        client: Any,
+        client: BaseProxyClient,
         operation_name: str,
         operation: AgentOperation,
     ) -> AgentResponse:
         logger.info(
-            f"Executing commands: {connection_type}/{operation_name}",
+            f"Executing operation: {connection_type}/{operation_name}",
             extra=self._logging_utils.build_extra(
                 operation.trace_id,
                 operation_name,
-                operation.to_dict(),
+                client.log_payload(operation),
             ),
         )
         result = self._execute(client, operation)
         return AgentResponse(result or {}, 200, operation.trace_id)
 
     @staticmethod
-    def _execute(client: Any, operation: AgentOperation) -> Optional[Any]:
+    def _execute(client: BaseProxyClient, operation: AgentOperation) -> Optional[Any]:
         context = {
             CONTEXT_VAR_CLIENT: client,
         }

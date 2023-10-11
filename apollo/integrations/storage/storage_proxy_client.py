@@ -1,6 +1,6 @@
 import os
 from datetime import timedelta
-from typing import Optional, BinaryIO
+from typing import Optional, BinaryIO, Dict, cast, Any
 
 from apollo.agent.constants import (
     PLATFORM_GCP,
@@ -9,7 +9,7 @@ from apollo.agent.constants import (
     STORAGE_TYPE_S3,
 )
 from apollo.agent.env_vars import STORAGE_TYPE_ENV_VAR
-from apollo.agent.models import AgentConfigurationError
+from apollo.agent.models import AgentConfigurationError, AgentOperation
 from apollo.agent.utils import AgentUtils
 from apollo.integrations.base_proxy_client import BaseProxyClient
 from apollo.integrations.gcs.gcs_reader_writer import GcsReaderWriter
@@ -22,6 +22,8 @@ _API_VERSION = "v1"
 _ERROR_TYPE_NOTFOUND = "NotFound"
 _ERROR_TYPE_PERMISSIONS = "Permissions"
 
+_BUCKET_NAME_LOG_ATTRIBUTE = "bucket_name"
+_OBJ_TO_WRITE_ARG_NAME = "obj_to_write"
 
 _DEFAULT_PLATFORM_STORAGE = {
     PLATFORM_GCP: STORAGE_TYPE_GCS,
@@ -57,7 +59,7 @@ class StorageProxyClient(BaseProxyClient):
         if not storage_client:
             raise AgentConfigurationError(f"Invalid storage type: {storage}")
 
-        self._client = storage_client()
+        self._client = cast(BaseStorageClient, storage_client())
 
     @property
     def wrapped_client(self):
@@ -73,6 +75,13 @@ class StorageProxyClient(BaseProxyClient):
         elif isinstance(error, BaseStorageClient.NotFoundError):
             return _ERROR_TYPE_NOTFOUND
         return super().get_error_type(error)
+
+    def log_payload(self, operation: AgentOperation) -> Dict:
+        payload: Dict[str, Any] = {
+            **super().log_payload(operation),
+            "bucket_name": self._client.bucket_name,
+        }
+        return AgentUtils.redact_attributes(payload, [_OBJ_TO_WRITE_ARG_NAME])
 
     def download_file(self, key: str) -> BinaryIO:
         """

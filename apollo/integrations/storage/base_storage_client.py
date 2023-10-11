@@ -22,6 +22,11 @@ class BaseStorageClient(ABC):
     class NotFoundError(GenericError):
         pass
 
+    @property
+    @abstractmethod
+    def bucket_name(self) -> str:
+        pass
+
     @abstractmethod
     def write(self, key: str, obj_to_write) -> None:
         """
