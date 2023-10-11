@@ -105,7 +105,8 @@ class BaseStorageClient(ABC):
     ) -> Tuple[Union[List, None], Union[str, None]]:
         """
         List objects (files and folder) under the specified prefix.
-        Delimiter is set to "/" to return sub-folders, documentation about delimiter in S3 requests available here:
+        Delimiter is set to "/" to return sub-folders, this works for all storage providers as it works for S3.
+        Documentation about delimiter in S3 requests available here:
         https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListObjectsV2.html#API_ListObjectsV2_RequestSyntax
         Prefix can be used to return contents of folders.
         :param prefix: Prefix to use for listing, it can be used to list folders, for example: `prefix=/dir/`
@@ -113,7 +114,7 @@ class BaseStorageClient(ABC):
         :param continuation_token: Used to page the result, the second value in the resulting tuple is the continuation
             token for the next call.
         :param delimiter: Set to "/" to return sub-folders, when set the result will include the list of prefixes
-            returned by GCS instead of metadata for the objects.
+            returned by the storage provider instead of metadata for the objects.
         :return: A tuple with the result list and the continuation token. The result list includes the following
             attributes (when no delimiter is set): ETag, Key, Size, LastModified, StorageClass. If delimiter is
             specified only Prefix is included in the result for each listed folder.

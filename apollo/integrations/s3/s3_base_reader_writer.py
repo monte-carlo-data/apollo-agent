@@ -204,7 +204,7 @@ class S3BaseReaderWriter(BaseStorageClient):
         :param continuation_token: Used to page the result, the second value in the resulting tuple is the continuation
             token for the next call.
         :param delimiter: Set to "/" to return sub-folders, when set the result will include the list of prefixes
-            returned by GCS instead of metadata for the objects.
+            returned by S3 instead of metadata for the objects.
         :return: A tuple with the result list and the continuation token. The result list includes the following
             attributes (when no delimiter is set): ETag, Key, Size, LastModified, StorageClass. If delimiter is
             specified only Prefix is included in the result for each listed folder.
