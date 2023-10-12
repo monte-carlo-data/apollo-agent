@@ -183,7 +183,7 @@ class Agent:
         except Exception:
             logger.exception("Failed to read operation")
             return AgentUtils.agent_response_for_last_exception(
-                "Failed to read operation:", 400
+                prefix="Failed to read operation:", status_code=400
             )
 
         client: Optional[BaseProxyClient] = None
@@ -195,9 +195,7 @@ class Agent:
                 connection_type, client, operation_name, operation
             )
         except Exception:
-            return AgentUtils.agent_response_for_last_exception(
-                status_code=500, client=client
-            )
+            return AgentUtils.agent_response_for_last_exception(client=client)
 
     def _execute_client_operation(
         self,
