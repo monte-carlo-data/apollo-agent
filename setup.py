@@ -7,7 +7,7 @@ from setuptools import setup, find_packages
 
 def parse_requirements(file_name: Optional[str] = "requirements.txt") -> List[str]:
     return distutils.text_file.TextFile(
-        filename=str(Path(__file__).with_name(file_name))
+        filename=str(Path(__file__).with_name(file_name))  # type: ignore
     ).readlines()
 
 
@@ -19,7 +19,7 @@ def get_long_description():
 setup(
     name="mcd-agent",
     use_scm_version=True,
-    license="Apache Software License (Apache 2.0)",
+    license="https://github.com/monte-carlo-data/apollo-agent/blob/main/LICENSE.md",
     description="Monte Carlo's Agent",
     long_description=get_long_description(),
     long_description_content_type="text/markdown",

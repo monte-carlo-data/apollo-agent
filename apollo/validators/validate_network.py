@@ -73,7 +73,7 @@ class ValidateNetwork:
 
     @staticmethod
     def _call_validation_method(
-        method: Callable, trace_id: Optional[str], **kwargs
+        method: Callable, trace_id: Optional[str], **kwargs  # type: ignore
     ) -> AgentResponse:
         """
         Internal method to call one of the network validation methods: `internal_validate_tcp_connection` or
@@ -92,9 +92,7 @@ class ValidateNetwork:
                 message=str(ex), trace_id=trace_id
             )
         except Exception:
-            return AgentUtils.agent_response_for_last_exception(
-                status_code=500, trace_id=trace_id
-            )
+            return AgentUtils.agent_response_for_last_exception(trace_id=trace_id)
 
     @classmethod
     def _internal_validate_tcp_open_connection(

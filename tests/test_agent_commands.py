@@ -1,8 +1,9 @@
 from unittest import TestCase
 
 from apollo.agent.agent import Agent
+from apollo.agent.logging_utils import LoggingUtils
 from apollo.agent.models import AgentOperation
-from tests.sample_proxy_client import SampleProxyClient
+from sample_proxy_client import SampleProxyClient
 
 
 class AgentCommandsTests(TestCase):
@@ -15,6 +16,8 @@ class AgentCommandsTests(TestCase):
     def test_single_call_wrapper_method(self):
         result = Agent._execute(
             self._client,
+            LoggingUtils(),
+            "test",
             AgentOperation.from_dict(
                 {
                     "operation_name": "test",
@@ -36,6 +39,8 @@ class AgentCommandsTests(TestCase):
 
         result = Agent._execute(
             self._client,
+            LoggingUtils(),
+            "test",
             AgentOperation.from_dict(
                 {
                     "operation_name": "test",
@@ -62,6 +67,8 @@ class AgentCommandsTests(TestCase):
         # _cursor.cursor_fetch_results()
         result = Agent._execute(
             self._client,
+            LoggingUtils(),
+            "test",
             AgentOperation.from_dict(
                 {
                     "operation_name": "test",
@@ -93,6 +100,8 @@ class AgentCommandsTests(TestCase):
         # _cursor.cursor_execute_query(query).cursor_fetch_results()
         result = Agent._execute(
             self._client,
+            LoggingUtils(),
+            "test",
             AgentOperation.from_dict(
                 {
                     "operation_name": "test",

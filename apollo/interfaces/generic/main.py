@@ -7,6 +7,7 @@ from flask import Flask, request, Response, send_file
 
 from apollo.agent.agent import Agent
 from apollo.agent.constants import TRACE_ID_HEADER
+from apollo.agent.env_vars import DEBUG_ENV_VAR
 from apollo.agent.logging_utils import LoggingUtils
 from apollo.interfaces.agent_response import AgentResponse
 
@@ -37,7 +38,7 @@ def _get_flask_response(
     return response.result, response.status_code, _get_response_headers(response)
 
 
-@app.route("/api/v1/agent/execute/<connection_type>/<operation_name>", methods=["POST"])
+@app.route("/api/v1/agent/execute/<connection_type>/<operation_name>", methods=["POST"])  # type: ignore
 def agent_execute(
     connection_type: str, operation_name: str
 ) -> Union[Response, Tuple[Dict, int, Optional[Dict]]]:
@@ -52,7 +53,7 @@ def agent_execute(
         response. If there was an error executing the operation a dictionary containing: __error__ and __stack_trace__
         will be returned, see :class:`AgentUtils` for more information.
     """
-    json_request = request.json
+    json_request: Dict = request.json  # type: ignore
     credentials = json_request.get("credentials", {})
     operation = json_request.get("operation")
 
@@ -68,7 +69,7 @@ def test_health() -> Tuple[Dict, int]:
     Endpoint that returns health information about the agent, can be used as a "ping" endpoint.
     :return: health information about this agent, includes version number and information about the platform
     """
-    request_dict = request.json if request.method == "POST" else request.args
+    request_dict: Dict = request.json if request.method == "POST" else request.args  # type: ignore
     trace_id = request_dict.get("trace_id")
     return agent.health_information(trace_id).to_dict(), 200
 
@@ -100,7 +101,7 @@ def test_network_telnet() -> Tuple[Dict, int]:
 
 
 def _execute_network_validation(method: Callable) -> Tuple[Dict, int]:
-    request_dict = request.json if request.method == "POST" else request.args
+    request_dict: Dict = request.json if request.method == "POST" else request.args  # type: ignore
 
     response = method(
         host=request_dict.get("host"),
@@ -112,6 +113,6 @@ def _execute_network_validation(method: Callable) -> Tuple[Dict, int]:
 
 
 if __name__ == "__main__":
-    is_debug = os.getenv("MCD_DEBUG", "false").lower() == "true"
+    is_debug = os.getenv(DEBUG_ENV_VAR, "false").lower() == "true"
     logging.basicConfig(level=logging.DEBUG if is_debug else logging.INFO)
     app.run(host="0.0.0.0", port=8081, debug=is_debug)

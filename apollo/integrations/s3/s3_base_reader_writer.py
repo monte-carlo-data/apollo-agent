@@ -25,33 +25,33 @@ _ACL_GRANTEE_URI_AUTH_USERS = (
 _ACL_GRANTEE_PUBLIC_GROUPS = [_ACL_GRANTEE_URI_ALL_USERS, _ACL_GRANTEE_URI_AUTH_USERS]
 
 
-@dataclass_json(letter_case=LetterCase.PASCAL)
+@dataclass_json(letter_case=LetterCase.PASCAL)  # type: ignore
 @dataclass
 class S3PublicAccessBlockConfiguration(DataClassJsonMixin):
     ignore_public_acls: bool
     restrict_public_buckets: bool
 
 
-@dataclass_json(letter_case=LetterCase.PASCAL)
+@dataclass_json(letter_case=LetterCase.PASCAL)  # type: ignore
 @dataclass
 class S3PolicyStatus(DataClassJsonMixin):
     is_public: bool
 
 
-@dataclass_json(letter_case=LetterCase.PASCAL)
+@dataclass_json(letter_case=LetterCase.PASCAL)  # type: ignore
 @dataclass
 class S3AclGrantee(DataClassJsonMixin):
     type: str
     uri: Optional[str] = field(metadata=config(field_name="URI"), default=None)
 
 
-@dataclass_json(letter_case=LetterCase.PASCAL)
+@dataclass_json(letter_case=LetterCase.PASCAL)  # type: ignore
 @dataclass
 class S3AclGrant(DataClassJsonMixin):
     grantee: S3AclGrantee
 
 
-@dataclass_json(letter_case=LetterCase.PASCAL)
+@dataclass_json(letter_case=LetterCase.PASCAL)  # type: ignore
 @dataclass
 class S3Acls(DataClassJsonMixin):
     grants: Optional[List[S3AclGrant]] = None
@@ -72,18 +72,32 @@ class S3BaseReaderWriter(BaseStorageClient):
     @property
     @abstractmethod
     def s3_client(self):
+        """
+        Needs to be implemented by subclasses to provide a client for S3, for example: `boto3.client("s3")`
+        """
         raise NotImplementedError()
 
     @property
     @abstractmethod
     def s3_resource(self):
+        """
+        Needs to be implemented by subclasses to provide a client for S3, for example: `boto3.resource("s3")`
+        """
         raise NotImplementedError()
 
     @property
     def bucket_name(self) -> str:
+        """
+        Returns the bucket name referenced by this client
+        """
         return self._bucket_name
 
-    def write(self, key: str, obj_to_write) -> None:
+    def write(self, key: str, obj_to_write: Union[bytes, str]) -> None:
+        """
+        Writes a file in the given key, contents are included as bytes or string.
+        :param key: path to the file, for example /dir/name.ext
+        :param obj_to_write: contents for the file, specified as a bytes array or string
+        """
         try:
             self.s3_client.put_object(
                 Bucket=self._bucket_name,
@@ -107,7 +121,10 @@ class S3BaseReaderWriter(BaseStorageClient):
         format (currently only GZIP is supported). If the file is not compressed, return the
         content.
 
-        Return a bytes object, unless encoding is set, in which case it returns a string.
+        :param key: path to the file, for example /dir/name.ext
+        :param decompress: flag indicating if `gzip` contents should be decompressed automatically
+        :param encoding: if set binary content will be decoded using this encoding and a string will be returned
+        :return: a bytes object, unless encoding is set, in which case it returns a string.
         """
         try:
             retrieved_obj = self.s3_client.get_object(Bucket=self._bucket_name, Key=key)
@@ -123,6 +140,12 @@ class S3BaseReaderWriter(BaseStorageClient):
             raise self.GenericError(str(e)) from e
 
     def read_many_json(self, prefix: str) -> Dict:
+        """
+        Reads all JSON files under `prefix` and returns a dictionary where the key is the file path and the value
+        is the dictionary loaded from the JSON file.
+        :param prefix: Prefix for the files to load, for example: `/dir/`
+        :return: a dictionary where the key is the file path and the value is the dictionary loaded from the JSON file.
+        """
         temp_dict = {}
         for config_file_obj in self.s3_client.list_objects(self._bucket_name).filter(
             Prefix=prefix
@@ -131,16 +154,30 @@ class S3BaseReaderWriter(BaseStorageClient):
         return temp_dict
 
     def download_file(self, key: str, download_path: str) -> None:
+        """
+        Downloads the file at `key` to the local file indicated by `download_path`.
+        :param key: path to the file, for example /dir/name.ext
+        :param download_path: local path to the file where the contents of `key` will be stored.
+        """
         self.s3_resource.meta.client.download_file(
             self._bucket_name, key, download_path
         )
 
     def managed_download(self, key: str, download_path: str):
-        # performs a managed transfer that might be multipart
+        """
+        Performs a managed transfer that might be multipart, downloads the file at `key` to the local file at
+        `download_path`.
+        :param key: path to the file, for example /dir/name.ext
+        :param download_path: local path to the file where the contents of `key` will be stored.
+        """
         with open(download_path, "wb") as data:
             self.s3_client.download_fileobj(self._bucket_name, key, data)
 
     def delete(self, key: str) -> None:
+        """
+        Deletes the file at `key`
+        :param key: path to the file, for example /dir/name.ext
+        """
         try:
             self.s3_client.delete_object(Bucket=self._bucket_name, Key=key)
         except ClientError as e:
@@ -154,10 +191,25 @@ class S3BaseReaderWriter(BaseStorageClient):
         batch_size: Optional[int] = None,
         continuation_token: Optional[str] = None,
         delimiter: Optional[str] = None,
-        *args,
-        **kwargs,
+        *args,  # type: ignore
+        **kwargs,  # type: ignore
     ) -> Tuple[Union[List, None], Union[str, None]]:
-        params_dict = {"Bucket": self._bucket_name}
+        """
+        List objects (files and folder) under the specified prefix.
+        Delimiter is set to "/" to return sub-folders, documentation about delimiter in S3 requests available here:
+        https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListObjectsV2.html#API_ListObjectsV2_RequestSyntax
+        Prefix can be used to return contents of folders.
+        :param prefix: Prefix to use for listing, it can be used to list folders, for example: `prefix=/dir/`
+        :param batch_size: Used to page the result
+        :param continuation_token: Used to page the result, the second value in the resulting tuple is the continuation
+            token for the next call.
+        :param delimiter: Set to "/" to return sub-folders, when set the result will include the list of prefixes
+            returned by S3 instead of metadata for the objects.
+        :return: A tuple with the result list and the continuation token. The result list includes the following
+            attributes (when no delimiter is set): ETag, Key, Size, LastModified, StorageClass. If delimiter is
+            specified only Prefix is included in the result for each listed folder.
+        """
+        params_dict: Dict[str, Any] = {"Bucket": self._bucket_name}
         if prefix:
             params_dict["Prefix"] = prefix
         if delimiter:
@@ -169,8 +221,8 @@ class S3BaseReaderWriter(BaseStorageClient):
 
         try:
             objects_dict = self.s3_client.list_objects_v2(**params_dict)
-            # specifying a deliminator results in a common prefix collection rather than any
-            # contents but, can be utilized to roll up "subfolders"
+            # specifying a delimiter results in a common prefix collection rather than any
+            # contents but, can be utilized to roll up "sub-folders"
             return (
                 objects_dict.get("CommonPrefixes")
                 if delimiter
@@ -181,6 +233,12 @@ class S3BaseReaderWriter(BaseStorageClient):
             raise self.GenericError(str(e)) from e
 
     def generate_presigned_url(self, key: str, expiration: timedelta) -> str:
+        """
+        Generates a pre-signed url for the given file with the specified expiration.
+        :param key: path to the file, for example /dir/name.ext
+        :param expiration: time for the generated link to expire, expressed as a timedelta object.
+        :return: a pre-signed url to access the specified file.
+        """
         try:
             return self.s3_client.generate_presigned_url(
                 "get_object",
@@ -220,6 +278,7 @@ class S3BaseReaderWriter(BaseStorageClient):
            settings.
 
         See: https://docs.aws.amazon.com/cli/latest/reference/s3api/get-public-access-block.html
+        :return: True if public access is disabled for the bucket and False if the bucket is publicly available.
         """
 
         public_access_block = self._get_public_access_block()
