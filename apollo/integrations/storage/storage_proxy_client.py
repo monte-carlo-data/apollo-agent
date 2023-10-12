@@ -119,3 +119,15 @@ class StorageProxyClient(BaseProxyClient):
         return self._client.generate_presigned_url(
             key=key, expiration=timedelta(seconds=expiration)
         )
+
+    def should_log_exception(self, ex: Exception) -> bool:
+        """
+        Don't log NotFound exceptions to reduce the number of error logs, dc-core checks if an idempotent
+        request is present for every single request, and it always fails the first time.
+        :param ex: the exception occurred.
+        :return: False if the exception is a NotFound error, True otherwise.
+        """
+        if isinstance(ex, BaseStorageClient.NotFoundError):
+            return False
+        else:
+            return super().should_log_exception(ex)
