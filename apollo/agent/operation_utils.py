@@ -10,7 +10,7 @@ class OperationUtils:
     def __init__(self, context: Dict):
         self._context = context
 
-    def build_dict(self, **kwargs) -> Dict:
+    def build_dict(self, **kwargs) -> Dict:  # type: ignore
         """
         Utility method used by clients to create a dictionary, usually with the result of multiple calls.
         For example, database cursor uses this to return results along description (schema information) and row count.

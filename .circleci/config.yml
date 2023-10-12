@@ -76,11 +76,16 @@ jobs:
       - run:
           name: Install dependencies
           command: |
+            python -m venv .venv
+            . .venv/bin/activate
             pip install --no-cache-dir --upgrade pip
-            pip install --no-cache-dir -r requirements.txt -r requirements-dev.txt
+            pip install --no-cache-dir -r requirements.txt -r requirements-dev.txt -r requirements-cloudrun.txt
       - run:
-          name: 'Run linter'
-          command: python -m black --check .
+          name: 'Run black / pyright'
+          command: |
+            . .venv/bin/activate
+            black --check .
+            pyright
 
   run-test-docker:
     machine:

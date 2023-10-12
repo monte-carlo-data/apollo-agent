@@ -73,7 +73,7 @@ class ValidateNetwork:
 
     @staticmethod
     def _call_validation_method(
-        method: Callable, trace_id: Optional[str], **kwargs
+        method: Callable, trace_id: Optional[str], **kwargs  # type: ignore
     ) -> AgentResponse:
         """
         Internal method to call one of the network validation methods: `internal_validate_tcp_connection` or

@@ -48,7 +48,7 @@ class StorageProxyClient(BaseProxyClient):
     running in CloudRun and can be set with `gcloud` CLI or API in other cases.
     """
 
-    def __init__(self, platform: str, **kwargs):
+    def __init__(self, platform: str, **kwargs):  # type: ignore
         storage: Optional[str] = os.getenv(STORAGE_TYPE_ENV_VAR)
         if not storage:
             storage = _DEFAULT_PLATFORM_STORAGE.get(platform)
@@ -99,7 +99,7 @@ class StorageProxyClient(BaseProxyClient):
         self._client.managed_download(key, path)
         return AgentUtils.open_file(path)
 
-    def list_objects(self, *args, **kwargs):
+    def list_objects(self, *args, **kwargs):  # type: ignore
         """
         Returns the list of objects and the continuation token, the tuple (list, token) returned by the storage
         client is converted to a dictionary with keys "list" and "page_token" so it can be serialized back

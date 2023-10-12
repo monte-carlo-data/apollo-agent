@@ -1,6 +1,6 @@
 import base64
 import logging
-from typing import Any, Callable, Optional, Dict, List, Iterable
+from typing import Any, Callable, Optional, Dict, List, Iterable, cast
 
 from apollo.agent.logging_utils import LoggingUtils
 from apollo.agent.models import (
@@ -47,7 +47,7 @@ class AgentEvaluationUtils:
         :param trace_id: trace id of the operation being executed, for logging purposes only.
         :return: the result of the last command in the list.
         """
-        client: BaseProxyClient = context.get(CONTEXT_VAR_CLIENT)
+        client: BaseProxyClient = cast(BaseProxyClient, context.get(CONTEXT_VAR_CLIENT))
         try:
             last_result: Optional[Any] = None
             for command in commands:
@@ -183,7 +183,7 @@ class AgentEvaluationUtils:
                     AgentCommand.from_dict(value), context
                 )
             elif value.get(ATTRIBUTE_NAME_TYPE) == ATTRIBUTE_VALUE_TYPE_BYTES:
-                return base64.b64decode(value.get(ATTRIBUTE_NAME_DATA))
+                return base64.b64decode(value.get(ATTRIBUTE_NAME_DATA))  # type: ignore
         return value
 
     @staticmethod

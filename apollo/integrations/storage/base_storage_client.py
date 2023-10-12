@@ -31,7 +31,7 @@ class BaseStorageClient(ABC):
         pass
 
     @abstractmethod
-    def write(self, key: str, obj_to_write) -> None:
+    def write(self, key: str, obj_to_write: Union[bytes, str]) -> None:
         """
         Writes a file in the given key, contents are included as bytes or string.
         :param key: path to the file, for example /dir/name.ext
@@ -79,7 +79,7 @@ class BaseStorageClient(ABC):
         :return: a Dictionary loaded from the JSON document.
         """
         data = self.read(key)
-        return json.loads(data.decode("utf-8"))
+        return json.loads(data.decode("utf-8") if isinstance(data, bytes) else data)
 
     @abstractmethod
     def read_many_json(self, prefix: str) -> Dict:
@@ -108,8 +108,8 @@ class BaseStorageClient(ABC):
         batch_size: Optional[int] = None,
         continuation_token: Optional[str] = None,
         delimiter: Optional[str] = None,
-        *args,
-        **kwargs,
+        *args,  # type: ignore
+        **kwargs,  # type: ignore
     ) -> Tuple[Union[List, None], Union[str, None]]:
         """
         List objects (files and folder) under the specified prefix.

@@ -21,7 +21,7 @@ class BqProxyClient(BaseProxyClient):
     CloudRun service), in a local dev environment `gcloud` CLI can be used to set ADC.
     """
 
-    def __init__(self, credentials: Optional[Dict], **kwargs):
+    def __init__(self, credentials: Optional[Dict], **kwargs):  # type: ignore
         bq_credentials: Optional[Credentials] = None
         if credentials:
             bq_credentials = Credentials.from_service_account_info(credentials)

@@ -145,7 +145,7 @@ class Agent:
 
     @staticmethod
     def _env_dictionary() -> Dict:
-        env = {
+        env: Dict[str, Optional[str]] = {
             "sys_version": sys.version,
         }
         env.update(
@@ -222,7 +222,7 @@ class Agent:
         operation_name: str,
         operation: AgentOperation,
     ) -> Optional[Any]:
-        context = {
+        context: Dict[str, Any] = {
             CONTEXT_VAR_CLIENT: client,
         }
         context[CONTEXT_VAR_UTILS] = OperationUtils(context)

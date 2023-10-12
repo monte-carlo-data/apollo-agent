@@ -37,7 +37,7 @@ class HttpProxyClient(BaseProxyClient):
     It supports simple no-retry requests and requests with retries for a subset of status codes.
     """
 
-    def __init__(self, credentials: Optional[Dict], **kwargs):
+    def __init__(self, credentials: Optional[Dict], **kwargs):  # type: ignore
         self._credentials = credentials
 
     @property
@@ -146,9 +146,9 @@ class HttpProxyClient(BaseProxyClient):
                 "retry_status_code_ranges": retry_status_code_ranges,
             },
             exceptions=HttpRetryableError,
-            **retry_params,
+            **retry_params,  # type: ignore
         )
 
     @staticmethod
-    def _is_retry_status_code(ranges: List[Tuple], status_code) -> bool:
+    def _is_retry_status_code(ranges: List[Tuple], status_code: int) -> bool:
         return any(r for r in ranges if r[0] <= status_code < r[1])

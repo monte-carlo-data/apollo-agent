@@ -64,12 +64,12 @@ class AgentUtils:
         )
         if prefix:
             error = f"{prefix} {error}"
-        stack_trace = traceback.format_tb(last_value.__traceback__)
+        stack_trace = traceback.format_tb(last_value.__traceback__)  # type: ignore
         return cls._response_for_error(
             error,
             exception_message=exception_message,
             stack_trace=stack_trace,
-            error_type=cls._get_error_type(last_value, client),
+            error_type=cls._get_error_type(last_value, client),  # type: ignore
         )
 
     @staticmethod
@@ -109,7 +109,7 @@ class AgentUtils:
         stack_trace: Optional[List] = None,
         error_type: Optional[str] = None,
     ) -> Dict:
-        response = {
+        response: Dict[str, Any] = {
             ATTRIBUTE_NAME_ERROR: message,
         }
         if exception_message:

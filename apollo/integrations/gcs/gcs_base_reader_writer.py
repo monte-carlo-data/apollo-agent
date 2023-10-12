@@ -1,7 +1,7 @@
 import gzip
 from datetime import timedelta
 from functools import wraps
-from typing import List, Dict, Optional, Union, Tuple
+from typing import List, Dict, Optional, Union, Tuple, Callable, Any
 
 from google.api_core.exceptions import (
     ClientError,
@@ -21,20 +21,20 @@ from apollo.integrations.storage.base_storage_client import BaseStorageClient
 
 def _extract_error_message(error: ClientError) -> str:
     try:
-        payload = error.response.json()
+        payload = error.response.json()  # type: ignore
     except ValueError:
-        payload = {"error": {"message": error.response.text or "unknown error"}}
+        payload = {"error": {"message": error.response.text or "unknown error"}}  # type: ignore
 
     return payload.get("error", {}).get("message", "unknown error")
 
 
-def convert_gcs_errors(func):
+def convert_gcs_errors(func: Callable):
     """
     Decorator used to convert GCS specific errors into BaseStorageClient errors
     """
 
     @wraps(func)
-    def _impl(*args, **kwargs):
+    def _impl(*args, **kwargs):  # type: ignore
         try:
             return func(*args, **kwargs)
         except NotFound as e:
@@ -58,7 +58,7 @@ class GcsBaseReaderWriter(BaseStorageClient):
         self,
         bucket_name: str,
         credentials: Optional[Credentials] = None,
-        **kwargs,
+        **kwargs,  # type: ignore
     ):
         self._bucket_name = bucket_name
         self._using_default_credentials = credentials is None
@@ -155,8 +155,8 @@ class GcsBaseReaderWriter(BaseStorageClient):
         batch_size: Optional[int] = None,
         continuation_token: Optional[str] = None,
         delimiter: Optional[str] = None,
-        *args,
-        **kwargs,
+        *args,  # type: ignore
+        **kwargs,  # type: ignore
     ) -> Tuple[Union[List, None], Union[str, None]]:
         """
         List objects (files and folder) under the specified prefix.
@@ -173,7 +173,7 @@ class GcsBaseReaderWriter(BaseStorageClient):
             attributes (when no delimiter is set): ETag, Key, Size, LastModified, StorageClass. If delimiter is
             specified only Prefix is included in the result for each listed folder.
         """
-        params_dict = {"bucket_or_name": self._bucket_name}
+        params_dict: Dict[str, Any] = {"bucket_or_name": self._bucket_name}
         if prefix:
             params_dict["prefix"] = prefix
         if delimiter:
