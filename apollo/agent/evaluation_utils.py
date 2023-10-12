@@ -52,9 +52,7 @@ class AgentEvaluationUtils:
             last_result: Optional[Any] = None
             for command in commands:
                 last_result = cls._execute_command(command, context)
-            return cls._process_result(
-                last_result, client=context.get(CONTEXT_VAR_CLIENT)
-            )
+            return client.process_result(last_result)
         except Exception as ex:
             should_log = client.should_log_exception(ex)
             log_method = logger.exception if should_log else logger.info
@@ -199,10 +197,3 @@ class AgentEvaluationUtils:
         if var_name not in context:
             raise AgentError(f"{var_name} not found in context")
         return context[var_name]
-
-    @staticmethod
-    def _process_result(value: Any, client: Optional[BaseProxyClient]) -> Any:
-        if client:
-            return client.process_result(value)
-        else:
-            return value
