@@ -29,7 +29,7 @@ class AgentUtils:
     def agent_response_for_last_exception(
         cls,
         prefix: Optional[str] = None,
-        status_code: int = 500,
+        status_code: int = 200,
         trace_id: Optional[str] = None,
         client: Optional[BaseProxyClient] = None,
     ):
