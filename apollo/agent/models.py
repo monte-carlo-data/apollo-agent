@@ -2,10 +2,23 @@ from dataclasses import dataclass, field
 from typing import Optional, Any, List, Dict
 
 from dataclasses_json import dataclass_json, config
-from apollo.agent.utils import exclude_empty_values, exclude_none_values
+
+
+# used so we don't include an empty platform info
+def exclude_empty_values(value: Any) -> bool:
+    return not bool(value)
+
+
+# used so we don't include null values in json objects
+def exclude_none_values(value: Any) -> bool:
+    return value is None
 
 
 class AgentError(Exception):
+    pass
+
+
+class AgentConfigurationError(AgentError):
     pass
 
 

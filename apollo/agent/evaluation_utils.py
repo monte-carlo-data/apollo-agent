@@ -1,6 +1,8 @@
+import base64
 import logging
 from typing import Any, Callable, Optional, Dict, List, Iterable
 
+from apollo.agent.logging_utils import LoggingUtils
 from apollo.agent.models import (
     AgentError,
     AgentCommand,
@@ -10,8 +12,11 @@ from apollo.agent.constants import (
     ATTRIBUTE_NAME_TYPE,
     ATTRIBUTE_VALUE_TYPE_CALL,
     CONTEXT_VAR_CLIENT,
+    ATTRIBUTE_VALUE_TYPE_BYTES,
+    ATTRIBUTE_NAME_DATA,
 )
 from apollo.agent.utils import AgentUtils
+from apollo.integrations.base_proxy_client import BaseProxyClient
 
 logger = logging.getLogger(__name__)
 
@@ -24,27 +29,44 @@ class AgentEvaluationUtils:
     """
 
     @classmethod
-    def execute(cls, context: Dict, commands: List[AgentCommand]) -> Optional[Any]:
+    def execute(
+        cls,
+        context: Dict,
+        logging_utils: LoggingUtils,
+        operation_name: str,
+        commands: List[AgentCommand],
+        trace_id: str,
+    ) -> Optional[Any]:
         """
         Executes a list of commands from an operation, returns the result of the
         last command in the list.
         :param context: the context containing variables to use as targets.
+        :param logging_utils: helper class to create the log payload.
+        :param operation_name: name of the operation being executed, for logging purposes only.
         :param commands: the list of commands to execute.
+        :param trace_id: trace id of the operation being executed, for logging purposes only.
         :return: the result of the last command in the list.
         """
+        client: BaseProxyClient = context.get(CONTEXT_VAR_CLIENT)
         try:
             last_result: Optional[Any] = None
             for command in commands:
                 last_result = cls._execute_command(command, context)
             return last_result
         except Exception as ex:
-            logger.exception(
-                "Exception occurred executing commands",
-                extra={
-                    "commands": commands,
-                },
+            should_log = client.should_log_exception(ex)
+            log_method = logger.exception if should_log else logger.info
+            message = "Exception occurred executing operation"
+            if not should_log:
+                message += f": {ex}"
+            log_method(
+                message,
+                extra=logging_utils.build_extra(
+                    trace_id=trace_id,
+                    operation_name=operation_name,
+                ),
             )
-            return AgentUtils.response_for_last_exception()
+            return AgentUtils.response_for_last_exception(client=client)
 
     @classmethod
     def _execute_command(cls, command: AgentCommand, context: Dict) -> Optional[Any]:
@@ -160,6 +182,8 @@ class AgentEvaluationUtils:
                 return cls._execute_single_command(
                     AgentCommand.from_dict(value), context
                 )
+            elif value.get(ATTRIBUTE_NAME_TYPE) == ATTRIBUTE_VALUE_TYPE_BYTES:
+                return base64.b64decode(value.get(ATTRIBUTE_NAME_DATA))
         return value
 
     @staticmethod

@@ -92,9 +92,7 @@ class ValidateNetwork:
                 message=str(ex), trace_id=trace_id
             )
         except Exception:
-            return AgentUtils.agent_response_for_last_exception(
-                status_code=500, trace_id=trace_id
-            )
+            return AgentUtils.agent_response_for_last_exception(trace_id=trace_id)
 
     @classmethod
     def _internal_validate_tcp_open_connection(

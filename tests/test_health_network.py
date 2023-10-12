@@ -6,6 +6,11 @@ from unittest import TestCase
 from unittest.mock import patch, create_autospec
 
 from apollo.agent.agent import Agent
+from apollo.agent.constants import (
+    ATTRIBUTE_NAME_ERROR,
+    ATTRIBUTE_NAME_TRACE_ID,
+    ATTRIBUTE_NAME_RESULT,
+)
 from apollo.agent.logging_utils import LoggingUtils
 from apollo.validators.validate_network import _DEFAULT_TIMEOUT_SECS
 
@@ -42,21 +47,24 @@ class HealthNetworkTests(TestCase):
             None, None, None, trace_id="1234"
         )
         self.assertEqual(
-            "host and port are required parameters", response.result.get("__error__")
+            "host and port are required parameters",
+            response.result.get(ATTRIBUTE_NAME_ERROR),
         )
-        self.assertEqual("1234", response.result.get("__mcd_trace_id__"))
+        self.assertEqual("1234", response.result.get(ATTRIBUTE_NAME_TRACE_ID))
         response = self._agent.validate_telnet_connection("localhost", None, None)
         self.assertEqual(
-            "host and port are required parameters", response.result.get("__error__")
+            "host and port are required parameters",
+            response.result.get(ATTRIBUTE_NAME_ERROR),
         )
         response = self._agent.validate_telnet_connection("localhost", "text", None)
         self.assertEqual(
-            "Invalid value for port parameter: text", response.result.get("__error__")
+            "Invalid value for port parameter: text",
+            response.result.get(ATTRIBUTE_NAME_ERROR),
         )
         response = self._agent.validate_telnet_connection("localhost", "123", "text")
         self.assertEqual(
             "Invalid value for timeout parameter: text",
-            response.result.get("__error__"),
+            response.result.get(ATTRIBUTE_NAME_ERROR),
         )
 
     @patch("socket.socket")
@@ -66,11 +74,11 @@ class HealthNetworkTests(TestCase):
         response = self._agent.validate_tcp_open_connection(
             "localhost", "123", None, trace_id="1234"
         )
-        self.assertEqual("1234", response.result.get("__mcd_trace_id__"))
-        self.assertIsNone(response.result.get("__error__"))
+        self.assertEqual("1234", response.result.get(ATTRIBUTE_NAME_TRACE_ID))
+        self.assertIsNone(response.result.get(ATTRIBUTE_NAME_ERROR))
         self.assertEqual(
             "Port 123 is open on localhost",
-            response.result.get("message"),
+            response.result.get(ATTRIBUTE_NAME_RESULT).get("message"),
         )
 
     @patch("socket.socket")
@@ -79,17 +87,18 @@ class HealthNetworkTests(TestCase):
         mock_socket.connect_ex.return_value = 1
         response = self._agent.validate_tcp_open_connection("localhost", "123", None)
         self.assertEqual(
-            "Port 123 is closed on localhost.", response.result.get("__error__")
+            "Port 123 is closed on localhost.",
+            response.result.get(ATTRIBUTE_NAME_ERROR),
         )
 
     @patch("apollo.validators.validate_network.Telnet")
     def test_telnet_success(self, mock_telnet):
         response = self._agent.validate_telnet_connection("localhost", "123", None)
         print(response)
-        self.assertIsNone(response.result.get("__error__"))
+        self.assertIsNone(response.result.get(ATTRIBUTE_NAME_ERROR))
         self.assertEqual(
             "Telnet connection for localhost:123 is usable.",
-            response.result.get("message"),
+            response.result.get(ATTRIBUTE_NAME_RESULT).get("message"),
         )
 
     @patch("apollo.validators.validate_network.Telnet")
@@ -100,7 +109,7 @@ class HealthNetworkTests(TestCase):
         mock_telnet.assert_called_with("localhost", 123, 11)
         self.assertEqual(
             "Socket timeout for localhost:123. Connection unusable.",
-            response.result.get("__error__"),
+            response.result.get(ATTRIBUTE_NAME_ERROR),
         )
 
     @patch("apollo.validators.validate_network.Telnet")
@@ -113,5 +122,5 @@ class HealthNetworkTests(TestCase):
         mock_telnet.assert_called_with("localhost", 123, _DEFAULT_TIMEOUT_SECS)
         self.assertEqual(
             "Telnet connection for localhost:123 is unusable.",
-            response.result.get("__error__"),
+            response.result.get(ATTRIBUTE_NAME_ERROR),
         )

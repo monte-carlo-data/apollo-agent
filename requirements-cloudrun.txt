@@ -48,22 +48,18 @@ grpc-google-iam-v1==0.12.6
     # via google-cloud-logging
 grpcio==1.57.0
     # via
-    #   -c requirements.txt
     #   google-api-core
     #   googleapis-common-protos
     #   grpc-google-iam-v1
     #   grpcio-status
 grpcio-status==1.57.0
-    # via
-    #   -c requirements.txt
-    #   google-api-core
+    # via google-api-core
 idna==3.4
     # via
     #   -c requirements.txt
     #   requests
 proto-plus==1.22.3
     # via
-    #   -c requirements.txt
     #   google-cloud-appengine-logging
     #   google-cloud-logging
 protobuf==4.24.2
