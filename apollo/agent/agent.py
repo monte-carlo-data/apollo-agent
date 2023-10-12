@@ -212,14 +212,25 @@ class Agent:
                 client.log_payload(operation),
             ),
         )
-        result = self._execute(client, operation)
+        result = self._execute(client, self._logging_utils, operation_name, operation)
         return AgentResponse(result or {}, 200, operation.trace_id)
 
     @staticmethod
-    def _execute(client: BaseProxyClient, operation: AgentOperation) -> Optional[Any]:
+    def _execute(
+        client: BaseProxyClient,
+        logging_utils: LoggingUtils,
+        operation_name: str,
+        operation: AgentOperation,
+    ) -> Optional[Any]:
         context = {
             CONTEXT_VAR_CLIENT: client,
         }
         context[CONTEXT_VAR_UTILS] = OperationUtils(context)
 
-        return AgentEvaluationUtils.execute(context, operation.commands)
+        return AgentEvaluationUtils.execute(
+            context,
+            logging_utils,
+            operation_name,
+            operation.commands,
+            operation.trace_id,
+        )
