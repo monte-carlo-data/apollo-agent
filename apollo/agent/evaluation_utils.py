@@ -2,6 +2,7 @@ import base64
 import logging
 from typing import Any, Callable, Optional, Dict, List, Iterable
 
+from apollo.agent.logging_utils import LoggingUtils
 from apollo.agent.models import (
     AgentError,
     AgentCommand,
@@ -28,12 +29,22 @@ class AgentEvaluationUtils:
     """
 
     @classmethod
-    def execute(cls, context: Dict, commands: List[AgentCommand]) -> Optional[Any]:
+    def execute(
+        cls,
+        context: Dict,
+        logging_utils: LoggingUtils,
+        operation_name: str,
+        commands: List[AgentCommand],
+        trace_id: str,
+    ) -> Optional[Any]:
         """
         Executes a list of commands from an operation, returns the result of the
         last command in the list.
         :param context: the context containing variables to use as targets.
+        :param logging_utils: helper class to create the log payload.
+        :param operation_name: name of the operation being executed, for logging purposes only.
         :param commands: the list of commands to execute.
+        :param trace_id: trace id of the operation being executed, for logging purposes only.
         :return: the result of the last command in the list.
         """
         try:
@@ -46,9 +57,10 @@ class AgentEvaluationUtils:
         except Exception as ex:
             logger.exception(
                 "Exception occurred executing commands",
-                extra={
-                    "commands": commands,
-                },
+                extra=logging_utils.build_extra(
+                    trace_id=trace_id,
+                    operation_name=operation_name,
+                ),
             )
             return AgentUtils.response_for_last_exception(
                 client=context.get(CONTEXT_VAR_CLIENT)
