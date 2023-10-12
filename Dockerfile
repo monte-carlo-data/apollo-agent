@@ -46,7 +46,6 @@ FROM public.ecr.aws/lambda/python:3.11 AS lambda
 # VULN-29: Base ECR image has setuptools-56.0.0 which is vulnerable (CVE-2022-40897)
 RUN pip install --no-cache-dir setuptools==68.0.0
 
-# install python lambdas
 COPY requirements.txt ./
 COPY requirements-lambda.txt ./
 RUN pip install --no-cache-dir --target "${LAMBDA_TASK_ROOT}" -r requirements.txt -r requirements-lambda.txt
