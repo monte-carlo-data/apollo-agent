@@ -59,6 +59,10 @@ class LookerProxyClient(BaseProxyClient):
             self._client = init40(self._temp_file_path)
 
     def login(self, transport_options: Optional[Dict]):
+        """
+        Perform login using the connection to Looker, this is used only by validators, there's no need to call
+        `login` before other operations like `all_dashboards`.
+        """
         self._client.login(
             client_id=self._client_id,
             client_secret=self._client_secret,
@@ -101,6 +105,13 @@ class LookerProxyClient(BaseProxyClient):
         return result
 
     def process_result(self, value: Any) -> Any:
+        """
+        Process the result of the methods on this client before being serialized to JSON.
+        As all Looker API objects use `attrs` framework, we're using `attrs.asdict` to convert them
+        to dictionaries, we still need to process enums that are not converted automatically to string.
+        We use `_filter_result` to filter out objects we don't want to send back, mainly because they are not
+        serializable to JSON.
+        """
         if isinstance(value, Sequence):
             return [self.process_result(e) for e in value]
         elif value is not None and attr.has(type(value)):
@@ -114,6 +125,10 @@ class LookerProxyClient(BaseProxyClient):
 
     @staticmethod
     def _filter_result(attribute: attr.Attribute, value: Any):
+        """
+        Used to filter out some objects we don't want to include in the response, for example
+        `user_attribute_filter_types` and all enums, except Category that is needed client side.
+        """
         if attribute.name == "user_attribute_filter_types":
             return False
         elif isinstance(value, Enum) and not isinstance(value, Category):
@@ -122,6 +137,12 @@ class LookerProxyClient(BaseProxyClient):
 
     @staticmethod
     def _serialize_value(instance: Any, field: Any, value: Any):
+        """
+        Implements the serialization for `attrs.asdict`, it serializes Category enums and datetime objects in the
+        format expected client side.
+        For special types we send a dictionary with a "__type__" attribute indicating the "special" type and
+        __data__ containing the serialized value.
+        """
         if isinstance(value, Category):
             return {
                 ATTRIBUTE_NAME_TYPE: ATTRIBUTE_VALUE_TYPE_LOOKER_CATEGORY,
@@ -136,6 +157,12 @@ class LookerProxyClient(BaseProxyClient):
 
     @staticmethod
     def _as_dict_with_fields(values: Sequence, fields: str) -> List:
+        """
+        Optimization method that includes only some attributes when serializing Looker objects to dictionaries.
+        Used by `all_dashboards` and `all_looks` to return only the `id` attribute (or any other requested attribute),
+        by default even when we request only `id` all the other attributes are serialized back with `null` value,
+        so we do this to reduce the size of the response.
+        """
         field_list = [f.strip() for f in fields.split(",")]
 
         def field_filter(attribute: attr.Attribute, value: Any) -> bool:
