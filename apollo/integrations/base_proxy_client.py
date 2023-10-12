@@ -35,3 +35,12 @@ class BaseProxyClient(ABC):
         into dictionaries
         """
         return value
+
+    def should_log_exception(self, ex: Exception) -> bool:
+        """
+        It can be used to prevent logging an error for certain exceptions, for example storage client is not logging
+        not found errors. By default, all exceptions are logged.
+        :param ex: the exception occurred.
+        :return: True if the exception should be logged, False otherwise. By default, True is returned.
+        """
+        return True

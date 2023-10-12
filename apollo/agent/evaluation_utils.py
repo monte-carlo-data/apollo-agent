@@ -1,6 +1,6 @@
 import base64
 import logging
-from typing import Any, Callable, Optional, Dict, List, Iterable
+from typing import Any, Callable, Optional, Dict, List, Iterable, cast
 
 from apollo.agent.logging_utils import LoggingUtils
 from apollo.agent.models import (
@@ -47,6 +47,7 @@ class AgentEvaluationUtils:
         :param trace_id: trace id of the operation being executed, for logging purposes only.
         :return: the result of the last command in the list.
         """
+        client: BaseProxyClient = cast(BaseProxyClient, context.get(CONTEXT_VAR_CLIENT))
         try:
             last_result: Optional[Any] = None
             for command in commands:
@@ -55,16 +56,19 @@ class AgentEvaluationUtils:
                 last_result, client=context.get(CONTEXT_VAR_CLIENT)
             )
         except Exception as ex:
-            logger.exception(
-                "Exception occurred executing commands",
+            should_log = client.should_log_exception(ex)
+            log_method = logger.exception if should_log else logger.info
+            message = "Exception occurred executing operation"
+            if not should_log:
+                message += f": {ex}"
+            log_method(
+                message,
                 extra=logging_utils.build_extra(
                     trace_id=trace_id,
                     operation_name=operation_name,
                 ),
             )
-            return AgentUtils.response_for_last_exception(
-                client=context.get(CONTEXT_VAR_CLIENT)
-            )
+            return AgentUtils.response_for_last_exception(client=client)
 
     @classmethod
     def _execute_command(cls, command: AgentCommand, context: Dict) -> Optional[Any]:
