@@ -3,7 +3,7 @@ import os
 import sys
 from typing import Any, Dict, Optional
 
-from apollo.agent.env_vars import HEALTH_ENV_VARS
+from apollo.agent.env_vars import HEALTH_ENV_VARS, IS_REMOTE_UPGRADABLE_ENV_VAR
 from apollo.agent.evaluation_utils import AgentEvaluationUtils
 from apollo.agent.logging_utils import LoggingUtils
 from apollo.agent.constants import (
@@ -12,9 +12,14 @@ from apollo.agent.constants import (
     PLATFORM_GENERIC,
 )
 from apollo.agent.operation_utils import OperationUtils
-from apollo.agent.models import AgentOperation, AgentHealthInformation
+from apollo.agent.models import (
+    AgentOperation,
+    AgentHealthInformation,
+    AgentConfigurationError,
+)
 from apollo.agent.proxy_client_factory import ProxyClientFactory
 from apollo.agent.settings import VERSION, BUILD_NUMBER
+from apollo.agent.updater import AgentUpdater
 from apollo.agent.utils import AgentUtils
 from apollo.integrations.base_proxy_client import BaseProxyClient
 from apollo.interfaces.agent_response import AgentResponse
@@ -28,6 +33,7 @@ class Agent:
         self._logging_utils = logging_utils
         self._platform = PLATFORM_GENERIC
         self._platform_info = {}
+        self._updater: Optional[AgentUpdater] = None
 
     @property
     def platform(self) -> str:
@@ -51,6 +57,14 @@ class Agent:
     @platform_info.setter
     def platform_info(self, platform_info: Optional[Dict]):
         self._platform_info = platform_info
+
+    @property
+    def updater(self) -> Optional[AgentUpdater]:
+        return self._updater
+
+    @updater.setter
+    def updater(self, updater: Optional[AgentUpdater]):
+        self._updater = updater
 
     def health_information(self, trace_id: Optional[str]) -> AgentHealthInformation:
         """
@@ -142,6 +156,57 @@ class Agent:
         return ValidateNetwork.validate_telnet_connection(
             host, port_str, timeout_str, trace_id
         )
+
+    def update(
+        self,
+        trace_id: Optional[str],
+        timeout_seconds: Optional[int],
+        **kwargs,  # type: ignore
+    ) -> AgentResponse:
+        try:
+            result = self._perform_update(
+                trace_id=trace_id, timeout_seconds=timeout_seconds, **kwargs
+            )
+            return AgentUtils.agent_ok_response(result, trace_id)
+        except Exception:
+            return AgentUtils.agent_response_for_last_exception("Update failed")
+
+    def _perform_update(
+        self,
+        trace_id: Optional[str],
+        timeout_seconds: Optional[int],
+        **kwargs,  # type: ignore
+    ) -> Dict:
+        if not self._updater:
+            raise AgentConfigurationError("No updater configured")
+
+        upgradable = os.getenv(IS_REMOTE_UPGRADABLE_ENV_VAR, "true").lower() == "true"
+        if not upgradable:
+            raise AgentConfigurationError("Remote upgrades are disabled for this agent")
+
+        log_payload = self._logging_utils.build_extra(
+            trace_id=trace_id,
+            operation_name="update",
+            extra={"timeout": timeout_seconds, **kwargs},
+        )
+        logger.info(
+            "Update requested",
+            extra=log_payload,
+        )
+
+        update_result: Dict
+        try:
+            update_result = self._updater.update(
+                platform_info=self._platform_info,
+                timeout_seconds=timeout_seconds,
+                **kwargs,
+            )
+        except Exception:
+            logger.exception("Update failed", extra=log_payload)
+            raise
+
+        logger.info("Update complete", extra=log_payload)
+        return update_result
 
     @staticmethod
     def _env_dictionary() -> Dict:
