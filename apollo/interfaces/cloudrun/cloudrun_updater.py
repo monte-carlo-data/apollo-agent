@@ -7,7 +7,7 @@ from google.cloud.run_v2 import Service
 from apollo.agent.models import AgentConfigurationError
 from apollo.agent.updater import AgentUpdater
 
-_DEFAULT_TIMEOUT = 120
+_DEFAULT_TIMEOUT = 5 * 60  # 5 minutes
 
 logger = logging.getLogger(__name__)
 
@@ -24,12 +24,28 @@ class CloudRunUpdater(AgentUpdater):
     """
 
     def update(
-        self, platform_info: Optional[Dict], timeout_seconds: Optional[int], **kwargs  # type: ignore
+        self,
+        platform_info: Optional[Dict],
+        image: Optional[str],
+        timeout_seconds: Optional[int],
+        **kwargs,  # type: ignore
     ) -> Dict:
+        """
+        Updates the CloudRun service to the specified image, waits for the operation to complete
+        for `timeout_seconds` (defaults to 5 minutes).
+        CloudRun Admin API is used to get the service object, if image is specified it is set as the
+        `image` attribute in the first container (that is supposed to be the only one).
+        Then `update_service` is used to update the service.
+        :param platform_info: the GCP platform info, loaded when the agent started and used to obtain the service
+            name and region that were loaded from the metadata service.
+        :param image: optional image id, expected format: montecarlodata/repo_name:tag, for example:
+            montecarlodata/agent:1.0.1-cloudrun. If not specified, the service is updated without setting the image
+            attribute, which is usually ignored by GCP.
+        :param timeout_seconds: optional timeout in seconds, default to 5 minutes.
+        """
         if not platform_info:
             raise AgentConfigurationError("Platform info missing for CloudRun agent")
 
-        image = kwargs.get("image")
         service_name = platform_info.get(
             "service_name"
         )  # service name, like 'dev-agent'
@@ -70,12 +86,12 @@ class CloudRunUpdater(AgentUpdater):
         update_operation = client.update_service(update_request)
         update_result = cast(Service, update_operation.result(timeout=timeout_seconds))
         logger.info(
-            f"CloudRun service, update complete, revision: {update_result.latest_ready_revision}"
+            f"CloudRun service, update complete, revision: {update_result.latest_created_revision}"
         )
 
         return {
             "service-name": update_result.name,
-            "revision": update_result.latest_ready_revision,
+            "revision": update_result.latest_created_revision,
         }
 
     @staticmethod

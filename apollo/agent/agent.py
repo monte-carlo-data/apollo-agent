@@ -160,12 +160,23 @@ class Agent:
     def update(
         self,
         trace_id: Optional[str],
+        image: Optional[str],
         timeout_seconds: Optional[int],
         **kwargs,  # type: ignore
     ) -> AgentResponse:
+        """
+        Updates the agent to the specified image, see AgentUpdater for more information about the supported
+        parameters.
+        This method checks if there's an agent updater installed in `agent.updater` property and that
+        the env var `MCD_AGENT_IS_REMOTE_UPGRADABLE` is set to `true`.
+        The returned response is a dictionary returned by the agent updater implementation.
+        """
         try:
             result = self._perform_update(
-                trace_id=trace_id, timeout_seconds=timeout_seconds, **kwargs
+                trace_id=trace_id,
+                image=image,
+                timeout_seconds=timeout_seconds,
+                **kwargs,
             )
             return AgentUtils.agent_ok_response(result, trace_id)
         except Exception:
@@ -174,13 +185,14 @@ class Agent:
     def _perform_update(
         self,
         trace_id: Optional[str],
+        image: Optional[str],
         timeout_seconds: Optional[int],
         **kwargs,  # type: ignore
     ) -> Dict:
         if not self._updater:
             raise AgentConfigurationError("No updater configured")
 
-        upgradable = os.getenv(IS_REMOTE_UPGRADABLE_ENV_VAR, "true").lower() == "true"
+        upgradable = os.getenv(IS_REMOTE_UPGRADABLE_ENV_VAR, "false").lower() == "true"
         if not upgradable:
             raise AgentConfigurationError("Remote upgrades are disabled for this agent")
 
@@ -198,6 +210,7 @@ class Agent:
         try:
             update_result = self._updater.update(
                 platform_info=self._platform_info,
+                image=image,
                 timeout_seconds=timeout_seconds,
                 **kwargs,
             )
