@@ -91,6 +91,12 @@ class StorageProxyClient(BaseProxyClient):
         self._client.download_file(key, path)
         return AgentUtils.open_file(path)
 
+    def upload_file(self, key: str, local_file_path: str):
+        """
+        Uploads the local file at `local_file_path` to `key` in the associated bucket
+        """
+        self._client.upload_file(key, local_file_path)
+
     def managed_download(self, key: str) -> BinaryIO:
         """
         Downloads the file to a temporary file and returns a BinaryIO object with the contents

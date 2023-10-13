@@ -3,6 +3,7 @@ import logging
 import os
 import re
 import shutil
+from dataclasses import dataclass
 from itertools import chain
 from pathlib import Path
 from typing import Dict, List, Generator
@@ -10,6 +11,12 @@ from typing import Dict, List, Generator
 import git
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class GitFileData:
+    name: str
+    content: str
 
 
 class GitCloneClient:
@@ -29,7 +36,9 @@ class GitCloneClient:
             # remove https if it was included for https calls
             self._repo_url = self._repo_url.lstrip("https://")
 
-    def get_files(self, file_extensions: List[str]) -> Generator[Dict, None, None]:
+    def get_files(
+        self, file_extensions: List[str]
+    ) -> Generator[GitFileData, None, None]:
         """Main method, read the content of all files."""
         if self._ssh_key:
             self.write_key()
@@ -62,7 +71,9 @@ class GitCloneClient:
         else:
             self._https_git_clone()
 
-    def read_files(self, file_extensions: List[str]) -> Generator[Dict, None, None]:
+    def read_files(
+        self, file_extensions: List[str]
+    ) -> Generator[GitFileData, None, None]:
         """
         Traverse a directory, selecting only files with the given extensions. It is important for this to return
         a generator to avoid loading the content of all files into memory.
@@ -74,10 +85,9 @@ class GitCloneClient:
                 original_name = str(
                     file.relative_to(self._REPO_DIR)
                 )  # Drop local dir from file name.
-                yield {
-                    "name": original_name,
-                    "content": file.read_text(errors="replace"),
-                }  # Replace encoding errors with "?".
+                yield GitFileData(
+                    original_name, file.read_text(errors="replace")
+                )  # Replace encoding errors with "?".
 
     def _https_git_clone(self):
         """

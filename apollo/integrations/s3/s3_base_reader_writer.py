@@ -163,6 +163,14 @@ class S3BaseReaderWriter(BaseStorageClient):
             self._bucket_name, key, download_path
         )
 
+    def upload_file(self, key: str, local_file_path: str) -> None:
+        """
+        Uploads the file at `local_file_path` to `key` in the associated bucket.
+        :param key: path to the file, for example /dir/name.ext
+        :param local_file_path: local path to the file to upload.
+        """
+        self.s3_client.upload_file(local_file_path, self._bucket_name, key)
+
     def managed_download(self, key: str, download_path: str):
         """
         Performs a managed transfer that might be multipart, downloads the file at `key` to the local file at
