@@ -12,7 +12,7 @@ import git
 logger = logging.getLogger(__name__)
 
 
-class GitCloneClientWrapper:
+class GitCloneClient:
     # Only /tmp is writable in lambda.
     _REPO_DIR = Path("/tmp/repo")
     _KEY_FILE = Path("/tmp/mcd_rsa")
