@@ -29,6 +29,7 @@ class CloudRunUpdater(AgentUpdater):
         if not platform_info:
             raise AgentConfigurationError("Platform info missing for CloudRun agent")
 
+        image = kwargs.get("image")
         service_name = platform_info.get(
             "service_name"
         )  # service name, like 'dev-agent'
@@ -56,6 +57,10 @@ class CloudRunUpdater(AgentUpdater):
         logger.info(
             f"CloudRun service obtained, latest revision={service.latest_ready_revision}"
         )
+
+        if image:
+            logger.info(f"CloudRun service, updating image to: {image}")
+            service.template.containers[0].image = image
 
         logger.info(
             f"CloudRun service, requesting update with timeout={timeout_seconds}"
