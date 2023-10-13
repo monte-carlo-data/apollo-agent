@@ -100,6 +100,25 @@ def test_network_telnet() -> Tuple[Dict, int]:
     return _execute_network_validation(agent.validate_telnet_connection)
 
 
+@app.route("/api/v1/update", methods=["POST"])
+def update_agent() -> Tuple[Dict, int]:
+    """
+    Requests the agent to update itself.
+    Supported parameters:
+    - trace_id
+    - timeout (in seconds)
+    - **kwargs supported by the updater implementation
+    :return: a dictionary from the updater with the result
+    """
+    request_dict: Dict[str, Any] = {**request.json}  # type: ignore
+    trace_id = request_dict.pop("trace_id") if "trace_id" in request_dict else None
+    timeout = request_dict.pop("timeout") if "timeout" in request_dict else None
+
+    response = agent.update(trace_id=trace_id, timeout_seconds=timeout, **request_dict)
+
+    return response.result, response.status_code
+
+
 def _execute_network_validation(method: Callable) -> Tuple[Dict, int]:
     request_dict: Dict = request.json if request.method == "POST" else request.args  # type: ignore
 
