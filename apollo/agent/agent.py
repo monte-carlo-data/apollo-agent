@@ -180,7 +180,7 @@ class Agent:
             )
             return AgentUtils.agent_ok_response(result, trace_id)
         except Exception:
-            return AgentUtils.agent_response_for_last_exception("Update failed")
+            return AgentUtils.agent_response_for_last_exception("Update failed:")
 
     def _perform_update(
         self,
