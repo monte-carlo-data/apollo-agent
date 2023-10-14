@@ -6,6 +6,10 @@ from google.cloud.run_v2 import Service
 
 from apollo.agent.models import AgentConfigurationError
 from apollo.agent.updater import AgentUpdater
+from apollo.interfaces.cloudrun.metadata_service import (
+    GCP_PLATFORM_INFO_KEY_SERVICE_NAME,
+    GCP_PLATFORM_INFO_KEY_REGION,
+)
 
 _DEFAULT_TIMEOUT = 5 * 60  # 5 minutes
 
@@ -47,10 +51,10 @@ class CloudRunUpdater(AgentUpdater):
             raise AgentConfigurationError("Platform info missing for CloudRun agent")
 
         service_name = platform_info.get(
-            "service_name"
+            GCP_PLATFORM_INFO_KEY_SERVICE_NAME
         )  # service name, like 'dev-agent'
         region = platform_info.get(
-            "region"
+            GCP_PLATFORM_INFO_KEY_REGION
         )  # region including project: projects/{project-numeric-id}/regions/{region}
 
         if not service_name or not region:
