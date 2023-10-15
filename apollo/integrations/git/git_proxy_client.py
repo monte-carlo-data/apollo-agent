@@ -1,3 +1,4 @@
+import os
 import uuid
 import zipfile
 from typing import Dict, Optional, List, Generator
@@ -11,7 +12,19 @@ ZIP_FILE_EXPIRATION = 15 * 60  # 15 minutes
 
 
 class GitProxyClient(BaseProxyClient):
+    """
+    Git Clone Proxy Client, clones the requested repo, uploads a zip file with its contents to the associated bucket
+    and returns a pre-signed url to download it.
+    """
+
     def __init__(self, credentials: Optional[Dict], platform: str, **kwargs):  # type: ignore
+        """
+        Credentials are expected to include:
+        - repo_url
+        - ssh_key
+        - username (if ssh_key not specified)
+        - token (if ssh_key not specified)
+        """
         if not credentials:
             raise ValueError("Credentials are required for Git")
         self._platform = platform
@@ -21,14 +34,23 @@ class GitProxyClient(BaseProxyClient):
     def wrapped_client(self):
         return self._client
 
-    def get_files(self, file_extensions: List[str]) -> str:
+    def get_files(self, file_extensions: List[str]) -> Dict:
+        """
+        Clones the repo, filters the files with the given extensions, uploads a zip file to the associated bucket and
+        returns a pre-signed url to download it.
+        :param file_extensions: a list of file extensions to filter the repository contents.
+        :return: a dictionary with two keys: `key` with the path to the file in the bucket and `url` with the
+            pre-signed url to download it.
+        """
         files = self._client.get_files(file_extensions)
         zip_file_path = self._zip_file(files)
         storage_client = StorageProxyClient(self._platform)
 
         key = f"/tmp/{uuid.uuid4()}.zip"
         storage_client.upload_file(key, zip_file_path)
-        return storage_client.generate_presigned_url(key, ZIP_FILE_EXPIRATION)
+        url = storage_client.generate_presigned_url(key, ZIP_FILE_EXPIRATION)
+        os.remove(zip_file_path)
+        return {"key": key, "url": url}
 
     @staticmethod
     def _zip_file(files: Generator[GitFileData, None, None]) -> str:
