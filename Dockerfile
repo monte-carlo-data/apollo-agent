@@ -40,6 +40,7 @@ COPY requirements-cloudrun.txt ./
 RUN . $VENV_DIR/bin/activate && pip install --no-cache-dir -r requirements-cloudrun.txt
 
 RUN apt update
+# install git as we need it for the git clone client
 RUN apt install git -y
 
 CMD . $VENV_DIR/bin/activate && gunicorn --bind :$PORT apollo.interfaces.cloudrun.main:app
