@@ -20,6 +20,11 @@ class GitFileData:
 
 
 class GitCloneClient:
+    """
+    Git client used to clone a repo, both ssh and https protocols are supported.
+    It exposes a method that returns an iterator for all files matching a list of extensions.
+    """
+
     # Only /tmp is writable in lambda.
     _REPO_DIR = Path("/tmp/repo")
     _KEY_FILE = Path("/tmp/mcd_rsa")
@@ -39,7 +44,11 @@ class GitCloneClient:
     def get_files(
         self, file_extensions: List[str]
     ) -> Generator[GitFileData, None, None]:
-        """Main method, read the content of all files."""
+        """
+        Main method, reads the content of all files filtering by the specified extensions.
+        :param file_extensions: list of extensions to filter the returned files by, for example "lkml".
+        :return: a generator that returns GitFileData objects for each file with on of the specified extensions.
+        """
         if self._ssh_key:
             self.write_key()
         self.delete_repo_dir()  # Prepare
@@ -53,7 +62,12 @@ class GitCloneClient:
             logger.info(f"Delete repo dir: {self._REPO_DIR}")
             shutil.rmtree(self._REPO_DIR)
 
-    def git_version(self) -> Dict:
+    @staticmethod
+    def git_version() -> Dict:
+        """
+        Executes `git --version` and returns the output in a dictionary with two keys: `stdout` and `stderr`.
+        :return: the output for `git --version`.
+        """
         stdout, stderr = git.exec_command("--version")
         return {
             "stdout": stdout.decode("utf-8") if stdout else "",
@@ -62,7 +76,7 @@ class GitCloneClient:
 
     def git_clone(self):
         """
-        Clone a git repo.
+        Clones a git repo.
 
         Will use ssh if an ssh key is provided and will use https if it is not present.
         """
@@ -91,7 +105,7 @@ class GitCloneClient:
 
     def _https_git_clone(self):
         """
-        Clone a git repo. It uses Https and a git authoriztion token.
+        Clone a git repo. It uses Https and a git authorization token.
 
         "repo_url" can be a full git https URL (https://server/project.git) or the shorter version
         (server/project.git).
@@ -110,7 +124,8 @@ class GitCloneClient:
 
             raise git.exceptions.GitExecutionError(password_removed_message)
 
-    def _replace_passwords_in_urls(self, text: str, placeholder: str = "********"):
+    @staticmethod
+    def _replace_passwords_in_urls(text: str, placeholder: str = "********"):
         pattern = r"(?<=://)(.*?:)(.*?)(?=@)"
         replaced_text = re.sub(pattern, r"\1" + placeholder, text)
         return replaced_text
@@ -150,4 +165,7 @@ class GitCloneClient:
 
     @property
     def repo_url(self):
+        """
+        Returns the url used to configure this client in `credentials["repo_url"]`.
+        """
         return self._repo_url

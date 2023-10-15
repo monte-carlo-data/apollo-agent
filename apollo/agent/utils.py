@@ -74,7 +74,8 @@ class AgentUtils:
 
     @staticmethod
     def temp_file_path() -> str:
-        return os.path.join(tempfile.gettempdir(), str(uuid.uuid4()))
+        # lambda can write only to /tmp
+        return os.path.join("/tmp", str(uuid.uuid4()))
 
     @staticmethod
     def open_file(path: str) -> BinaryIO:
