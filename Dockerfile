@@ -24,7 +24,8 @@ RUN echo $code_version,$build_number > ./apollo/agent/version
 FROM base AS tests
 
 COPY requirements-dev.txt ./
-RUN . $VENV_DIR/bin/activate && pip install --no-cache-dir -r requirements-dev.txt
+COPY requirements-cloudrun.txt ./
+RUN . $VENV_DIR/bin/activate && pip install --no-cache-dir -r requirements-dev.txt -r requirements-cloudrun.txt
 
 COPY tests ./tests
 ARG CACHEBUST=1
