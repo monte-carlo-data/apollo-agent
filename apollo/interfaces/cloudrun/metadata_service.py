@@ -21,13 +21,18 @@ _METADATA_FLAVOR_VALUE = "Google"
 
 
 class GcpMetadataService:
+    """
+    Service used to obtain metadata from the GCP Metadata Service, more information at:
+    https://cloud.google.com/run/docs/container-contract#metadata-server.
+    Metadata is obtained performing a GET request to `metadata.google.internal` with a given path, the path
+    specifies the requested metadata. The request must include a special header: "Metadata-Flavor: Google".
+    """
+
     @classmethod
     def get_project_id(cls) -> Optional[str]:
         """
         Returns the project-id for the CloudRun function hosting this code, as returned by the metadata service
         for the path: `/computeMetadata/v1/project/project-id`.
-        More information about the metadata service at:
-         https://cloud.google.com/run/docs/container-contract#metadata-server
         :return: the project-id for the CloudRun function hosting this code, `None` if there was an error calling
             the metadata service, for example because this code is not running in a CloudRun service.
         """
@@ -38,8 +43,6 @@ class GcpMetadataService:
         """
         Returns the region for the CloudRun function hosting this code, as returned by the metadata service
         for the path: `/computeMetadata/v1/instance/region`.
-        More information about the metadata service at:
-        https://cloud.google.com/run/docs/container-contract#metadata-server
         Please note that the returned value is not only the region id, it also includes the project-id,
         the format for the returned string is: `projects/{project-numeric-id}/regions/{region}`.
         :return: the region for the CloudRun function hosting this code, `None` if there was an error calling
