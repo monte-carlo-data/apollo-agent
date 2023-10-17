@@ -52,7 +52,7 @@ class AgentEvaluationUtils:
             last_result: Optional[Any] = None
             for command in commands:
                 last_result = cls._execute_command(command, context)
-            return last_result
+            return client.process_result(last_result)
         except Exception as ex:
             should_log = client.should_log_exception(ex)
             log_method = logger.exception if should_log else logger.info

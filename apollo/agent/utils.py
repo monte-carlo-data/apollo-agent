@@ -3,6 +3,7 @@ import sys
 import tempfile
 import traceback
 import uuid
+from datetime import datetime
 from typing import Optional, Dict, List, BinaryIO, Any
 
 from apollo.agent.constants import (
@@ -11,7 +12,11 @@ from apollo.agent.constants import (
     ATTRIBUTE_NAME_STACK_TRACE,
     ATTRIBUTE_NAME_ERROR_TYPE,
     ATTRIBUTE_VALUE_REDACTED,
+    ATTRIBUTE_NAME_TYPE,
+    ATTRIBUTE_NAME_DATA,
+    ATTRIBUTE_VALUE_TYPE_DATETIME,
 )
+from apollo.agent.env_vars import TEMP_PATH_ENV_VAR, DEFAULT_TEMP_PATH
 from apollo.integrations.base_proxy_client import BaseProxyClient
 from apollo.interfaces.agent_response import AgentResponse
 
@@ -73,8 +78,27 @@ class AgentUtils:
         )
 
     @staticmethod
-    def temp_file_path() -> str:
-        return os.path.join(tempfile.gettempdir(), str(uuid.uuid4()))
+    def temp_path():
+        return os.getenv(TEMP_PATH_ENV_VAR, DEFAULT_TEMP_PATH)
+
+    @classmethod
+    def temp_file_path(
+        cls, sub_folder: Optional[str] = None, extension: Optional[str] = None
+    ) -> str:
+        temp_path = cls.ensure_temp_path(sub_folder)
+        file_name = str(uuid.uuid4())
+        if extension:
+            file_name = f"{file_name}.{extension}"
+        return os.path.join(temp_path, file_name)
+
+    @classmethod
+    def ensure_temp_path(cls, sub_folder: Optional[str] = None) -> str:
+        temp_path = cls.temp_path()
+        if sub_folder:
+            temp_path = os.path.join(temp_path, sub_folder)
+        if not os.path.exists(temp_path):
+            os.makedirs(temp_path)
+        return temp_path
 
     @staticmethod
     def open_file(path: str) -> BinaryIO:
@@ -93,6 +117,15 @@ class AgentUtils:
             return [cls.redact_attributes(v, attributes) for v in value]
         else:
             return value
+
+    @staticmethod
+    def serialize_value(value: Any) -> Any:
+        if isinstance(value, datetime):
+            return {
+                ATTRIBUTE_NAME_TYPE: ATTRIBUTE_VALUE_TYPE_DATETIME,
+                ATTRIBUTE_NAME_DATA: value.isoformat(),
+            }
+        return value
 
     @staticmethod
     def _get_error_type(

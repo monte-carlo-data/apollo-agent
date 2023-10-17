@@ -22,3 +22,6 @@ STORAGE_BUCKET_NAME_ENV_VAR = "MCD_STORAGE_BUCKET_NAME"
 # Environment variable used to initialize Flask application with debug=True and to set log level to debug
 # Used only by the generic interface when `interfaces/generic/main.py` is executed.
 DEBUG_ENV_VAR = "MCD_DEBUG"
+
+TEMP_PATH_ENV_VAR = "MCD_TEMP_FOLDER"
+DEFAULT_TEMP_PATH = "/tmp"

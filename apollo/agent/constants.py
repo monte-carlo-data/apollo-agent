@@ -34,6 +34,13 @@ ATTRIBUTE_VALUE_TYPE_CALL = "call"
 # Value for the attribute __type__ to indicate this is a bytes array
 ATTRIBUTE_VALUE_TYPE_BYTES = "bytes"
 
+# Value for the attribute __type__ to indicate this is a datetime
+ATTRIBUTE_VALUE_TYPE_DATETIME = "datetime"
+
+# Value for the attribute __type__ to indicate this is a Looker category enum, client side it will be converted to
+# the right type
+ATTRIBUTE_VALUE_TYPE_LOOKER_CATEGORY = "looker.category"
+
 # Value to use when redacting sensitive data in log messages
 ATTRIBUTE_VALUE_REDACTED = "__redacted__"
 

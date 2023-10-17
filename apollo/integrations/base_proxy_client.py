@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Optional, Dict
+from typing import Optional, Any, Dict
 
 from apollo.agent.models import AgentOperation
 
@@ -27,6 +27,14 @@ class BaseProxyClient(ABC):
             can override to return more or less data (for example to trim/redact sensitive data).
         """
         return operation.to_dict()
+
+    def process_result(self, value: Any) -> Any:
+        """
+        Process the result before sending it to the client, it allows the client to convert objects before
+        JSON serialization takes place, for example Looker client uses it to convert Looker API objects
+        into dictionaries
+        """
+        return value
 
     def should_log_exception(self, ex: Exception) -> bool:
         """
