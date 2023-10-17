@@ -127,6 +127,15 @@ class GcsBaseReaderWriter(BaseStorageClient):
         bucket: Bucket = self._client.get_bucket(self._bucket_name)
         bucket.blob(key).download_to_filename(download_path)
 
+    def upload_file(self, key: str, local_file_path: str) -> None:
+        """
+        Uploads the file at `local_file_path` to `key` in the associated bucket.
+        :param key: path to the file, for example /dir/name.ext
+        :param local_file_path: local path to the file to upload.
+        """
+        bucket: Bucket = self._client.get_bucket(self._bucket_name)
+        bucket.blob(key).upload_from_filename(local_file_path)
+
     @convert_gcs_errors
     def managed_download(self, key: str, download_path: str):
         """

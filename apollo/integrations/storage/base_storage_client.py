@@ -72,6 +72,15 @@ class BaseStorageClient(ABC):
         """
         raise NotImplementedError()
 
+    @abstractmethod
+    def upload_file(self, key: str, local_file_path: str) -> None:
+        """
+        Uploads the file at `local_file_path` to `key` in the associated bucket.
+        :param key: path to the file, for example /dir/name.ext
+        :param local_file_path: local path to the file to upload.
+        """
+        raise NotImplementedError()
+
     def read_json(self, key: str) -> Dict:
         """
         Returns the contents as a dictionary of the JSON file at `key`.

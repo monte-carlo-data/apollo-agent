@@ -69,6 +69,8 @@ class StorageProxyClient(BaseProxyClient):
         """
         Returns an error type string for the given exception, this is used client side to create again the required
         exception type.
+        :param error: the exception occurred.
+        :return: an error type if the exception is mapped to an error type for this client, `None` otherwise.
         """
         if isinstance(error, BaseStorageClient.PermissionsError):
             return _ERROR_TYPE_PERMISSIONS
@@ -77,6 +79,9 @@ class StorageProxyClient(BaseProxyClient):
         return super().get_error_type(error)
 
     def log_payload(self, operation: AgentOperation) -> Dict:
+        """
+        Implements `log_payload` from `BaseProxyClient` to include the bucket name in log messages for this client.
+        """
         payload: Dict[str, Any] = {
             **super().log_payload(operation),
             "bucket_name": self._client.bucket_name,
@@ -85,15 +90,27 @@ class StorageProxyClient(BaseProxyClient):
 
     def download_file(self, key: str) -> BinaryIO:
         """
-        Downloads the file to a temporary file and returns a BinaryIO object with the contents
+        Downloads the file to a temporary file and returns a BinaryIO object with the contents.
+        :param key: path to the file in the bucket
+        :return: BinaryIO object with the contents of the file.
         """
         path = AgentUtils.temp_file_path()
         self._client.download_file(key, path)
         return AgentUtils.open_file(path)
 
+    def upload_file(self, key: str, local_file_path: str):
+        """
+        Uploads the local file at `local_file_path` to `key` in the associated bucket
+        :param key: target path in the bucket for the uploaded file
+        :param local_file_path: local path of the file to upload.
+        """
+        self._client.upload_file(key, local_file_path)
+
     def managed_download(self, key: str) -> BinaryIO:
         """
-        Downloads the file to a temporary file and returns a BinaryIO object with the contents
+        Downloads the file to a temporary file and returns a BinaryIO object with the contents.
+        :param key: path to the file in the bucket.
+        :return: BinaryIO object with the contents of the file.
         """
         path = AgentUtils.temp_file_path()
         self._client.managed_download(key, path)
@@ -115,6 +132,7 @@ class StorageProxyClient(BaseProxyClient):
         """
         Generates a pre-signed URL, converts the received expiration seconds to timedelta as that's the
         parameter type required by the storage client.
+        :param key: path to the file in the bucket
         """
         return self._client.generate_presigned_url(
             key=key, expiration=timedelta(seconds=expiration)
