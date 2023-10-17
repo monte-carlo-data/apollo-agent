@@ -1,4 +1,5 @@
 # Environment variables reported back in the `/test/health` endpoint
+IS_REMOTE_UPGRADABLE_ENV_VAR = "MCD_AGENT_IS_REMOTE_UPGRADABLE"
 HEALTH_ENV_VARS = [
     "PYTHON_VERSION",
     "SERVER_SOFTWARE",
@@ -6,7 +7,7 @@ HEALTH_ENV_VARS = [
     "MCD_AGENT_CLOUD_PLATFORM",
     "MCD_AGENT_WRAPPER_TYPE",
     "MCD_AGENT_WRAPPER_VERSION",
-    "MCD_AGENT_IS_REMOTE_UPGRADABLE",
+    IS_REMOTE_UPGRADABLE_ENV_VAR,
 ]
 
 # Environment variable used in the `Generic` platform to select the storage type
@@ -21,3 +22,6 @@ STORAGE_BUCKET_NAME_ENV_VAR = "MCD_STORAGE_BUCKET_NAME"
 # Environment variable used to initialize Flask application with debug=True and to set log level to debug
 # Used only by the generic interface when `interfaces/generic/main.py` is executed.
 DEBUG_ENV_VAR = "MCD_DEBUG"
+
+TEMP_PATH_ENV_VAR = "MCD_TEMP_FOLDER"
+DEFAULT_TEMP_PATH = "/tmp"

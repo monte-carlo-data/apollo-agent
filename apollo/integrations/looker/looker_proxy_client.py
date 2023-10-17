@@ -1,6 +1,5 @@
 import os
 import uuid
-from datetime import datetime
 from enum import Enum
 from typing import Dict, Any, Sequence, Optional, List, TextIO
 
@@ -9,8 +8,6 @@ from attr import asdict
 from looker_sdk import init40
 from looker_sdk.rtl.transport import TransportOptions
 from looker_sdk.sdk.api40.models import (
-    UserAttribute,
-    UserAttributeFilterTypes,
     Category,
 )
 
@@ -18,11 +15,10 @@ from apollo.agent.constants import (
     ATTRIBUTE_NAME_TYPE,
     ATTRIBUTE_NAME_DATA,
     ATTRIBUTE_VALUE_TYPE_LOOKER_CATEGORY,
-    ATTRIBUTE_VALUE_TYPE_DATETIME,
 )
+from apollo.agent.utils import AgentUtils
 from apollo.integrations.base_proxy_client import BaseProxyClient
 
-_TEMP_FOLDER = os.getenv("TEMP_FOLDER", "/tmp")
 _LOOKER_DIRECTORY = "looker"
 
 
@@ -45,18 +41,21 @@ class LookerProxyClient(BaseProxyClient):
         if not credentials:
             raise ValueError("Credentials are required for Looker")
 
-        output_folder = os.path.join(_TEMP_FOLDER, _LOOKER_DIRECTORY)
-        if not os.path.exists(output_folder):
-            os.makedirs(output_folder)
-        self._temp_file_path = os.path.join(output_folder, f"{uuid.uuid4()}.ini")
-
-        self._connect_timeout_in_seconds = credentials.get("connect_timeout_in_seconds")
+        self._temp_file_path = AgentUtils.temp_file_path(
+            sub_folder=_LOOKER_DIRECTORY, extension="ini"
+        )
 
         self._client_id = credentials.get("client_id")
         self._client_secret = credentials.get("client_secret")
-        with open(self._temp_file_path, "a+") as output_file:
+
+        with open(self._temp_file_path, "w") as output_file:
             self._write_connection_to_file(output_file, credentials)
-            self._client = init40(self._temp_file_path)
+        self._client = init40(self._temp_file_path)
+        # we cannot remove temp_file_path here, it's used when we call the first method, like all_dashboards
+
+    def __del__(self):
+        if self._temp_file_path:
+            os.remove(self._temp_file_path)
 
     def login(self, transport_options: Optional[Dict]):
         """
@@ -76,7 +75,6 @@ class LookerProxyClient(BaseProxyClient):
         output_file.write("[Looker]\n")
         for key in credentials.keys():
             output_file.write(f"{key}={credentials[key]}\n")
-        output_file.close()
 
     @property
     def wrapped_client(self):
@@ -148,12 +146,8 @@ class LookerProxyClient(BaseProxyClient):
                 ATTRIBUTE_NAME_TYPE: ATTRIBUTE_VALUE_TYPE_LOOKER_CATEGORY,
                 ATTRIBUTE_NAME_DATA: value.name,
             }
-        elif isinstance(value, datetime):
-            return {
-                ATTRIBUTE_NAME_TYPE: ATTRIBUTE_VALUE_TYPE_DATETIME,
-                ATTRIBUTE_NAME_DATA: value.isoformat(),
-            }
-        return value
+        else:
+            return AgentUtils.serialize_value(value)
 
     @staticmethod
     def _as_dict_with_fields(values: Sequence, fields: str) -> List:

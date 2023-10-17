@@ -217,3 +217,14 @@ and these headers:
 x-mcd-trace-id: 1234
 content-type: application/octet-stream
 ```
+
+## Upgrade endpoint
+The agent can be requested to self-upgrade for those platforms supporting it, for now only CloudRun.
+The following call requests the agent to upgrade to the given image:
+
+```shell
+curl http://localhost:8081/api/v1/upgrade -X POST -H "Content-Type: application/json" -i -d '{
+    "trace_id": "1234",
+    "image": "montecarlodata/pre-release-agent:0.0.1rc202-cloudrun"
+}'
+```
