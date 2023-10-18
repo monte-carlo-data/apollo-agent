@@ -44,7 +44,7 @@ RUN apt update
 # install git as we need it for the git clone client
 RUN apt install git -y
 
-CMD . $VENV_DIR/bin/activate && gunicorn --bind :$PORT apollo.interfaces.cloudrun.main:app
+CMD . $VENV_DIR/bin/activate && gunicorn --timeout 900 --bind :$PORT apollo.interfaces.cloudrun.main:app
 
 FROM public.ecr.aws/lambda/python:3.11 AS lambda
 
