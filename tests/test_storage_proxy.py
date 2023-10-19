@@ -12,7 +12,7 @@ from apollo.agent.constants import (
     ATTRIBUTE_NAME_RESULT,
     ATTRIBUTE_NAME_ERROR,
 )
-from apollo.agent.env_vars import STORAGE_BUCKET_NAME_ENV_VAR
+from apollo.agent.env_vars import STORAGE_BUCKET_NAME_ENV_VAR, STORAGE_PREFIX_ENV_VAR
 from apollo.agent.logging_utils import LoggingUtils
 from apollo.agent.utils import AgentUtils
 
@@ -33,7 +33,10 @@ class StorageGcsTests(TestCase):
 
     @patch.dict(
         os.environ,
-        {STORAGE_BUCKET_NAME_ENV_VAR: _TEST_BUCKET_NAME},
+        {
+            STORAGE_BUCKET_NAME_ENV_VAR: _TEST_BUCKET_NAME,
+            STORAGE_PREFIX_ENV_VAR: "",
+        },
     )
     @patch("apollo.integrations.gcs.gcs_base_reader_writer.Client")
     def test_list_objects(self, mock_client_type):
@@ -80,7 +83,10 @@ class StorageGcsTests(TestCase):
 
     @patch.dict(
         os.environ,
-        {STORAGE_BUCKET_NAME_ENV_VAR: _TEST_BUCKET_NAME},
+        {
+            STORAGE_BUCKET_NAME_ENV_VAR: _TEST_BUCKET_NAME,
+            STORAGE_PREFIX_ENV_VAR: "",
+        },
     )
     @patch("apollo.integrations.gcs.gcs_base_reader_writer.Client")
     def test_delete(self, mock_client_type):
@@ -104,7 +110,10 @@ class StorageGcsTests(TestCase):
 
     @patch.dict(
         os.environ,
-        {STORAGE_BUCKET_NAME_ENV_VAR: _TEST_BUCKET_NAME},
+        {
+            STORAGE_BUCKET_NAME_ENV_VAR: _TEST_BUCKET_NAME,
+            STORAGE_PREFIX_ENV_VAR: "",
+        },
     )
     @patch("apollo.integrations.gcs.gcs_base_reader_writer.Client")
     def test_read(self, mock_client_type):
@@ -128,7 +137,10 @@ class StorageGcsTests(TestCase):
 
     @patch.dict(
         os.environ,
-        {STORAGE_BUCKET_NAME_ENV_VAR: _TEST_BUCKET_NAME},
+        {
+            STORAGE_BUCKET_NAME_ENV_VAR: _TEST_BUCKET_NAME,
+            STORAGE_PREFIX_ENV_VAR: "",
+        },
     )
     @patch("apollo.integrations.gcs.gcs_base_reader_writer.Client")
     @patch.object(AgentUtils, "temp_file_path")
