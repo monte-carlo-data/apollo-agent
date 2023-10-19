@@ -8,7 +8,11 @@ from apollo.agent.constants import (
     STORAGE_TYPE_GCS,
     STORAGE_TYPE_S3,
 )
-from apollo.agent.env_vars import STORAGE_TYPE_ENV_VAR
+from apollo.agent.env_vars import (
+    STORAGE_TYPE_ENV_VAR,
+    STORAGE_PREFIX_ENV_VAR,
+    STORAGE_PREFIX_DEFAULT_VALUE,
+)
 from apollo.agent.models import AgentConfigurationError, AgentOperation
 from apollo.agent.utils import AgentUtils
 from apollo.integrations.base_proxy_client import BaseProxyClient
@@ -55,11 +59,16 @@ class StorageProxyClient(BaseProxyClient):
             if not storage:
                 raise ValueError(f"Missing {STORAGE_TYPE_ENV_VAR} env var")
 
+        prefix: Optional[str] = os.getenv(
+            STORAGE_PREFIX_ENV_VAR, STORAGE_PREFIX_DEFAULT_VALUE
+        )
+        if prefix == "" or prefix == "/":
+            prefix = None
         storage_client = _STORAGE_CLIENTS.get(storage)
         if not storage_client:
             raise AgentConfigurationError(f"Invalid storage type: {storage}")
 
-        self._client = cast(BaseStorageClient, storage_client())
+        self._client = cast(BaseStorageClient, storage_client(prefix=prefix))
 
     @property
     def wrapped_client(self):
