@@ -5,7 +5,8 @@ from dataclasses import (
     field,
 )
 from datetime import timedelta
-from typing import List, Dict, Optional, Union, Tuple, Any
+from functools import wraps
+from typing import List, Dict, Optional, Union, Tuple, Any, Callable
 
 from botocore.exceptions import ClientError
 from dataclasses_json import (
@@ -23,6 +24,24 @@ _ACL_GRANTEE_URI_AUTH_USERS = (
     "http://acs.amazonaws.com/groups/global/AuthenticatedUsers"
 )
 _ACL_GRANTEE_PUBLIC_GROUPS = [_ACL_GRANTEE_URI_ALL_USERS, _ACL_GRANTEE_URI_AUTH_USERS]
+
+
+def convert_s3_errors(func: Callable):
+    """
+    Decorator used to convert GCS specific errors into BaseStorageClient errors
+    """
+
+    @wraps(func)
+    def _impl(*args, **kwargs):  # type: ignore
+        try:
+            return func(*args, **kwargs)
+        except ClientError as e:
+            error_code = e.response["Error"]["Code"]
+            if error_code in ("NoSuchKey", "404"):
+                raise BaseStorageClient.NotFoundError(str(e)) from e
+            raise BaseStorageClient.GenericError(str(e)) from e
+
+    return _impl
 
 
 @dataclass_json(letter_case=LetterCase.PASCAL)  # type: ignore
@@ -115,6 +134,7 @@ class S3BaseReaderWriter(BaseStorageClient):
         except ClientError as e:
             raise self.GenericError(str(e)) from e
 
+    @convert_s3_errors
     def read(
         self,
         key: str,
@@ -133,20 +153,15 @@ class S3BaseReaderWriter(BaseStorageClient):
         :param encoding: if set binary content will be decoded using this encoding and a string will be returned
         :return: a bytes object, unless encoding is set, in which case it returns a string.
         """
-        try:
-            retrieved_obj = self.s3_client.get_object(
-                Bucket=self._bucket_name, Key=self._apply_prefix(key)
-            )
-            content = retrieved_obj["Body"].read()
-            if decompress and self._is_gzip(content):
-                content = gzip.decompress(content)
-            if encoding is not None:
-                content = content.decode(encoding)
-            return content
-        except ClientError as e:
-            if e.response["Error"]["Code"] == "NoSuchKey":
-                raise self.NotFoundError(str(e)) from e
-            raise self.GenericError(str(e)) from e
+        retrieved_obj = self.s3_client.get_object(
+            Bucket=self._bucket_name, Key=self._apply_prefix(key)
+        )
+        content = retrieved_obj["Body"].read()
+        if decompress and self._is_gzip(content):
+            content = gzip.decompress(content)
+        if encoding is not None:
+            content = content.decode(encoding)
+        return content
 
     def read_many_json(self, prefix: str) -> Dict:
         """
@@ -156,13 +171,16 @@ class S3BaseReaderWriter(BaseStorageClient):
         :return: a dictionary where the key is the file path and the value is the dictionary loaded from the JSON file.
         """
         temp_dict = {}
-        for config_file_obj in self.s3_client.list_objects(self._bucket_name).filter(
-            Prefix=self._apply_prefix(prefix) or self._prefix
-        ):
+        for config_file_obj in self.s3_resource.Bucket(
+            self._bucket_name
+        ).objects.filter(Prefix=self._apply_prefix(prefix) or self._prefix):
             key = self._remove_prefix(config_file_obj.key)
+            if not key or key.endswith("/"):
+                continue
             temp_dict[key] = self.read_json(key)
         return temp_dict
 
+    @convert_s3_errors
     def download_file(self, key: str, download_path: str) -> None:
         """
         Downloads the file at `key` to the local file indicated by `download_path`.
@@ -183,6 +201,7 @@ class S3BaseReaderWriter(BaseStorageClient):
             local_file_path, self._bucket_name, self._apply_prefix(key)
         )
 
+    @convert_s3_errors
     def managed_download(self, key: str, download_path: str):
         """
         Performs a managed transfer that might be multipart, downloads the file at `key` to the local file at
@@ -195,20 +214,17 @@ class S3BaseReaderWriter(BaseStorageClient):
                 self._bucket_name, self._apply_prefix(key), data
             )
 
+    @convert_s3_errors
     def delete(self, key: str) -> None:
         """
         Deletes the file at `key`
         :param key: path to the file, for example /dir/name.ext
         """
-        try:
-            self.s3_client.delete_object(
-                Bucket=self._bucket_name, Key=self._apply_prefix(key)
-            )
-        except ClientError as e:
-            if e.response["Error"]["Code"] == "NoSuchKey":
-                raise self.NotFoundError(str(e)) from e
-            raise self.GenericError(str(e)) from e
+        self.s3_client.delete_object(
+            Bucket=self._bucket_name, Key=self._apply_prefix(key)
+        )
 
+    @convert_s3_errors
     def list_objects(
         self,
         prefix: Optional[str] = None,
@@ -243,19 +259,17 @@ class S3BaseReaderWriter(BaseStorageClient):
         if continuation_token:
             params_dict["ContinuationToken"] = continuation_token
 
-        try:
-            objects_dict = self.s3_client.list_objects_v2(**params_dict)
-            # specifying a delimiter results in a common prefix collection rather than any
-            # contents but, can be utilized to roll up "sub-folders"
-            return (
-                self._remove_prefix_from_prefixes(objects_dict.get("CommonPrefixes"))
-                if delimiter
-                else self._remove_prefix_from_entries(objects_dict.get("Contents")),
-                objects_dict.get("NextContinuationToken"),
-            )
-        except ClientError as e:
-            raise self.GenericError(str(e)) from e
+        objects_dict = self.s3_client.list_objects_v2(**params_dict)
+        # specifying a delimiter results in a common prefix collection rather than any
+        # contents but, can be utilized to roll up "sub-folders"
+        return (
+            self._remove_prefix_from_prefixes(objects_dict.get("CommonPrefixes"))
+            if delimiter
+            else self._remove_prefix_from_entries(objects_dict.get("Contents")),
+            objects_dict.get("NextContinuationToken"),
+        )
 
+    @convert_s3_errors
     def generate_presigned_url(self, key: str, expiration: timedelta) -> str:
         """
         Generates a pre-signed url for the given file with the specified expiration.
@@ -263,19 +277,14 @@ class S3BaseReaderWriter(BaseStorageClient):
         :param expiration: time for the generated link to expire, expressed as a timedelta object.
         :return: a pre-signed url to access the specified file.
         """
-        try:
-            return self.s3_client.generate_presigned_url(
-                "get_object",
-                Params={
-                    "Bucket": self._bucket_name,
-                    "Key": self._apply_prefix(key),
-                },
-                ExpiresIn=expiration.total_seconds(),
-            )
-        except ClientError as e:
-            if e.response["Error"]["Code"] == "NoSuchKey":
-                raise self.NotFoundError(str(e)) from e
-            raise self.GenericError(str(e)) from e
+        return self.s3_client.generate_presigned_url(
+            "get_object",
+            Params={
+                "Bucket": self._bucket_name,
+                "Key": self._apply_prefix(key),
+            },
+            ExpiresIn=expiration.total_seconds(),
+        )
 
     def is_bucket_private(self) -> bool:
         """
