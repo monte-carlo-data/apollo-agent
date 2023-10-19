@@ -66,7 +66,14 @@ class S3BaseReaderWriter(BaseStorageClient):
     def __init__(
         self,
         bucket_name: str,
+        prefix: Optional[str] = None,
     ):
+        """
+        Creates a new base storage client for S3.
+        :param bucket_name: the name of the bucket to use, all operations will be performed in this bucket.
+        :param prefix: if present it will be prefixed to all file operations and will be removed from result paths.
+        """
+        super().__init__(prefix=prefix)
         self._bucket_name = bucket_name
 
     @property
@@ -101,7 +108,7 @@ class S3BaseReaderWriter(BaseStorageClient):
         try:
             self.s3_client.put_object(
                 Bucket=self._bucket_name,
-                Key=key,
+                Key=self._apply_prefix(key),
                 Body=obj_to_write,
                 ServerSideEncryption="AES256",
             )
@@ -127,7 +134,9 @@ class S3BaseReaderWriter(BaseStorageClient):
         :return: a bytes object, unless encoding is set, in which case it returns a string.
         """
         try:
-            retrieved_obj = self.s3_client.get_object(Bucket=self._bucket_name, Key=key)
+            retrieved_obj = self.s3_client.get_object(
+                Bucket=self._bucket_name, Key=self._apply_prefix(key)
+            )
             content = retrieved_obj["Body"].read()
             if decompress and self._is_gzip(content):
                 content = gzip.decompress(content)
@@ -148,9 +157,10 @@ class S3BaseReaderWriter(BaseStorageClient):
         """
         temp_dict = {}
         for config_file_obj in self.s3_client.list_objects(self._bucket_name).filter(
-            Prefix=prefix
+            Prefix=self._apply_prefix(prefix) or self._prefix
         ):
-            temp_dict[config_file_obj.key] = self.read_json(config_file_obj.key)
+            key = self._remove_prefix(config_file_obj.key)
+            temp_dict[key] = self.read_json(key)
         return temp_dict
 
     def download_file(self, key: str, download_path: str) -> None:
@@ -160,7 +170,7 @@ class S3BaseReaderWriter(BaseStorageClient):
         :param download_path: local path to the file where the contents of `key` will be stored.
         """
         self.s3_resource.meta.client.download_file(
-            self._bucket_name, key, download_path
+            self._bucket_name, self._apply_prefix(key), download_path
         )
 
     def upload_file(self, key: str, local_file_path: str) -> None:
@@ -169,7 +179,9 @@ class S3BaseReaderWriter(BaseStorageClient):
         :param key: path to the file, for example /dir/name.ext
         :param local_file_path: local path to the file to upload.
         """
-        self.s3_client.upload_file(local_file_path, self._bucket_name, key)
+        self.s3_client.upload_file(
+            local_file_path, self._bucket_name, self._apply_prefix(key)
+        )
 
     def managed_download(self, key: str, download_path: str):
         """
@@ -179,7 +191,9 @@ class S3BaseReaderWriter(BaseStorageClient):
         :param download_path: local path to the file where the contents of `key` will be stored.
         """
         with open(download_path, "wb") as data:
-            self.s3_client.download_fileobj(self._bucket_name, key, data)
+            self.s3_client.download_fileobj(
+                self._bucket_name, self._apply_prefix(key), data
+            )
 
     def delete(self, key: str) -> None:
         """
@@ -187,7 +201,9 @@ class S3BaseReaderWriter(BaseStorageClient):
         :param key: path to the file, for example /dir/name.ext
         """
         try:
-            self.s3_client.delete_object(Bucket=self._bucket_name, Key=key)
+            self.s3_client.delete_object(
+                Bucket=self._bucket_name, Key=self._apply_prefix(key)
+            )
         except ClientError as e:
             if e.response["Error"]["Code"] == "NoSuchKey":
                 raise self.NotFoundError(str(e)) from e
@@ -218,8 +234,8 @@ class S3BaseReaderWriter(BaseStorageClient):
             specified only Prefix is included in the result for each listed folder.
         """
         params_dict: Dict[str, Any] = {"Bucket": self._bucket_name}
-        if prefix:
-            params_dict["Prefix"] = prefix
+        if prefix or self._prefix:
+            params_dict["Prefix"] = self._apply_prefix(prefix) or self._prefix
         if delimiter:
             params_dict["Delimiter"] = delimiter
         if batch_size:
@@ -232,9 +248,9 @@ class S3BaseReaderWriter(BaseStorageClient):
             # specifying a delimiter results in a common prefix collection rather than any
             # contents but, can be utilized to roll up "sub-folders"
             return (
-                objects_dict.get("CommonPrefixes")
+                self._remove_prefix_from_prefixes(objects_dict.get("CommonPrefixes"))
                 if delimiter
-                else objects_dict.get("Contents"),
+                else self._remove_prefix_from_entries(objects_dict.get("Contents")),
                 objects_dict.get("NextContinuationToken"),
             )
         except ClientError as e:
@@ -252,7 +268,7 @@ class S3BaseReaderWriter(BaseStorageClient):
                 "get_object",
                 Params={
                     "Bucket": self._bucket_name,
-                    "Key": key,
+                    "Key": self._apply_prefix(key),
                 },
                 ExpiresIn=expiration.total_seconds(),
             )
