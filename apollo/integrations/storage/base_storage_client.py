@@ -167,7 +167,7 @@ class BaseStorageClient(ABC):
 
     def _apply_prefix(self, key: Optional[str]) -> Optional[str]:
         if not key:
-            return key
+            return self._prefix
         if self._prefix:
             return f"{self._prefix}{key}"
         else:
