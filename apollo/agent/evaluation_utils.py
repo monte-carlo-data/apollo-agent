@@ -102,10 +102,14 @@ class AgentEvaluationUtils:
             target = cls._resolve_context_variable(context, target_name)
         method = cls._resolve_method(target, command.method)
         if isinstance(method, Callable):
-            result = method(
-                *cls._resolve_args(command.args, context),
-                **cls._resolve_kwargs(command.kwargs, context),
-            )
+            try:
+                result = method(
+                    *cls._resolve_args(command.args, context),
+                    **cls._resolve_kwargs(command.kwargs, context),
+                )
+            except Exception as ex:
+                logger.info(f"Error calling method {command.method}: {ex}")
+                raise
         else:
             result = method  # assume it is a property
         if store := command.store:

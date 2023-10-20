@@ -70,6 +70,14 @@ def _get_proxy_client_git(
     return GitProxyClient(credentials=credentials, platform=platform)
 
 
+def _get_proxy_client_redshift(
+    credentials: Optional[Dict], platform: str, **kwargs  # type: ignore
+) -> BaseProxyClient:
+    from apollo.integrations.redshift.redshift_proxy_client import RedshiftProxyClient
+
+    return RedshiftProxyClient(credentials=credentials, platform=platform)
+
+
 @dataclass
 class ProxyClientCacheEntry:
     created_time: datetime
@@ -83,6 +91,7 @@ _CLIENT_FACTORY_MAPPING = {
     "storage": _get_proxy_client_storage,
     "looker": _get_proxy_client_looker,
     "git": _get_proxy_client_git,
+    "redshift": _get_proxy_client_redshift,
 }
 
 
