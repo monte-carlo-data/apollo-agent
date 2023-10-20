@@ -28,7 +28,7 @@ _ACL_GRANTEE_PUBLIC_GROUPS = [_ACL_GRANTEE_URI_ALL_USERS, _ACL_GRANTEE_URI_AUTH_
 
 def convert_s3_errors(func: Callable):
     """
-    Decorator used to convert GCS specific errors into BaseStorageClient errors
+    Decorator used to convert S3 specific errors into BaseStorageClient errors
     """
 
     @wraps(func)
