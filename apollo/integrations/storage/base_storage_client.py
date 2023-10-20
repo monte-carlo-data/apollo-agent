@@ -182,7 +182,7 @@ class BaseStorageClient(ABC):
     def _remove_prefix_from_prefixes(
         self, entries: Optional[List[Dict]]
     ) -> Optional[List[Dict]]:
-        if not entries:
+        if not entries or not self._prefix:
             return entries
         return [
             {"Prefix": self._remove_prefix(cast(str, entry.get("Prefix")))}
@@ -192,7 +192,7 @@ class BaseStorageClient(ABC):
     def _remove_prefix_from_entries(
         self, entries: Optional[List[Dict]]
     ) -> Optional[List[Dict]]:
-        if not entries:
+        if not entries or not self._prefix:
             return entries
         return [
             {**entry, "Key": self._remove_prefix(cast(str, entry.get("Key")))}
