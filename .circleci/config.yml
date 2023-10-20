@@ -159,6 +159,8 @@ workflows:
           context:
             - docker
           requires:
+            - run-linter
+            - run-trufflehog-scan
             - run-test-docker
           filters:
             branches:
@@ -178,6 +180,8 @@ workflows:
           context:
             - docker
           requires:
+            - run-linter
+            - run-trufflehog-scan
             - run-test-docker
           filters: # run only for tags starting with v, don't run for branches
             tags:
