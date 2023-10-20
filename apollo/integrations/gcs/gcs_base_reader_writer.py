@@ -115,9 +115,7 @@ class GcsBaseReaderWriter(BaseStorageClient):
         """
         temp_dict = {}
         bucket: Bucket = self._client.get_bucket(self._bucket_name)
-        for blob in bucket.list_blobs(
-            prefix=self._apply_prefix(prefix) or self._prefix
-        ):
+        for blob in bucket.list_blobs(prefix=self._apply_prefix(prefix)):
             key = self._remove_prefix(blob.name)
             if not key or key.endswith("/"):  # root folder or sub-folder
                 continue
@@ -191,7 +189,7 @@ class GcsBaseReaderWriter(BaseStorageClient):
         """
         params_dict: Dict[str, Any] = {"bucket_or_name": self._bucket_name}
         if prefix or self._prefix:
-            params_dict["prefix"] = self._apply_prefix(prefix) or self._prefix
+            params_dict["prefix"] = self._apply_prefix(prefix)
         if delimiter:
             params_dict["delimiter"] = delimiter
         if batch_size:

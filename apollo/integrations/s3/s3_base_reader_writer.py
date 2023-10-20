@@ -173,7 +173,7 @@ class S3BaseReaderWriter(BaseStorageClient):
         temp_dict = {}
         for config_file_obj in self.s3_resource.Bucket(
             self._bucket_name
-        ).objects.filter(Prefix=self._apply_prefix(prefix) or self._prefix):
+        ).objects.filter(Prefix=self._apply_prefix(prefix)):
             key = self._remove_prefix(config_file_obj.key)
             if not key or key.endswith("/"):
                 continue
@@ -251,7 +251,7 @@ class S3BaseReaderWriter(BaseStorageClient):
         """
         params_dict: Dict[str, Any] = {"Bucket": self._bucket_name}
         if prefix or self._prefix:
-            params_dict["Prefix"] = self._apply_prefix(prefix) or self._prefix
+            params_dict["Prefix"] = self._apply_prefix(prefix)
         if delimiter:
             params_dict["Delimiter"] = delimiter
         if batch_size:
