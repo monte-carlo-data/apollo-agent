@@ -2,7 +2,7 @@ from typing import Dict, Optional, Any
 
 import psycopg2
 from psycopg2 import DatabaseError
-from psycopg2.errors import QueryCanceled
+from psycopg2.errors import QueryCanceled, InsufficientPrivilege
 
 from apollo.integrations.base_proxy_client import BaseProxyClient
 
@@ -53,6 +53,8 @@ class RedshiftProxyClient(BaseProxyClient):
         """
         if isinstance(error, QueryCanceled):
             return "QueryCanceled"
+        elif isinstance(error, InsufficientPrivilege):
+            return "InsufficientPrivilege"
         elif isinstance(error, DatabaseError):
             return "DatabaseError"
         return super().get_error_type(error)
