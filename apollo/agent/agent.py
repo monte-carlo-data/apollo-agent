@@ -1,6 +1,7 @@
 import logging
 import os
 import sys
+import time
 from typing import Any, Dict, Optional
 
 from apollo.agent.env_vars import HEALTH_ENV_VARS, IS_REMOTE_UPGRADABLE_ENV_VAR
@@ -282,6 +283,7 @@ class Agent:
         operation_name: str,
         operation: AgentOperation,
     ) -> AgentResponse:
+        start_time = time.time()
         logger.info(
             f"Executing operation: {connection_type}/{operation_name}",
             extra=self._logging_utils.build_extra(
@@ -291,6 +293,14 @@ class Agent:
             ),
         )
         result = self._execute(client, self._logging_utils, operation_name, operation)
+        logger.info(
+            f"Operation executed: {connection_type}/{operation_name}",
+            extra=self._logging_utils.build_extra(
+                operation.trace_id,
+                operation_name,
+                dict(elapsed_time=time.time() - start_time),
+            ),
+        )
         return AgentResponse(result or {}, 200, operation.trace_id)
 
     @staticmethod
