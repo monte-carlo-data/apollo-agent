@@ -11,6 +11,7 @@ from apollo.interfaces.cloudrun.metadata_service import (
     GCP_PLATFORM_INFO_KEY_REGION,
     GCP_PLATFORM_INFO_KEY_SERVICE_NAME,
     GCP_ENV_NAME_SERVICE_NAME,
+    GCP_PLATFORM_INFO_KEY_IMAGE,
 )
 
 # CloudRun specific application that adds support for structured logging
@@ -45,9 +46,16 @@ app = main.app
 
 # set the container platform as GCP for the health endpoint
 main.agent.platform = PLATFORM_GCP
-main.agent.platform_info = {
+platform_info = {
     GCP_PLATFORM_INFO_KEY_SERVICE_NAME: os.getenv(GCP_ENV_NAME_SERVICE_NAME),
     GCP_PLATFORM_INFO_KEY_PROJECT_ID: GcpMetadataService.get_project_id(),
     GCP_PLATFORM_INFO_KEY_REGION: GcpMetadataService.get_instance_region(),
 }
+
+# add the image from service metadata to platform info, if we can get it
+image = CloudRunUpdater.get_service_image(platform_info)
+if image:
+    platform_info[GCP_PLATFORM_INFO_KEY_IMAGE] = image
+main.agent.platform_info = platform_info
+
 main.agent.updater = CloudRunUpdater()
