@@ -64,6 +64,12 @@ class GcpUpdaterTests(TestCase):
             containers=[
                 {
                     "image": image_old,
+                    "env": [
+                        {
+                            "name": "MCD_AGENT_IMAGE_TAG",
+                            "value": image_old,
+                        }
+                    ],
                 }
             ]
         )
@@ -84,6 +90,7 @@ class GcpUpdaterTests(TestCase):
         )
         # assert that we updated the image in the service passed to update service
         self.assertEqual(image, service_mock.template.containers[0].image)
+        self.assertEqual(image, service_mock.template.containers[0].env[0].value)
 
         self.assertEqual("1.2.4", result["revision"])
         self.assertEqual("srv_name", result["service-name"])

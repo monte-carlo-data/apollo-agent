@@ -39,8 +39,10 @@ class CloudRunUpdater(AgentUpdater):
         Updates the CloudRun service to the specified image, waits for the operation to complete
         for `timeout_seconds` (defaults to 5 minutes).
         CloudRun Admin API is used to get the service object, if image is specified it is set as the
-        `image` attribute in the first container (that is supposed to be the only one).
-        Then `update_service` is used to update the service.
+        `image` attribute in the first container (that is supposed to be the only one) and if `MCD_AGENT_IMAGE_TAG`
+        env var is found it's also updated with the same value.
+        Then `update_service` from CloudRun Admin API is used to update the service.
+
         :param platform_info: the GCP platform info, loaded when the agent started and used to obtain the service
             name and region that were loaded from the metadata service.
         :param image: optional image id, expected format: montecarlodata/repo_name:tag, for example:
@@ -85,6 +87,16 @@ class CloudRunUpdater(AgentUpdater):
 
     @classmethod
     def get_service_image(cls, platform_info: Dict) -> Optional[str]:
+        """
+        Returns the current image used by the service, the information is retrieved from the `image` attribute
+        for the first container in the template, that should be the only container for CloudRun services, the
+        same attribute that gets updated when the service is upgraded.
+        If an exception occurs when retrieving the information, the exception is logged and `None` is returned.
+        :param platform_info: the GCP platform info, loaded when the agent started and used to obtain the service
+            name and region that were loaded from the metadata service.
+        :return: The image currently used by the service, obtained from the `image` attribute
+            for the first container in the template
+        """
         try:
             service = cls._get_service(platform_info)
             return service.template.containers[0].image
