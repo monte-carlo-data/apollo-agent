@@ -2,8 +2,9 @@ import logging
 from typing import Dict, Optional, cast
 
 from google.cloud import run_v2
-from google.cloud.run_v2 import Service
+from google.cloud.run_v2 import Service, EnvVar
 
+from apollo.agent.env_vars import AGENT_IMAGE_TAG_ENV_VAR
 from apollo.agent.models import AgentConfigurationError
 from apollo.agent.updater import AgentUpdater
 from apollo.interfaces.cloudrun.metadata_service import (
@@ -47,44 +48,28 @@ class CloudRunUpdater(AgentUpdater):
             attribute, which is usually ignored by GCP.
         :param timeout_seconds: optional timeout in seconds, default to 5 minutes.
         """
-        if not platform_info:
-            raise AgentConfigurationError("Platform info missing for CloudRun agent")
-
-        service_name = platform_info.get(
-            GCP_PLATFORM_INFO_KEY_SERVICE_NAME
-        )  # service name, like 'dev-agent'
-        region = platform_info.get(
-            GCP_PLATFORM_INFO_KEY_REGION
-        )  # region including project: projects/{project-numeric-id}/regions/{region}
-
-        if not service_name or not region:
-            raise AgentConfigurationError(
-                "Service name and region are required to update a CloudRun service"
-            )
-        timeout_seconds = timeout_seconds or _DEFAULT_TIMEOUT
-
-        logger.info(
-            f"CloudRun update requested, service={service_name}, region={region}"
-        )
-        client = run_v2.ServicesClient()
-        service_full_name = self._get_service_full_name(service_name, region)
-        logger.info(f"CloudRun service full name resolved to {service_full_name}")
-
-        # name is a string with format: projects/{project-id}/locations/{region}/services/{service-name}
-        request = run_v2.GetServiceRequest()
-        request.name = service_full_name
-        service = client.get_service(request=request)
+        service = self._get_service(platform_info)
         logger.info(
             f"CloudRun service obtained, latest revision={service.latest_ready_revision}"
         )
+        timeout_seconds = timeout_seconds or _DEFAULT_TIMEOUT
 
         if image:
             logger.info(f"CloudRun service, updating image to: {image}")
             service.template.containers[0].image = image
 
+            # update the value for MCD_AGENT_IMAGE_TAG env var
+            env = service.template.containers[0].env
+            image_env: Optional[EnvVar] = next(
+                filter(lambda e: e.name == AGENT_IMAGE_TAG_ENV_VAR, env), None
+            )
+            if image_env:
+                image_env.value = image
+
         logger.info(
             f"CloudRun service, requesting update with timeout={timeout_seconds}"
         )
+        client = run_v2.ServicesClient()
         update_request = run_v2.UpdateServiceRequest()
         update_request.service = service
         update_operation = client.update_service(update_request)
@@ -97,6 +82,15 @@ class CloudRunUpdater(AgentUpdater):
             "service-name": update_result.name,
             "revision": update_result.latest_created_revision,
         }
+
+    @classmethod
+    def get_service_image(cls, platform_info: Dict) -> Optional[str]:
+        try:
+            service = cls._get_service(platform_info)
+            return service.template.containers[0].image
+        except Exception:
+            logger.exception("Failed to get image attribute for GCP service")
+            return None
 
     @staticmethod
     def _get_service_full_name(service_name: str, region_with_project: str) -> str:
@@ -111,3 +105,32 @@ class CloudRunUpdater(AgentUpdater):
         """
         prefix = region_with_project.replace("/regions/", "/locations/")
         return f"{prefix}/services/{service_name}"
+
+    @classmethod
+    def _get_service(cls, platform_info: Optional[Dict]) -> Service:
+        if not platform_info:
+            raise AgentConfigurationError("Platform info missing for CloudRun agent")
+
+        service_name = platform_info.get(
+            GCP_PLATFORM_INFO_KEY_SERVICE_NAME
+        )  # service name, like 'dev-agent'
+        region = platform_info.get(
+            GCP_PLATFORM_INFO_KEY_REGION
+        )  # region including project: projects/{project-numeric-id}/regions/{region}
+
+        if not service_name or not region:
+            raise AgentConfigurationError(
+                "Service name and region are required to update a CloudRun service"
+            )
+
+        logger.info(
+            f"CloudRun update requested, service={service_name}, region={region}"
+        )
+        client = run_v2.ServicesClient()
+        service_full_name = cls._get_service_full_name(service_name, region)
+        logger.info(f"CloudRun service full name resolved to {service_full_name}")
+
+        # name is a string with format: projects/{project-id}/locations/{region}/services/{service-name}
+        request = run_v2.GetServiceRequest()
+        request.name = service_full_name
+        return client.get_service(request=request)
