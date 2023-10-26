@@ -24,6 +24,7 @@ from apollo.agent.updater import AgentUpdater
 from apollo.agent.utils import AgentUtils
 from apollo.integrations.base_proxy_client import BaseProxyClient
 from apollo.interfaces.agent_response import AgentResponse
+from apollo.interfaces.cloudrun.metadata_service import GCP_PLATFORM_INFO_KEY_IMAGE
 from apollo.validators.validate_network import ValidateNetwork
 
 logger = logging.getLogger(__name__)
@@ -85,6 +86,13 @@ class Agent:
                 operation_name="health_information",
             ),
         )
+        if self._updater:
+            if self._platform_info is None:
+                self._platform_info = {}
+            self._platform_info[
+                GCP_PLATFORM_INFO_KEY_IMAGE
+            ] = self._updater.get_current_image(self._platform_info)
+
         return AgentHealthInformation(
             version=VERSION,
             build=BUILD_NUMBER,
