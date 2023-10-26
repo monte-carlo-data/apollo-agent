@@ -85,8 +85,16 @@ class CloudRunUpdater(AgentUpdater):
             "revision": update_result.latest_created_revision,
         }
 
+    def get_current_image(self, platform_info: Optional[Dict]) -> Optional[str]:
+        """
+        Returns the image currently used by this service, used by the `health` endpoint.
+        """
+        if not platform_info:
+            return None
+        return self._get_service_image(platform_info)
+
     @classmethod
-    def get_service_image(cls, platform_info: Dict) -> Optional[str]:
+    def _get_service_image(cls, platform_info: Dict) -> Optional[str]:
         """
         Returns the current image used by the service, the information is retrieved from the `image` attribute
         for the first container in the template, that should be the only container for CloudRun services, the
@@ -135,9 +143,7 @@ class CloudRunUpdater(AgentUpdater):
                 "Service name and region are required to update a CloudRun service"
             )
 
-        logger.info(
-            f"CloudRun update requested, service={service_name}, region={region}"
-        )
+        logger.info(f"CloudRun service lookup, service={service_name}, region={region}")
         client = run_v2.ServicesClient()
         service_full_name = cls._get_service_full_name(service_name, region)
         logger.info(f"CloudRun service full name resolved to {service_full_name}")
