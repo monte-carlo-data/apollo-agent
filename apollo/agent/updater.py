@@ -25,3 +25,10 @@ class AgentUpdater(ABC):
         :param timeout_seconds: optional timeout, the default value is decided by the implementation.
         """
         pass
+
+    @abstractmethod
+    def get_current_image(self, platform_info: Optional[Dict]) -> Optional[str]:
+        """
+        Returns the image currently used by this service, used by the `health` endpoint.
+        """
+        pass
