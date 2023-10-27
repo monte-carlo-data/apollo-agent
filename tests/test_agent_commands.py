@@ -1,6 +1,8 @@
 from unittest import TestCase
+from unittest.mock import create_autospec, call
 
 from apollo.agent.agent import Agent
+from apollo.agent.log_context import AgentLogContext
 from apollo.agent.logging_utils import LoggingUtils
 from apollo.agent.models import AgentOperation
 from sample_proxy_client import SampleProxyClient
@@ -126,3 +128,23 @@ class AgentCommandsTests(TestCase):
             ),
         )
         self.assertEqual(self._expected_result, result)
+
+    def test_log_context(self):
+        agent = Agent(LoggingUtils())
+        log_context = create_autospec(AgentLogContext)
+        agent.log_context = log_context
+
+        trace_id = "135"
+        agent.health_information(trace_id)
+
+        log_context.set_agent_context.assert_has_calls(
+            [
+                call(
+                    {
+                        "mcd_operation_name": "health_information",
+                        "mcd_trace_id": trace_id,
+                    }
+                ),
+                call({}),
+            ]
+        )

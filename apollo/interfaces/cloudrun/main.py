@@ -1,9 +1,16 @@
+import logging
 import os
 from typing import Dict, Optional
 
 import google.cloud.logging
 
-from apollo.agent.constants import PLATFORM_GCP
+from apollo.agent.constants import (
+    PLATFORM_GCP,
+    LOG_ATTRIBUTE_OPERATION_NAME,
+    LOG_ATTRIBUTE_TRACE_ID,
+)
+from apollo.agent.env_vars import DEBUG_LOG_ENV_VAR
+from apollo.interfaces.cloudrun.cloudrun_log_context import CloudRunLogContext
 from apollo.interfaces.cloudrun.cloudrun_updater import CloudRunUpdater
 from apollo.interfaces.cloudrun.metadata_service import (
     GcpMetadataService,
@@ -17,7 +24,15 @@ from apollo.interfaces.cloudrun.metadata_service import (
 
 # initialize CloudRun logging
 gcp_logging_client = google.cloud.logging.Client()
-gcp_logging_client.setup_logging()
+is_debug_log = os.getenv(DEBUG_LOG_ENV_VAR, "false").lower() == "true"
+gcp_logging_client.setup_logging(
+    log_level=logging.DEBUG if is_debug_log else logging.INFO
+)
+
+log_context = CloudRunLogContext()
+root_logger = logging.getLogger()
+for h in root_logger.handlers:
+    h.addFilter(lambda record: log_context.filter(record))
 
 # intentionally imported here to initialize generic main after gcp logging
 from apollo.interfaces.generic import main
@@ -29,11 +44,11 @@ from apollo.interfaces.generic import main
 # other log messages logged by CloudRun for the same request.
 def cloud_run_extra_builder(trace_id: Optional[str], operation_name: str, extra: Dict):
     json_fields = {
-        "operation_name": operation_name,
+        LOG_ATTRIBUTE_OPERATION_NAME: operation_name,
         **extra,
     }
     if trace_id:
-        json_fields["mcd_trace_id"] = trace_id
+        json_fields[LOG_ATTRIBUTE_TRACE_ID] = trace_id
 
     return {
         "json_fields": json_fields,
@@ -52,3 +67,4 @@ main.agent.platform_info = {
 }
 
 main.agent.updater = CloudRunUpdater()
+main.agent.log_context = log_context
