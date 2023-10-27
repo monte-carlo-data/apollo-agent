@@ -1,15 +1,17 @@
 from typing import Dict, Optional
 
+from apollo.agent.constants import LOG_ATTRIBUTE_TRACE_ID, LOG_ATTRIBUTE_OPERATION_NAME
+
 
 class LoggingUtils:
     def __init__(self):
         def builder(trace_id: Optional[str], operation_name: str, extra: Dict):
             extra = {
-                "operation_name": operation_name,
+                LOG_ATTRIBUTE_OPERATION_NAME: operation_name,
                 **extra,
             }
             if trace_id:
-                extra["trace_id"] = trace_id
+                extra[LOG_ATTRIBUTE_TRACE_ID] = trace_id
             return extra
 
         self.extra_builder = builder

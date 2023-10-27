@@ -26,7 +26,12 @@ class BaseProxyClient(ABC):
         :return: The `extra` payload to include in the log message, by default `operation.to_dict()` but sub classes
             can override to return more or less data (for example to trim/redact sensitive data).
         """
-        return operation.to_dict()
+        extra = operation.to_dict()
+
+        # we're already logging trace_id as mcd_trace_id, avoid the duplicated attribute
+        extra.pop("trace_id", None)
+
+        return extra
 
     def process_result(self, value: Any) -> Any:
         """
