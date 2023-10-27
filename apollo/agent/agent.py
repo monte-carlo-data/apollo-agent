@@ -290,16 +290,19 @@ class Agent:
                 prefix="Failed to read operation:", status_code=400
             )
 
-        client: Optional[BaseProxyClient] = None
-        try:
-            client = ProxyClientFactory.get_proxy_client(
-                connection_type, credentials, operation.skip_cache, self._platform
-            )
-            return self._execute_client_operation(
-                connection_type, client, operation_name, operation
-            )
-        except Exception:
-            return AgentUtils.agent_response_for_last_exception(client=client)
+        with self._inject_log_context(
+            f"{connection_type}/{operation_name}", operation.trace_id
+        ):
+            client: Optional[BaseProxyClient] = None
+            try:
+                client = ProxyClientFactory.get_proxy_client(
+                    connection_type, credentials, operation.skip_cache, self._platform
+                )
+                return self._execute_client_operation(
+                    connection_type, client, operation_name, operation
+                )
+            except Exception:
+                return AgentUtils.agent_response_for_last_exception(client=client)
 
     def _execute_client_operation(
         self,
@@ -309,29 +312,24 @@ class Agent:
         operation: AgentOperation,
     ) -> AgentResponse:
         start_time = time.time()
-        with self._inject_log_context(
-            f"{connection_type}/{operation_name}", operation.trace_id
-        ):
-            logger.info(
-                f"Executing operation: {connection_type}/{operation_name}",
-                extra=self._logging_utils.build_extra(
-                    operation.trace_id,
-                    operation_name,
-                    client.log_payload(operation),
-                ),
-            )
+        logger.info(
+            f"Executing operation: {connection_type}/{operation_name}",
+            extra=self._logging_utils.build_extra(
+                operation.trace_id,
+                operation_name,
+                client.log_payload(operation),
+            ),
+        )
 
-            result = self._execute(
-                client, self._logging_utils, operation_name, operation
-            )
-            logger.debug(
-                f"Operation executed: {connection_type}/{operation_name}",
-                extra=self._logging_utils.build_extra(
-                    operation.trace_id,
-                    operation_name,
-                    dict(elapsed_time=time.time() - start_time),
-                ),
-            )
+        result = self._execute(client, self._logging_utils, operation_name, operation)
+        logger.debug(
+            f"Operation executed: {connection_type}/{operation_name}",
+            extra=self._logging_utils.build_extra(
+                operation.trace_id,
+                operation_name,
+                dict(elapsed_time=time.time() - start_time),
+            ),
+        )
         return AgentResponse(result or {}, 200, operation.trace_id)
 
     @staticmethod
