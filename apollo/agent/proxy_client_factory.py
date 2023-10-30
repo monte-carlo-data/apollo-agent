@@ -152,6 +152,7 @@ class ProxyClientFactory:
             return
         key = cls._get_cache_key(connection_type, credentials)
         cls._dispose_cached_client(key)
+        logger.info(f"Discarded {connection_type} client")
 
     @classmethod
     def _create_proxy_client(

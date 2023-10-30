@@ -272,21 +272,25 @@ class Agent:
                 prefix="Failed to read operation:", status_code=400
             )
 
+        response: Optional[AgentResponse] = None
         client: Optional[BaseProxyClient] = None
         try:
             client = ProxyClientFactory.get_proxy_client(
                 connection_type, credentials, operation.skip_cache, self._platform
             )
-            return self._execute_client_operation(
+            result = self._execute_client_operation(
                 connection_type, client, operation_name, operation
             )
+            response = result
+            return result
         except Exception:
+            return AgentUtils.agent_response_for_last_exception(client=client)
+        finally:
             # discard clients that raised exceptions, sometimes they keep failing
-            if not operation.skip_cache:
+            if (response is None or response.is_error) and not operation.skip_cache:
                 ProxyClientFactory.dispose_proxy_client(
                     connection_type, credentials, operation.skip_cache
                 )
-            return AgentUtils.agent_response_for_last_exception(client=client)
 
     def _execute_client_operation(
         self,
