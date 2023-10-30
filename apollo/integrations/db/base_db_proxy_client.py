@@ -20,8 +20,10 @@ class BaseDbProxyClient(BaseProxyClient):
                 ]
             if "all_results" in value:
                 all_results: List = value["all_results"]
-                value["all_results"] = [
-                    AgentUtils.serialize_value(v) for r in all_results for v in r
-                ]
+                value["all_results"] = [self._process_row(r) for r in all_results]
 
         return value
+
+    @staticmethod
+    def _process_row(row: List) -> List:
+        return [AgentUtils.serialize_value(v) for v in row]
