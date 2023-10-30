@@ -1,5 +1,9 @@
 # Monte Carlo Data Collector - Apollo Agent
 
+Monte Carlo's [containerized agent](https://hub.docker.com/r/montecarlodata/agent) (Beta).
+See [here](https://docs.getmontecarlo.com/docs/platform-architecture) for architecture details and alternative
+deployment options.
+
 ## Development environment
 ### Pre-requisites
 - Python 3.8 or later
@@ -105,3 +109,11 @@ To release a new version:
   - Enter the release description 
   - Publish the release
 - This will trigger another build process that will publish the images to our `agent` repository in DockerHub
+
+## License
+
+See [LICENSE](https://github.com/monte-carlo-data/apollo-agent/blob/main/LICENSE.md) for more information.
+
+## Security
+
+See [SECURITY](https://github.com/monte-carlo-data/apollo-agent/blob/main/SECURITY.md) for more information.

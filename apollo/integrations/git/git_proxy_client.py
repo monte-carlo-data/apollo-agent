@@ -46,7 +46,7 @@ class GitProxyClient(BaseProxyClient):
         zip_file_path = self._zip_file(files)
         storage_client = StorageProxyClient(self._platform)
 
-        key = f"/tmp/{uuid.uuid4()}.zip"
+        key = f"tmp/{uuid.uuid4()}.zip"
         storage_client.upload_file(key, zip_file_path)
         url = storage_client.generate_presigned_url(key, ZIP_FILE_EXPIRATION)
         os.remove(zip_file_path)

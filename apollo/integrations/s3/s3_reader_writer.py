@@ -1,5 +1,6 @@
 import os
 from functools import cached_property
+from typing import Optional
 
 import boto3
 
@@ -14,13 +15,13 @@ class S3ReaderWriter(S3BaseReaderWriter):
     default settings supported by boto3 library, which means env vars need to be set with the credentials to use.
     """
 
-    def __init__(self):
+    def __init__(self, prefix: Optional[str] = None):
         bucket_name = os.getenv(STORAGE_BUCKET_NAME_ENV_VAR)
         if not bucket_name:
             raise AgentConfigurationError(
                 f"Bucket not configured, {STORAGE_BUCKET_NAME_ENV_VAR} env var expected"
             )
-        super().__init__(bucket_name=bucket_name)
+        super().__init__(bucket_name=bucket_name, prefix=prefix)
 
     @cached_property
     def s3_client(self):

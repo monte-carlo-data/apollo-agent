@@ -58,8 +58,10 @@ class GcsBaseReaderWriter(BaseStorageClient):
         self,
         bucket_name: str,
         credentials: Optional[Credentials] = None,
+        prefix: Optional[str] = None,
         **kwargs,  # type: ignore
     ):
+        super().__init__(prefix=prefix)
         self._bucket_name = bucket_name
         self._using_default_credentials = credentials is None
         self._client = Client(credentials=credentials)
@@ -79,7 +81,7 @@ class GcsBaseReaderWriter(BaseStorageClient):
         :param obj_to_write: contents for the file, specified as a bytes array or string
         """
         bucket: Bucket = self._client.get_bucket(self._bucket_name)
-        bucket.blob(key).upload_from_string(obj_to_write)
+        bucket.blob(self._apply_prefix(key)).upload_from_string(obj_to_write)
 
     @convert_gcs_errors
     def read(
@@ -96,7 +98,7 @@ class GcsBaseReaderWriter(BaseStorageClient):
         :return: a bytes object, unless encoding is set, in which case it returns a string.
         """
         bucket: Bucket = self._client.get_bucket(self._bucket_name)
-        content = bucket.blob(blob_name=key).download_as_bytes()
+        content = bucket.blob(blob_name=self._apply_prefix(key)).download_as_bytes()
         if decompress and self._is_gzip(content):
             content = gzip.decompress(content)
         if encoding is not None:
@@ -113,8 +115,11 @@ class GcsBaseReaderWriter(BaseStorageClient):
         """
         temp_dict = {}
         bucket: Bucket = self._client.get_bucket(self._bucket_name)
-        for blob in bucket.list_blobs(prefix=prefix):
-            temp_dict[blob.name] = self.read_json(blob.name)
+        for blob in bucket.list_blobs(prefix=self._apply_prefix(prefix)):
+            key = self._remove_prefix(blob.name)
+            if not key or key.endswith("/"):  # root folder or sub-folder
+                continue
+            temp_dict[key] = self.read_json(key)
         return temp_dict
 
     @convert_gcs_errors
@@ -125,7 +130,7 @@ class GcsBaseReaderWriter(BaseStorageClient):
         :param download_path: local path to the file where the contents of `key` will be stored.
         """
         bucket: Bucket = self._client.get_bucket(self._bucket_name)
-        bucket.blob(key).download_to_filename(download_path)
+        bucket.blob(self._apply_prefix(key)).download_to_filename(download_path)
 
     def upload_file(self, key: str, local_file_path: str) -> None:
         """
@@ -134,7 +139,7 @@ class GcsBaseReaderWriter(BaseStorageClient):
         :param local_file_path: local path to the file to upload.
         """
         bucket: Bucket = self._client.get_bucket(self._bucket_name)
-        bucket.blob(key).upload_from_filename(local_file_path)
+        bucket.blob(self._apply_prefix(key)).upload_from_filename(local_file_path)
 
     @convert_gcs_errors
     def managed_download(self, key: str, download_path: str):
@@ -145,7 +150,7 @@ class GcsBaseReaderWriter(BaseStorageClient):
         :param download_path: local path to the file where the contents of `key` will be stored.
         """
         bucket: Bucket = self._client.get_bucket(self._bucket_name)
-        blob = bucket.blob(key)
+        blob = bucket.blob(self._apply_prefix(key))
         transfer_manager.download_chunks_concurrently(blob=blob, filename=download_path)
 
     @convert_gcs_errors
@@ -155,7 +160,7 @@ class GcsBaseReaderWriter(BaseStorageClient):
         :param key: path to the file, for example /dir/name.ext
         """
         bucket: Bucket = self._client.get_bucket(self._bucket_name)
-        bucket.blob(key).delete()
+        bucket.blob(self._apply_prefix(key)).delete()
 
     @convert_gcs_errors
     def list_objects(
@@ -183,8 +188,8 @@ class GcsBaseReaderWriter(BaseStorageClient):
             specified only Prefix is included in the result for each listed folder.
         """
         params_dict: Dict[str, Any] = {"bucket_or_name": self._bucket_name}
-        if prefix:
-            params_dict["prefix"] = prefix
+        if prefix or self._prefix:
+            params_dict["prefix"] = self._apply_prefix(prefix)
         if delimiter:
             params_dict["delimiter"] = delimiter
         if batch_size:
@@ -204,18 +209,22 @@ class GcsBaseReaderWriter(BaseStorageClient):
         # contents but, can be utilized to roll up "sub-folders"
         # we're returning the same exact format returned by S3ReaderWriter for compatibility reasons
         if delimiter:
-            result_list = [{"Prefix": prefix} for prefix in page.prefixes]
+            result_list = self._remove_prefix_from_prefixes(
+                [{"Prefix": prefix} for prefix in page.prefixes]
+            )
         else:
-            result_list = [
-                {
-                    "ETag": blob.etag,
-                    "Key": blob.name,
-                    "Size": blob.size,
-                    "LastModified": blob.updated,
-                    "StorageClass": blob.storage_class,
-                }
-                for blob in list(page)
-            ]
+            result_list = self._remove_prefix_from_entries(
+                [
+                    {
+                        "ETag": blob.etag,
+                        "Key": blob.name,
+                        "Size": blob.size,
+                        "LastModified": blob.updated,
+                        "StorageClass": blob.storage_class,
+                    }
+                    for blob in list(page)
+                ]
+            )
         return result_list, iterator.next_page_token
 
     @convert_gcs_errors
@@ -227,7 +236,7 @@ class GcsBaseReaderWriter(BaseStorageClient):
         :return: a pre-signed url to access the specified file.
         """
         bucket: Bucket = self._client.get_bucket(self._bucket_name)
-        blob = bucket.get_blob(blob_name=key)
+        blob = bucket.get_blob(blob_name=self._apply_prefix(key))
         if not blob:
             raise self.NotFoundError(f"blob with key {key} does not exist")
         if self._using_default_credentials:

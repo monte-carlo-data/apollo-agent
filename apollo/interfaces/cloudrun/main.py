@@ -50,4 +50,5 @@ main.agent.platform_info = {
     GCP_PLATFORM_INFO_KEY_PROJECT_ID: GcpMetadataService.get_project_id(),
     GCP_PLATFORM_INFO_KEY_REGION: GcpMetadataService.get_instance_region(),
 }
+
 main.agent.updater = CloudRunUpdater()

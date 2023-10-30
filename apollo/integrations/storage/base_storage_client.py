@@ -1,7 +1,7 @@
 import json
 from abc import ABC, abstractmethod
 from datetime import timedelta
-from typing import Optional, Union, Dict, Tuple, List
+from typing import Optional, Union, Dict, Tuple, List, cast
 
 
 class BaseStorageClient(ABC):
@@ -21,6 +21,11 @@ class BaseStorageClient(ABC):
 
     class NotFoundError(GenericError):
         pass
+
+    def __init__(self, prefix: Optional[str] = None):
+        self._prefix = prefix or ""
+        if self._prefix and not self._prefix.endswith("/"):
+            self._prefix = f"{self._prefix}/"
 
     @property
     @abstractmethod
@@ -159,3 +164,37 @@ class BaseStorageClient(ABC):
 
     def _is_gzip(self, content: bytes) -> bool:
         return content[:2] == self._GZIP_MAGIC_NUMBER
+
+    def _apply_prefix(self, key: Optional[str]) -> Optional[str]:
+        if not key:
+            return self._prefix
+        if self._prefix:
+            return f"{self._prefix}{key}"
+        else:
+            return key
+
+    def _remove_prefix(self, key: str) -> str:
+        if self._prefix and key.startswith(self._prefix):
+            return key[len(self._prefix) :]
+        else:
+            return key
+
+    def _remove_prefix_from_prefixes(
+        self, entries: Optional[List[Dict]]
+    ) -> Optional[List[Dict]]:
+        if not entries or not self._prefix:
+            return entries
+        return [
+            {"Prefix": self._remove_prefix(cast(str, entry.get("Prefix")))}
+            for entry in entries
+        ]
+
+    def _remove_prefix_from_entries(
+        self, entries: Optional[List[Dict]]
+    ) -> Optional[List[Dict]]:
+        if not entries or not self._prefix:
+            return entries
+        return [
+            {**entry, "Key": self._remove_prefix(cast(str, entry.get("Key")))}
+            for entry in entries
+        ]
