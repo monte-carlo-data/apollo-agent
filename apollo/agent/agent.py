@@ -281,6 +281,11 @@ class Agent:
                 connection_type, client, operation_name, operation
             )
         except Exception:
+            # discard clients that raised exceptions, sometimes they keep failing
+            if not operation.skip_cache:
+                ProxyClientFactory.dispose_proxy_client(
+                    connection_type, credentials, operation.skip_cache
+                )
             return AgentUtils.agent_response_for_last_exception(client=client)
 
     def _execute_client_operation(
