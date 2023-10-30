@@ -286,7 +286,7 @@ class Agent:
         except Exception:
             return AgentUtils.agent_response_for_last_exception(client=client)
         finally:
-            # discard clients that raised exceptions, sometimes they keep failing
+            # discard clients that raised exceptions, clients like Redshift keep failing after an error
             if (response is None or response.is_error) and not operation.skip_cache:
                 ProxyClientFactory.dispose_proxy_client(
                     connection_type, credentials, operation.skip_cache
