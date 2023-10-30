@@ -290,6 +290,7 @@ class Agent:
                 prefix="Failed to read operation:", status_code=400
             )
 
+        response: Optional[AgentResponse] = None
         with self._inject_log_context(
             f"{connection_type}/{operation_name}", operation.trace_id
         ):
@@ -298,11 +299,19 @@ class Agent:
                 client = ProxyClientFactory.get_proxy_client(
                     connection_type, credentials, operation.skip_cache, self._platform
                 )
-                return self._execute_client_operation(
+                result = self._execute_client_operation(
                     connection_type, client, operation_name, operation
                 )
+                response = result  # set response to use it in the "finally" block below
+                return result
             except Exception:
                 return AgentUtils.agent_response_for_last_exception(client=client)
+            finally:
+                # discard clients that raised exceptions, sometimes they keep failing
+                if (response is None or response.is_error) and not operation.skip_cache:
+                    ProxyClientFactory.dispose_proxy_client(
+                        connection_type, credentials, operation.skip_cache
+                    )
 
     def _execute_client_operation(
         self,

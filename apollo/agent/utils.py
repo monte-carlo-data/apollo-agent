@@ -3,7 +3,7 @@ import sys
 import tempfile
 import traceback
 import uuid
-from datetime import datetime
+from datetime import datetime, date
 from typing import Optional, Dict, List, BinaryIO, Any
 
 from apollo.agent.constants import (
@@ -15,6 +15,7 @@ from apollo.agent.constants import (
     ATTRIBUTE_NAME_TYPE,
     ATTRIBUTE_NAME_DATA,
     ATTRIBUTE_VALUE_TYPE_DATETIME,
+    ATTRIBUTE_VALUE_TYPE_DATE,
 )
 from apollo.agent.env_vars import TEMP_PATH_ENV_VAR, DEFAULT_TEMP_PATH
 from apollo.integrations.base_proxy_client import BaseProxyClient
@@ -123,6 +124,11 @@ class AgentUtils:
         if isinstance(value, datetime):
             return {
                 ATTRIBUTE_NAME_TYPE: ATTRIBUTE_VALUE_TYPE_DATETIME,
+                ATTRIBUTE_NAME_DATA: value.isoformat(),
+            }
+        elif isinstance(value, date):
+            return {
+                ATTRIBUTE_NAME_TYPE: ATTRIBUTE_VALUE_TYPE_DATE,
                 ATTRIBUTE_NAME_DATA: value.isoformat(),
             }
         return value
