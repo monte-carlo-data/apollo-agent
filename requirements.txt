@@ -64,6 +64,8 @@ google-resumable-media==2.6.0
     # via google-cloud-storage
 googleapis-common-protos==1.60.0
     # via google-api-core
+greenlet==3.0.1
+    # via sqlalchemy
 gunicorn==21.2.0
     # via -r requirements.in
 httplib2==0.22.0
@@ -172,5 +174,5 @@ urllib3==1.26.16
     #   botocore
     #   google-auth
     #   requests
-werkzeug==2.3.7
+werkzeug==3.0.1
     # via flask
