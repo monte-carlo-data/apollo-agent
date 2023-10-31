@@ -1,15 +1,20 @@
 import logging
 import os
 import sys
+import time
+from contextlib import contextmanager
 from typing import Any, Dict, Optional
 
 from apollo.agent.env_vars import HEALTH_ENV_VARS, IS_REMOTE_UPGRADABLE_ENV_VAR
 from apollo.agent.evaluation_utils import AgentEvaluationUtils
+from apollo.agent.log_context import AgentLogContext
 from apollo.agent.logging_utils import LoggingUtils
 from apollo.agent.constants import (
     CONTEXT_VAR_UTILS,
     CONTEXT_VAR_CLIENT,
     PLATFORM_GENERIC,
+    LOG_ATTRIBUTE_TRACE_ID,
+    LOG_ATTRIBUTE_OPERATION_NAME,
 )
 from apollo.agent.operation_utils import OperationUtils
 from apollo.agent.models import (
@@ -35,6 +40,7 @@ class Agent:
         self._platform = PLATFORM_GENERIC
         self._platform_info = {}
         self._updater: Optional[AgentUpdater] = None
+        self._log_context: Optional[AgentLogContext] = None
 
     @property
     def platform(self) -> str:
@@ -67,6 +73,14 @@ class Agent:
     def updater(self, updater: Optional[AgentUpdater]):
         self._updater = updater
 
+    @property
+    def log_context(self) -> Optional[AgentLogContext]:
+        return self._log_context
+
+    @log_context.setter
+    def log_context(self, log_context: Optional[AgentLogContext]):
+        self._log_context = log_context
+
     def health_information(self, trace_id: Optional[str]) -> AgentHealthInformation:
         """
         Returns platform and environment information about the agent:
@@ -78,19 +92,20 @@ class Agent:
         - the received value for `trace_id` if any
         :return: an `AgentHealthInformation` object that can be converted to JSON.
         """
-        logger.info(
-            "Health information request received",
-            extra=self._logging_utils.build_extra(
-                trace_id=trace_id,
-                operation_name="health_information",
-            ),
-        )
-        if self._updater:
-            if self._platform_info is None:
-                self._platform_info = {}
-            self._platform_info[
-                GCP_PLATFORM_INFO_KEY_IMAGE
-            ] = self._updater.get_current_image(self._platform_info)
+        with self._inject_log_context("health_information", trace_id):
+            logger.info(
+                "Health information request received",
+                extra=self._logging_utils.build_extra(
+                    trace_id=trace_id,
+                    operation_name="health_information",
+                ),
+            )
+            if self._updater:
+                if self._platform_info is None:
+                    self._platform_info = {}
+                self._platform_info[
+                    GCP_PLATFORM_INFO_KEY_IMAGE
+                ] = self._updater.get_current_image(self._platform_info)
 
         return AgentHealthInformation(
             version=VERSION,
@@ -117,21 +132,22 @@ class Agent:
             if non-numeric. Defaults to 5 seconds.
         :param trace_id: Optional trace ID received from the client that will be included in the response, if present.
         """
-        logger.info(
-            "Validate TCP Open request received",
-            extra=self._logging_utils.build_extra(
-                trace_id=trace_id,
-                operation_name="test_network_open",
-                extra=dict(
-                    host=host,
-                    port=port_str,
-                    timeout=timeout_str,
+        with self._inject_log_context("test_network_open", trace_id):
+            logger.info(
+                "Validate TCP Open request received",
+                extra=self._logging_utils.build_extra(
+                    trace_id=trace_id,
+                    operation_name="test_network_open",
+                    extra=dict(
+                        host=host,
+                        port=port_str,
+                        timeout=timeout_str,
+                    ),
                 ),
-            ),
-        )
-        return ValidateNetwork.validate_tcp_open_connection(
-            host, port_str, timeout_str, trace_id
-        )
+            )
+            return ValidateNetwork.validate_tcp_open_connection(
+                host, port_str, timeout_str, trace_id
+            )
 
     def validate_telnet_connection(
         self,
@@ -149,21 +165,22 @@ class Agent:
             if non-numeric. Defaults to 5 seconds.
         :param trace_id: Optional trace ID received from the client that will be included in the response, if present.
         """
-        logger.info(
-            "Validate Telnet connection request received",
-            extra=self._logging_utils.build_extra(
-                trace_id=trace_id,
-                operation_name="test_network_telnet",
-                extra=dict(
-                    host=host,
-                    port=port_str,
-                    timeout=timeout_str,
+        with self._inject_log_context("test_network_telnet", trace_id):
+            logger.info(
+                "Validate Telnet connection request received",
+                extra=self._logging_utils.build_extra(
+                    trace_id=trace_id,
+                    operation_name="test_network_telnet",
+                    extra=dict(
+                        host=host,
+                        port=port_str,
+                        timeout=timeout_str,
+                    ),
                 ),
-            ),
-        )
-        return ValidateNetwork.validate_telnet_connection(
-            host, port_str, timeout_str, trace_id
-        )
+            )
+            return ValidateNetwork.validate_telnet_connection(
+                host, port_str, timeout_str, trace_id
+            )
 
     def update(
         self,
@@ -179,16 +196,17 @@ class Agent:
         the env var `MCD_AGENT_IS_REMOTE_UPGRADABLE` is set to `true`.
         The returned response is a dictionary returned by the agent updater implementation.
         """
-        try:
-            result = self._perform_update(
-                trace_id=trace_id,
-                image=image,
-                timeout_seconds=timeout_seconds,
-                **kwargs,
-            )
-            return AgentUtils.agent_ok_response(result, trace_id)
-        except Exception:
-            return AgentUtils.agent_response_for_last_exception("Update failed:")
+        with self._inject_log_context("update", trace_id):
+            try:
+                result = self._perform_update(
+                    trace_id=trace_id,
+                    image=image,
+                    timeout_seconds=timeout_seconds,
+                    **kwargs,
+                )
+                return AgentUtils.agent_ok_response(result, trace_id)
+            except Exception:
+                return AgentUtils.agent_response_for_last_exception("Update failed:")
 
     def _perform_update(
         self,
@@ -272,16 +290,19 @@ class Agent:
                 prefix="Failed to read operation:", status_code=400
             )
 
-        client: Optional[BaseProxyClient] = None
-        try:
-            client = ProxyClientFactory.get_proxy_client(
-                connection_type, credentials, operation.skip_cache, self._platform
-            )
-            return self._execute_client_operation(
-                connection_type, client, operation_name, operation
-            )
-        except Exception:
-            return AgentUtils.agent_response_for_last_exception(client=client)
+        with self._inject_log_context(
+            f"{connection_type}/{operation_name}", operation.trace_id
+        ):
+            client: Optional[BaseProxyClient] = None
+            try:
+                client = ProxyClientFactory.get_proxy_client(
+                    connection_type, credentials, operation.skip_cache, self._platform
+                )
+                return self._execute_client_operation(
+                    connection_type, client, operation_name, operation
+                )
+            except Exception:
+                return AgentUtils.agent_response_for_last_exception(client=client)
 
     def _execute_client_operation(
         self,
@@ -290,6 +311,7 @@ class Agent:
         operation_name: str,
         operation: AgentOperation,
     ) -> AgentResponse:
+        start_time = time.time()
         logger.info(
             f"Executing operation: {connection_type}/{operation_name}",
             extra=self._logging_utils.build_extra(
@@ -298,7 +320,16 @@ class Agent:
                 client.log_payload(operation),
             ),
         )
+
         result = self._execute(client, self._logging_utils, operation_name, operation)
+        logger.debug(
+            f"Operation executed: {connection_type}/{operation_name}",
+            extra=self._logging_utils.build_extra(
+                operation.trace_id,
+                operation_name,
+                dict(elapsed_time=time.time() - start_time),
+            ),
+        )
         return AgentResponse(result or {}, 200, operation.trace_id)
 
     @staticmethod
@@ -320,3 +351,19 @@ class Agent:
             operation.commands,
             operation.trace_id,
         )
+
+    @contextmanager
+    def _inject_log_context(self, operation_name: str, trace_id: Optional[str]):
+        if self._log_context:
+            context = {
+                LOG_ATTRIBUTE_OPERATION_NAME: operation_name,
+            }
+            if trace_id:
+                context[LOG_ATTRIBUTE_TRACE_ID] = trace_id
+
+            self._log_context.set_agent_context(context)
+        try:
+            yield None
+        finally:
+            if self._log_context:
+                self._log_context.set_agent_context({})
