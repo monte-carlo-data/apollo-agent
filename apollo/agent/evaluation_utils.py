@@ -1,8 +1,22 @@
+import base64
 import logging
-from typing import Any, Callable, Optional, Dict, List
+from typing import Any, Callable, Optional, Dict, List, Iterable, cast
 
-from apollo.agent.models import AgentError, AgentCommand
+from apollo.agent.logging_utils import LoggingUtils
+from apollo.agent.models import (
+    AgentError,
+    AgentCommand,
+)
+from apollo.agent.constants import (
+    ATTRIBUTE_NAME_REFERENCE,
+    ATTRIBUTE_NAME_TYPE,
+    ATTRIBUTE_VALUE_TYPE_CALL,
+    CONTEXT_VAR_CLIENT,
+    ATTRIBUTE_VALUE_TYPE_BYTES,
+    ATTRIBUTE_NAME_DATA,
+)
 from apollo.agent.utils import AgentUtils
+from apollo.integrations.base_proxy_client import BaseProxyClient
 
 logger = logging.getLogger(__name__)
 
@@ -15,27 +29,44 @@ class AgentEvaluationUtils:
     """
 
     @classmethod
-    def execute(cls, context: Dict, commands: List[AgentCommand]) -> Optional[Any]:
+    def execute(
+        cls,
+        context: Dict,
+        logging_utils: LoggingUtils,
+        operation_name: str,
+        commands: List[AgentCommand],
+        trace_id: str,
+    ) -> Optional[Any]:
         """
         Executes a list of commands from an operation, returns the result of the
         last command in the list.
         :param context: the context containing variables to use as targets.
+        :param logging_utils: helper class to create the log payload.
+        :param operation_name: name of the operation being executed, for logging purposes only.
         :param commands: the list of commands to execute.
+        :param trace_id: trace id of the operation being executed, for logging purposes only.
         :return: the result of the last command in the list.
         """
+        client: BaseProxyClient = cast(BaseProxyClient, context.get(CONTEXT_VAR_CLIENT))
         try:
             last_result: Optional[Any] = None
             for command in commands:
                 last_result = cls._execute_command(command, context)
-            return last_result
+            return client.process_result(last_result)
         except Exception as ex:
-            logger.exception(
-                "Exception occurred executing commands",
-                extra={
-                    "commands": commands,
-                },
+            should_log = client.should_log_exception(ex)
+            log_method = logger.exception if should_log else logger.info
+            message = "Exception occurred executing operation"
+            if not should_log:
+                message += f": {ex}"
+            log_method(
+                message,
+                extra=logging_utils.build_extra(
+                    trace_id=trace_id,
+                    operation_name=operation_name,
+                ),
             )
-            return AgentUtils.response_for_last_exception()
+            return AgentUtils.response_for_last_exception(client=client)
 
     @classmethod
     def _execute_command(cls, command: AgentCommand, context: Dict) -> Optional[Any]:
@@ -67,14 +98,16 @@ class AgentEvaluationUtils:
         :return: the result of the command
         """
         if not target:
-            target_name = command.target or "_client"
-            if target_name not in context:
-                raise AgentError(f"{target} not found in context")
-            target = context[target_name]
+            target_name = command.target or CONTEXT_VAR_CLIENT
+            target = cls._resolve_context_variable(context, target_name)
         method = cls._resolve_method(target, command.method)
-        args = command.args or []
-        kwargs = command.kwargs or {}
-        result = method(*args, **kwargs)
+        if isinstance(method, Callable):
+            result = method(
+                *cls._resolve_args(command.args, context),
+                **cls._resolve_kwargs(command.kwargs, context),
+            )
+        else:
+            result = method  # assume it is a property
         if store := command.store:
             context[store] = result
         return result
@@ -95,3 +128,72 @@ class AgentEvaluationUtils:
             if hasattr(client, method_name):
                 return getattr(client, method_name)
         raise AttributeError(f"Failed to resolve method {method_name}")
+
+    @classmethod
+    def _resolve_args(cls, args: Optional[List[Any]], context: Dict) -> List[Any]:
+        """
+        Utility method used to "resolve" a list of arguments, processing method calls and references to variables.
+        When a call is found as an argument, the call is performed and the result value used as the argument value.
+        When a variable reference is found, the value is obtained from the context and used as the argument value.
+        :param args: A list of arguments
+        :param context: A context dictionary holding variable values
+        :return: The new list of arguments
+        """
+        if not args:
+            return []
+        return [cls.resolve_arg_value(arg, context) for arg in args]
+
+    @classmethod
+    def _resolve_kwargs(cls, kwargs: Optional[Dict], context: Dict) -> Dict:
+        """
+        Similar to `resolve_args` but processing keyword arguments.
+        :param kwargs: keyword arguments to process
+        :param context: context holding variables to use for replacement
+        :return: The new keyword arguments
+        """
+        if not kwargs:
+            return {}
+        return {
+            key: cls.resolve_arg_value(value, context) for key, value in kwargs.items()
+        }
+
+    @classmethod
+    def resolve_arg_value(cls, value: Any, context: Dict) -> Any:
+        """
+        Resolves a single argument value, it checks for a variable reference or a method call.
+        A variable reference is identified by a dictionary containing "__reference__", the value for this property is
+        the name of the variable to look for. This method will return the value of the variable in "context" or fail
+        if that variable is not present.
+        A call is identified by a dictionary containing a "__type__" attribute with value "call", the rest of the
+        attributes are expected to define an "AgentCommand" object defining the call to perform. This method will
+        perform the call and return its result.
+        If value is not a variable reference or a method call, it is returned as the result for this method.
+        :param value: the value present in args or kwargs
+        :param context: the dictionary holding values for variables
+        :return: The value for the referenced variable, the result of performing the specified call or just the input
+            value.
+        """
+        if isinstance(value, Dict):
+            if ATTRIBUTE_NAME_REFERENCE in value:
+                return cls._resolve_context_variable(
+                    context, value[ATTRIBUTE_NAME_REFERENCE]
+                )
+            elif value.get(ATTRIBUTE_NAME_TYPE) == ATTRIBUTE_VALUE_TYPE_CALL:
+                return cls._execute_single_command(
+                    AgentCommand.from_dict(value), context
+                )
+            elif value.get(ATTRIBUTE_NAME_TYPE) == ATTRIBUTE_VALUE_TYPE_BYTES:
+                return base64.b64decode(value.get(ATTRIBUTE_NAME_DATA))  # type: ignore
+        return value
+
+    @staticmethod
+    def _resolve_context_variable(context: Dict, var_name: str) -> Any:
+        """
+        Resolves the value of the variable in context, raises an AgentError if the variable is not present in context.
+        :param context: the dictionary containing variables
+        :param var_name: the name of the variable to return
+        :return: the value for the specified variable in context, raises an AgentError if not present.
+        """
+        if var_name not in context:
+            raise AgentError(f"{var_name} not found in context")
+        return context[var_name]

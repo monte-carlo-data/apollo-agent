@@ -13,25 +13,19 @@ _API_VERSION = "v2"
 
 class BqProxyClient(BaseProxyClient):
     """
-    BigQuery Proxy Client, simple class that used the received credentials to create a BigQuery connection.
+    BigQuery Proxy Client, simple class that uses the received credentials to create a BigQuery connection.
     This connection is returned as the `wrapped_client` attribute and the agent will take care of executing methods
     there.
-    If no credentials are specified in the constructor (received in the request) the credentials file specified by
-    `BQ_CREDS_FILE` will be used, and if that's not present the ADC (Application Default Credentials) will be used.
+    If no credentials are specified in the constructor (received in the request) the ADC (Application Default
+    Credentials) will be used.
     When running in a CloudRun environment, ADC is derived from the environment (the service account running the
     CloudRun service), in a local dev environment `gcloud` CLI can be used to set ADC.
     """
 
-    def __init__(self, credentials: Optional[Dict], **kwargs):
+    def __init__(self, credentials: Optional[Dict], **kwargs):  # type: ignore
         bq_credentials: Optional[Credentials] = None
         if credentials:
             bq_credentials = Credentials.from_service_account_info(credentials)
-        else:
-            # check for a credentials file specified through BQ_CREDS_FILE
-            # env var, used for testing
-            creds_file = os.getenv("BQ_CREDS_FILE")
-            if creds_file:
-                bq_credentials = Credentials.from_service_account_file(creds_file)
 
         # if no credentials are specified then ADC (app default credentials) will be used
         # in the context of Cloud Run it comes from the service account used to run the service

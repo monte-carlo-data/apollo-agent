@@ -1,8 +1,12 @@
 azure-identity==1.14.0
 azure-storage-blob==12.18.1
+boto3==1.28.21
+databricks-sql-connector==2.8.0
 dataclasses-json==0.6.0
 flask==2.3.3
-google-cloud-storage==2.10.0
-google-cloud-bigquery==3.11.4
 google-api-python-client==2.98.0
+google-cloud-storage==2.10.0
 gunicorn==21.2.0
+lambda-git==0.1.1
+looker-sdk==23.16.0
+retry2==0.9.5

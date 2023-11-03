@@ -38,6 +38,23 @@ commands:
                      << parameters.repo_path >> \
                      | jq '{"reason":.reason,"path": .path}'
         name: Scan using truffleHog
+  verify-version-in-docker-image:
+    parameters:
+      image:
+        description: Image name to validate
+        type: string
+      version:
+        description: Expected contents for /app/apollo/agent/version file
+        type: string
+    steps:
+    - run:
+        name: Verify version in Docker image
+        command: |
+          image_version=$(docker run --rm << parameters.image >> python apollo/agent/settings.py) 
+          if [ $image_version = "<< parameters.version >>" ]
+            then exit 0
+            else echo "Failed to find expected version, found: $image_version"; exit 1
+          fi
 
 jobs:
   run-trufflehog-scan:
@@ -59,11 +76,16 @@ jobs:
       - run:
           name: Install dependencies
           command: |
+            python -m venv .venv
+            . .venv/bin/activate
             pip install --no-cache-dir --upgrade pip
-            pip install --no-cache-dir -r requirements.txt -r requirements-dev.txt
+            pip install --no-cache-dir -r requirements.txt -r requirements-dev.txt -r requirements-cloudrun.txt -r requirements-lambda.txt
       - run:
-          name: 'Run linter'
-          command: python -m black --check .
+          name: 'Run black / pyright'
+          command: |
+            . .venv/bin/activate
+            black --check .
+            pyright
 
   run-test-docker:
     machine:
@@ -90,15 +112,21 @@ jobs:
       - docker/build:
           step-name: Build generic image
           use-buildkit: true  # to build only the required stages
-          extra_build_args: --target generic
+          extra_build_args: --target generic --build-arg code_version=<< parameters.code_version >> --build-arg build_number=<< pipeline.number >>
           image: montecarlodata/<< parameters.docker_hub_repository >>
           tag: latest-generic,<< parameters.code_version >>-generic
       - docker/build:
           step-name: Build cloudrun image
           use-buildkit: true # to build only the required stages
-          extra_build_args: --target cloudrun
+          extra_build_args: --target cloudrun --build-arg code_version=<< parameters.code_version >> --build-arg build_number=<< pipeline.number >>
           image: montecarlodata/<< parameters.docker_hub_repository >>
           tag: latest-cloudrun,<< parameters.code_version >>-cloudrun
+      - verify-version-in-docker-image:
+          image: montecarlodata/<< parameters.docker_hub_repository >>:latest-generic
+          version: << parameters.code_version >>,<< pipeline.number >>
+      - verify-version-in-docker-image:
+          image: montecarlodata/<< parameters.docker_hub_repository >>:latest-cloudrun
+          version: << parameters.code_version >>,<< pipeline.number >>
       - docker/push:
           image: montecarlodata/<< parameters.docker_hub_repository >>
           tag: latest-generic,<< parameters.code_version >>-generic,latest-cloudrun,<< parameters.code_version >>-cloudrun
@@ -131,6 +159,8 @@ workflows:
           context:
             - docker
           requires:
+            - run-linter
+            - run-trufflehog-scan
             - run-test-docker
           filters:
             branches:
@@ -150,6 +180,8 @@ workflows:
           context:
             - docker
           requires:
+            - run-linter
+            - run-trufflehog-scan
             - run-test-docker
           filters: # run only for tags starting with v, don't run for branches
             tags:
