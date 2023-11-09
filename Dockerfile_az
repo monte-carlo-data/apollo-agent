@@ -13,3 +13,7 @@ COPY apollo /home/site/wwwroot/apollo
 
 # the files under apollo/interfaces/azure like function_app.py must be in the root folder of the app
 COPY apollo/interfaces/azure /home/site/wwwroot
+
+ARG code_version="local"
+ARG build_number="0"
+RUN echo $code_version,$build_number > /home/site/wwwroot/apollo/agent/version

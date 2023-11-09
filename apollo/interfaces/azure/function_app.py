@@ -1,3 +1,4 @@
+import json
 from typing import Dict
 
 import azure.functions as func
@@ -5,6 +6,7 @@ import azure.durable_functions as df
 from azure.durable_functions import (
     DurableOrchestrationContext,
     DurableOrchestrationClient,
+    OrchestrationRuntimeStatus,
 )
 from azure.functions import WsgiMiddleware
 
@@ -30,8 +32,43 @@ async def execute_async_operation(
     instance_id = await client.start_new(
         "agent_operation_orchestrator", client_input=client_input
     )
-    response = client.create_check_status_response(req, instance_id)
-    return response
+    response_payload = {
+        "__mcd_request_id__": instance_id,
+    }
+    return func.HttpResponse(
+        status_code=202,
+        body=json.dumps(response_payload),
+        headers={
+            "Content-Type": "application/json",
+        },
+    )
+
+
+@app.route(route="async/api/v1/status/{instance_id}")
+@app.durable_client_input(client_name="client")
+async def get_async_operation_status(
+    req: func.HttpRequest, client: DurableOrchestrationClient
+):
+    instance_id = req.route_params.get("instance_id", "")
+    status = await client.get_status(instance_id=instance_id)
+    response_payload = {
+        "__mcd_status__": status.runtime_status.name
+        if status.runtime_status
+        else "unknown"
+    }
+    if status.runtime_status == OrchestrationRuntimeStatus.Completed and status.output:
+        if isinstance(status.output, Dict):
+            response_payload.update(status.output)
+        else:
+            response_payload["__mcd_result__"] = status.output
+
+    return func.HttpResponse(
+        status_code=200,
+        body=json.dumps(response_payload),
+        headers={
+            "Content-Type": "application/json",
+        },
+    )
 
 
 @app.orchestration_trigger(context_name="context")
