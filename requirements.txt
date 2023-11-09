@@ -20,6 +20,8 @@ azure-storage-blob==12.18.1
     # via -r requirements.in
 blinker==1.6.2
     # via flask
+cachetools==5.3.2
+    # via google-auth
 cattrs==23.1.2
     # via looker-sdk
 certifi==2023.7.22
@@ -48,8 +50,25 @@ et-xmlfile==1.1.0
     # via openpyxl
 flask==2.3.3
     # via -r requirements.in
+google-api-core==2.13.0
+    # via google-api-python-client
+google-api-python-client==2.98.0
+    # via -r requirements.in
+google-auth==2.23.4
+    # via
+    #   google-api-core
+    #   google-api-python-client
+    #   google-auth-httplib2
+google-auth-httplib2==0.1.1
+    # via google-api-python-client
+googleapis-common-protos==1.61.0
+    # via google-api-core
 gunicorn==21.2.0
     # via -r requirements.in
+httplib2==0.22.0
+    # via
+    #   google-api-python-client
+    #   google-auth-httplib2
 idna==3.4
     # via requests
 isodate==0.6.1
@@ -98,12 +117,24 @@ pandas==2.0.3
     # via databricks-sql-connector
 portalocker==2.8.2
     # via msal-extensions
+protobuf==4.25.0
+    # via
+    #   google-api-core
+    #   googleapis-common-protos
 pyarrow==13.0.0
     # via databricks-sql-connector
+pyasn1==0.5.0
+    # via
+    #   pyasn1-modules
+    #   rsa
+pyasn1-modules==0.3.0
+    # via google-auth
 pycparser==2.21
     # via cffi
 pyjwt[crypto]==2.8.0
     # via msal
+pyparsing==3.1.1
+    # via httplib2
 python-dateutil==2.8.2
     # via pandas
 pytz==2023.3.post1
@@ -112,10 +143,13 @@ requests==2.31.0
     # via
     #   azure-core
     #   databricks-sql-connector
+    #   google-api-core
     #   looker-sdk
     #   msal
 retry2==0.9.5
     # via -r requirements.in
+rsa==4.9
+    # via google-auth
 six==1.16.0
     # via
     #   azure-core
@@ -139,6 +173,8 @@ typing-inspect==0.9.0
     # via dataclasses-json
 tzdata==2023.3
     # via pandas
+uritemplate==4.1.1
+    # via google-api-python-client
 urllib3==2.0.7
     # via
     #   -r requirements.in
