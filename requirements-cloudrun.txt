@@ -4,7 +4,7 @@
 #
 #    pip-compile requirements-cloudrun.in
 #
-cachetools==5.3.1
+cachetools==5.3.2
     # via
     #   -c requirements.txt
     #   google-auth
@@ -12,18 +12,18 @@ certifi==2023.7.22
     # via
     #   -c requirements.txt
     #   requests
-charset-normalizer==3.2.0
+charset-normalizer==3.3.2
     # via
     #   -c requirements.txt
     #   requests
-google-api-core[grpc]==2.11.1
+google-api-core[grpc]==2.13.0
     # via
     #   -c requirements.txt
     #   google-cloud-appengine-logging
     #   google-cloud-core
     #   google-cloud-logging
     #   google-cloud-run
-google-auth==2.22.0
+google-auth==2.23.4
     # via
     #   -c requirements.txt
     #   google-api-core
@@ -40,7 +40,7 @@ google-cloud-logging==3.6.0
     # via -r requirements-cloudrun.in
 google-cloud-run==0.9.1
     # via -r requirements-cloudrun.in
-googleapis-common-protos[grpc]==1.60.0
+googleapis-common-protos[grpc]==1.61.0
     # via
     #   -c requirements.txt
     #   google-api-core
@@ -68,7 +68,7 @@ proto-plus==1.22.3
     #   google-cloud-appengine-logging
     #   google-cloud-logging
     #   google-cloud-run
-protobuf==4.24.2
+protobuf==4.25.0
     # via
     #   -c requirements.txt
     #   google-api-core
@@ -97,12 +97,7 @@ rsa==4.9
     # via
     #   -c requirements.txt
     #   google-auth
-six==1.16.0
+urllib3==2.0.7
     # via
     #   -c requirements.txt
-    #   google-auth
-urllib3==1.26.16
-    # via
-    #   -c requirements.txt
-    #   google-auth
     #   requests

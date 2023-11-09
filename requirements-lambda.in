@@ -1,3 +1,2 @@
 -c requirements.txt
 apig-wsgi==2.18.0
-boto3==1.28.21
