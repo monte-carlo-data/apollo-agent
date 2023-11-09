@@ -54,13 +54,23 @@ def agent_execute(
         will be returned, see :class:`AgentUtils` for more information.
     """
     json_request: Dict = request.json  # type: ignore
+    response = execute_agent_operation(
+        connection_type=connection_type,
+        operation_name=operation_name,
+        json_request=json_request,
+    )
+    return _get_flask_response(response)
+
+
+def execute_agent_operation(
+    connection_type: str, operation_name: str, json_request: Dict
+) -> AgentResponse:
     credentials = json_request.get("credentials", {})
     operation = json_request.get("operation")
 
-    response = agent.execute_operation(
+    return agent.execute_operation(
         connection_type, operation_name, operation, credentials
     )
-    return _get_flask_response(response)
 
 
 @app.route("/api/v1/test/health", methods=["GET", "POST"])
