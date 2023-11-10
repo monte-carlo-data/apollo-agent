@@ -155,7 +155,7 @@ class Agent:
         port_str: Optional[str],
         timeout_str: Optional[str],
         trace_id: Optional[str] = None,
-    ):
+    ) -> AgentResponse:
         """
         Checks if telnet connection is usable.
         :param host: Host to check, will raise `BadRequestError` if None.
@@ -180,6 +180,30 @@ class Agent:
             )
             return ValidateNetwork.validate_telnet_connection(
                 host, port_str, timeout_str, trace_id
+            )
+
+    def get_outbound_ip_address(
+        self,
+        trace_id: Optional[str] = None,
+    ) -> AgentResponse:
+        """
+        Returns the public IP address used by the agent for outbound connections.
+        :param trace_id: Optional trace ID received from the client that will be included in the response, if present.
+        """
+        with self._inject_log_context("get_outbound_ip_address", trace_id):
+            logger.info(
+                "Get Outbound IP Address request received",
+                extra=self._logging_utils.build_extra(
+                    trace_id=trace_id,
+                    operation_name="get_outbound_ip_address",
+                ),
+            )
+            return AgentResponse(
+                {
+                    "outbound_ip_address": AgentUtils.get_outbound_ip_address(),
+                },
+                200,
+                trace_id,
             )
 
     def update(

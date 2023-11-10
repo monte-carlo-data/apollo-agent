@@ -125,6 +125,15 @@ def upgrade_agent() -> Tuple[Dict, int]:
     return response.result, response.status_code
 
 
+@app.route("/api/v1/test/network/outbound_ip_address", methods=["GET"])
+def get_outbound_ip_address() -> Tuple[Dict, int]:
+    """
+    Returns the public IP address used by the agent for outbound connections.
+    """
+    response = agent.get_outbound_ip_address(request.args.get("trace_id"))
+    return response.result, response.status_code
+
+
 def _execute_network_validation(method: Callable) -> Tuple[Dict, int]:
     request_dict: Dict = request.json if request.method == "POST" else request.args  # type: ignore
 
