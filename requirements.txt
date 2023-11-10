@@ -122,8 +122,10 @@ protobuf==4.24.2
     # via
     #   google-api-core
     #   googleapis-common-protos
-pyarrow==13.0.0
-    # via databricks-sql-connector
+pyarrow==14.0.1
+    # via
+    #   -r requirements.in
+    #   databricks-sql-connector
 pyasn1==0.5.0
     # via
     #   pyasn1-modules
