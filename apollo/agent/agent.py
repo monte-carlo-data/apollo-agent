@@ -87,7 +87,7 @@ class Agent:
         - version
         - build
         - platform
-        - env (some relevant env information like sys.version or vars like PYTHON_VERSION and MCD_*)
+        - env (some relevant env information like `sys.version` or vars like PYTHON_VERSION and MCD_*)
         - specific platform information set using `platform_info` setter
         - the received value for `trace_id` if any
         :return: an `AgentHealthInformation` object that can be converted to JSON.
@@ -205,7 +205,7 @@ class Agent:
                     **kwargs,
                 )
                 return AgentUtils.agent_ok_response(result, trace_id)
-            except Exception:
+            except Exception:  # noqa
                 return AgentUtils.agent_response_for_last_exception("Update failed:")
 
     def _perform_update(
@@ -274,7 +274,8 @@ class Agent:
         and then the list of commands in the operation are executed on the client object.
         :param connection_type: for example "bigquery"
         :param operation_name: operation name, just for logging purposes
-        :param operation_dict: the required dictionary containing the definition of the operation to run, if None an error will be raised
+        :param operation_dict: the required dictionary containing the definition of the operation to run,
+            if None an error will be raised.
         :param credentials: the optional credentials dictionary
         :return: the result of executing the given operation
         """
@@ -284,7 +285,7 @@ class Agent:
             )
         try:
             operation = AgentOperation.from_dict(operation_dict)
-        except Exception:
+        except Exception:  # noqa
             logger.exception("Failed to read operation")
             return AgentUtils.agent_response_for_last_exception(
                 prefix="Failed to read operation:", status_code=400
