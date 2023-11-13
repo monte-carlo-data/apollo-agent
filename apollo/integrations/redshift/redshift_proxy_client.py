@@ -2,7 +2,7 @@ from typing import Dict, Optional
 
 import psycopg2
 from psycopg2 import DatabaseError
-from psycopg2.errors import QueryCanceled, InsufficientPrivilege
+from psycopg2.errors import QueryCanceled, InsufficientPrivilege  # noqa
 
 from apollo.integrations.db.base_db_proxy_client import BaseDbProxyClient
 
@@ -14,6 +14,7 @@ class RedshiftProxyClient(BaseDbProxyClient):
     Proxy client for Redshift.
     Credentials are expected to be supplied under "connect_args" and will be passed directly to `psycopg2.connect`, so
     only attributes supported as parameters by `psycopg2.connect` should be passed.
+    If "autocommit" is present in credentials it will be set in _connection.autocommit.
     """
 
     def __init__(self, credentials: Optional[Dict], **kwargs):  # type: ignore
@@ -34,8 +35,8 @@ class RedshiftProxyClient(BaseDbProxyClient):
 
     def get_error_type(self, error: Exception) -> Optional[str]:
         """
-        Convert PG errors QueryCanceled and DatabaseError to error types that can be converted back to PG errors
-        client side.
+        Convert PG errors QueryCanceled, InsufficientPrivilege and DatabaseError to error types
+        that can be converted back to PG errors client side.
         """
         if isinstance(error, QueryCanceled):
             return "QueryCanceled"
