@@ -4,6 +4,7 @@ import os
 from typing import Dict, Tuple, Callable, Optional, Union, Any, BinaryIO
 
 from flask import Flask, request, Response, send_file
+from flask_compress import Compress
 
 from apollo.agent.agent import Agent
 from apollo.agent.constants import TRACE_ID_HEADER
@@ -12,6 +13,7 @@ from apollo.agent.logging_utils import LoggingUtils
 from apollo.interfaces.agent_response import AgentResponse
 
 app = Flask(__name__)
+Compress(app)
 logger = logging.getLogger(__name__)
 logging_utils = LoggingUtils()
 agent = Agent(logging_utils)

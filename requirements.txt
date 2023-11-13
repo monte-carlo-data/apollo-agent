@@ -18,6 +18,8 @@ botocore==1.31.61
     # via
     #   boto3
     #   s3transfer
+brotli==1.1.0
+    # via flask-compress
 cachetools==5.3.1
     # via google-auth
 cattrs==23.1.2
@@ -37,6 +39,10 @@ decorator==5.1.1
 et-xmlfile==1.1.0
     # via openpyxl
 flask==2.3.3
+    # via
+    #   -r requirements.in
+    #   flask-compress
+flask-compress==1.14
     # via -r requirements.in
 google-api-core==2.11.1
     # via
@@ -174,5 +180,5 @@ urllib3==1.26.16
     #   botocore
     #   google-auth
     #   requests
-werkzeug==2.3.7
+werkzeug==3.0.1
     # via flask

@@ -47,6 +47,12 @@ ATTRIBUTE_VALUE_TYPE_LOOKER_CATEGORY = "looker.category"
 # Value to use when redacting sensitive data in log messages
 ATTRIBUTE_VALUE_REDACTED = "__redacted__"
 
+# Attribute name for trace id in log messages
+LOG_ATTRIBUTE_TRACE_ID = "mcd_trace_id"
+
+# Attribute name for operation name in log messages
+LOG_ATTRIBUTE_OPERATION_NAME = "mcd_operation_name"
+
 # Name of the client variable in the evaluation context, this is the default value for `target` in calls
 CONTEXT_VAR_CLIENT = "_client"
 
