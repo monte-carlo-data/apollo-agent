@@ -9,6 +9,7 @@ google-cloud-storage==2.10.0
 gunicorn==21.2.0
 lambda-git==0.1.1
 looker-sdk==23.16.0
+psycopg2-binary==2.9.7
 pyarrow==14.0.1  # CVE-2023-47248
 retry2==0.9.5
 urllib3==1.26.18
