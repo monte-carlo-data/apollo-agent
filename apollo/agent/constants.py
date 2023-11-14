@@ -4,6 +4,9 @@ ATTRIBUTE_NAME_ERROR = "__mcd_error__"
 # Name of the attribute used in the operation result to include the error type, if any
 ATTRIBUTE_NAME_ERROR_TYPE = "__mcd_error_type__"
 
+# Name of the attribute used in the operation result to include the error attributes, if any
+ATTRIBUTE_NAME_ERROR_ATTRS = "__mcd_error_attrs__"
+
 # Name of the attribute used in the operation result to include the exception text, if any
 ATTRIBUTE_NAME_EXCEPTION = "__mcd_exception__"
 
