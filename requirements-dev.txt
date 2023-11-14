@@ -14,8 +14,10 @@ click==8.1.7
     #   black
 distlib==0.3.7
     # via virtualenv
-filelock==3.12.4
-    # via virtualenv
+filelock==3.13.1
+    # via
+    #   -c requirements.txt
+    #   virtualenv
 identify==2.5.29
     # via pre-commit
 iniconfig==2.0.0
@@ -35,13 +37,14 @@ packaging==23.1
     #   pytest
 pathspec==0.11.2
     # via black
-platformdirs==3.10.0
+platformdirs==3.11.0
     # via
+    #   -c requirements.txt
     #   black
     #   virtualenv
 pluggy==1.3.0
     # via pytest
-pre-commit==3.4.0
+pre-commit==3.5.0
     # via -r requirements-dev.in
 pyright==1.1.329
     # via -r requirements-dev.in
