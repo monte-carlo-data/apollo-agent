@@ -1,10 +1,17 @@
+import json
 import os
 import sys
-import tempfile
 import traceback
 import uuid
 from datetime import datetime, date
-from typing import Optional, Dict, List, BinaryIO, Any
+from typing import (
+    Optional,
+    Dict,
+    List,
+    BinaryIO,
+    Any,
+    Type,
+)
 
 from apollo.agent.constants import (
     ATTRIBUTE_NAME_ERROR,
@@ -132,6 +139,18 @@ class AgentUtils:
                 ATTRIBUTE_NAME_DATA: value.isoformat(),
             }
         return value
+
+    @staticmethod
+    def json_encoder() -> Type[json.JSONEncoder]:
+        """
+        Returns a JSON encoder class that uses the AgentUtils.serialize_value function.
+        """
+
+        class AgentJsonEncoder(json.JSONEncoder):
+            def default(self, obj: Any):
+                return AgentUtils.serialize_value(obj)
+
+        return AgentJsonEncoder
 
     @staticmethod
     def _get_error_type(
