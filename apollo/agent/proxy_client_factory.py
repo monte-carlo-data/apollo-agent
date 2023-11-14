@@ -78,6 +78,16 @@ def _get_proxy_client_redshift(
     return RedshiftProxyClient(credentials=credentials, platform=platform)
 
 
+def _get_proxy_client_snowflake(
+    credentials: Optional[Dict], platform: str, **kwargs  # type: ignore
+) -> BaseProxyClient:
+    from apollo.integrations.snowflake.snowflake_proxy_client import (
+        SnowflakeProxyClient,
+    )
+
+    return SnowflakeProxyClient(credentials=credentials, platform=platform)
+
+
 @dataclass
 class ProxyClientCacheEntry:
     created_time: datetime
@@ -92,6 +102,7 @@ _CLIENT_FACTORY_MAPPING = {
     "looker": _get_proxy_client_looker,
     "git": _get_proxy_client_git,
     "redshift": _get_proxy_client_redshift,
+    "snowflake": _get_proxy_client_snowflake,
 }
 
 
