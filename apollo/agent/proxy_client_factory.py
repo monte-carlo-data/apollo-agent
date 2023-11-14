@@ -70,6 +70,14 @@ def _get_proxy_client_git(
     return GitProxyClient(credentials=credentials, platform=platform)
 
 
+def _get_proxy_client_redshift(
+    credentials: Optional[Dict], platform: str, **kwargs  # type: ignore
+) -> BaseProxyClient:
+    from apollo.integrations.redshift.redshift_proxy_client import RedshiftProxyClient
+
+    return RedshiftProxyClient(credentials=credentials, platform=platform)
+
+
 @dataclass
 class ProxyClientCacheEntry:
     created_time: datetime
@@ -83,6 +91,7 @@ _CLIENT_FACTORY_MAPPING = {
     "storage": _get_proxy_client_storage,
     "looker": _get_proxy_client_looker,
     "git": _get_proxy_client_git,
+    "redshift": _get_proxy_client_redshift,
 }
 
 
@@ -133,6 +142,19 @@ class ProxyClientFactory:
             raise
 
     @classmethod
+    def dispose_proxy_client(
+        cls,
+        connection_type: str,
+        credentials: Optional[Dict],
+        skip_cache: bool,
+    ):
+        if skip_cache:
+            return
+        key = cls._get_cache_key(connection_type, credentials)
+        cls._dispose_cached_client(key)
+        logger.info(f"Discarded {connection_type} client")
+
+    @classmethod
     def _create_proxy_client(
         cls, connection_type: str, credentials: Optional[Dict], platform: str
     ) -> BaseProxyClient:
@@ -178,3 +200,7 @@ class ProxyClientFactory:
         ):
             return None
         return entry.client
+
+    @classmethod
+    def _dispose_cached_client(cls, key: str):
+        cls._clients_cache.pop(key, None)

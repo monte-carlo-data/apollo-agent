@@ -122,6 +122,8 @@ protobuf==4.24.2
     # via
     #   google-api-core
     #   googleapis-common-protos
+psycopg2-binary==2.9.7
+    # via -r requirements.in
 pyarrow==14.0.1
     # via
     #   -r requirements.in
