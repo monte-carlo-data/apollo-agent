@@ -16,7 +16,7 @@ _POSTGRES_CREDENTIALS = {
     "host": "www.test.com",
     "user": "u",
     "password": "p",
-    "port": "5439",
+    "port": "5432",
     "db_name": "db1",
 }
 

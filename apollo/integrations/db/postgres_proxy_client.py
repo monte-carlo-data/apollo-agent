@@ -11,16 +11,15 @@ _ATTR_CONNECT_ARGS = "connect_args"
 
 class PostgresProxyClient(BaseDbProxyClient):
     """
-    Proxy client for Postgres.
-    Credentials are expected to be supplied under "connect_args" and will be passed directly to `psycopg2.connect`, so
-    only attributes supported as parameters by `psycopg2.connect` should be passed.
-    If "autocommit" is present in credentials it will be set in _connection.autocommit.
+    Proxy client for Postgres. Credentials are expected to be supplied under "connect_args" and
+    will be passed directly to `psycopg2.connect`, so only attributes supported as parameters by
+    `psycopg2.connect` should be passed.
     """
 
-    def __init__(self, credentials: Optional[Dict], **kwargs):  # type: ignore
+    def __init__(self, credentials: Optional[Dict], client_type: str = "postgres", **kwargs):  # type: ignore
         if not credentials or _ATTR_CONNECT_ARGS not in credentials:
             raise ValueError(
-                f"Postgres agent client requires {_ATTR_CONNECT_ARGS} in credentials"
+                f"{client_type.capitalize()} agent client requires {_ATTR_CONNECT_ARGS} in credentials"
             )
 
         self._connection = psycopg2.connect(
