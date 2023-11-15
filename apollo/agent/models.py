@@ -55,10 +55,6 @@ class AgentOperation:
     trace_id: str
     commands: List[AgentCommand]
     skip_cache: bool = False
-    pre_signed_url_result_limit_bytes: int = -1
-
-    def use_pre_signed_url(self, size: int) -> bool:
-        return 0 <= self.pre_signed_url_result_limit_bytes < size
 
     @staticmethod
     def from_dict(param) -> "AgentOperation":  # type: ignore

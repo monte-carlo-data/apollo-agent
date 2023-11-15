@@ -4,7 +4,6 @@ from typing import Dict, Optional, Any, BinaryIO
 
 from apollo.agent.constants import (
     ATTRIBUTE_NAME_ERROR,
-    ATTRIBUTE_NAME_RESULT_LOCATION,
     ATTRIBUTE_NAME_TRACE_ID,
     ATTRIBUTE_NAME_RESULT,
 )
@@ -19,12 +18,9 @@ class AgentResponse:
     result: Any
     status_code: int
     trace_id: Optional[str] = None
-    is_location: bool = False
 
     def __post_init__(self):
-        if self.is_location:
-            self.result = {ATTRIBUTE_NAME_RESULT_LOCATION: self.result}
-        elif not self._is_binary_response(self.result) and not self._is_error_response(
+        if not self._is_binary_response(self.result) and not self._is_error_response(
             self.result
         ):
             self.result = {ATTRIBUTE_NAME_RESULT: self.result}

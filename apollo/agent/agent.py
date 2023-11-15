@@ -1,10 +1,8 @@
-import json
 import logging
 import os
 import sys
 import time
 from contextlib import contextmanager
-from datetime import timedelta
 from typing import Any, Dict, Optional
 
 from apollo.agent.env_vars import HEALTH_ENV_VARS, IS_REMOTE_UPGRADABLE_ENV_VAR
@@ -29,7 +27,6 @@ from apollo.agent.settings import VERSION, BUILD_NUMBER
 from apollo.agent.updater import AgentUpdater
 from apollo.agent.utils import AgentUtils
 from apollo.integrations.base_proxy_client import BaseProxyClient
-from apollo.integrations.storage.storage_proxy_client import StorageProxyClient
 from apollo.interfaces.agent_response import AgentResponse
 from apollo.interfaces.cloudrun.metadata_service import GCP_PLATFORM_INFO_KEY_IMAGE
 from apollo.validators.validate_network import ValidateNetwork
@@ -342,15 +339,6 @@ class Agent:
                 dict(elapsed_time=time.time() - start_time),
             ),
         )
-        result_size = self._calculate_byte_size(result)
-        if operation.use_pre_signed_url(result_size):
-            key = f"{operation_name}/result-{operation.trace_id}"
-            storage_client = StorageProxyClient(self._platform).wrapped_client
-            storage_client.write(key=key, obj_to_write=json.dumps(result))
-            location = storage_client.generate_presigned_url(
-                key=key, expiration=timedelta(hours=1)
-            )
-            return AgentResponse(location, 200, operation.trace_id, is_location=True)
         return AgentResponse(result or {}, 200, operation.trace_id)
 
     @staticmethod
@@ -388,19 +376,3 @@ class Agent:
         finally:
             if self._log_context:
                 self._log_context.set_agent_context({})
-
-    @staticmethod
-    def _calculate_byte_size(result: Any) -> int:
-        if isinstance(result, bytes):
-            return len(result)
-        elif isinstance(result, str):
-            return len(result.encode("utf-8"))
-        elif isinstance(result, int):
-            return (result.bit_length() + 7) // 8
-        elif isinstance(result, float):
-            return 8
-        elif isinstance(result, dict) or isinstance(result, list):
-            return len(
-                json.dumps(result, cls=AgentUtils.json_encoder()).encode("utf-8")
-            )
-        return 0
