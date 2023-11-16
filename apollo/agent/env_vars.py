@@ -34,3 +34,8 @@ DEBUG_LOG_ENV_VAR = "MCD_DEBUG_LOG"
 
 TEMP_PATH_ENV_VAR = "MCD_TEMP_FOLDER"
 DEFAULT_TEMP_PATH = "/tmp"
+
+# URL used to retrieve the public IP address of the agent
+# It must return just the IP address, other urls are: https://ifconfig.me or https://ident.me
+CHECK_OUTBOUND_IP_ADDRESS_URL_ENV_VAR = "MCD_CHECK_OUTBOUND_IP_URL"
+CHECK_OUTBOUND_IP_ADDRESS_URL_DEFAULT_VALUE = "https://checkip.amazonaws.com"

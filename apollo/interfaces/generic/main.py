@@ -69,11 +69,13 @@ def agent_execute(
 def test_health() -> Tuple[Dict, int]:
     """
     Endpoint that returns health information about the agent, can be used as a "ping" endpoint.
+    Receives an optional parameter: "full" that if "true" includes extra information like outbound IP address.
     :return: health information about this agent, includes version number and information about the platform
     """
     request_dict: Dict = request.json if request.method == "POST" else request.args  # type: ignore
     trace_id = request_dict.get("trace_id")
-    return agent.health_information(trace_id).to_dict(), 200
+    full = str(request_dict.get("full", "false")).lower() == "true"
+    return agent.health_information(trace_id, full).to_dict(), 200
 
 
 @app.route("/api/v1/test/network/open", methods=["GET", "POST"])
@@ -122,6 +124,15 @@ def upgrade_agent() -> Tuple[Dict, int]:
         trace_id=trace_id, image=image, timeout_seconds=timeout, **request_dict
     )
 
+    return response.result, response.status_code
+
+
+@app.route("/api/v1/test/network/outbound_ip_address", methods=["GET"])
+def get_outbound_ip_address() -> Tuple[Dict, int]:
+    """
+    Returns the public IP address used by the agent for outbound connections.
+    """
+    response = agent.get_outbound_ip_address(request.args.get("trace_id"))
     return response.result, response.status_code
 
 
