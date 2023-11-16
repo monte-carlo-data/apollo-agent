@@ -69,11 +69,13 @@ def agent_execute(
 def test_health() -> Tuple[Dict, int]:
     """
     Endpoint that returns health information about the agent, can be used as a "ping" endpoint.
+    Receives an optional parameter: "full" that if "true" includes extra information like outbound IP address.
     :return: health information about this agent, includes version number and information about the platform
     """
     request_dict: Dict = request.json if request.method == "POST" else request.args  # type: ignore
     trace_id = request_dict.get("trace_id")
-    return agent.health_information(trace_id).to_dict(), 200
+    full = str(request_dict.get("full", "false")).lower() == "true"
+    return agent.health_information(trace_id, full).to_dict(), 200
 
 
 @app.route("/api/v1/test/network/open", methods=["GET", "POST"])
