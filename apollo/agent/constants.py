@@ -37,6 +37,9 @@ ATTRIBUTE_VALUE_TYPE_BYTES = "bytes"
 # Value for the attribute __type__ to indicate this is a datetime
 ATTRIBUTE_VALUE_TYPE_DATETIME = "datetime"
 
+# Value for the attribute __type__ to indicate this is a date
+ATTRIBUTE_VALUE_TYPE_DATE = "date"
+
 # Value for the attribute __type__ to indicate this is a Looker category enum, client side it will be converted to
 # the right type
 ATTRIBUTE_VALUE_TYPE_LOOKER_CATEGORY = "looker.category"
@@ -63,7 +66,9 @@ TRACE_ID_HEADER = "x-mcd-trace-id"
 PLATFORM_GENERIC = "Generic"
 PLATFORM_GCP = "GCP"
 PLATFORM_AWS = "AWS"
+PLATFORM_AZURE = "Azure"
 
 # Storage types
 STORAGE_TYPE_S3 = "S3"
 STORAGE_TYPE_GCS = "GCS"
+STORAGE_TYPE_AZURE = "AZURE_BLOB"

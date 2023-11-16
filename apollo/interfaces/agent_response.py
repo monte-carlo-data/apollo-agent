@@ -27,6 +27,10 @@ class AgentResponse:
         if self.trace_id and isinstance(self.result, Dict):
             self.result[ATTRIBUTE_NAME_TRACE_ID] = self.trace_id
 
+    @property
+    def is_error(self) -> bool:
+        return self._is_error_response(self.result)
+
     @staticmethod
     def _is_binary_response(result: Any):
         return (
