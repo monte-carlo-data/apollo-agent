@@ -3,8 +3,10 @@ from datetime import timedelta
 from typing import Optional, BinaryIO, Dict, cast, Any
 
 from apollo.agent.constants import (
+    PLATFORM_AZURE,
     PLATFORM_GCP,
     PLATFORM_AWS,
+    STORAGE_TYPE_AZURE,
     STORAGE_TYPE_GCS,
     STORAGE_TYPE_S3,
 )
@@ -15,6 +17,9 @@ from apollo.agent.env_vars import (
 )
 from apollo.agent.models import AgentConfigurationError, AgentOperation
 from apollo.agent.utils import AgentUtils
+from apollo.integrations.azure_blob.azure_blob_reader_writer import (
+    AzureBlobReaderWriter,
+)
 from apollo.integrations.base_proxy_client import BaseProxyClient
 from apollo.integrations.gcs.gcs_reader_writer import GcsReaderWriter
 from apollo.integrations.s3.s3_reader_writer import S3ReaderWriter
@@ -30,11 +35,13 @@ _BUCKET_NAME_LOG_ATTRIBUTE = "bucket_name"
 _OBJ_TO_WRITE_ARG_NAME = "obj_to_write"
 
 _DEFAULT_PLATFORM_STORAGE = {
+    PLATFORM_AZURE: STORAGE_TYPE_AZURE,
     PLATFORM_GCP: STORAGE_TYPE_GCS,
     PLATFORM_AWS: STORAGE_TYPE_S3,
 }
 
 _STORAGE_CLIENTS = {
+    STORAGE_TYPE_AZURE: AzureBlobReaderWriter,
     STORAGE_TYPE_GCS: GcsReaderWriter,
     STORAGE_TYPE_S3: S3ReaderWriter,
 }

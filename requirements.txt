@@ -12,6 +12,10 @@ attrs==23.1.0
     # via
     #   cattrs
     #   looker-sdk
+azure-core==1.29.5
+    # via azure-storage-blob
+azure-storage-blob==12.18.3
+    # via -r requirements.in
 blinker==1.6.2
     # via flask
 boto3==1.28.21
@@ -42,6 +46,7 @@ click==8.1.7
     # via flask
 cryptography==41.0.5
     # via
+    #   azure-storage-blob
     #   pyopenssl
     #   snowflake-connector-python
 databricks-sql-connector==2.8.0
@@ -96,6 +101,8 @@ idna==3.4
     # via
     #   requests
     #   snowflake-connector-python
+isodate==0.6.1
+    # via azure-storage-blob
 itsdangerous==2.1.2
     # via flask
 jinja2==3.1.2
@@ -173,6 +180,7 @@ pytz==2023.3.post1
     #   snowflake-connector-python
 requests==2.31.0
     # via
+    #   azure-core
     #   databricks-sql-connector
     #   google-api-core
     #   google-cloud-storage
@@ -186,8 +194,10 @@ s3transfer==0.6.2
     # via boto3
 six==1.16.0
     # via
+    #   azure-core
     #   google-auth
     #   google-auth-httplib2
+    #   isodate
     #   python-dateutil
     #   thrift
 snowflake-connector-python==3.5.0
@@ -205,6 +215,8 @@ tomlkit==0.12.2
 typing-extensions==4.7.1
     # via
     #   alembic
+    #   azure-core
+    #   azure-storage-blob
     #   looker-sdk
     #   snowflake-connector-python
     #   typing-inspect
@@ -214,8 +226,9 @@ tzdata==2023.3
     # via pandas
 uritemplate==4.1.1
     # via google-api-python-client
-urllib3==1.26.16
+urllib3==1.26.18
     # via
+    #   -r requirements.in
     #   botocore
     #   google-auth
     #   requests
