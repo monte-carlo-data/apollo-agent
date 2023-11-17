@@ -6,12 +6,12 @@ from typing import (
 
 import pymssql
 
-from apollo.integrations.base_proxy_client import BaseProxyClient
+from apollo.integrations.db.base_db_proxy_client import BaseDbProxyClient
 
 _ATTR_CONNECT_ARGS = "connect_args"
 
 
-class SqlServerProxyClient(BaseProxyClient):
+class SqlServerProxyClient(BaseDbProxyClient):
     """
     Proxy client for SQL Server Client. Credentials are expected to be supplied under "connect_args"
     and will be passed directly to `pymssql.connect`, so only attributes supported as parameters
