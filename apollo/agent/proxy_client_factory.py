@@ -94,6 +94,14 @@ def _get_proxy_client_sql_server(
     return SqlServerProxyClient(credentials=credentials, platform=platform)
 
 
+def _get_proxy_client_mysql(
+    credentials: Optional[Dict], platform: str, **kwargs  # type: ignore
+) -> BaseProxyClient:
+    from apollo.integrations.db.mysql_proxy_client import MysqlProxyClient
+
+    return MysqlProxyClient(credentials=credentials, platform=platform)
+
+
 @dataclass
 class ProxyClientCacheEntry:
     created_time: datetime
@@ -110,6 +118,7 @@ _CLIENT_FACTORY_MAPPING = {
     "redshift": _get_proxy_client_redshift,
     "postgres": _get_proxy_client_postgres,
     "sql-server": _get_proxy_client_sql_server,
+    "mysql": _get_proxy_client_mysql,
 }
 
 
