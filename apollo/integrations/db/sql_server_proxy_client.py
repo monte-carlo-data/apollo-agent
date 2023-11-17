@@ -1,4 +1,8 @@
-from typing import Dict, Optional
+from typing import (
+    Any,
+    Dict,
+    Optional,
+)
 
 import pymssql
 
@@ -14,7 +18,7 @@ class SqlServerProxyClient(BaseProxyClient):
     by `pymssql.connect` should be passed.
     """
 
-    def __init__(self, credentials: Optional[Dict], **kwargs: Dict):
+    def __init__(self, credentials: Optional[Dict], **kwargs: Any):
         if not credentials or _ATTR_CONNECT_ARGS not in credentials:
             raise ValueError(
                 f"SQL Server agent client requires {_ATTR_CONNECT_ARGS} in credentials"
