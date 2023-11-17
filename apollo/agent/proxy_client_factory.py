@@ -86,6 +86,14 @@ def _get_proxy_client_postgres(
     return PostgresProxyClient(credentials=credentials, platform=platform)
 
 
+def _get_proxy_client_sql_server(
+    credentials: Optional[Dict], platform: str, **kwargs  # type: ignore
+) -> BaseProxyClient:
+    from apollo.integrations.db.sql_server_proxy_client import SqlServerProxyClient
+
+    return SqlServerProxyClient(credentials=credentials, platform=platform)
+
+
 @dataclass
 class ProxyClientCacheEntry:
     created_time: datetime
@@ -101,6 +109,7 @@ _CLIENT_FACTORY_MAPPING = {
     "git": _get_proxy_client_git,
     "redshift": _get_proxy_client_redshift,
     "postgres": _get_proxy_client_postgres,
+    "sql-server": _get_proxy_client_sql_server,
 }
 
 
