@@ -20,7 +20,7 @@ blinker==1.6.2
     # via flask
 boto3==1.28.21
     # via -r requirements.in
-botocore==1.31.21
+botocore==1.31.61
     # via
     #   boto3
     #   s3transfer
@@ -166,7 +166,7 @@ pycparser==2.21
     # via cffi
 pyjwt==2.8.0
     # via snowflake-connector-python
-pymssql==2.2.10
+pymssql==2.2.8
     # via -r requirements.in
 pymysql==1.1.0
     # via -r requirements.in
@@ -214,7 +214,7 @@ sqlalchemy==1.4.49
     #   databricks-sql-connector
 thrift==0.16.0
     # via databricks-sql-connector
-tomlkit==0.12.2
+tomlkit==0.12.3
     # via snowflake-connector-python
 typing-extensions==4.7.1
     # via
