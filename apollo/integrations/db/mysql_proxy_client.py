@@ -6,12 +6,12 @@ from typing import (
 
 import pymysql
 
-from apollo.integrations.base_proxy_client import BaseProxyClient
+from apollo.integrations.db.base_db_proxy_client import BaseDbProxyClient
 
 _ATTR_CONNECT_ARGS = "connect_args"
 
 
-class MysqlProxyClient(BaseProxyClient):
+class MysqlProxyClient(BaseDbProxyClient):
     """
     Proxy client for MySQL Client. Credentials are expected to be supplied under "connect_args"
     and will be passed directly to `pymysql.connect`, so only attributes supported as parameters
