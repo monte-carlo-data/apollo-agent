@@ -1,6 +1,7 @@
 from typing import (
     Any,
     Dict,
+    Iterable,
     Optional,
 )
 
@@ -9,6 +10,26 @@ import pymssql
 from apollo.integrations.db.base_db_proxy_client import BaseDbProxyClient
 
 _ATTR_CONNECT_ARGS = "connect_args"
+
+
+class SqlServerProxyClientCursor:
+    def __init__(self, wrapped_cursor: Any):
+        self._wrapped_cursor = wrapped_cursor
+
+    def description(self) -> Any:
+        return self._wrapped_cursor.description()
+
+    def execute(self, query: str, params: Optional[Iterable] = None, **kwargs: Any):
+        self._wrapped_cursor.execute(query, tuple(params) if params else None, **kwargs)
+
+    def fetchall(self) -> Any:
+        return self._wrapped_cursor.fetchall()
+
+    def fetchmany(self, size: int) -> Any:
+        return self._wrapped_cursor.fetchmany(size)
+
+    def rowcount(self) -> Any:
+        return self._wrapped_cursor.rowcount()
 
 
 class SqlServerProxyClient(BaseDbProxyClient):
@@ -28,3 +49,6 @@ class SqlServerProxyClient(BaseDbProxyClient):
     @property
     def wrapped_client(self):
         return self._connection
+
+    def cursor(self) -> Any:
+        return SqlServerProxyClientCursor(self.wrapped_client.cursor())
