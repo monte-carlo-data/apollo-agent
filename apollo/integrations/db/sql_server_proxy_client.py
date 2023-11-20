@@ -16,8 +16,9 @@ class SqlServerProxyClientCursor:
     def __init__(self, wrapped_cursor: Any):
         self._wrapped_cursor = wrapped_cursor
 
+    @property
     def description(self) -> Any:
-        return self._wrapped_cursor.description()
+        return self._wrapped_cursor.description
 
     def execute(self, query: str, params: Optional[Iterable] = None, **kwargs: Any):
         self._wrapped_cursor.execute(query, tuple(params) if params else None, **kwargs)
@@ -28,8 +29,9 @@ class SqlServerProxyClientCursor:
     def fetchmany(self, size: int) -> Any:
         return self._wrapped_cursor.fetchmany(size)
 
+    @property
     def rowcount(self) -> Any:
-        return self._wrapped_cursor.rowcount()
+        return self._wrapped_cursor.rowcount
 
 
 class SqlServerProxyClient(BaseDbProxyClient):
