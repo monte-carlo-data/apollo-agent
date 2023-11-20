@@ -1,5 +1,10 @@
 import datetime
-from typing import List, Any, Optional
+from typing import (
+    Iterable,
+    List,
+    Any,
+    Optional,
+)
 from unittest import TestCase
 from unittest.mock import Mock, call, patch
 from psycopg2.errors import InsufficientPrivilege  # noqa
@@ -30,7 +35,8 @@ class SqlServerClientTests(TestCase):
 
     @patch("pymssql.connect")
     def test_query(self, mock_connect):
-        query = "SELECT name, value FROM table"  # noqa
+        query = "SELECT name, value FROM table OFFSET %s ROWS FETCH NEXT %s ROWS ONLY"  # noqa
+        args = [0, 2]
         expected_data = [
             [
                 "name_1",
@@ -45,7 +51,9 @@ class SqlServerClientTests(TestCase):
             ["name", "string", None, None, None, None, None],
             ["value", "float", None, None, None, None, None],
         ]
-        self._test_run_query(mock_connect, query, expected_data, expected_description)
+        self._test_run_query(
+            mock_connect, query, args, expected_data, expected_description
+        )
 
     @patch("pymssql.connect")
     def test_datetime_query(self, mock_connect):
@@ -62,12 +70,13 @@ class SqlServerClientTests(TestCase):
             ["created_date", "date", None, None, None, None, None],
             ["updated_datetime", "date", None, None, None, None, None],
         ]
-        self._test_run_query(mock_connect, query, data, description)
+        self._test_run_query(mock_connect, query, None, data, description)
 
     def _test_run_query(
         self,
         mock_connect: Mock,
         query: str,
+        query_args: Optional[Iterable[Any]],
         data: List,
         description: List,
         raise_exception: Optional[Exception] = None,
@@ -83,7 +92,7 @@ class SqlServerClientTests(TestCase):
                     "method": "execute",
                     "args": [
                         query,
-                        None,
+                        query_args,
                     ],
                 },
                 {"target": "_cursor", "method": "fetchall", "store": "tmp_1"},
@@ -135,7 +144,7 @@ class SqlServerClientTests(TestCase):
         mock_connect.assert_called_with(**_SQL_SERVER_CREDENTIALS)
         self._mock_cursor.execute.assert_has_calls(
             [
-                call(query, None),
+                call(query, tuple(query_args) if query_args else None),
             ]
         )
         self._mock_cursor.description.assert_called()
