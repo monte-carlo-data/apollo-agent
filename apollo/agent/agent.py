@@ -81,7 +81,9 @@ class Agent:
     def log_context(self, log_context: Optional[AgentLogContext]):
         self._log_context = log_context
 
-    def health_information(self, trace_id: Optional[str]) -> AgentHealthInformation:
+    def health_information(
+        self, trace_id: Optional[str], full: bool = False
+    ) -> AgentHealthInformation:
         """
         Returns platform and environment information about the agent:
         - version
@@ -90,6 +92,8 @@ class Agent:
         - env (some relevant env information like `sys.version` or vars like PYTHON_VERSION and MCD_*)
         - specific platform information set using `platform_info` setter
         - the received value for `trace_id` if any
+        :param trace_id: The optional trace id to include back in the response.
+        :param full: If true extra information like outbound IP address will be included, defaults to false.
         :return: an `AgentHealthInformation` object that can be converted to JSON.
         """
         with self._inject_log_context("health_information", trace_id):
@@ -114,7 +118,14 @@ class Agent:
             env=self._env_dictionary(),
             platform_info=self._platform_info,
             trace_id=trace_id,
+            extra=self._extra_health_information() if full else None,
         )
+
+    @staticmethod
+    def _extra_health_information():
+        return {
+            "outbound_ip_address": AgentUtils.get_outbound_ip_address(),
+        }
 
     def validate_tcp_open_connection(
         self,
@@ -155,7 +166,7 @@ class Agent:
         port_str: Optional[str],
         timeout_str: Optional[str],
         trace_id: Optional[str] = None,
-    ):
+    ) -> AgentResponse:
         """
         Checks if telnet connection is usable.
         :param host: Host to check, will raise `BadRequestError` if None.
@@ -180,6 +191,30 @@ class Agent:
             )
             return ValidateNetwork.validate_telnet_connection(
                 host, port_str, timeout_str, trace_id
+            )
+
+    def get_outbound_ip_address(
+        self,
+        trace_id: Optional[str] = None,
+    ) -> AgentResponse:
+        """
+        Returns the public IP address used by the agent for outbound connections.
+        :param trace_id: Optional trace ID received from the client that will be included in the response, if present.
+        """
+        with self._inject_log_context("get_outbound_ip_address", trace_id):
+            logger.info(
+                "Get Outbound IP Address request received",
+                extra=self._logging_utils.build_extra(
+                    trace_id=trace_id,
+                    operation_name="get_outbound_ip_address",
+                ),
+            )
+            return AgentResponse(
+                {
+                    "outbound_ip_address": AgentUtils.get_outbound_ip_address(),
+                },
+                200,
+                trace_id,
             )
 
     def update(

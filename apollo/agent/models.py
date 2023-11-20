@@ -77,6 +77,9 @@ class AgentHealthInformation:
     trace_id: Optional[str] = field(
         metadata=config(exclude=exclude_empty_values), default=None
     )
+    extra: Optional[Dict] = field(
+        metadata=config(exclude=exclude_none_values), default=None
+    )
 
     def to_dict(self) -> Dict:  # type: ignore
         pass
