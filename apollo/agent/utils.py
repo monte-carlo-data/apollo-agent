@@ -1,10 +1,9 @@
 import os
 import sys
-import tempfile
 import traceback
 import uuid
 from datetime import datetime, date
-from typing import Optional, Dict, List, BinaryIO, Any
+from typing import Optional, Dict, List, BinaryIO, Any, Tuple
 
 import requests
 
@@ -18,6 +17,7 @@ from apollo.agent.constants import (
     ATTRIBUTE_NAME_DATA,
     ATTRIBUTE_VALUE_TYPE_DATETIME,
     ATTRIBUTE_VALUE_TYPE_DATE,
+    ATTRIBUTE_NAME_ERROR_ATTRS,
 )
 from apollo.agent.env_vars import (
     TEMP_PATH_ENV_VAR,
@@ -78,11 +78,13 @@ class AgentUtils:
         if prefix:
             error = f"{prefix} {error}"
         stack_trace = traceback.format_tb(last_value.__traceback__)  # type: ignore
+        error_type, error_attrs = cls._get_error_details(last_value, client)  # type: ignore
         return cls._response_for_error(
             error,
             exception_message=exception_message,
             stack_trace=stack_trace,
-            error_type=cls._get_error_type(last_value, client),  # type: ignore
+            error_type=error_type,
+            error_attrs=error_attrs,
         )
 
     @staticmethod
@@ -151,12 +153,14 @@ class AgentUtils:
         return response.content.decode("utf-8")[:20].strip() if response.content else ""
 
     @staticmethod
-    def _get_error_type(
+    def _get_error_details(
         error: Exception, client: Optional[BaseProxyClient] = None
-    ) -> Optional[str]:
+    ) -> Tuple[Optional[str], Optional[Dict]]:
         if client:
-            return client.get_error_type(error)
-        return None
+            return client.get_error_type(error), client.get_error_extra_attributes(
+                error
+            )
+        return None, None
 
     @staticmethod
     def _response_for_error(
@@ -164,6 +168,7 @@ class AgentUtils:
         exception_message: Optional[str] = None,
         stack_trace: Optional[List] = None,
         error_type: Optional[str] = None,
+        error_attrs: Optional[Dict] = None,
     ) -> Dict:
         response: Dict[str, Any] = {
             ATTRIBUTE_NAME_ERROR: message,
@@ -174,4 +179,6 @@ class AgentUtils:
             response[ATTRIBUTE_NAME_STACK_TRACE] = stack_trace
         if error_type:
             response[ATTRIBUTE_NAME_ERROR_TYPE] = error_type
+        if error_attrs:
+            response[ATTRIBUTE_NAME_ERROR_ATTRS] = error_attrs
         return response

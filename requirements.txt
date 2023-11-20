@@ -6,6 +6,8 @@
 #
 alembic==1.12.0
     # via databricks-sql-connector
+asn1crypto==1.5.1
+    # via snowflake-connector-python
 attrs==23.1.0
     # via
     #   cattrs
@@ -29,15 +31,24 @@ cachetools==5.3.1
 cattrs==23.1.2
     # via looker-sdk
 certifi==2023.7.22
-    # via requests
+    # via
+    #   requests
+    #   snowflake-connector-python
 cffi==1.16.0
-    # via cryptography
+    # via
+    #   cryptography
+    #   snowflake-connector-python
 charset-normalizer==3.2.0
-    # via requests
+    # via
+    #   requests
+    #   snowflake-connector-python
 click==8.1.7
     # via flask
 cryptography==41.0.5
-    # via azure-storage-blob
+    # via
+    #   azure-storage-blob
+    #   pyopenssl
+    #   snowflake-connector-python
 databricks-sql-connector==2.8.0
     # via -r requirements.in
 dataclasses-json==0.6.0
@@ -46,6 +57,8 @@ decorator==5.1.1
     # via retry2
 et-xmlfile==1.1.0
     # via openpyxl
+filelock==3.13.1
+    # via snowflake-connector-python
 flask==2.3.3
     # via
     #   -r requirements.in
@@ -85,7 +98,9 @@ httplib2==0.22.0
     #   google-api-python-client
     #   google-auth-httplib2
 idna==3.4
-    # via requests
+    # via
+    #   requests
+    #   snowflake-connector-python
 isodate==0.6.1
     # via azure-storage-blob
 itsdangerous==2.1.2
@@ -126,8 +141,11 @@ packaging==23.1
     # via
     #   gunicorn
     #   marshmallow
+    #   snowflake-connector-python
 pandas==2.0.3
     # via databricks-sql-connector
+platformdirs==3.11.0
+    # via snowflake-connector-python
 protobuf==4.24.2
     # via
     #   google-api-core
@@ -146,10 +164,14 @@ pyasn1-modules==0.3.0
     # via google-auth
 pycparser==2.21
     # via cffi
+pyjwt==2.8.0
+    # via snowflake-connector-python
 pymssql==2.2.8
     # via -r requirements.in
 pymysql==1.1.0
     # via -r requirements.in
+pyopenssl==23.3.0
+    # via snowflake-connector-python
 pyparsing==3.1.1
     # via httplib2
 python-dateutil==2.8.2
@@ -157,7 +179,9 @@ python-dateutil==2.8.2
     #   botocore
     #   pandas
 pytz==2023.3.post1
-    # via pandas
+    # via
+    #   pandas
+    #   snowflake-connector-python
 requests==2.31.0
     # via
     #   azure-core
@@ -165,6 +189,7 @@ requests==2.31.0
     #   google-api-core
     #   google-cloud-storage
     #   looker-sdk
+    #   snowflake-connector-python
 retry2==0.9.5
     # via -r requirements.in
 rsa==4.9
@@ -179,18 +204,25 @@ six==1.16.0
     #   isodate
     #   python-dateutil
     #   thrift
+snowflake-connector-python==3.5.0
+    # via -r requirements.in
+sortedcontainers==2.4.0
+    # via snowflake-connector-python
 sqlalchemy==1.4.49
     # via
     #   alembic
     #   databricks-sql-connector
 thrift==0.16.0
     # via databricks-sql-connector
+tomlkit==0.12.3
+    # via snowflake-connector-python
 typing-extensions==4.7.1
     # via
     #   alembic
     #   azure-core
     #   azure-storage-blob
     #   looker-sdk
+    #   snowflake-connector-python
     #   typing-inspect
 typing-inspect==0.9.0
     # via dataclasses-json
@@ -204,5 +236,6 @@ urllib3==1.26.18
     #   botocore
     #   google-auth
     #   requests
+    #   snowflake-connector-python
 werkzeug==3.0.1
     # via flask

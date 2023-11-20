@@ -94,6 +94,16 @@ def _get_proxy_client_sql_server(
     return SqlServerProxyClient(credentials=credentials, platform=platform)
 
 
+def _get_proxy_client_snowflake(
+    credentials: Optional[Dict], platform: str, **kwargs  # type: ignore
+) -> BaseProxyClient:
+    from apollo.integrations.snowflake.snowflake_proxy_client import (
+        SnowflakeProxyClient,
+    )
+
+    return SnowflakeProxyClient(credentials=credentials, platform=platform)
+
+
 def _get_proxy_client_mysql(
     credentials: Optional[Dict], platform: str, **kwargs  # type: ignore
 ) -> BaseProxyClient:
@@ -118,6 +128,7 @@ _CLIENT_FACTORY_MAPPING = {
     "redshift": _get_proxy_client_redshift,
     "postgres": _get_proxy_client_postgres,
     "sql-server": _get_proxy_client_sql_server,
+    "snowflake": _get_proxy_client_snowflake,
     "mysql": _get_proxy_client_mysql,
 }
 

@@ -19,6 +19,14 @@ class BaseProxyClient(ABC):
         """
         return None
 
+    def get_error_extra_attributes(self, error: Exception) -> Optional[Dict]:
+        """
+        Returns an additional set of attributes that might be needed client side to create the error object.
+        :param error: the exception to return the error attributes for
+        :return: a dictionary with attributes like error_code for example.
+        """
+        return None
+
     def log_payload(self, operation: AgentOperation) -> Dict:
         """
         Returns the `extra` payload to include in the log message for the given operation on this client.
