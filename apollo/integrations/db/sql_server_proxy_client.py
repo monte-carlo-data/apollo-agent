@@ -53,4 +53,9 @@ class SqlServerProxyClient(BaseDbProxyClient):
         return self._connection
 
     def cursor(self) -> Any:
+        """
+        This is necessary because unlike other db proxy clients, MSSQL requires the query
+        arguments being passed into the execute function to be of type tuple.
+        So we override the cursor object in order to properly cast the params object.
+        """
         return SqlServerProxyClientCursor(self.wrapped_client.cursor())
