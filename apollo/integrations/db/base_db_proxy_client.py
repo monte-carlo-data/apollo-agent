@@ -1,5 +1,9 @@
 from abc import ABC
-from typing import Any, Dict, List
+from typing import (
+    Any,
+    Dict,
+    List,
+)
 
 from apollo.agent.utils import AgentUtils
 from apollo.integrations.base_proxy_client import BaseProxyClient
@@ -18,7 +22,9 @@ class BaseDbProxyClient(BaseProxyClient, ABC):
             if "description" in value:
                 description = value["description"]
                 value["description"] = [
-                    [col[0], col[1], col[2], col[3], col[4], col[5], col[6]]
+                    self._process_description(
+                        [col[0], col[1], col[2], col[3], col[4], col[5], col[6]]
+                    )
                     for col in description
                 ]
             if "all_results" in value:
@@ -30,3 +36,7 @@ class BaseDbProxyClient(BaseProxyClient, ABC):
     @staticmethod
     def _process_row(row: List) -> List:
         return [AgentUtils.serialize_value(v) for v in row]
+
+    @classmethod
+    def _process_description(cls, description: List) -> List:
+        return [AgentUtils.serialize_value(v) for v in description]

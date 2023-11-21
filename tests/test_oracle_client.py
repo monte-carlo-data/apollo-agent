@@ -7,7 +7,12 @@ from typing import (
 )
 from unittest import TestCase
 from unittest.mock import Mock, call, patch
-from psycopg2.errors import InsufficientPrivilege  # noqa
+
+from oracledb.base_impl import (
+    DB_TYPE_VARCHAR,
+    DB_TYPE_NUMBER,
+    DbType,
+)
 
 from apollo.agent.agent import Agent
 from apollo.agent.constants import (
@@ -47,8 +52,8 @@ class OracleDbClientTests(TestCase):
             ],
         ]
         expected_description = [
-            ["name", "string", None, None, None, None, None],
-            ["value", "float", None, None, None, None, None],
+            ["name", DB_TYPE_VARCHAR, None, None, None, None, None],
+            ["value", DB_TYPE_NUMBER, None, None, None, None, None],
         ]
         self._test_run_query(
             mock_connect, query, args, expected_data, expected_description
@@ -136,8 +141,9 @@ class OracleDbClientTests(TestCase):
         self.assertTrue("all_results" in result)
         self.assertEqual(expected_data, result["all_results"])
 
+        expected_description = self._serialized_description(description)
         self.assertTrue("description" in result)
-        self.assertEqual(description, result["description"])
+        self.assertEqual(expected_description, result["description"])
 
         self.assertTrue("rowcount" in result)
         self.assertEqual(expected_rows, result["rowcount"])
@@ -147,8 +153,16 @@ class OracleDbClientTests(TestCase):
         return [cls._serialized_row(v) for v in data]
 
     @classmethod
+    def _serialized_description(cls, description: List) -> List:
+        return [cls._serialized_col(v) for v in description]
+
+    @classmethod
     def _serialized_row(cls, row: List) -> List:
         return [cls._serialized_value(v) for v in row]
+
+    @classmethod
+    def _serialized_col(cls, col: List) -> List:
+        return [cls._serialized_value(v) for v in col]
 
     @classmethod
     def _serialized_value(cls, value: Any) -> Any:
@@ -162,5 +176,7 @@ class OracleDbClientTests(TestCase):
                 "__type__": "date",
                 "__data__": value.isoformat(),
             }
+        elif isinstance(value, DbType):
+            return value.name
         else:
             return value

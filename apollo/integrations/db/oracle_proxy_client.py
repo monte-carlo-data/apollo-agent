@@ -1,11 +1,14 @@
 from typing import (
     Any,
     Dict,
+    List,
     Optional,
 )
 
 import oracledb
+from oracledb.base_impl import DbType
 
+from apollo.agent.utils import AgentUtils
 from apollo.integrations.db.base_db_proxy_client import BaseDbProxyClient
 
 _ATTR_CONNECT_ARGS = "connect_args"
@@ -28,3 +31,18 @@ class OracleProxyClient(BaseDbProxyClient):
     @property
     def wrapped_client(self):
         return self._connection
+
+    @classmethod
+    def _process_description(cls, description: List) -> List:
+        return [cls._serialize_description(v) for v in description]
+
+    @classmethod
+    def _serialize_description(cls, value: Any) -> Any:
+        if isinstance(value, DbType):
+            # Oracle cursor returns the column type as <DbType DB_TYPE_NUMBER> instead of a
+            # type_code which we expect. Here we are converting this type to a string of the type
+            # so the description can be serialized. So <DbType DB_TYPE_NUMBER> will become just
+            # DB_TYPE_NUMBER.
+            return value.name
+        else:
+            return AgentUtils.serialize_value(value)
