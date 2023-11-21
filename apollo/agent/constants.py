@@ -47,6 +47,9 @@ ATTRIBUTE_VALUE_TYPE_DATE = "date"
 # the right type
 ATTRIBUTE_VALUE_TYPE_LOOKER_CATEGORY = "looker.category"
 
+# Value for the attribute __type__ to indicate this is an Oracle DbType.
+ATTRIBUTE_VALUE_TYPE_ORACLE_DB_TYPE = "oracle.db_type"
+
 # Value to use when redacting sensitive data in log messages
 ATTRIBUTE_VALUE_REDACTED = "__redacted__"
 
