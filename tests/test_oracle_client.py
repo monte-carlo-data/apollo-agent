@@ -177,9 +177,6 @@ class OracleDbClientTests(TestCase):
                 "__data__": value.isoformat(),
             }
         elif isinstance(value, DbType):
-            return {
-                "__type__": "oracle.db_type",
-                "__data__": value.name,
-            }
+            return value.name
         else:
             return value

@@ -8,11 +8,6 @@ from typing import (
 import oracledb
 from oracledb.base_impl import DbType
 
-from apollo.agent.constants import (
-    ATTRIBUTE_NAME_DATA,
-    ATTRIBUTE_NAME_TYPE,
-    ATTRIBUTE_VALUE_TYPE_ORACLE_DB_TYPE,
-)
 from apollo.agent.utils import AgentUtils
 from apollo.integrations.db.base_db_proxy_client import BaseDbProxyClient
 
@@ -43,13 +38,11 @@ class OracleProxyClient(BaseDbProxyClient):
 
     @classmethod
     def _serialize_description(cls, value: Any) -> Any:
-        # Oracle cursor returns the column type as <DbType DB_TYPE_NUMBER> instead of a type_code
-        # which we expect. Here we are converting this type to a string of the type so the
-        # description can be serialized. So <DbType DB_TYPE_NUMBER> will become just DB_TYPE_NUMBER.
         if isinstance(value, DbType):
-            return {
-                ATTRIBUTE_NAME_TYPE: ATTRIBUTE_VALUE_TYPE_ORACLE_DB_TYPE,
-                ATTRIBUTE_NAME_DATA: value.name,
-            }
+            # Oracle cursor returns the column type as <DbType DB_TYPE_NUMBER> instead of a
+            # type_code which we expect. Here we are converting this type to a string of the type
+            # so the description can be serialized. So <DbType DB_TYPE_NUMBER> will become just
+            # DB_TYPE_NUMBER.
+            return value.name
         else:
             return AgentUtils.serialize_value(value)
