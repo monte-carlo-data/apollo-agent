@@ -49,6 +49,7 @@ click==8.1.7
 cryptography==41.0.5
     # via
     #   azure-storage-blob
+    #   oracledb
     #   pyopenssl
     #   snowflake-connector-python
 databricks-sql-connector==2.8.0
@@ -139,6 +140,8 @@ oauthlib==3.2.2
     # via databricks-sql-connector
 openpyxl==3.1.2
     # via databricks-sql-connector
+oracledb==1.4.2
+    # via -r requirements.in
 oscrypto==1.3.0
     # via snowflake-connector-python
 packaging==23.1
