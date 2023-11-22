@@ -5,6 +5,7 @@ from typing import (
     List,
 )
 
+from apollo.agent.serde import AgentSerializer
 from apollo.agent.utils import AgentUtils
 from apollo.integrations.base_proxy_client import BaseProxyClient
 
@@ -35,8 +36,8 @@ class BaseDbProxyClient(BaseProxyClient, ABC):
 
     @staticmethod
     def _process_row(row: List) -> List:
-        return [AgentUtils.serialize_value(v) for v in row]
+        return [AgentSerializer.serialize(v) for v in row]
 
     @classmethod
     def _process_description(cls, description: List) -> List:
-        return [AgentUtils.serialize_value(v) for v in description]
+        return [AgentSerializer.serialize(v) for v in description]

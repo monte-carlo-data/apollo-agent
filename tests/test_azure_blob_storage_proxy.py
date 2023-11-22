@@ -3,9 +3,9 @@ import os
 from unittest import TestCase
 from unittest.mock import (
     MagicMock,
+    Mock,
     patch,
     create_autospec,
-    mock_open,
 )
 
 from azure.storage.blob import (
@@ -222,6 +222,9 @@ class StorageAzureTests(TestCase):
     def test_read(self, mock_client_type):
         self._mock_service_client.get_blob_client.return_value = self._mock_blob_client
         mock_client_type.from_connection_string.return_value = self._mock_service_client
+        mock_downloader = Mock()
+        mock_downloader.readall.return_value = '{"foo":"bar"}'
+        self._mock_blob_client.download_blob.return_value = mock_downloader
 
         file_key = "file.txt"
         result = self._agent.execute_operation(
@@ -251,6 +254,9 @@ class StorageAzureTests(TestCase):
     def test_read_default_prefix(self, mock_client_type):
         self._mock_service_client.get_blob_client.return_value = self._mock_blob_client
         mock_client_type.from_connection_string.return_value = self._mock_service_client
+        mock_downloader = Mock()
+        mock_downloader.readall.return_value = '{"foo":"bar"}'
+        self._mock_blob_client.download_blob.return_value = mock_downloader
         expected_prefix = f"{STORAGE_PREFIX_DEFAULT_VALUE}/"
 
         file_key = "file.txt"
@@ -282,27 +288,27 @@ class StorageAzureTests(TestCase):
         "apollo.integrations.azure_blob.azure_blob_base_reader_writer.BlobServiceClient"
     )
     @patch.object(AgentUtils, "temp_file_path")
-    def test_download(self, mock_temp_file_path, mock_client_type):
+    @patch.object(AgentUtils, "open_file")
+    def test_download(self, mock_file_open, mock_temp_file_path, mock_client_type):
         tmp_path = "/tmp/temp.data"
+        mock_file_open.return_value = "foobar"
         mock_temp_file_path.return_value = tmp_path
         self._mock_service_client.get_blob_client.return_value = self._mock_blob_client
         mock_client_type.from_connection_string.return_value = self._mock_service_client
 
         file_key = "file.txt"
-        with patch("builtins.open", mock_open()):
-            result = self._agent.execute_operation(
-                "storage",
-                "download_file",
-                {
-                    "trace_id": "1234",
-                    "skip_cache": True,
-                    "commands": [
-                        {"method": "download_file", "kwargs": {"key": file_key}}
-                    ],
-                },
-                credentials={},
-            )
+        result = self._agent.execute_operation(
+            "storage",
+            "download_file",
+            {
+                "trace_id": "1234",
+                "skip_cache": True,
+                "commands": [{"method": "download_file", "kwargs": {"key": file_key}}],
+            },
+            credentials={},
+        )
         self.assertIsNone(result.result.get(ATTRIBUTE_NAME_ERROR))
+        mock_file_open.assert_called_once_with(tmp_path)
 
         self._mock_service_client.get_blob_client.assert_called_once_with(
             container=_TEST_BUCKET_NAME, blob=file_key
@@ -318,28 +324,30 @@ class StorageAzureTests(TestCase):
         "apollo.integrations.azure_blob.azure_blob_base_reader_writer.BlobServiceClient"
     )
     @patch.object(AgentUtils, "temp_file_path")
-    def test_download_default_prefix(self, mock_temp_file_path, mock_client_type):
+    @patch.object(AgentUtils, "open_file")
+    def test_download_default_prefix(
+        self, mock_file_open, mock_temp_file_path, mock_client_type
+    ):
         tmp_path = "/tmp/temp.data"
+        mock_file_open.return_value = "foobar"
         mock_temp_file_path.return_value = tmp_path
         self._mock_service_client.get_blob_client.return_value = self._mock_blob_client
         mock_client_type.from_connection_string.return_value = self._mock_service_client
         expected_prefix = f"{STORAGE_PREFIX_DEFAULT_VALUE}/"
 
         file_key = "file.txt"
-        with patch("builtins.open", mock_open()):
-            result = self._agent.execute_operation(
-                "storage",
-                "download_file",
-                {
-                    "trace_id": "1234",
-                    "skip_cache": True,
-                    "commands": [
-                        {"method": "download_file", "kwargs": {"key": file_key}}
-                    ],
-                },
-                credentials={},
-            )
+        result = self._agent.execute_operation(
+            "storage",
+            "download_file",
+            {
+                "trace_id": "1234",
+                "skip_cache": True,
+                "commands": [{"method": "download_file", "kwargs": {"key": file_key}}],
+            },
+            credentials={},
+        )
         self.assertIsNone(result.result.get(ATTRIBUTE_NAME_ERROR))
+        mock_file_open.assert_called_once_with(tmp_path)
 
         self._mock_service_client.get_blob_client.assert_called_once_with(
             container=_TEST_BUCKET_NAME, blob=f"{expected_prefix}{file_key}"

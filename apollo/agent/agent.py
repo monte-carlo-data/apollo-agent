@@ -27,11 +27,14 @@ from apollo.agent.settings import VERSION, BUILD_NUMBER
 from apollo.agent.updater import AgentUpdater
 from apollo.agent.utils import AgentUtils
 from apollo.integrations.base_proxy_client import BaseProxyClient
+from apollo.integrations.storage.storage_proxy_client import StorageProxyClient
 from apollo.interfaces.agent_response import AgentResponse
 from apollo.interfaces.cloudrun.metadata_service import GCP_PLATFORM_INFO_KEY_IMAGE
 from apollo.validators.validate_network import ValidateNetwork
 
 logger = logging.getLogger(__name__)
+
+PRE_SIGNED_URL_EXPIRATION_SECONDS = 60 * 60 * 1  # 1 hour
 
 
 class Agent:
@@ -374,7 +377,17 @@ class Agent:
                 dict(elapsed_time=time.time() - start_time),
             ),
         )
-        return AgentResponse(result or {}, 200, operation.trace_id)
+        response = AgentResponse(result or {}, 200, operation.trace_id)
+        size = response.calculate_result_size()
+        if operation.use_pre_signed_url(size):
+            key = f"responses/{operation.trace_id}"
+            storage_client = StorageProxyClient(self._platform)
+            storage_client.write(key=key, obj_to_write=response.serialize_result())
+            url = storage_client.generate_presigned_url(
+                key, PRE_SIGNED_URL_EXPIRATION_SECONDS
+            )
+            response.use_location(url)
+        return response
 
     @staticmethod
     def _execute(
