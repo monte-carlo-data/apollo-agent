@@ -8,6 +8,6 @@ repos:
       types_or: [python, pyi]
 
   - repo: https://github.com/RobertCraigie/pyright-python
-    rev: v1.1.329
+    rev: v1.1.337
     hooks:
     - id: pyright
