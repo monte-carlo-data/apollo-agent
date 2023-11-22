@@ -112,6 +112,14 @@ def _get_proxy_client_mysql(
     return MysqlProxyClient(credentials=credentials, platform=platform)
 
 
+def _get_proxy_client_oracle(
+    credentials: Optional[Dict], platform: str, **kwargs  # type: ignore
+) -> BaseProxyClient:
+    from apollo.integrations.db.oracle_proxy_client import OracleProxyClient
+
+    return OracleProxyClient(credentials=credentials, platform=platform)
+
+
 @dataclass
 class ProxyClientCacheEntry:
     created_time: datetime
@@ -130,6 +138,7 @@ _CLIENT_FACTORY_MAPPING = {
     "sql-server": _get_proxy_client_sql_server,
     "snowflake": _get_proxy_client_snowflake,
     "mysql": _get_proxy_client_mysql,
+    "oracle": _get_proxy_client_oracle,
 }
 
 
