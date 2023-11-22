@@ -85,7 +85,7 @@ jobs:
           command: |
             . .venv/bin/activate
             black --check .
-            pyright
+            pyright --verbose
 
   run-test-docker:
     machine:
