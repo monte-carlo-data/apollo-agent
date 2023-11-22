@@ -43,6 +43,9 @@ class OracleProxyClient(BaseDbProxyClient):
             # type_code which we expect. Here we are converting this type to a string of the type
             # so the description can be serialized. So <DbType DB_TYPE_NUMBER> will become just
             # DB_TYPE_NUMBER.
+            # This doesn't use the __type__/__data__ scheme because we don't have enough
+            # information on the client side to reconstruct the type concretely, so instead we're
+            # just returning the form the client expects.
             return value.name
         else:
             return AgentUtils.serialize_value(value)
