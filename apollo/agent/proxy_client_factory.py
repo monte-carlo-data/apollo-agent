@@ -120,6 +120,14 @@ def _get_proxy_client_oracle(
     return OracleProxyClient(credentials=credentials, platform=platform)
 
 
+def _get_proxy_client_teradata(
+    credentials: Optional[Dict], platform: str, **kwargs  # type: ignore
+) -> BaseProxyClient:
+    from apollo.integrations.db.teradata_proxy_client import TeradataProxyClient
+
+    return TeradataProxyClient(credentials=credentials, platform=platform)
+
+
 @dataclass
 class ProxyClientCacheEntry:
     created_time: datetime
@@ -139,6 +147,7 @@ _CLIENT_FACTORY_MAPPING = {
     "snowflake": _get_proxy_client_snowflake,
     "mysql": _get_proxy_client_mysql,
     "oracle": _get_proxy_client_oracle,
+    "teradata": _get_proxy_client_teradata,
 }
 
 
