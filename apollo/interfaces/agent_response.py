@@ -1,12 +1,15 @@
+import json
 from dataclasses import dataclass
 from io import BufferedReader
 from typing import Dict, Optional, Any, BinaryIO
 
 from apollo.agent.constants import (
     ATTRIBUTE_NAME_ERROR,
+    ATTRIBUTE_NAME_RESULT_LOCATION,
     ATTRIBUTE_NAME_TRACE_ID,
     ATTRIBUTE_NAME_RESULT,
 )
+from apollo.agent.serde import AgentSerializer
 
 
 @dataclass
@@ -27,6 +30,11 @@ class AgentResponse:
         if self.trace_id and isinstance(self.result, Dict):
             self.result[ATTRIBUTE_NAME_TRACE_ID] = self.trace_id
 
+    def use_location(self, location: str):
+        self.result[ATTRIBUTE_NAME_RESULT_LOCATION] = location
+        if ATTRIBUTE_NAME_RESULT in self.result:
+            self.result.pop(ATTRIBUTE_NAME_RESULT)
+
     @property
     def is_error(self) -> bool:
         return self._is_error_response(self.result)
@@ -42,3 +50,11 @@ class AgentResponse:
     @staticmethod
     def _is_error_response(result: Any):
         return isinstance(result, Dict) and ATTRIBUTE_NAME_ERROR in result
+
+    def calculate_result_size(self) -> int:
+        if not self.result or self._is_binary_response(self.result):
+            return 0
+        return len(self.serialize_result().encode())
+
+    def serialize_result(self) -> str:
+        return json.dumps(self.result, cls=AgentSerializer)

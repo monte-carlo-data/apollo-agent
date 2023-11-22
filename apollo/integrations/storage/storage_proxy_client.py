@@ -1,6 +1,13 @@
 import os
 from datetime import timedelta
-from typing import Optional, BinaryIO, Dict, cast, Any
+from typing import (
+    Optional,
+    BinaryIO,
+    Dict,
+    Union,
+    cast,
+    Any,
+)
 
 from apollo.agent.constants import (
     PLATFORM_AZURE,
@@ -121,6 +128,9 @@ class StorageProxyClient(BaseProxyClient):
         :param local_file_path: local path of the file to upload.
         """
         self._client.upload_file(key, local_file_path)
+
+    def write(self, key: str, obj_to_write: Union[bytes, str]):
+        self._client.write(key, obj_to_write)
 
     def managed_download(self, key: str) -> BinaryIO:
         """
