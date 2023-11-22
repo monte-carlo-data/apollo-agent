@@ -95,18 +95,20 @@ class HttpProxyClient(BaseProxyClient):
         try:
             response.raise_for_status()
         except HTTPError as err:
+            status_code = err.response.status_code if err.response else 0
+            text = err.response.text if err.response else ""
             _logger.exception(
-                f"Request failed with {err.response.status_code}",
-                extra=dict(error_text=err.response.text),
+                f"Request failed with {status_code}",
+                extra=dict(error_text=text),
             )
             if retry_status_code_ranges is not None and self._is_retry_status_code(
-                retry_status_code_ranges, err.response.status_code
+                retry_status_code_ranges, status_code
             ):
                 # retry for this status code
-                raise HttpRetryableError(err.response.text) from err
-            if self.is_client_error_status_code(err.response.status_code):
-                raise HttpClientError(err.response.text) from err
-            raise type(err)(err.response.text) from err
+                raise HttpRetryableError(text) from err
+            if self.is_client_error_status_code(status_code):
+                raise HttpClientError(text) from err
+            raise type(err)(text) from err
 
         return response.json()
 

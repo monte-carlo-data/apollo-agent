@@ -46,7 +46,7 @@ pluggy==1.3.0
     # via pytest
 pre-commit==3.5.0
     # via -r requirements-dev.in
-pyright==1.1.329
+pyright==1.1.337
     # via -r requirements-dev.in
 pytest==7.4.2
     # via -r requirements-dev.in
