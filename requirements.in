@@ -18,3 +18,4 @@ retry2==0.9.5
 snowflake-connector-python>=3.1.0
 teradatasql>=17.20.0.31
 urllib3==1.26.18
+git+https://github.com/wbond/oscrypto@master
