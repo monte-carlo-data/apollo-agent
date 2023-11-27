@@ -167,7 +167,7 @@ class HttpProxyClient(BaseProxyClient):
 
     def get_error_extra_attributes(self, error: Exception) -> Optional[Dict]:
         cause = error.__cause__ or error
-        if isinstance(cause, HTTPError) and cause.response:
+        if isinstance(cause, HTTPError) and cause.response is not None:
             return {
                 "status_code": cause.response.status_code,
                 "reason": cause.response.reason,
