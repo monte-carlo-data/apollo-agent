@@ -129,8 +129,8 @@ class StorageProxyClient(BaseProxyClient):
         """
         self._client.upload_file(key, local_file_path)
 
-    def write(self, key: str, data: Union[bytes, str]):
-        self._client.write(key, data)
+    def write(self, key: str, obj_to_write: Union[bytes, str]):
+        self._client.write(key, obj_to_write)
 
     def managed_download(self, key: str) -> BinaryIO:
         """

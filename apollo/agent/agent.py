@@ -382,7 +382,7 @@ class Agent:
         if operation.use_pre_signed_url(size):
             key = f"responses/{operation.trace_id}"
             storage_client = StorageProxyClient(self._platform)
-            storage_client.write(key=key, data=response.serialize_result())
+            storage_client.write(key=key, obj_to_write=response.serialize_result())
             url = storage_client.generate_presigned_url(
                 key, PRE_SIGNED_URL_EXPIRATION_SECONDS
             )

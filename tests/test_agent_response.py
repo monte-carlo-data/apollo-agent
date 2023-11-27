@@ -71,7 +71,7 @@ class AgentResponseTests(TestCase):
         )
         mock_storage_client.write.assert_called_once_with(
             key=f"responses/{self._trace_id}",
-            data=json.dumps(
+            obj_to_write=json.dumps(
                 {"__mcd_result__": {"fizz": "buzz"}, "__mcd_trace_id__": self._trace_id}
             ),
         )
