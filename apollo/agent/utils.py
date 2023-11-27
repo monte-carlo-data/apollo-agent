@@ -2,7 +2,6 @@ import os
 import sys
 import traceback
 import uuid
-from datetime import datetime, date
 from typing import Optional, Dict, List, BinaryIO, Any, Tuple
 
 import requests
@@ -13,10 +12,6 @@ from apollo.agent.constants import (
     ATTRIBUTE_NAME_STACK_TRACE,
     ATTRIBUTE_NAME_ERROR_TYPE,
     ATTRIBUTE_VALUE_REDACTED,
-    ATTRIBUTE_NAME_TYPE,
-    ATTRIBUTE_NAME_DATA,
-    ATTRIBUTE_VALUE_TYPE_DATETIME,
-    ATTRIBUTE_VALUE_TYPE_DATE,
     ATTRIBUTE_NAME_ERROR_ATTRS,
 )
 from apollo.agent.env_vars import (
@@ -127,20 +122,6 @@ class AgentUtils:
             return [cls.redact_attributes(v, attributes) for v in value]
         else:
             return value
-
-    @staticmethod
-    def serialize_value(value: Any) -> Any:
-        if isinstance(value, datetime):
-            return {
-                ATTRIBUTE_NAME_TYPE: ATTRIBUTE_VALUE_TYPE_DATETIME,
-                ATTRIBUTE_NAME_DATA: value.isoformat(),
-            }
-        elif isinstance(value, date):
-            return {
-                ATTRIBUTE_NAME_TYPE: ATTRIBUTE_VALUE_TYPE_DATE,
-                ATTRIBUTE_NAME_DATA: value.isoformat(),
-            }
-        return value
 
     @staticmethod
     def get_outbound_ip_address() -> str:
