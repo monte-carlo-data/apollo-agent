@@ -1,15 +1,18 @@
 # Environment variables reported back in the `/test/health` endpoint
 IS_REMOTE_UPGRADABLE_ENV_VAR = "MCD_AGENT_IS_REMOTE_UPGRADABLE"
 AGENT_IMAGE_TAG_ENV_VAR = "MCD_AGENT_IMAGE_TAG"
+AGENT_WRAPPER_TYPE_ENV_VAR = "MCD_AGENT_WRAPPER_TYPE"
 HEALTH_ENV_VARS = [
     "PYTHON_VERSION",
     "SERVER_SOFTWARE",
     "MCD_AGENT_CLOUD_PLATFORM",
-    "MCD_AGENT_WRAPPER_TYPE",
+    AGENT_WRAPPER_TYPE_ENV_VAR,
     "MCD_AGENT_WRAPPER_VERSION",
     IS_REMOTE_UPGRADABLE_ENV_VAR,
     AGENT_IMAGE_TAG_ENV_VAR,
 ]
+
+WRAPPER_TYPE_CLOUDFORMATION = "CLOUDFORMATION"
 
 # Environment variable used in the `Generic` platform to select the storage type
 STORAGE_TYPE_ENV_VAR = "MCD_STORAGE"
@@ -39,3 +42,6 @@ DEFAULT_TEMP_PATH = "/tmp"
 # It must return just the IP address, other urls are: https://ifconfig.me or https://ident.me
 CHECK_OUTBOUND_IP_ADDRESS_URL_ENV_VAR = "MCD_CHECK_OUTBOUND_IP_URL"
 CHECK_OUTBOUND_IP_ADDRESS_URL_DEFAULT_VALUE = "https://checkip.amazonaws.com"
+
+# Cloud Formation Stack ID, used for updates
+CLOUD_FORMATION_STACK_ID_ENV_VAR = "MCD_STACK_ID"

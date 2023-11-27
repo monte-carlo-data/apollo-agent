@@ -60,4 +60,4 @@ ARG code_version="local"
 ARG build_number="0"
 RUN echo $code_version,$build_number > ./apollo/agent/version
 
-CMD [ "apollo.interfaces.lambda.handler.lambda_handler" ]
+CMD [ "apollo.interfaces.lambda_function.handler.lambda_handler" ]
