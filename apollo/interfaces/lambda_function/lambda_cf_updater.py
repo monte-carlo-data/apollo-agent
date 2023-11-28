@@ -6,7 +6,7 @@ import boto3
 from botocore.client import BaseClient
 from botocore.exceptions import WaiterError
 
-from apollo.agent.env_vars import CLOUD_FORMATION_STACK_ID_ENV_VAR
+from apollo.agent.env_vars import CLOUDFORMATION_STACK_ID_ENV_VAR
 from apollo.agent.models import AgentUpdateError
 from apollo.agent.updater import AgentUpdater
 
@@ -132,10 +132,10 @@ class LambdaCFUpdater(AgentUpdater):
 
     @staticmethod
     def _get_stack_id():
-        stack_id = os.getenv(CLOUD_FORMATION_STACK_ID_ENV_VAR)
+        stack_id = os.getenv(CLOUDFORMATION_STACK_ID_ENV_VAR)
         if not stack_id:
             raise AgentUpdateError(
-                f"Missing {CLOUD_FORMATION_STACK_ID_ENV_VAR} environment variable"
+                f"Missing {CLOUDFORMATION_STACK_ID_ENV_VAR} environment variable"
             )
         return stack_id
 
