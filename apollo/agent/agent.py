@@ -6,7 +6,12 @@ from contextlib import contextmanager
 from datetime import datetime
 from typing import Any, Dict, Optional
 
-from apollo.agent.env_vars import HEALTH_ENV_VARS, IS_REMOTE_UPGRADABLE_ENV_VAR
+from apollo.agent.env_vars import (
+    HEALTH_ENV_VARS,
+    IS_REMOTE_UPGRADABLE_ENV_VAR,
+    PRE_SIGNED_URL_RESPONSE_EXPIRATION_SECONDS_DEFAULT_VALUE,
+    PRE_SIGNED_URL_RESPONSE_EXPIRATION_SECONDS_ENV_VAR,
+)
 from apollo.agent.evaluation_utils import AgentEvaluationUtils
 from apollo.agent.log_context import AgentLogContext
 from apollo.agent.logging_utils import LoggingUtils
@@ -28,6 +33,7 @@ from apollo.agent.settings import VERSION, BUILD_NUMBER
 from apollo.agent.updater import AgentUpdater
 from apollo.agent.utils import AgentUtils
 from apollo.integrations.base_proxy_client import BaseProxyClient
+from apollo.integrations.storage.storage_proxy_client import StorageProxyClient
 from apollo.interfaces.agent_response import AgentResponse
 from apollo.interfaces.cloudrun.metadata_service import GCP_PLATFORM_INFO_KEY_IMAGE
 from apollo.validators.validate_network import ValidateNetwork
@@ -408,7 +414,22 @@ class Agent:
                 dict(elapsed_time=time.time() - start_time),
             ),
         )
-        return AgentResponse(result or {}, 200, operation.trace_id)
+        response = AgentResponse(result or {}, 200, operation.trace_id)
+        if operation.can_use_pre_signed_url():
+            size = response.calculate_result_size()
+            if operation.should_use_pre_signed_url(size):
+                key = f"responses/{operation.trace_id}"
+                storage_client = StorageProxyClient(self._platform)
+                storage_client.write(key=key, obj_to_write=response.serialize_result())
+                expiration_seconds = int(
+                    os.getenv(
+                        PRE_SIGNED_URL_RESPONSE_EXPIRATION_SECONDS_ENV_VAR,
+                        PRE_SIGNED_URL_RESPONSE_EXPIRATION_SECONDS_DEFAULT_VALUE,
+                    )
+                )
+                url = storage_client.generate_presigned_url(key, expiration_seconds)
+                response.use_location(url)
+        return response
 
     @staticmethod
     def _execute(

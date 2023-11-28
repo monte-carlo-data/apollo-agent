@@ -36,6 +36,14 @@ STORAGE_PREFIX_DEFAULT_VALUE = "mcd"
 # Environment variable used to control the expiration in seconds for the clients cache
 CLIENT_CACHE_EXPIRATION_SECONDS_ENV_VAR = "MCD_CLIENT_CACHE_EXPIRATION_SECONDS"
 
+# Environment variable used to control the expiration in seconds for the pre-signed URL responses
+PRE_SIGNED_URL_RESPONSE_EXPIRATION_SECONDS_ENV_VAR = (
+    "MCD_PRE_SIGNED_URL_RESPONSE_EXPIRATION_SECONDS"
+)
+
+# Default value for expiration in seconds of pre-signed URL responses
+PRE_SIGNED_URL_RESPONSE_EXPIRATION_SECONDS_DEFAULT_VALUE = str(60 * 60 * 1)  # 1 hour
+
 # Environment variable used to configure the bucket name for both S3 and GCS
 STORAGE_BUCKET_NAME_ENV_VAR = "MCD_STORAGE_BUCKET_NAME"
 
