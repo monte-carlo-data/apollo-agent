@@ -1,22 +1,21 @@
 import logging
 import os
 from typing import Optional, Dict, List, cast, Any
-
+from datetime import datetime, timezone
 import boto3
 from botocore.client import BaseClient
+from botocore.exceptions import WaiterError
 
-from apollo.agent.env_vars import (
-    CLOUD_FORMATION_STACK_ID_ENV_VAR,
-    AGENT_WRAPPER_TYPE_ENV_VAR,
-    WRAPPER_TYPE_CLOUDFORMATION,
-)
+from apollo.agent.env_vars import CLOUD_FORMATION_STACK_ID_ENV_VAR
 from apollo.agent.models import AgentUpdateError
 from apollo.agent.updater import AgentUpdater
 
 _CF_UPDATE_WAITER = "stack_update_complete"
 _STACK_UPDATE_STATE = "UPDATE_COMPLETE"
 _DEFAULT_CAPABILITIES = "CAPABILITY_IAM"
-_WAIT_MAX_ATTEMPTS = 720
+
+_UPDATE_STACK_WAIT_DELAY = 5
+_UPDATE_STACK_WAIT_MAX_ATTEMPTS = 720
 
 _PARAMETER_KEY_ATTR_NAME = "ParameterKey"
 _PARAMETER_VALUE_ATTR_NAME = "ParameterValue"
@@ -38,9 +37,6 @@ class LambdaCFUpdater(AgentUpdater):
         timeout_seconds: Optional[int],
         **kwargs,  # type: ignore
     ) -> Dict:
-        wrapper_type = os.getenv(AGENT_WRAPPER_TYPE_ENV_VAR)
-        if wrapper_type != WRAPPER_TYPE_CLOUDFORMATION:
-            raise AgentUpdateError("Updates supported only for CloudFormation wrapper")
         client = self._get_cloudformation_client()
         template_url = kwargs.get(_TEMPLATE_URL_ARG_NAME)
         new_parameters = kwargs.get(_NEW_PARAMETERS_ARG_NAME) or {}
@@ -88,21 +84,31 @@ class LambdaCFUpdater(AgentUpdater):
             update_stack_args["TemplateURL"] = template_url
         else:
             update_stack_args["UsePreviousTemplate"] = True
+        start_time = datetime.now(timezone.utc)
         client.update_stack(**update_stack_args)
 
-        client.get_waiter(_CF_UPDATE_WAITER).wait(
-            StackName=stack_id,
-            WaiterConfig={
-                "Delay": 5,
-                "MaxAttempts": _WAIT_MAX_ATTEMPTS,
-            },
+        error_message: Optional[str] = None
+        try:
+            client.get_waiter(_CF_UPDATE_WAITER).wait(
+                StackName=stack_id,
+                WaiterConfig={
+                    "Delay": _UPDATE_STACK_WAIT_DELAY,
+                    "MaxAttempts": _UPDATE_STACK_WAIT_MAX_ATTEMPTS,
+                },
+            )
+        except WaiterError as err:
+            error_message = str(err)
+
+        events = self._get_stack_events(
+            client=client, stack_id=stack_id, start_time=start_time
         )
         status = self._get_stack_details(client=client)["Stacks"][0]["StackStatus"]
-        if status != _STACK_UPDATE_STATE:
-            raise ValueError(f"Update failed, status: {status}")
         return {
-            "Status": status,
-            "ImageUri": self._get_image_uri_parameter(client=client),
+            "success": status == _STACK_UPDATE_STATE,
+            "error_message": error_message,
+            "status": status,
+            "image_uri": self._get_image_uri_parameter(client=client),
+            "events": events,
         }
 
     @staticmethod
@@ -148,3 +154,43 @@ class LambdaCFUpdater(AgentUpdater):
         if len(domain_components) > 3:
             domain_components[3] = region
         return f'{".".join(domain_components)}/{repo_tag}'
+
+    @classmethod
+    def _get_stack_events(
+        cls, client: BaseClient, stack_id: str, start_time: datetime
+    ) -> List[Dict]:
+        describe_event_args = {"StackName": stack_id}
+        complete = False
+
+        result: List[Dict] = []
+        while not complete:
+            # events are returned in reverse chronological order
+            # we stop when we get an event older than `start_time`
+            # describe_stack_events doesn't accept NextToken=None, we add "NextToken" later
+            describe_events_response = client.describe_stack_events(
+                **describe_event_args
+            )
+            events = describe_events_response.get("StackEvents")
+            for event in events:
+                if event.get("Timestamp") < start_time:
+                    complete = True
+                    break
+                result.append(cls._build_response_event(event))
+            next_token = describe_events_response.get("NextToken")
+            if next_token is None:
+                complete = True  # no next token, we reached the end of the log
+            else:
+                describe_event_args["NextToken"] = next_token
+        return result
+
+    @staticmethod
+    def _build_response_event(event: Dict) -> Dict:
+        return {
+            "timestamp": event["Timestamp"].isoformat()
+            if "Timestamp" in event
+            else None,
+            "logical_resource_id": event.get("LogicalResourceId"),
+            "resource_type": event.get("ResourceType"),
+            "resource_status": event.get("ResourceStatus"),
+            "resource_status_reason": event.get("ResourceStatusReason"),
+        }
