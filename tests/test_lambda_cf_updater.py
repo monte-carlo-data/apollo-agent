@@ -74,7 +74,10 @@ class TestLambdaCFUpdater(TestCase):
         mock_client.describe_stack_events.return_value = {"StackEvents": []}
         updater = LambdaCFUpdater()
         response = updater.update(
-            platform_info=None, image=new_image_uri, timeout_seconds=10
+            platform_info=None,
+            image=new_image_uri,
+            timeout_seconds=10,
+            wait_for_completion=True,
         )
 
         mock_client.describe_stack_events.assert_called_once_with(
@@ -84,6 +87,56 @@ class TestLambdaCFUpdater(TestCase):
         self.assertEqual("UPDATE_COMPLETE", response["status"])
         self.assertEqual(updated_new_image_uri, response["image_uri"])
         self.assertEqual([], response["events"])
+
+    @patch.dict(
+        os.environ,
+        {
+            CLOUDFORMATION_STACK_ID_ENV_VAR: "cf_stack_id",
+        },
+    )
+    @patch("boto3.client")
+    def test_update_no_wait(self, mock_boto_client):
+        prev_image_uri = (
+            "123_account.dkr.ecr.us-east-1.amazonaws.com/repo-name:tag-name"
+        )
+        new_image_uri = (
+            "123_account.dkr.ecr.us-east-1.amazonaws.com/repo-name:new-tag-name"
+        )
+        mock_client = Mock()
+        mock_boto_client.return_value = mock_client
+        mock_client.describe_stacks.side_effect = [
+            {
+                "Stacks": [
+                    {
+                        "Parameters": [
+                            {
+                                "ParameterKey": "ImageUri",
+                                "ParameterValue": prev_image_uri,
+                            }
+                        ],
+                        "StackStatus": "UPDATE_COMPLETE",
+                    }
+                ]
+            },
+            {
+                "Stacks": [
+                    {
+                        "StackStatus": "UPDATE_IN_PROGRESS",
+                    }
+                ]
+            },
+        ]
+        mock_client.describe_stack_events.return_value = {"StackEvents": []}
+        updater = LambdaCFUpdater()
+        response = updater.update(
+            platform_info=None,
+            image=new_image_uri,
+            timeout_seconds=10,
+        )
+
+        mock_client.describe_stack_events.assert_not_called()
+        mock_client.describe_stacks.assert_called_with(StackName="cf_stack_id")
+        self.assertEqual("UPDATE_IN_PROGRESS", response["status"])
 
     @patch.dict(
         os.environ,
@@ -140,7 +193,10 @@ class TestLambdaCFUpdater(TestCase):
         }
         updater = LambdaCFUpdater()
         response = updater.update(
-            platform_info=None, image=new_image_uri, timeout_seconds=10
+            platform_info=None,
+            image=new_image_uri,
+            timeout_seconds=10,
+            wait_for_completion=True,
         )
 
         mock_client.describe_stack_events.assert_called_once_with(
@@ -237,7 +293,10 @@ class TestLambdaCFUpdater(TestCase):
         ]
         updater = LambdaCFUpdater()
         response = updater.update(
-            platform_info=None, image=new_image_uri, timeout_seconds=10
+            platform_info=None,
+            image=new_image_uri,
+            timeout_seconds=10,
+            wait_for_completion=True,
         )
 
         mock_client.describe_stack_events.assert_has_calls(
