@@ -57,8 +57,11 @@ class AgentOperation:
     response_size_limit_bytes: int = 0
     skip_cache: bool = False
 
-    def use_pre_signed_url(self, size: int) -> bool:
-        return 0 < self.response_size_limit_bytes < size
+    def can_use_pre_signed_url(self) -> bool:
+        return 0 < self.response_size_limit_bytes
+
+    def should_use_pre_signed_url(self, size: int) -> bool:
+        return self.can_use_pre_signed_url() and self.response_size_limit_bytes < size
 
     @staticmethod
     def from_dict(param) -> "AgentOperation":  # type: ignore

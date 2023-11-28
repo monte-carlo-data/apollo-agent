@@ -30,6 +30,6 @@ class AgentSerializer(json.JSONEncoder):
 
     def default(self, obj: Any):
         serialized = self.serialize(obj)
-        if serialized is not obj:  # no serialization happened
+        if serialized is not obj:  # serialization happened
             return serialized
         return super().default(obj)
