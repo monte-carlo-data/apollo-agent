@@ -16,6 +16,7 @@ _DEFAULT_CAPABILITIES = "CAPABILITY_IAM"
 
 _UPDATE_STACK_WAIT_DELAY = 5
 _UPDATE_STACK_WAIT_MAX_ATTEMPTS = 720
+_UPDATE_MAX_EVENT_COUNT = 100
 
 _PARAMETER_KEY_ATTR_NAME = "ParameterKey"
 _PARAMETER_VALUE_ATTR_NAME = "ParameterValue"
@@ -33,6 +34,13 @@ class LambdaCFUpdater(AgentUpdater):
     def get_current_image(self, platform_info: Optional[Dict]) -> Optional[str]:
         client = self._get_cloudformation_client()
         return self._get_image_uri_parameter(client=client)
+
+    def get_update_logs(self, start_time: datetime, limit: int) -> List[Dict]:
+        client = self._get_cloudformation_client()
+        stack_id = self._get_stack_id()
+        return self._get_stack_events(
+            client=client, stack_id=stack_id, start_time=start_time, limit=limit
+        )
 
     def update(
         self,
@@ -76,7 +84,10 @@ class LambdaCFUpdater(AgentUpdater):
                 client=client, stack_id=stack_id
             )
             events = self._get_stack_events(
-                client=client, stack_id=stack_id, start_time=start_time
+                client=client,
+                stack_id=stack_id,
+                start_time=start_time,
+                limit=_UPDATE_MAX_EVENT_COUNT,
             )
             status = self._get_stack_status(client=client)
             return {
@@ -191,7 +202,11 @@ class LambdaCFUpdater(AgentUpdater):
 
     @classmethod
     def _get_stack_events(
-        cls, client: BaseClient, stack_id: str, start_time: datetime
+        cls,
+        client: BaseClient,
+        stack_id: str,
+        start_time: datetime,
+        limit: int,
     ) -> List[Dict]:
         describe_event_args = {"StackName": stack_id}
         complete = False
@@ -206,7 +221,7 @@ class LambdaCFUpdater(AgentUpdater):
             )
             events = describe_events_response.get("StackEvents")
             for event in events:
-                if event.get("Timestamp") < start_time:
+                if event.get("Timestamp") < start_time or len(result) == limit:
                     complete = True
                     break
                 result.append(cls._build_response_event(event))

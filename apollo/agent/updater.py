@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
-from typing import Optional, Dict
+from datetime import datetime
+from typing import Optional, Dict, List
 
 
 class AgentUpdater(ABC):
@@ -31,4 +32,8 @@ class AgentUpdater(ABC):
         """
         Returns the image currently used by this service, used by the `health` endpoint.
         """
+        pass
+
+    @abstractmethod
+    def get_update_logs(self, start_time: datetime, limit: int) -> List[Dict]:
         pass

@@ -3,6 +3,7 @@ import os
 import sys
 import time
 from contextlib import contextmanager
+from datetime import datetime
 from typing import Any, Dict, Optional
 
 from apollo.agent.env_vars import HEALTH_ENV_VARS, IS_REMOTE_UPGRADABLE_ENV_VAR
@@ -243,6 +244,45 @@ class Agent:
             except Exception:  # noqa
                 return AgentUtils.agent_response_for_last_exception("Update failed:")
 
+    def get_update_logs(
+        self,
+        trace_id: Optional[str],
+        start_time: datetime,
+        limit: int,
+    ) -> AgentResponse:
+        """
+        Returns up to `limit` log events from the updater after the given datetime.
+        This method checks if there's an agent updater installed in `agent.updater` property and that
+        the env var `MCD_AGENT_IS_REMOTE_UPGRADABLE` is set to `true`.
+        The returned response is dictionary with an "events" attribute containing the
+        list of dictionaries returned by the agent updater implementation.
+        """
+        with self._inject_log_context("get_update_logs", trace_id):
+            try:
+                updater = self._check_updates_enabled()
+                events = updater.get_update_logs(
+                    start_time=start_time,
+                    limit=limit,
+                )
+                return AgentUtils.agent_ok_response(
+                    {
+                        "events": events,
+                    },
+                    trace_id,
+                )
+            except Exception:  # noqa
+                return AgentUtils.agent_response_for_last_exception(
+                    "get_update_logs failed:"
+                )
+
+    def _check_updates_enabled(self) -> AgentUpdater:
+        if not self._updater:
+            raise AgentConfigurationError("No updater configured")
+        upgradable = os.getenv(IS_REMOTE_UPGRADABLE_ENV_VAR, "false").lower() == "true"
+        if not upgradable:
+            raise AgentConfigurationError("Remote upgrades are disabled for this agent")
+        return self._updater
+
     def _perform_update(
         self,
         trace_id: Optional[str],
@@ -250,13 +290,7 @@ class Agent:
         timeout_seconds: Optional[int],
         **kwargs,  # type: ignore
     ) -> Dict:
-        if not self._updater:
-            raise AgentConfigurationError("No updater configured")
-
-        upgradable = os.getenv(IS_REMOTE_UPGRADABLE_ENV_VAR, "false").lower() == "true"
-        if not upgradable:
-            raise AgentConfigurationError("Remote upgrades are disabled for this agent")
-
+        updater = self._check_updates_enabled()
         log_payload = self._logging_utils.build_extra(
             trace_id=trace_id,
             operation_name="update",
@@ -269,7 +303,7 @@ class Agent:
 
         update_result: Dict
         try:
-            update_result = self._updater.update(
+            update_result = updater.update(
                 platform_info=self._platform_info,
                 image=image,
                 timeout_seconds=timeout_seconds,

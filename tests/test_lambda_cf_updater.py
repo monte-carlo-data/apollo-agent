@@ -232,30 +232,10 @@ class TestLambdaCFUpdater(TestCase):
     )
     @patch("boto3.client")
     def test_update_events_paging(self, mock_boto_client):
-        prev_image_uri = (
-            "123_account.dkr.ecr.us-east-1.amazonaws.com/repo-name:tag-name"
-        )
-        new_image_uri = (
-            "123_account.dkr.ecr.us-east-1.amazonaws.com/repo-name:new-tag-name"
-        )
-
         mock_client = Mock()
         mock_boto_client.return_value = mock_client
-        mock_client.describe_stacks.return_value = {
-            "Stacks": [
-                {
-                    "Parameters": [
-                        {
-                            "ParameterKey": "ImageUri",
-                            "ParameterValue": prev_image_uri,
-                        }
-                    ],
-                    "StackStatus": "UPDATE_COMPLETE",
-                }
-            ]
-        }
         start_time = datetime.now(timezone.utc)
-        mock_client.describe_stack_events.side_effect = [
+        mock_events = [
             {
                 "StackEvents": [
                     {
@@ -291,22 +271,9 @@ class TestLambdaCFUpdater(TestCase):
                 ]
             },
         ]
+        mock_client.describe_stack_events.side_effect = mock_events
         updater = LambdaCFUpdater()
-        response = updater.update(
-            platform_info=None,
-            image=new_image_uri,
-            timeout_seconds=10,
-            wait_for_completion=True,
-        )
-
-        mock_client.describe_stack_events.assert_has_calls(
-            [
-                call(StackName="cf_stack_id"),
-                call(StackName="cf_stack_id", NextToken="123"),
-            ]
-        )
-        mock_client.describe_stacks.assert_called_with(StackName="cf_stack_id")
-        self.assertEqual("UPDATE_COMPLETE", response["status"])
+        events = updater.get_update_logs(start_time=start_time, limit=100)
         self.assertEqual(
             [
                 {
@@ -331,5 +298,20 @@ class TestLambdaCFUpdater(TestCase):
                     "timestamp": ANY,
                 },
             ],
-            response["events"],
+            events,
+        )
+        mock_client.reset_mock()
+        mock_client.describe_stack_events.side_effect = mock_events
+        events = updater.get_update_logs(start_time=start_time, limit=1)
+        self.assertEqual(
+            [
+                {
+                    "logical_resource_id": "1",
+                    "resource_status": "UPDATE_COMPLETE",
+                    "resource_status_reason": "OK",
+                    "resource_type": "Bucket",
+                    "timestamp": ANY,
+                },
+            ],
+            events,
         )
