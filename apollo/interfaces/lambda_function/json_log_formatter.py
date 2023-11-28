@@ -6,6 +6,11 @@ from typing import Any, Optional, Dict
 
 
 class JsonLogFormatter(Formatter):
+    """
+    Logging formatter that formats log messages as a JSON document, supports logging "extra" as an additional
+    attribute.
+    """
+
     def format(self, record: LogRecord) -> str:
         msg = super().format(record)
         try:
@@ -37,6 +42,10 @@ class JsonLogFormatter(Formatter):
 
 
 class ExtraLogger(Logger):
+    """
+    Logger subclass that sets the extra dictionary in record.extra so it can be logged as a separate attribute
+    """
+
     def makeRecord(
         self,
         name: str,
