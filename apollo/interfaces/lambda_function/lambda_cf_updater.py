@@ -31,11 +31,22 @@ logger = logging.getLogger(__name__)
 
 
 class LambdaCFUpdater(AgentUpdater):
+    """
+    Agent updater for CloudFormation, it uses `boto3.cloudformation` API to update the stack and get events.
+    It requires the env var: `MCD_STACK_ID` to be set with the CF Stack ID.
+    """
+
     def get_current_image(self, platform_info: Optional[Dict]) -> Optional[str]:
+        """
+        Returns the current value for the "ImageUri" template parameter.
+        """
         client = self._get_cloudformation_client()
         return self._get_image_uri_parameter(client=client)
 
     def get_update_logs(self, start_time: datetime, limit: int) -> List[Dict]:
+        """
+        Returns the list of CloudFormation events since the specified time, up to `limit` events are returned.
+        """
         client = self._get_cloudformation_client()
         stack_id = self._get_stack_id()
         return self._get_stack_events(
@@ -49,6 +60,18 @@ class LambdaCFUpdater(AgentUpdater):
         timeout_seconds: Optional[int],
         **kwargs,  # type: ignore
     ) -> Dict:
+        """
+        Updates the CF Stack, image is expected to have this format:
+            <account_number>.dkr.ecr.<region>>.amazonaws.com/<repo_name>>:<image_tag>
+        Optional parameters supported through kwargs:
+        - 'parameters': a dictionary with new values for the template parameters
+        - 'wait_for_completion': a bool indicating if this method should wait for the update to complete,
+            defaults to False
+        - 'template_url': a new value for "TemplateURL", defaults to None and it triggers the update with
+            UsePreviousTemplate=true
+        - 'region': optional value to use to force the region component in the image URI, by default it is replaced
+            with "*" that will be handled by the template and replaced with the right region.
+        """
         client = self._get_cloudformation_client()
         template_url = kwargs.get(_TEMPLATE_URL_ARG_NAME)
 
