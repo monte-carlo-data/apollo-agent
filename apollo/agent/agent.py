@@ -3,9 +3,15 @@ import os
 import sys
 import time
 from contextlib import contextmanager
+from datetime import datetime
 from typing import Any, Dict, Optional
 
-from apollo.agent.env_vars import HEALTH_ENV_VARS, IS_REMOTE_UPGRADABLE_ENV_VAR
+from apollo.agent.env_vars import (
+    HEALTH_ENV_VARS,
+    IS_REMOTE_UPGRADABLE_ENV_VAR,
+    PRE_SIGNED_URL_RESPONSE_EXPIRATION_SECONDS_DEFAULT_VALUE,
+    PRE_SIGNED_URL_RESPONSE_EXPIRATION_SECONDS_ENV_VAR,
+)
 from apollo.agent.evaluation_utils import AgentEvaluationUtils
 from apollo.agent.log_context import AgentLogContext
 from apollo.agent.logging_utils import LoggingUtils
@@ -246,6 +252,45 @@ class Agent:
             except Exception:  # noqa
                 return AgentUtils.agent_response_for_last_exception("Update failed:")
 
+    def get_update_logs(
+        self,
+        trace_id: Optional[str],
+        start_time: datetime,
+        limit: int,
+    ) -> AgentResponse:
+        """
+        Returns up to `limit` log events from the updater after the given datetime.
+        This method checks if there's an agent updater installed in `agent.updater` property and that
+        the env var `MCD_AGENT_IS_REMOTE_UPGRADABLE` is set to `true`.
+        The returned response is dictionary with an "events" attribute containing the
+        list of dictionaries returned by the agent updater implementation.
+        """
+        with self._inject_log_context("get_update_logs", trace_id):
+            try:
+                updater = self._check_updates_enabled()
+                events = updater.get_update_logs(
+                    start_time=start_time,
+                    limit=limit,
+                )
+                return AgentUtils.agent_ok_response(
+                    {
+                        "events": events,
+                    },
+                    trace_id,
+                )
+            except Exception:  # noqa
+                return AgentUtils.agent_response_for_last_exception(
+                    "get_update_logs failed:"
+                )
+
+    def _check_updates_enabled(self) -> AgentUpdater:
+        if not self._updater:
+            raise AgentConfigurationError("No updater configured")
+        upgradable = os.getenv(IS_REMOTE_UPGRADABLE_ENV_VAR, "false").lower() == "true"
+        if not upgradable:
+            raise AgentConfigurationError("Remote upgrades are disabled for this agent")
+        return self._updater
+
     def _perform_update(
         self,
         trace_id: Optional[str],
@@ -253,13 +298,7 @@ class Agent:
         timeout_seconds: Optional[int],
         **kwargs,  # type: ignore
     ) -> Dict:
-        if not self._updater:
-            raise AgentConfigurationError("No updater configured")
-
-        upgradable = os.getenv(IS_REMOTE_UPGRADABLE_ENV_VAR, "false").lower() == "true"
-        if not upgradable:
-            raise AgentConfigurationError("Remote upgrades are disabled for this agent")
-
+        updater = self._check_updates_enabled()
         log_payload = self._logging_utils.build_extra(
             trace_id=trace_id,
             operation_name="update",
@@ -272,7 +311,7 @@ class Agent:
 
         update_result: Dict
         try:
-            update_result = self._updater.update(
+            update_result = updater.update(
                 platform_info=self._platform_info,
                 image=image,
                 timeout_seconds=timeout_seconds,
@@ -378,15 +417,20 @@ class Agent:
             ),
         )
         response = AgentResponse(result or {}, 200, operation.trace_id)
-        size = response.calculate_result_size()
-        if operation.use_pre_signed_url(size):
-            key = f"responses/{operation.trace_id}"
-            storage_client = StorageProxyClient(self._platform)
-            storage_client.write(key=key, obj_to_write=response.serialize_result())
-            url = storage_client.generate_presigned_url(
-                key, PRE_SIGNED_URL_EXPIRATION_SECONDS
-            )
-            response.use_location(url)
+        if operation.can_use_pre_signed_url():
+            size = response.calculate_result_size()
+            if operation.should_use_pre_signed_url(size):
+                key = f"responses/{operation.trace_id}"
+                storage_client = StorageProxyClient(self._platform)
+                storage_client.write(key=key, obj_to_write=response.serialize_result())
+                expiration_seconds = int(
+                    os.getenv(
+                        PRE_SIGNED_URL_RESPONSE_EXPIRATION_SECONDS_ENV_VAR,
+                        PRE_SIGNED_URL_RESPONSE_EXPIRATION_SECONDS_DEFAULT_VALUE,
+                    )
+                )
+                url = storage_client.generate_presigned_url(key, expiration_seconds)
+                response.use_location(url)
         return response
 
     @staticmethod

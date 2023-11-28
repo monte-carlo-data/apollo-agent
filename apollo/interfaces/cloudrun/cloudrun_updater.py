@@ -1,5 +1,6 @@
 import logging
-from typing import Dict, Optional, cast
+from datetime import datetime
+from typing import Dict, Optional, cast, List
 
 from google.cloud import run_v2
 from google.cloud.run_v2 import Service, EnvVar
@@ -92,6 +93,9 @@ class CloudRunUpdater(AgentUpdater):
         if not platform_info:
             return None
         return self._get_service_image(platform_info)
+
+    def get_update_logs(self, start_time: datetime, limit: int) -> List[Dict]:
+        return []
 
     @classmethod
     def _get_service_image(cls, platform_info: Dict) -> Optional[str]:
