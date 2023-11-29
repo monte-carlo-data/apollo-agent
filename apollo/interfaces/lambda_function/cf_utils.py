@@ -9,6 +9,11 @@ from apollo.agent.models import AgentConfigurationError
 
 
 class CloudFormationUtils:
+    """
+    Utilities class to work with CloudFormation using a boto3 client.
+    Gets the stack id from `MCD_STACK_ID` environment variable.
+    """
+
     @staticmethod
     def get_cloudformation_client() -> BaseClient:
         return cast(BaseClient, boto3.client("cloudformation"))
