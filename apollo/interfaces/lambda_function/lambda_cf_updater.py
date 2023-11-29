@@ -69,8 +69,6 @@ class LambdaCFUpdater(AgentUpdater):
             defaults to False
         - 'template_url': a new value for "TemplateURL", defaults to None and it triggers the update with
             UsePreviousTemplate=true
-        - 'region': optional value to use to force the region component in the image URI, by default it is replaced
-            with "*" that will be handled by the template and replaced with the right region.
         """
         client = self._get_cloudformation_client()
         template_url = kwargs.get(_TEMPLATE_URL_ARG_NAME)
@@ -79,9 +77,8 @@ class LambdaCFUpdater(AgentUpdater):
         logger.info(
             f"Update CF stack requested", extra=dict(stack_id=stack_id, image=image)
         )
-        # the template takes care of replacing "*" with the right region
-        region = kwargs.get("region", "*")
-        new_image_uri = self._get_new_image_uri(image, region) if image else None
+        # force region to be "*" in the new ImageUri, the template will replace it with the right region
+        new_image_uri = self._get_new_image_uri(image, "*") if image else None
 
         parameters = self._merge_parameters(
             client=client,
