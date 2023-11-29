@@ -48,6 +48,14 @@ CMD . $VENV_DIR/bin/activate && gunicorn --timeout 930 --bind :$PORT apollo.inte
 
 FROM public.ecr.aws/lambda/python:3.11 AS lambda
 
+RUN apt update
+# install git as we need it for the direct oscrypto dependency
+# this is a temporary workaround and it should be removed once we update oscrypto to 1.3.1+
+# see: https://community.snowflake.com/s/article/Python-Connector-fails-to-connect-with-LibraryNotFoundError-Error-detecting-the-version-of-libcrypto
+# please note we don't need git for the git connector as lambda-git takes care of installing it if
+# not present in the lambda environment
+RUN apt install git -y
+
 # VULN-29: Base ECR image has setuptools-56.0.0 which is vulnerable (CVE-2022-40897)
 RUN pip install --no-cache-dir setuptools==68.0.0
 
@@ -59,13 +67,5 @@ COPY apollo "${LAMBDA_TASK_ROOT}/apollo"
 ARG code_version="local"
 ARG build_number="0"
 RUN echo $code_version,$build_number > ./apollo/agent/version
-
-RUN apt update
-# install git as we need it for the direct oscrypto dependency
-# this is a temporary workaround and it should be removed once we update oscrypto to 1.3.1+
-# see: https://community.snowflake.com/s/article/Python-Connector-fails-to-connect-with-LibraryNotFoundError-Error-detecting-the-version-of-libcrypto
-# please note we don't need git for the git connector as lambda-git takes care of installing it if
-# not present in the lambda environment
-RUN apt install git -y
 
 CMD [ "apollo.interfaces.lambda.handler.lambda_handler" ]
