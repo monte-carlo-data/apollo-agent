@@ -54,7 +54,7 @@ CMD . $VENV_DIR/bin/activate && gunicorn --timeout 930 --bind :$PORT apollo.inte
 
 FROM public.ecr.aws/lambda/python:3.11 AS lambda
 
-RUN yum update
+RUN yum update -y
 # install git as we need it for the direct oscrypto dependency
 # this is a temporary workaround and it should be removed once we update oscrypto to 1.3.1+
 # see: https://community.snowflake.com/s/article/Python-Connector-fails-to-connect-with-LibraryNotFoundError-Error-detecting-the-version-of-libcrypto
