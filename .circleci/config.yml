@@ -190,29 +190,29 @@ workflows:
             branches:
               only:
                 - dev
-#      - build-and-push-lambda:
-#          name: build-and-push-lambda-dev
-#          aws_ecr_repository: mcd-pre-release-agent
-#          code_version: ${NEXT_VERSION}
-#          pre-steps:
-#            - checkout
-#            - run:
-#                command: |
-#                  PIPELINE_NUMBER=<< pipeline.number >>
-#                  if git describe --tags --abbrev=0; then TAG=$(git describe --tags --abbrev=0); else exit 1; fi
-#                  VERSION=${TAG#v}
-#                  echo "NEXT_VERSION=$(echo "$VERSION" | awk 'BEGIN{FS=OFS="."} {$3+=1} 1')rc${PIPELINE_NUMBER}" >> $BASH_ENV
-#                  source $BASH_ENV
-#          context:
-#            - aws-dev
-#          requires:
-#            - run-linter
-#            - run-trufflehog-scan
-#            - run-test-docker
-#          filters:
-#            branches:
-#              only:
-#                - dev
+      - build-and-push-lambda:
+          name: build-and-push-lambda-dev
+          aws_ecr_repository: mcd-pre-release-agent
+          code_version: ${NEXT_VERSION}
+          pre-steps:
+            - checkout
+            - run:
+                command: |
+                  PIPELINE_NUMBER=<< pipeline.number >>
+                  if git describe --tags --abbrev=0; then TAG=$(git describe --tags --abbrev=0); else exit 1; fi
+                  VERSION=${TAG#v}
+                  echo "NEXT_VERSION=$(echo "$VERSION" | awk 'BEGIN{FS=OFS="."} {$3+=1} 1')rc${PIPELINE_NUMBER}" >> $BASH_ENV
+                  source $BASH_ENV
+          context:
+            - aws-dev
+          requires:
+            - run-linter
+            - run-trufflehog-scan
+            - run-test-docker
+          filters:
+            branches:
+              only:
+                - dev
       - build-and-push:
           name: build-and-push-prod
           docker_hub_repository: agent
