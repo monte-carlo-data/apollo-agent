@@ -22,10 +22,6 @@ class AgentConfigurationError(AgentError):
     pass
 
 
-class AgentUpdateError(AgentError):
-    pass
-
-
 @dataclass_json
 @dataclass
 class AgentCommand:
