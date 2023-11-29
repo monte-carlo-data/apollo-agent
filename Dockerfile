@@ -48,6 +48,10 @@ CMD . $VENV_DIR/bin/activate && gunicorn --timeout 930 --bind :$PORT apollo.inte
 
 FROM public.ecr.aws/lambda/python:3.11 AS lambda
 
+RUN yum update -y
+# install git as we need it for the git clone client
+RUN yum install git -y
+
 # VULN-29: Base ECR image has setuptools-56.0.0 which is vulnerable (CVE-2022-40897)
 RUN pip install --no-cache-dir setuptools==68.0.0
 
