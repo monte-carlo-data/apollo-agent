@@ -8,6 +8,12 @@ ENV VENV_DIR .venv
 WORKDIR $APP_HOME
 COPY requirements.txt ./
 
+RUN apt update
+# install git as we need it for the direct oscrypto dependency
+# this is a temporary workaround and it should be removed once we update oscrypto to 1.3.1+
+# see: https://community.snowflake.com/s/article/Python-Connector-fails-to-connect-with-LibraryNotFoundError-Error-detecting-the-version-of-libcrypto
+RUN apt install git -y
+
 RUN python -m venv $VENV_DIR
 RUN . $VENV_DIR/bin/activate && pip install --no-cache-dir -r requirements.txt
 
