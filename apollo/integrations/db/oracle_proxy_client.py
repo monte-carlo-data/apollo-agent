@@ -8,6 +8,7 @@ from typing import (
 import oracledb
 from oracledb.base_impl import DbType
 
+from apollo.agent.serde import AgentSerializer
 from apollo.agent.utils import AgentUtils
 from apollo.integrations.db.base_db_proxy_client import BaseDbProxyClient
 
@@ -48,4 +49,4 @@ class OracleProxyClient(BaseDbProxyClient):
             # just returning the form the client expects.
             return value.name
         else:
-            return AgentUtils.serialize_value(value)
+            return AgentSerializer.serialize(value)

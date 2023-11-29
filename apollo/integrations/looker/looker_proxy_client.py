@@ -16,6 +16,7 @@ from apollo.agent.constants import (
     ATTRIBUTE_NAME_DATA,
     ATTRIBUTE_VALUE_TYPE_LOOKER_CATEGORY,
 )
+from apollo.agent.serde import AgentSerializer
 from apollo.agent.utils import AgentUtils
 from apollo.integrations.base_proxy_client import BaseProxyClient
 
@@ -147,7 +148,7 @@ class LookerProxyClient(BaseProxyClient):
                 ATTRIBUTE_NAME_DATA: value.name,
             }
         else:
-            return AgentUtils.serialize_value(value)
+            return AgentSerializer.serialize(value)
 
     @staticmethod
     def _as_dict_with_fields(values: Sequence, fields: str) -> List:
