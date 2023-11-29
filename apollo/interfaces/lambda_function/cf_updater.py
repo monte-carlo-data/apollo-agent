@@ -1,14 +1,11 @@
 import logging
-import os
 from typing import Optional, Dict, List, cast, Any
 from datetime import datetime, timezone
-import boto3
 from botocore.client import BaseClient
 from botocore.exceptions import WaiterError
 
-from apollo.agent.env_vars import CLOUDFORMATION_STACK_ID_ENV_VAR
-from apollo.agent.models import AgentUpdateError
 from apollo.agent.updater import AgentUpdater
+from apollo.interfaces.lambda_function.cf_utils import CloudFormationUtils
 
 _CF_UPDATE_WAITER = "stack_update_complete"
 _STACK_SUCCESSFUL_UPDATE_STATE = "UPDATE_COMPLETE"
@@ -40,15 +37,15 @@ class LambdaCFUpdater(AgentUpdater):
         """
         Returns the current value for the "ImageUri" template parameter.
         """
-        client = self._get_cloudformation_client()
+        client = CloudFormationUtils.get_cloudformation_client()
         return self._get_image_uri_parameter(client=client)
 
     def get_update_logs(self, start_time: datetime, limit: int) -> List[Dict]:
         """
         Returns the list of CloudFormation events since the specified time, up to `limit` events are returned.
         """
-        client = self._get_cloudformation_client()
-        stack_id = self._get_stack_id()
+        client = CloudFormationUtils.get_cloudformation_client()
+        stack_id = CloudFormationUtils.get_stack_id()
         return self._get_stack_events(
             client=client, stack_id=stack_id, start_time=start_time, limit=limit
         )
@@ -67,13 +64,13 @@ class LambdaCFUpdater(AgentUpdater):
         - 'parameters': a dictionary with new values for the template parameters
         - 'wait_for_completion': a bool indicating if this method should wait for the update to complete,
             defaults to False
-        - 'template_url': a new value for "TemplateURL", defaults to None and it triggers the update with
+        - 'template_url': a new value for "TemplateURL", defaults to None and triggers the update with
             UsePreviousTemplate=true
         """
-        client = self._get_cloudformation_client()
+        client = CloudFormationUtils.get_cloudformation_client()
         template_url = kwargs.get(_TEMPLATE_URL_ARG_NAME)
 
-        stack_id = self._get_stack_id()
+        stack_id = CloudFormationUtils.get_stack_id()
         logger.info(
             f"Update CF stack requested", extra=dict(stack_id=stack_id, image=image)
         )
@@ -109,7 +106,7 @@ class LambdaCFUpdater(AgentUpdater):
                 start_time=start_time,
                 limit=_UPDATE_MAX_EVENT_COUNT,
             )
-            status = self._get_stack_status(client=client)
+            status = CloudFormationUtils.get_stack_status(client=client)
             return {
                 "failed": status != _STACK_SUCCESSFUL_UPDATE_STATE,
                 "error_message": error_message,
@@ -118,17 +115,14 @@ class LambdaCFUpdater(AgentUpdater):
                 "events": events,
             }
         else:
-            status = self._get_stack_status(client=client)
+            status = CloudFormationUtils.get_stack_status(client=client)
             return {
                 "status": status,
             }
 
     @staticmethod
-    def _get_cloudformation_client() -> BaseClient:
-        return cast(BaseClient, boto3.client("cloudformation"))
-
-    def _get_image_uri_parameter(self, client: BaseClient):
-        parameters = self._get_stack_parameters(client=client)
+    def _get_image_uri_parameter(client: BaseClient):
+        parameters = CloudFormationUtils.get_stack_parameters(client=client)
         return next(
             (
                 param[_PARAMETER_VALUE_ATTR_NAME]
@@ -164,7 +158,7 @@ class LambdaCFUpdater(AgentUpdater):
         new_image_uri: Optional[str],
         new_parameters: Dict,
     ) -> List[Dict]:
-        parameters = cls._get_stack_parameters(client=client)
+        parameters = CloudFormationUtils.get_stack_parameters(client=client)
         for param in parameters:
             param_name = param[_PARAMETER_KEY_ATTR_NAME]
             if param_name == _IMAGE_URI_TEMPLATE_PARAMETER_NAME and new_image_uri:
@@ -190,27 +184,6 @@ class LambdaCFUpdater(AgentUpdater):
             extra=dict(stack_id=stack_id, parameters=parameter_log_values),
         )
         return parameters
-
-    @staticmethod
-    def _get_stack_id():
-        stack_id = os.getenv(CLOUDFORMATION_STACK_ID_ENV_VAR)
-        if not stack_id:
-            raise AgentUpdateError(
-                f"Missing {CLOUDFORMATION_STACK_ID_ENV_VAR} environment variable"
-            )
-        return stack_id
-
-    @classmethod
-    def _get_stack_details(cls, client: BaseClient) -> Dict:
-        return client.describe_stacks(StackName=cls._get_stack_id())
-
-    @classmethod
-    def _get_stack_status(cls, client: BaseClient) -> str:
-        return cls._get_stack_details(client=client)["Stacks"][0]["StackStatus"]
-
-    @classmethod
-    def _get_stack_parameters(cls, client: BaseClient) -> List[Dict]:
-        return cls._get_stack_details(client=client)["Stacks"][0].get("Parameters")
 
     @staticmethod
     def _get_new_image_uri(image: str, region: str) -> str:
