@@ -21,7 +21,7 @@ RUN . $VENV_DIR/bin/activate && pip install --no-cache-dir -r requirements.txt
 RUN . $VENV_DIR/bin/activate && pip install setuptools==65.5.1
 
 # Azure Dedicated SQL Pools uses pyodbc which requires unixODBC and 'ODBC Driver 17 for SQL Server'
-RUN apt-get update
+RUN apt-get update \
     && apt-get install -y curl apt-transport-https \
     && curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add - \
     && curl https://packages.microsoft.com/config/debian/10/prod.list > /etc/apt/sources.list.d/mssql-release.list \
