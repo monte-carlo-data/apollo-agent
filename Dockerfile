@@ -20,6 +20,11 @@ RUN . $VENV_DIR/bin/activate && pip install --no-cache-dir -r requirements.txt
 # CVE-2022-40897
 RUN . $VENV_DIR/bin/activate && pip install setuptools==65.5.1
 
+# Azure Dedicated SQL Pools uses pyodbc which requires unixODBC and 'ODBC Driver 17 for SQL Server'
+RUN apt-get update && \
+    apt-get install -y unixodbc unixodbc-dev && \
+    ACCEPT_EULA=Y apt-get install -y msodbcsql17
+
 # copy sources in the last step so we don't install python libraries due to a change in source code
 COPY apollo/ ./apollo
 
@@ -63,11 +68,6 @@ RUN yum update -y
 # we don't use this image for the final lambda as installing git this way breaks the looker-git connector, we need
 # to use in runtime the git version installed by lambda-git package
 RUN yum install git -y
-
-# Azure Dedicated SQL Pools uses pyodbc which requires unixODBC and 'ODBC Driver 17 for SQL Server'
-RUN yum -y install unixODBC
-RUN curl https://packages.microsoft.com/config/rhel/7/prod.repo | tee /etc/yum.repos.d/mssql-release.repo
-RUN ACCEPT_EULA=Y yum install -y msodbcsql17
 
 COPY requirements.txt ./
 COPY requirements-lambda.txt ./
