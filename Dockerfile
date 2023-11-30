@@ -52,7 +52,7 @@ RUN apt install git -y
 
 CMD . $VENV_DIR/bin/activate && gunicorn --timeout 930 --bind :$PORT apollo.interfaces.cloudrun.main:app
 
-FROM public.ecr.aws/lambda/python:3.11 AS lambda
+FROM public.ecr.aws/lambda/python:3.11 AS lambda-builder
 
 RUN yum update -y
 # install git as we need it for the direct oscrypto dependency
@@ -60,14 +60,20 @@ RUN yum update -y
 # see: https://community.snowflake.com/s/article/Python-Connector-fails-to-connect-with-LibraryNotFoundError-Error-detecting-the-version-of-libcrypto
 # please note we don't need git for the git connector as lambda-git takes care of installing it if
 # not present in the lambda environment
+# we don't use this image for the final lambda as installing git this way breaks the looker-git connector, we need
+# to use in runtime the git version installed by lambda-git package
 RUN yum install git -y
-
-# VULN-29: Base ECR image has setuptools-56.0.0 which is vulnerable (CVE-2022-40897)
-RUN pip install --no-cache-dir setuptools==68.0.0
 
 COPY requirements.txt ./
 COPY requirements-lambda.txt ./
 RUN pip install --no-cache-dir --target "${LAMBDA_TASK_ROOT}" -r requirements.txt -r requirements-lambda.txt
+
+FROM public.ecr.aws/lambda/python:3.11 AS lambda
+
+# VULN-29: Base ECR image has setuptools-56.0.0 which is vulnerable (CVE-2022-40897)
+RUN pip install --no-cache-dir setuptools==68.0.0
+
+COPY --from=lambda-builder "${LAMBDA_TASK_ROOT}" "${LAMBDA_TASK_ROOT}"
 
 COPY apollo "${LAMBDA_TASK_ROOT}/apollo"
 ARG code_version="local"
