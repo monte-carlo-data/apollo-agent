@@ -64,6 +64,11 @@ RUN yum update -y
 # to use in runtime the git version installed by lambda-git package
 RUN yum install git -y
 
+# Azure Dedicated SQL Pools uses pyodbc which requires unixODBC and 'ODBC Driver 17 for SQL Server'
+RUN yum -y install unixODBC
+RUN curl https://packages.microsoft.com/config/rhel/7/prod.repo | tee /etc/yum.repos.d/mssql-release.repo
+RUN ACCEPT_EULA=Y yum install -y msodbcsql17
+
 COPY requirements.txt ./
 COPY requirements-lambda.txt ./
 RUN pip install --no-cache-dir --target "${LAMBDA_TASK_ROOT}" -r requirements.txt -r requirements-lambda.txt
