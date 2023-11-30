@@ -57,6 +57,7 @@ class HttpProxyClient(BaseProxyClient):
         timeout: Optional[int] = None,
         user_agent: Optional[str] = None,
         additional_headers: Optional[Dict] = None,
+        params: Optional[Dict] = None,
         retry_status_code_ranges: Optional[List[Tuple]] = None,
     ) -> Dict:
         """
@@ -70,6 +71,7 @@ class HttpProxyClient(BaseProxyClient):
         :param timeout: optional timeout in seconds
         :param user_agent: optional value for User-Agent header
         :param additional_headers: optional headers
+        :param params: optional parameters dictionary to include in the query string.
         :param retry_status_code_ranges: optional list of ranges specifying status code to raise `HttpRetryableError`.
             The ranges are expected to be specified in a list of tuples where each tuple includes two elements:
             inclusive from and exclusive to, for example: [(500, 600)] means: `500 <= status_code < 600`.
@@ -81,10 +83,13 @@ class HttpProxyClient(BaseProxyClient):
             request_args["json"] = payload
         if timeout:
             request_args["timeout"] = timeout
+        if params:
+            request_args["params"] = params
 
         headers = {**additional_headers} if additional_headers else {}
         if self._credentials and "token" in self._credentials:
-            headers["Authorization"] = f"Bearer {self._credentials['token']}"
+            auth_type = self._credentials.get("auth_type", "Bearer")
+            headers["Authorization"] = f"{auth_type} {self._credentials['token']}"
         if content_type:
             headers["Content-Type"] = content_type
         if user_agent:
@@ -95,8 +100,8 @@ class HttpProxyClient(BaseProxyClient):
         try:
             response.raise_for_status()
         except HTTPError as err:
-            status_code = err.response.status_code if err.response else 0
-            text = err.response.text if err.response else ""
+            status_code = response.status_code
+            text = response.text or str(err)
             _logger.exception(
                 f"Request failed with {status_code}",
                 extra=dict(error_text=text),
@@ -121,6 +126,7 @@ class HttpProxyClient(BaseProxyClient):
         timeout: Optional[int] = None,
         user_agent: Optional[str] = None,
         additional_headers: Optional[Dict] = None,
+        params: Optional[Dict] = None,
         retry_status_code_ranges: Optional[List[Tuple]] = None,
         retry_args: Optional[Dict] = None,
     ) -> Dict:
@@ -145,11 +151,29 @@ class HttpProxyClient(BaseProxyClient):
                 "timeout": timeout,
                 "user_agent": user_agent,
                 "additional_headers": additional_headers,
+                "params": params,
                 "retry_status_code_ranges": retry_status_code_ranges,
             },
             exceptions=HttpRetryableError,
             **retry_params,  # type: ignore
         )
+
+    def get_error_type(self, error: Exception) -> Optional[str]:
+        cause = error.__cause__ or error
+        if isinstance(cause, HTTPError):
+            return "HTTPError"
+        else:
+            return super().get_error_type(error=error)
+
+    def get_error_extra_attributes(self, error: Exception) -> Optional[Dict]:
+        cause = error.__cause__ or error
+        if isinstance(cause, HTTPError) and cause.response is not None:
+            return {
+                "status_code": cause.response.status_code,
+                "reason": cause.response.reason,
+            }
+        else:
+            return super().get_error_extra_attributes(error=error)
 
     @staticmethod
     def _is_retry_status_code(ranges: List[Tuple], status_code: int) -> bool:
