@@ -1,6 +1,7 @@
 import io
 import logging
 import os
+from datetime import datetime, timezone, timedelta
 from typing import Dict, Tuple, Callable, Optional, Union, Any, BinaryIO
 
 from flask import Flask, request, Response, send_file
@@ -17,6 +18,8 @@ Compress(app)
 logger = logging.getLogger(__name__)
 logging_utils = LoggingUtils()
 agent = Agent(logging_utils)
+
+_DEFAULT_UPDATE_EVENTS_LIMIT = 100
 
 
 def _get_response_headers(response: AgentResponse) -> Dict:
@@ -123,6 +126,54 @@ def upgrade_agent() -> Tuple[Dict, int]:
     response = agent.update(
         trace_id=trace_id, image=image, timeout_seconds=timeout, **request_dict
     )
+
+    return response.result, response.status_code
+
+
+@app.route("/api/v1/upgrade/logs", methods=["GET", "POST"])
+def get_upgrade_logs() -> Tuple[Dict, int]:
+    """
+    Requests the agent to upgrade to return a list of log events after the given datetime.
+    Supported parameters (all optional):
+    - trace_id
+    - start_time (defaults to now - 10 minutes)
+    - limit (defaults to 100)
+    :return: a dictionary with an "events" attribute containing the list of events returned
+        from the updater implementation.
+    """
+    request_dict: Dict = request.json if request.method == "POST" else request.args  # type: ignore
+    trace_id: Optional[str] = request_dict.get("trace_id")
+    start_time_str: Optional[str] = request_dict.get("start_time")
+    limit_value: Optional[Union[int, str]] = request_dict.get("limit")
+    start_time = (
+        datetime.fromisoformat(start_time_str)
+        if start_time_str
+        else datetime.now(timezone.utc) - timedelta(minutes=10)
+    )
+    if not start_time.tzinfo:
+        start_time = start_time.astimezone(timezone.utc)  # make it offset-aware
+    limit = int(limit_value) if limit_value else _DEFAULT_UPDATE_EVENTS_LIMIT
+
+    response = agent.get_update_logs(
+        trace_id=trace_id, start_time=start_time, limit=limit
+    )
+
+    return response.result, response.status_code
+
+
+@app.route("/api/v1/infra/details", methods=["GET", "POST"])
+def get_infra_details() -> Tuple[Dict, int]:
+    """
+    Requests the infrastructure details to the agent that will forward the request to the "infra_provider"
+    previously set.
+    Supported parameters (all optional):
+    - trace_id
+    :return: a dictionary with the infrastructure details returned by the infra_provider implementation
+        set in the agent.
+    """
+    request_dict: Dict = request.json if request.method == "POST" else request.args  # type: ignore
+    trace_id: Optional[str] = request_dict.get("trace_id")
+    response = agent.get_infra_details(trace_id=trace_id)
 
     return response.result, response.status_code
 
