@@ -46,6 +46,9 @@ ATTRIBUTE_VALUE_TYPE_DATETIME = "datetime"
 # Value for the attribute __type__ to indicate this is a date
 ATTRIBUTE_VALUE_TYPE_DATE = "date"
 
+# Value for the attribute __type__ to indicate this is a decimal
+ATTRIBUTE_VALUE_TYPE_DECIMAL = "decimal"
+
 # Value for the attribute __type__ to indicate this is a Looker category enum, client side it will be converted to
 # the right type
 ATTRIBUTE_VALUE_TYPE_LOOKER_CATEGORY = "looker.category"
