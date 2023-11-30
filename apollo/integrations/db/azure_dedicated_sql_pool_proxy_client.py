@@ -10,8 +10,8 @@ _ATTR_CONNECT_ARGS = "connect_args"
 class AzureDedicatedSqlPoolProxyClient(BaseDbProxyClient):
     """
     Proxy client for Azure Dedicated SQL Pool Client. Credentials are expected to be supplied under "connect_args"
-    and will be passed directly to `pyodbc.connect`, so only attributes supported as parameters
-    by `pyodbc.connect` should be passed.
+    and will be passed directly to `pyodbc.connect`. 'pyodbc` accepts a connection string with the connection details,
+    so "connect_args" will be a string.
     """
 
     def __init__(self, credentials: Optional[Dict], **kwargs: Any):
@@ -19,7 +19,7 @@ class AzureDedicatedSqlPoolProxyClient(BaseDbProxyClient):
             raise ValueError(
                 f"Azure Dedicated SQL Pool agent client requires {_ATTR_CONNECT_ARGS} in credentials"
             )
-        self._connection = pyodbc.connect(**credentials[_ATTR_CONNECT_ARGS])  # type: ignore
+        self._connection = pyodbc.connect(credentials[_ATTR_CONNECT_ARGS])  # type: ignore
 
     @property
     def wrapped_client(self):

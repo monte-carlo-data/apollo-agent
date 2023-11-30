@@ -17,13 +17,12 @@ from apollo.agent.constants import (
 )
 from apollo.agent.logging_utils import LoggingUtils
 
-_AZURE_DEDICATED_SQL_POOL_CREDENTIALS = {
-    "host": "www.test.com",
-    "user": "u",
-    "password": "p",
-    "port": "1433",
-    "db_name": "db",
-}
+_AZURE_DEDICATED_SQL_POOL_CREDENTIALS = f"DRIVER={{ODBC Driver 17 for SQL Server}};"
+f"SERVER=tcp:www.fake.com;"
+f"PORT=1433;"
+f"DATABASE=my_db;"
+f"UID=user;"
+f"PWD=password"
 
 
 class AzureDedicatedSqlPoolClientTests(TestCase):
@@ -145,7 +144,7 @@ class AzureDedicatedSqlPoolClientTests(TestCase):
         self.assertTrue(ATTRIBUTE_NAME_RESULT in response.result)
         result = response.result.get(ATTRIBUTE_NAME_RESULT)
 
-        mock_connect.assert_called_with(**_AZURE_DEDICATED_SQL_POOL_CREDENTIALS)
+        mock_connect.assert_called_with(_AZURE_DEDICATED_SQL_POOL_CREDENTIALS)
         self._mock_cursor.execute.assert_has_calls(
             [
                 call(query, query_args if query_args else None),
