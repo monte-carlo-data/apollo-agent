@@ -17,12 +17,14 @@ from apollo.agent.constants import (
 )
 from apollo.agent.logging_utils import LoggingUtils
 
-_AZURE_DEDICATED_SQL_POOL_CREDENTIALS = f"DRIVER={{ODBC Driver 17 for SQL Server}};"
-f"SERVER=tcp:www.fake.com;"
-f"PORT=1433;"
-f"DATABASE=my_db;"
-f"UID=user;"
-f"PWD=password"
+_AZURE_DEDICATED_SQL_POOL_CREDENTIALS = (
+    f"DRIVER={{ODBC Driver 17 for SQL Server}};"
+    f"SERVER=tcp:www.fake.com;"
+    f"PORT=1433;"
+    f"DATABASE=my_db;"
+    f"UID=user;"
+    f"PWD=password"
+)
 
 
 class AzureDedicatedSqlPoolClientTests(TestCase):
