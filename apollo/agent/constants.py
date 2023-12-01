@@ -37,7 +37,7 @@ ATTRIBUTE_NAME_DATA = "__data__"
 # of args for `method_a`.
 ATTRIBUTE_VALUE_TYPE_CALL = "call"
 
-# Value for the attribute __type__ to indicate this is a bytes array
+# Value for the attribute __type__ to indicate this is a bytes array, data is encoded in base64
 ATTRIBUTE_VALUE_TYPE_BYTES = "bytes"
 
 # Value for the attribute __type__ to indicate this is a datetime

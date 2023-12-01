@@ -1,3 +1,4 @@
+import base64
 import datetime
 from typing import (
     Iterable,
@@ -56,19 +57,21 @@ class MySqlClientTests(TestCase):
         )
 
     @patch("pymysql.connect")
-    def test_datetime_query(self, mock_connect):
+    def test_datatypes_query(self, mock_connect):
         query = "SELECT name, created_date, updated_datetime FROM table"  # noqa
         data = [
             [
                 "name_1",
                 datetime.date.fromisoformat("2023-11-01"),
                 datetime.datetime.fromisoformat("2023-11-01T10:59:00"),
+                b"\x01",
             ],
         ]
         description = [
             ["name", "string", None, None, None, None, None],
             ["created_date", "date", None, None, None, None, None],
             ["updated_datetime", "date", None, None, None, None, None],
+            ["active", "bit", None, None, None, None, None],
         ]
         self._test_run_query(mock_connect, query, None, data, description)
 
@@ -179,6 +182,11 @@ class MySqlClientTests(TestCase):
             return {
                 "__type__": "date",
                 "__data__": value.isoformat(),
+            }
+        elif isinstance(value, bytes):
+            return {
+                "__type__": "bytes",
+                "__data__": base64.b64encode(value).decode("utf-8"),
             }
         else:
             return value
