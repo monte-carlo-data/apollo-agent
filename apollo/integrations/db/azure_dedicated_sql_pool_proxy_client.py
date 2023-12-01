@@ -1,4 +1,4 @@
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 
 import pyodbc
 
@@ -24,3 +24,10 @@ class AzureDedicatedSqlPoolProxyClient(BaseDbProxyClient):
     @property
     def wrapped_client(self):
         return self._connection
+
+    @classmethod
+    def _process_description(cls, col: List) -> List:
+        # pyodbc cursor returns the column type as <class 'str'> instead of a type_code which
+        # we expect. Here we are converting this type to a string of the type so the description
+        # can be serialized. So <class 'str'> will become just 'str'
+        return [col[0], col[1].__name__, col[2], col[3], col[4], col[5], col[6]]

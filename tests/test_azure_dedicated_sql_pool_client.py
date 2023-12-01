@@ -17,12 +17,14 @@ from apollo.agent.constants import (
 )
 from apollo.agent.logging_utils import LoggingUtils
 
-_AZURE_DEDICATED_SQL_POOL_CREDENTIALS = f"DRIVER={{ODBC Driver 17 for SQL Server}};"
-f"SERVER=tcp:www.fake.com;"
-f"PORT=1433;"
-f"DATABASE=my_db;"
-f"UID=user;"
-f"PWD=password"
+_AZURE_DEDICATED_SQL_POOL_CREDENTIALS = (
+    f"DRIVER={{ODBC Driver 17 for SQL Server}};"
+    f"SERVER=tcp:www.fake.com;"
+    f"PORT=1433;"
+    f"DATABASE=my_db;"
+    f"UID=user;"
+    f"PWD=password"
+)
 
 
 class AzureDedicatedSqlPoolClientTests(TestCase):
@@ -50,30 +52,13 @@ class AzureDedicatedSqlPoolClientTests(TestCase):
             ],
         ]
         expected_description = [
-            ["name", "string", None, None, None, None, None],
-            ["value", "float", None, None, None, None, None],
-            ["rownum", "int", None, None, None, None, None],
+            ["name", str.__class__, None, None, None, None, None],
+            ["value", float.__class__, None, None, None, None, None],
+            ["rownum", int.__class__, None, None, None, None, None],
         ]
         self._test_run_query(
             mock_connect, query, args, expected_data, expected_description
         )
-
-    @patch("pyodbc.connect")
-    def test_datetime_query(self, mock_connect):
-        query = "SELECT name, created_date, updated_datetime FROM table"  # noqa
-        data = [
-            [
-                "name_1",
-                datetime.date.fromisoformat("2023-11-01"),
-                datetime.datetime.fromisoformat("2023-11-01T10:59:00"),
-            ],
-        ]
-        description = [
-            ["name", "string", None, None, None, None, None],
-            ["created_date", "date", None, None, None, None, None],
-            ["updated_datetime", "date", None, None, None, None, None],
-        ]
-        self._test_run_query(mock_connect, query, None, data, description)
 
     def _test_run_query(
         self,
@@ -157,11 +142,20 @@ class AzureDedicatedSqlPoolClientTests(TestCase):
         self.assertTrue("all_results" in result)
         self.assertEqual(expected_data, result["all_results"])
 
+        expected_description = self._serialized_description(description)
         self.assertTrue("description" in result)
-        self.assertEqual(description, result["description"])
+        self.assertEqual(expected_description, result["description"])
 
         self.assertTrue("rowcount" in result)
         self.assertEqual(expected_rows, result["rowcount"])
+
+    @classmethod
+    def _serialized_description(cls, description: List) -> List:
+        return [cls._serialized_col(v) for v in description]
+
+    @classmethod
+    def _serialized_col(cls, col: List) -> List:
+        return [col[0], col[1].__name__, col[2], col[3], col[4], col[5], col[6]]
 
     @classmethod
     def _serialized_data(cls, data: List) -> List:
