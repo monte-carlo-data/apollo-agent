@@ -20,6 +20,14 @@ RUN . $VENV_DIR/bin/activate && pip install --no-cache-dir -r requirements.txt
 # CVE-2022-40897
 RUN . $VENV_DIR/bin/activate && pip install setuptools==65.5.1
 
+# Azure Dedicated SQL Pools uses pyodbc which requires unixODBC and 'ODBC Driver 17 for SQL Server'
+RUN apt-get update \
+    && apt-get install -y gnupg gnupg2 gnupg1 curl apt-transport-https \
+    && curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add - \
+    && curl https://packages.microsoft.com/config/debian/10/prod.list > /etc/apt/sources.list.d/mssql-release.list \
+    && apt-get update \
+    && ACCEPT_EULA=Y apt-get install -y msodbcsql17 unixodbc unixodbc-dev
+
 # copy sources in the last step so we don't install python libraries due to a change in source code
 COPY apollo/ ./apollo
 
@@ -79,5 +87,14 @@ COPY apollo "${LAMBDA_TASK_ROOT}/apollo"
 ARG code_version="local"
 ARG build_number="0"
 RUN echo $code_version,$build_number > ./apollo/agent/version
+
+# install unixodbc and 'ODBC Driver 17 for SQL Server', needed for Azure Dedicated SQL Pools
+RUN yum -y update \
+    && yum -y install \
+    unixODBC \
+    && yum clean all \
+    && rm -rf /var/cache/yum
+RUN curl https://packages.microsoft.com/config/rhel/7/prod.repo | tee /etc/yum.repos.d/mssql-release.repo
+RUN ACCEPT_EULA=Y yum install -y msodbcsql17
 
 CMD [ "apollo.interfaces.lambda_function.handler.lambda_handler" ]
