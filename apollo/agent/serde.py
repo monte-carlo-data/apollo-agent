@@ -1,3 +1,4 @@
+import base64
 import json
 from datetime import (
     date,
@@ -12,6 +13,7 @@ from apollo.agent.constants import (
     ATTRIBUTE_VALUE_TYPE_DATE,
     ATTRIBUTE_VALUE_TYPE_DATETIME,
     ATTRIBUTE_VALUE_TYPE_DECIMAL,
+    ATTRIBUTE_VALUE_TYPE_BYTES,
 )
 
 
@@ -33,6 +35,12 @@ class AgentSerializer(json.JSONEncoder):
                 ATTRIBUTE_NAME_TYPE: ATTRIBUTE_VALUE_TYPE_DECIMAL,
                 ATTRIBUTE_NAME_DATA: str(value),
             }
+        elif isinstance(value, bytes):
+            return {
+                ATTRIBUTE_NAME_TYPE: ATTRIBUTE_VALUE_TYPE_BYTES,
+                ATTRIBUTE_NAME_DATA: base64.b64encode(value).decode("utf-8"),
+            }
+
         return value
 
     def default(self, obj: Any):
