@@ -19,6 +19,13 @@ logger = logging.getLogger(__name__)
 
 
 class CloudRunUpdater(AgentUpdater):
+    def __init__(self, platform_info: Dict):
+        """
+        :param platform_info: the GCP platform info, loaded when the agent started and used to obtain the service
+            name and region that were loaded from the metadata service.
+        """
+        self._platform_info = platform_info
+
     """
     Agent updater for CloudRun, it uses `google-cloud-run` API to get the service and update it.
     See https://cloud.google.com/run/docs/reference/rest for docs.
@@ -31,7 +38,6 @@ class CloudRunUpdater(AgentUpdater):
 
     def update(
         self,
-        platform_info: Optional[Dict],
         image: Optional[str],
         timeout_seconds: Optional[int],
         **kwargs,  # type: ignore
@@ -44,14 +50,12 @@ class CloudRunUpdater(AgentUpdater):
         env var is found it's also updated with the same value.
         Then `update_service` from CloudRun Admin API is used to update the service.
 
-        :param platform_info: the GCP platform info, loaded when the agent started and used to obtain the service
-            name and region that were loaded from the metadata service.
         :param image: optional image id, expected format: montecarlodata/repo_name:tag, for example:
             montecarlodata/agent:1.0.1-cloudrun. If not specified, the service is updated without setting the image
             attribute, which is usually ignored by GCP.
         :param timeout_seconds: optional timeout in seconds, default to 5 minutes.
         """
-        service = self._get_service(platform_info)
+        service = self._get_service(self._platform_info)
         logger.info(
             f"CloudRun service obtained, latest revision={service.latest_ready_revision}"
         )
@@ -86,13 +90,11 @@ class CloudRunUpdater(AgentUpdater):
             "revision": update_result.latest_created_revision,
         }
 
-    def get_current_image(self, platform_info: Optional[Dict]) -> Optional[str]:
+    def get_current_image(self) -> Optional[str]:
         """
         Returns the image currently used by this service, used by the `health` endpoint.
         """
-        if not platform_info:
-            return None
-        return self._get_service_image(platform_info)
+        return self._get_service_image(self._platform_info)
 
     def get_update_logs(self, start_time: datetime, limit: int) -> List[Dict]:
         return []
@@ -131,10 +133,7 @@ class CloudRunUpdater(AgentUpdater):
         return f"{prefix}/services/{service_name}"
 
     @classmethod
-    def _get_service(cls, platform_info: Optional[Dict]) -> Service:
-        if not platform_info:
-            raise AgentConfigurationError("Platform info missing for CloudRun agent")
-
+    def _get_service(cls, platform_info: Dict) -> Service:
         service_name = platform_info.get(
             GCP_PLATFORM_INFO_KEY_SERVICE_NAME
         )  # service name, like 'dev-agent'

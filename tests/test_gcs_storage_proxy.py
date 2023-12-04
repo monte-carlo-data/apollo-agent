@@ -19,6 +19,7 @@ from apollo.agent.env_vars import (
 )
 from apollo.agent.logging_utils import LoggingUtils
 from apollo.agent.utils import AgentUtils
+from apollo.interfaces.cloudrun.platform import CloudRunPlatformProvider
 
 _TEST_BUCKET_NAME = "test_bucket"
 
@@ -26,7 +27,7 @@ _TEST_BUCKET_NAME = "test_bucket"
 class StorageGcsTests(TestCase):
     def setUp(self) -> None:
         self._agent = Agent(LoggingUtils())
-        self._agent.platform = PLATFORM_GCP
+        self._agent.platform_provider = CloudRunPlatformProvider()
 
         self._mock_client = create_autospec(Client)
         self._mock_bucket = create_autospec(Bucket)

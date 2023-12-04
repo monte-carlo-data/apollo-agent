@@ -16,7 +16,7 @@ from apollo.agent.models import (
     AgentOperation,
 )
 from apollo.integrations.storage.storage_proxy_client import StorageProxyClient
-from sample_proxy_client import SampleProxyClient
+from tests.sample_proxy_client import SampleProxyClient
 
 
 class AgentResponseTests(TestCase):
