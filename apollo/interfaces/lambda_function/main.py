@@ -46,7 +46,7 @@ def aws_logs_filter() -> Tuple[Dict, int]:
     start_time_str: Optional[str] = request_dict.get("start_time")
     end_time_str: Optional[str] = request_dict.get("end_time")
     pattern: Optional[str] = request_dict.get("pattern")
-    limit = int(request_dict.get("limit") or str(_DEFAULT_LOGS_LIMIT))
+    limit_str = request_dict.get("limit")
 
     logger.info(
         "aws/logs/filter requested",
@@ -54,7 +54,7 @@ def aws_logs_filter() -> Tuple[Dict, int]:
             pattern=pattern,
             start_time=start_time_str,
             end_time=end_time_str,
-            limit=limit,
+            limit=limit_str,
             mcd_trace_id=trace_id,
         ),
     )
@@ -64,7 +64,12 @@ def aws_logs_filter() -> Tuple[Dict, int]:
 
     try:
         events = (
-            aws.filter_log_events(pattern, start_time_str, end_time_str, limit)
+            aws.filter_log_events(
+                pattern,
+                start_time_str,
+                end_time_str,
+                int(limit_str) if limit_str else _DEFAULT_LOGS_LIMIT,
+            )
             if aws
             else []
         )
