@@ -33,7 +33,7 @@ class LambdaCFUpdater(AgentUpdater):
     It requires the env var: `MCD_STACK_ID` to be set with the CF Stack ID.
     """
 
-    def get_current_image(self, platform_info: Optional[Dict]) -> Optional[str]:
+    def get_current_image(self) -> Optional[str]:
         """
         Returns the current value for the "ImageUri" template parameter.
         """
@@ -52,7 +52,6 @@ class LambdaCFUpdater(AgentUpdater):
 
     def update(
         self,
-        platform_info: Optional[Dict],
         image: Optional[str],
         timeout_seconds: Optional[int],
         **kwargs,  # type: ignore

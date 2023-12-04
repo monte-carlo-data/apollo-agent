@@ -1,7 +1,7 @@
 import logging
 import os
 
-from apollo.interfaces.lambda_function.cf_infra import LambdaCFInfraProvider
+from apollo.interfaces.lambda_function.cf_platform import CFPlatformProvider
 from apollo.interfaces.lambda_function.json_log_formatter import (
     ExtraLogger,
     JsonLogFormatter,
@@ -33,12 +33,10 @@ is_debug = os.getenv(DEBUG_ENV_VAR, "false").lower() == "true"
 root_logger.setLevel(logging.DEBUG if is_debug else logging.INFO)
 
 app = main.app
-main.agent.platform = PLATFORM_AWS
 main.agent.log_context = log_context
 
 wrapper_type = os.getenv(AGENT_WRAPPER_TYPE_ENV_VAR)
 if wrapper_type == WRAPPER_TYPE_CLOUDFORMATION:
-    main.agent.updater = LambdaCFUpdater()
-    main.agent.infra_provider = LambdaCFInfraProvider()
+    main.agent.platform_provider = CFPlatformProvider()
 
 lambda_handler = make_lambda_handler(app.wsgi_app, binary_support=True)

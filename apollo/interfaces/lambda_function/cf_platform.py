@@ -1,10 +1,25 @@
 from typing import Dict
 
-from apollo.agent.infra import AgentInfraProvider
+from apollo.agent.constants import PLATFORM_AWS
+from apollo.agent.platform import AgentPlatformProvider
+from apollo.agent.updater import AgentUpdater
+from apollo.interfaces.lambda_function.cf_updater import LambdaCFUpdater
 from apollo.interfaces.lambda_function.cf_utils import CloudFormationUtils
 
 
-class LambdaCFInfraProvider(AgentInfraProvider):
+class CFPlatformProvider(AgentPlatformProvider):
+    @property
+    def platform_info(self) -> Dict:
+        return {}
+
+    @property
+    def platform(self) -> str:
+        return PLATFORM_AWS
+
+    @property
+    def updater(self) -> AgentUpdater:
+        return LambdaCFUpdater()
+
     def get_infra_details(self) -> Dict:
         """
         Returns a dictionary with infrastructure information, containing the following attributes:

@@ -5,20 +5,12 @@ from typing import Dict, Optional
 import google.cloud.logging
 
 from apollo.agent.constants import (
-    PLATFORM_GCP,
     LOG_ATTRIBUTE_OPERATION_NAME,
     LOG_ATTRIBUTE_TRACE_ID,
 )
 from apollo.agent.env_vars import DEBUG_LOG_ENV_VAR
 from apollo.interfaces.cloudrun.cloudrun_log_context import CloudRunLogContext
-from apollo.interfaces.cloudrun.cloudrun_updater import CloudRunUpdater
-from apollo.interfaces.cloudrun.metadata_service import (
-    GcpMetadataService,
-    GCP_PLATFORM_INFO_KEY_PROJECT_ID,
-    GCP_PLATFORM_INFO_KEY_REGION,
-    GCP_PLATFORM_INFO_KEY_SERVICE_NAME,
-    GCP_ENV_NAME_SERVICE_NAME,
-)
+from apollo.interfaces.cloudrun.platform import CloudRunPlatformProvider
 
 # CloudRun specific application that adds support for structured logging
 
@@ -59,12 +51,5 @@ main.logging_utils.extra_builder = cloud_run_extra_builder
 app = main.app
 
 # set the container platform as GCP for the health endpoint
-main.agent.platform = PLATFORM_GCP
-main.agent.platform_info = {
-    GCP_PLATFORM_INFO_KEY_SERVICE_NAME: os.getenv(GCP_ENV_NAME_SERVICE_NAME),
-    GCP_PLATFORM_INFO_KEY_PROJECT_ID: GcpMetadataService.get_project_id(),
-    GCP_PLATFORM_INFO_KEY_REGION: GcpMetadataService.get_instance_region(),
-}
-
-main.agent.updater = CloudRunUpdater()
+main.agent.platform_provider = CloudRunPlatformProvider()
 main.agent.log_context = log_context

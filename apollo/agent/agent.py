@@ -13,7 +13,7 @@ from apollo.agent.env_vars import (
     PRE_SIGNED_URL_RESPONSE_EXPIRATION_SECONDS_ENV_VAR,
 )
 from apollo.agent.evaluation_utils import AgentEvaluationUtils
-from apollo.agent.infra import AgentInfraProvider
+from apollo.agent.platform import AgentPlatformProvider
 from apollo.agent.log_context import AgentLogContext
 from apollo.agent.logging_utils import LoggingUtils
 from apollo.agent.constants import (
@@ -45,10 +45,7 @@ logger = logging.getLogger(__name__)
 class Agent:
     def __init__(self, logging_utils: LoggingUtils):
         self._logging_utils = logging_utils
-        self._platform = PLATFORM_GENERIC
-        self._platform_info = {}
-        self._updater: Optional[AgentUpdater] = None
-        self._infra_provider: Optional[AgentInfraProvider] = None
+        self._platform_provider: Optional[AgentPlatformProvider] = None
         self._log_context: Optional[AgentLogContext] = None
 
     @property
@@ -56,11 +53,11 @@ class Agent:
         """
         The name of the platform running this agent, for example: Generic, AWS, GCP, etc.
         """
-        return self._platform
-
-    @platform.setter
-    def platform(self, platform: str):
-        self._platform = platform
+        return (
+            self._platform_provider.platform
+            if self._platform_provider
+            else PLATFORM_GENERIC
+        )
 
     @property
     def platform_info(self) -> Optional[Dict]:
@@ -68,27 +65,21 @@ class Agent:
         Dictionary containing platform specific information, it could be container information like versions or
         some other settings relevant to the container.
         """
-        return self._platform_info
-
-    @platform_info.setter
-    def platform_info(self, platform_info: Optional[Dict]):
-        self._platform_info = platform_info
+        return (
+            self._platform_provider.platform_info if self._platform_provider else None
+        )
 
     @property
     def updater(self) -> Optional[AgentUpdater]:
-        return self._updater
-
-    @updater.setter
-    def updater(self, updater: Optional[AgentUpdater]):
-        self._updater = updater
+        return self._platform_provider.updater if self._platform_provider else None
 
     @property
-    def infra_provider(self) -> Optional[AgentInfraProvider]:
-        return self._infra_provider
+    def platform_provider(self) -> Optional[AgentPlatformProvider]:
+        return self._platform_provider
 
-    @infra_provider.setter
-    def infra_provider(self, value: Optional[AgentInfraProvider]):
-        self._infra_provider = value
+    @platform_provider.setter
+    def platform_provider(self, value: Optional[AgentPlatformProvider]):
+        self._platform_provider = value
 
     @property
     def log_context(self) -> Optional[AgentLogContext]:
@@ -121,19 +112,18 @@ class Agent:
                     operation_name="health_information",
                 ),
             )
-            if self._updater:
-                if self._platform_info is None:
-                    self._platform_info = {}
-                self._platform_info[
+            platform_info = {**(self.platform_info or {})}
+            if self.updater:
+                platform_info[
                     GCP_PLATFORM_INFO_KEY_IMAGE
-                ] = self._updater.get_current_image(self._platform_info)
+                ] = self.updater.get_current_image()
 
         return AgentHealthInformation(
             version=VERSION,
             build=BUILD_NUMBER,
-            platform=self._platform,
+            platform=self.platform,
             env=self._env_dictionary(),
-            platform_info=self._platform_info,
+            platform_info=platform_info,
             trace_id=trace_id,
             extra=self._extra_health_information() if full else None,
         )
@@ -310,9 +300,9 @@ class Agent:
         with self._inject_log_context("get_infra_details", trace_id):
             try:
                 logger.info("infra_details requested")
-                if not self._infra_provider:
-                    raise AgentConfigurationError("No infra_provider set")
-                details = self._infra_provider.get_infra_details()
+                if not self._platform_provider:
+                    raise AgentConfigurationError("No platform_provider set")
+                details = self._platform_provider.get_infra_details()
                 return AgentUtils.agent_ok_response(details, trace_id)
             except Exception:  # noqa
                 return AgentUtils.agent_response_for_last_exception(
@@ -320,12 +310,12 @@ class Agent:
                 )
 
     def _check_updates_enabled(self) -> AgentUpdater:
-        if not self._updater:
+        if not self.updater:
             raise AgentConfigurationError("No updater configured")
         upgradable = os.getenv(IS_REMOTE_UPGRADABLE_ENV_VAR, "false").lower() == "true"
         if not upgradable:
             raise AgentConfigurationError("Remote upgrades are disabled for this agent")
-        return self._updater
+        return self.updater
 
     def _perform_update(
         self,
@@ -348,7 +338,6 @@ class Agent:
         update_result: Dict
         try:
             update_result = updater.update(
-                platform_info=self._platform_info,
                 image=image,
                 timeout_seconds=timeout_seconds,
                 **kwargs,
@@ -411,7 +400,7 @@ class Agent:
             client: Optional[BaseProxyClient] = None
             try:
                 client = ProxyClientFactory.get_proxy_client(
-                    connection_type, credentials, operation.skip_cache, self._platform
+                    connection_type, credentials, operation.skip_cache, self.platform
                 )
                 response = self._execute_client_operation(
                     connection_type, client, operation_name, operation
@@ -457,7 +446,7 @@ class Agent:
             size = response.calculate_result_size()
             if operation.should_use_pre_signed_url(size):
                 key = f"responses/{operation.trace_id}"
-                storage_client = StorageProxyClient(self._platform)
+                storage_client = StorageProxyClient(self.platform)
                 storage_client.write(key=key, obj_to_write=response.serialize_result())
                 expiration_seconds = int(
                     os.getenv(
