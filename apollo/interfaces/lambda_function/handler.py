@@ -19,8 +19,7 @@ from apollo.agent.env_vars import (
     WRAPPER_TYPE_CLOUDFORMATION,
     DEBUG_ENV_VAR,
 )
-from apollo.interfaces.generic import main
-from apollo.interfaces.lambda_function.cf_updater import LambdaCFUpdater
+from apollo.interfaces.lambda_function.main import main
 
 log_context = LambdaLogContext()
 formatter = JsonLogFormatter()

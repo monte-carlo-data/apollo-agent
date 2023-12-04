@@ -30,7 +30,9 @@ class AgentUtils:
     """
 
     @staticmethod
-    def agent_ok_response(result: Dict, trace_id: Optional[str] = None):
+    def agent_ok_response(
+        result: Dict, trace_id: Optional[str] = None
+    ) -> AgentResponse:
         return AgentResponse(result, 200, trace_id)
 
     @classmethod
@@ -40,7 +42,7 @@ class AgentUtils:
         status_code: int = 200,
         trace_id: Optional[str] = None,
         client: Optional[BaseProxyClient] = None,
-    ):
+    ) -> AgentResponse:
         return AgentResponse(
             cls.response_for_last_exception(prefix=prefix, client=client),
             status_code,
@@ -54,7 +56,7 @@ class AgentUtils:
         stack_trace: Optional[List] = None,
         status_code: int = 200,
         trace_id: Optional[str] = None,
-    ):
+    ) -> AgentResponse:
         return AgentResponse(
             cls._response_for_error(message, stack_trace=stack_trace),
             status_code,
