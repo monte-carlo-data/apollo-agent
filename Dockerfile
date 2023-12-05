@@ -20,7 +20,7 @@ RUN . $VENV_DIR/bin/activate && pip install --no-cache-dir -r requirements.txt
 # CVE-2022-40897
 RUN . $VENV_DIR/bin/activate && pip install setuptools==65.5.1
 
-# Azure Dedicated SQL Pools uses pyodbc which requires unixODBC and 'ODBC Driver 17 for SQL Server'
+# Azure database clients uses pyodbc which requires unixODBC and 'ODBC Driver 17 for SQL Server'
 RUN apt-get update \
     && apt-get install -y gnupg gnupg2 gnupg1 curl apt-transport-https \
     && curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add - \
@@ -88,7 +88,7 @@ ARG code_version="local"
 ARG build_number="0"
 RUN echo $code_version,$build_number > ./apollo/agent/version
 
-# install unixodbc and 'ODBC Driver 17 for SQL Server', needed for Azure Dedicated SQL Pools
+# install unixodbc and 'ODBC Driver 17 for SQL Server', needed for Azure database client
 RUN yum -y update \
     && yum -y install \
     unixODBC \
