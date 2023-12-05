@@ -128,14 +128,14 @@ def _get_proxy_client_teradata(
     return TeradataProxyClient(credentials=credentials, platform=platform)
 
 
-def _get_proxy_client_azure_dedicated_sql_pool(
+def _get_proxy_client_azure_database(
     credentials: Optional[Dict], platform: str, **kwargs  # type: ignore
 ) -> BaseProxyClient:
-    from apollo.integrations.db.azure_dedicated_sql_pool_proxy_client import (
-        AzureDedicatedSqlPoolProxyClient,
+    from apollo.integrations.db.azure_database_proxy_client import (
+        AzureDatabaseProxyClient,
     )
 
-    return AzureDedicatedSqlPoolProxyClient(credentials=credentials, platform=platform)
+    return AzureDatabaseProxyClient(credentials=credentials, platform=platform)
 
 
 @dataclass
@@ -158,7 +158,8 @@ _CLIENT_FACTORY_MAPPING = {
     "mysql": _get_proxy_client_mysql,
     "oracle": _get_proxy_client_oracle,
     "teradata": _get_proxy_client_teradata,
-    "azure-dedicated-sql-pool": _get_proxy_client_azure_dedicated_sql_pool,
+    "azure-dedicated-sql-pool": _get_proxy_client_azure_database,
+    "azure-sql-database": _get_proxy_client_azure_database,
 }
 
 
