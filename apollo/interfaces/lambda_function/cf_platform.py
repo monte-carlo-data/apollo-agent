@@ -1,6 +1,6 @@
 import os
 from datetime import datetime, timezone, timedelta
-from typing import Dict, Optional, List
+from typing import Dict, Optional, List, cast
 
 import boto3
 
@@ -65,7 +65,11 @@ class CFPlatformProvider(AgentPlatformProvider):
         start_time_str: Optional[str],
         end_time_str: Optional[str],
         limit: int,
-    ) -> List[Dict]:
+    ) -> Dict:
+        """
+        Returns a dictionary with an "events" attribute containing all events returned by CloudWatch
+        with the specified restrictions.
+        """
         log_group_arn = os.getenv(CLOUDFORMATION_LOG_GROUP_ID_ENV_VAR)
         if not log_group_arn:
             raise AgentConfigurationError(
@@ -100,4 +104,73 @@ class CFPlatformProvider(AgentPlatformProvider):
                 filter_params["nextToken"] = next_token
             else:
                 break
-        return all_events
+        return {
+            "events": all_events,
+        }
+
+    def start_logs_query(
+        self,
+        query: str,
+        start_time_str: Optional[str],
+        end_time_str: Optional[str],
+        limit: int,
+    ) -> Dict:
+        """
+        Returns a dictionary with a "query_id" with the ID of the query, results can be obtained using
+        get_logs_query_results.
+        """
+        log_group_arn = os.getenv(CLOUDFORMATION_LOG_GROUP_ID_ENV_VAR)
+        if not log_group_arn:
+            raise AgentConfigurationError(
+                f"Missing {CLOUDFORMATION_LOG_GROUP_ID_ENV_VAR} environment variable"
+            )
+
+        start_time = cast(
+            datetime,
+            self.parse_datetime(
+                start_time_str, datetime.now(timezone.utc) - timedelta(minutes=10)
+            ),
+        )
+        end_time: datetime = cast(
+            datetime, self.parse_datetime(end_time_str, datetime.now(timezone.utc))
+        )
+
+        start_query_params = {
+            "queryString": query,
+            "logGroupIdentifiers": [log_group_arn],
+            "limit": limit,
+            "startTime": self.millis_since_1970(start_time),
+            "endTime": self.millis_since_1970(end_time),
+        }
+
+        logs_client = boto3.client("logs")
+        result = logs_client.start_query(**start_query_params)
+        return {
+            "query_id": result.get("queryId"),
+        }
+
+    def get_logs_query_results(
+        self,
+        query_id: str,
+    ) -> Dict:
+        """
+        Returns a dictionary with:
+         - an "events" attribute containing the "results" field returned by
+            CloudWatchLogs.Client.get_query_results with the specified query ID.
+         - a "status" attribute as returned by `get_query_results`, one of: Scheduled, Running, Complete,
+            Failed, Cancelled, Timeout, Unknown
+        """
+        logs_client = boto3.client("logs")
+        result = logs_client.get_query_results(queryId=query_id)
+        events = result.get("results") or []
+        # each result is an array of fields containing "field" and "value", convert that into a regular dictionary
+        return {
+            "events": [
+                {
+                    log_field.get("field"): log_field.get("value")
+                    for log_field in log_fields
+                }
+                for log_fields in events
+            ],
+            "status": result.get("status"),
+        }
