@@ -13,7 +13,6 @@ logging.setLoggerClass(ExtraLogger)
 
 from apig_wsgi import make_lambda_handler
 
-from apollo.agent.constants import PLATFORM_AWS
 from apollo.agent.env_vars import (
     AGENT_WRAPPER_TYPE_ENV_VAR,
     WRAPPER_TYPE_CLOUDFORMATION,
