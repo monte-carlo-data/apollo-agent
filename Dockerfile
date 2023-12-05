@@ -56,6 +56,7 @@ RUN . $VENV_DIR/bin/activate && pip install --no-cache-dir -r requirements-cloud
 
 CMD . $VENV_DIR/bin/activate && gunicorn --timeout 930 --bind :$PORT apollo.interfaces.cloudrun.main:app
 
+# Pinning base docker image to this version so yum commands are still supported
 FROM public.ecr.aws/lambda/python:3.11.2023.11.18.02 AS lambda-builder
 
 RUN yum update -y
@@ -72,6 +73,7 @@ COPY requirements.txt ./
 COPY requirements-lambda.txt ./
 RUN pip install --no-cache-dir --target "${LAMBDA_TASK_ROOT}" -r requirements.txt -r requirements-lambda.txt
 
+# Pinning base docker image to this version so yum commands are still supported
 FROM public.ecr.aws/lambda/python:3.11.2023.11.18.02 AS lambda
 
 # VULN-29: Base ECR image has setuptools-56.0.0 which is vulnerable (CVE-2022-40897)
