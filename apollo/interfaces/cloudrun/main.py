@@ -60,6 +60,9 @@ main.agent.platform_provider = CloudRunPlatformProvider()
 main.agent.log_context = log_context
 
 
+# CloudRun specific endpoints
+
+
 @app.route("/api/v1/gcp/logs/list", methods=["GET", "POST"])
 def gcp_logs_list() -> Tuple[Dict, int]:
     """

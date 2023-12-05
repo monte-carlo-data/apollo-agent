@@ -6,7 +6,7 @@ from typing import Optional, Dict, List
 class AgentUpdater(ABC):
     """
     Agent updater base abstract class, used for the agent to update itself.
-    An integration can optionally set an updater in `agent.updater`.
+    An integration can return an updater in `platform_provider.updater`.
     """
 
     @abstractmethod
