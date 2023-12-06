@@ -20,7 +20,7 @@ RUN . $VENV_DIR/bin/activate && pip install --no-cache-dir -r requirements.txt
 # CVE-2022-40897
 RUN . $VENV_DIR/bin/activate && pip install setuptools==65.5.1
 
-# Azure Dedicated SQL Pools uses pyodbc which requires unixODBC and 'ODBC Driver 17 for SQL Server'
+# Azure database clients uses pyodbc which requires unixODBC and 'ODBC Driver 17 for SQL Server'
 RUN apt-get update \
     && apt-get install -y gnupg gnupg2 gnupg1 curl apt-transport-https \
     && curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add - \
@@ -60,7 +60,8 @@ RUN apt install git -y
 
 CMD . $VENV_DIR/bin/activate && gunicorn --timeout 930 --bind :$PORT apollo.interfaces.cloudrun.main:app
 
-FROM public.ecr.aws/lambda/python:3.11 AS lambda-builder
+# Pinning base docker image to this version so yum commands are still supported
+FROM public.ecr.aws/lambda/python:3.11.2023.11.18.02 AS lambda-builder
 
 RUN yum update -y
 # install git as we need it for the direct oscrypto dependency
@@ -76,7 +77,8 @@ COPY requirements.txt ./
 COPY requirements-lambda.txt ./
 RUN pip install --no-cache-dir --target "${LAMBDA_TASK_ROOT}" -r requirements.txt -r requirements-lambda.txt
 
-FROM public.ecr.aws/lambda/python:3.11 AS lambda
+# Pinning base docker image to this version so yum commands are still supported
+FROM public.ecr.aws/lambda/python:3.11.2023.11.18.02 AS lambda
 
 # VULN-29: Base ECR image has setuptools-56.0.0 which is vulnerable (CVE-2022-40897)
 RUN pip install --no-cache-dir setuptools==68.0.0

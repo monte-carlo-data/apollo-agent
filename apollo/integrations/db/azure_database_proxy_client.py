@@ -7,17 +7,17 @@ from apollo.integrations.db.base_db_proxy_client import BaseDbProxyClient
 _ATTR_CONNECT_ARGS = "connect_args"
 
 
-class AzureDedicatedSqlPoolProxyClient(BaseDbProxyClient):
+class AzureDatabaseProxyClient(BaseDbProxyClient):
     """
-    Proxy client for Azure Dedicated SQL Pool Client. Credentials are expected to be supplied under "connect_args"
-    and will be passed directly to `pyodbc.connect`. 'pyodbc` accepts a connection string with the connection details,
-    so "connect_args" will be a string.
+    Proxy client for Azure "database" Client which is used by the Azure Dedicated SQL Pool and Azure SQL Database connections.
+    Credentials are expected to be supplied under "connect_args" and will be passed directly to `pyodbc.connect`.
+    'pyodbc` accepts a connection string with the connection details, so "connect_args" will be a string.
     """
 
     def __init__(self, credentials: Optional[Dict], **kwargs: Any):
         if not credentials or _ATTR_CONNECT_ARGS not in credentials:
             raise ValueError(
-                f"Azure Dedicated SQL Pool agent client requires {_ATTR_CONNECT_ARGS} in credentials"
+                f"Azure database agent client requires {_ATTR_CONNECT_ARGS} in credentials"
             )
         self._connection = pyodbc.connect(credentials[_ATTR_CONNECT_ARGS])  # type: ignore
 
