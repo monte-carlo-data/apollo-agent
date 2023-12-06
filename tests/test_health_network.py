@@ -2,6 +2,7 @@ import os
 import socket
 import sys
 from telnetlib import Telnet
+from typing import Dict, Optional
 from unittest import TestCase
 from unittest.mock import patch, create_autospec
 
@@ -12,8 +13,11 @@ from apollo.agent.constants import (
     ATTRIBUTE_NAME_RESULT,
 )
 from apollo.agent.logging_utils import LoggingUtils
+from apollo.agent.platform import AgentPlatformProvider
+from apollo.agent.updater import AgentUpdater
 from apollo.agent.utils import AgentUtils
 from apollo.validators.validate_network import _DEFAULT_TIMEOUT_SECS
+from tests.platform import TestPlatformProvider
 
 
 class HealthNetworkTests(TestCase):
@@ -29,10 +33,12 @@ class HealthNetworkTests(TestCase):
     )
     @patch.object(AgentUtils, "get_outbound_ip_address")
     def test_health_information(self, outboud_mock):
-        self._agent.platform = "test platform"
-        self._agent.platform_info = {
-            "container": "test container",
-        }
+        self._agent.platform_provider = TestPlatformProvider(
+            "test platform",
+            {
+                "container": "test container",
+            },
+        )
         health_info = self._agent.health_information(trace_id="1234").to_dict()
         self.assertEqual("test platform", health_info["platform"])
         self.assertEqual("local", health_info["version"])

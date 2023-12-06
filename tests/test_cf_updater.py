@@ -7,7 +7,7 @@ from apollo.agent.env_vars import CLOUDFORMATION_STACK_ID_ENV_VAR
 from apollo.interfaces.lambda_function.cf_updater import LambdaCFUpdater
 
 
-class TestLambdaCFUpdater(TestCase):
+class TestCFUpdater(TestCase):
     @patch.dict(
         os.environ,
         {
@@ -34,7 +34,7 @@ class TestLambdaCFUpdater(TestCase):
             ]
         }
         updater = LambdaCFUpdater()
-        uri = updater.get_current_image(None)
+        uri = updater.get_current_image()
         mock_client.describe_stacks.assert_called_once_with(StackName="cf_stack_id")
         self.assertEqual(expected_image_uri, uri)
 
@@ -74,7 +74,6 @@ class TestLambdaCFUpdater(TestCase):
         mock_client.describe_stack_events.return_value = {"StackEvents": []}
         updater = LambdaCFUpdater()
         response = updater.update(
-            platform_info=None,
             image=new_image_uri,
             timeout_seconds=10,
             wait_for_completion=True,
@@ -129,7 +128,6 @@ class TestLambdaCFUpdater(TestCase):
         mock_client.describe_stack_events.return_value = {"StackEvents": []}
         updater = LambdaCFUpdater()
         response = updater.update(
-            platform_info=None,
             image=new_image_uri,
             timeout_seconds=10,
         )
@@ -193,7 +191,6 @@ class TestLambdaCFUpdater(TestCase):
         }
         updater = LambdaCFUpdater()
         response = updater.update(
-            platform_info=None,
             image=new_image_uri,
             timeout_seconds=10,
             wait_for_completion=True,

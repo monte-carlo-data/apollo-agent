@@ -85,12 +85,7 @@ RUN pip install --no-cache-dir setuptools==68.0.0
 
 COPY --from=lambda-builder "${LAMBDA_TASK_ROOT}" "${LAMBDA_TASK_ROOT}"
 
-COPY apollo "${LAMBDA_TASK_ROOT}/apollo"
-ARG code_version="local"
-ARG build_number="0"
-RUN echo $code_version,$build_number > ./apollo/agent/version
-
-# install unixodbc and 'ODBC Driver 17 for SQL Server', needed for Azure database client
+# install unixodbc and 'ODBC Driver 17 for SQL Server', needed for Azure Dedicated SQL Pools
 RUN yum -y update \
     && yum -y install \
     unixODBC \
@@ -98,5 +93,10 @@ RUN yum -y update \
     && rm -rf /var/cache/yum
 RUN curl https://packages.microsoft.com/config/rhel/7/prod.repo | tee /etc/yum.repos.d/mssql-release.repo
 RUN ACCEPT_EULA=Y yum install -y msodbcsql17
+
+COPY apollo "${LAMBDA_TASK_ROOT}/apollo"
+ARG code_version="local"
+ARG build_number="0"
+RUN echo $code_version,$build_number > ./apollo/agent/version
 
 CMD [ "apollo.interfaces.lambda_function.handler.lambda_handler" ]

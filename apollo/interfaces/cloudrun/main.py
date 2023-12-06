@@ -1,24 +1,18 @@
 import logging
 import os
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 
 import google.cloud.logging
+from flask import request
 
 from apollo.agent.constants import (
-    PLATFORM_GCP,
     LOG_ATTRIBUTE_OPERATION_NAME,
     LOG_ATTRIBUTE_TRACE_ID,
 )
 from apollo.agent.env_vars import DEBUG_LOG_ENV_VAR
+from apollo.agent.utils import AgentUtils
 from apollo.interfaces.cloudrun.cloudrun_log_context import CloudRunLogContext
-from apollo.interfaces.cloudrun.cloudrun_updater import CloudRunUpdater
-from apollo.interfaces.cloudrun.metadata_service import (
-    GcpMetadataService,
-    GCP_PLATFORM_INFO_KEY_PROJECT_ID,
-    GCP_PLATFORM_INFO_KEY_REGION,
-    GCP_PLATFORM_INFO_KEY_SERVICE_NAME,
-    GCP_ENV_NAME_SERVICE_NAME,
-)
+from apollo.interfaces.cloudrun.platform import CloudRunPlatformProvider
 
 # CloudRun specific application that adds support for structured logging
 
@@ -36,6 +30,9 @@ for h in root_logger.handlers:
 
 # intentionally imported here to initialize generic main after gcp logging
 from apollo.interfaces.generic import main
+
+_DEFAULT_LOGS_LIMIT = 1000
+logger = logging.getLogger(__name__)
 
 
 # CloudRun requires "extra" attributes to be included in a "json_fields" attribute.
@@ -59,12 +56,56 @@ main.logging_utils.extra_builder = cloud_run_extra_builder
 app = main.app
 
 # set the container platform as GCP for the health endpoint
-main.agent.platform = PLATFORM_GCP
-main.agent.platform_info = {
-    GCP_PLATFORM_INFO_KEY_SERVICE_NAME: os.getenv(GCP_ENV_NAME_SERVICE_NAME),
-    GCP_PLATFORM_INFO_KEY_PROJECT_ID: GcpMetadataService.get_project_id(),
-    GCP_PLATFORM_INFO_KEY_REGION: GcpMetadataService.get_instance_region(),
-}
-
-main.agent.updater = CloudRunUpdater()
+main.agent.platform_provider = CloudRunPlatformProvider()
 main.agent.log_context = log_context
+
+
+# CloudRun specific endpoints
+
+
+@app.route("/api/v1/gcp/logs/list", methods=["GET", "POST"])
+def gcp_logs_list() -> Tuple[Dict, int]:
+    """
+    Uses GCP Logs API to return a list of log events.
+    Documentation: https://cloud.google.com/logging/docs/reference/libraries
+    Supported parameters (all optional):
+    - trace_id
+    - logs_filter: a filter expression, see https://cloud.google.com/logging/docs/view/advanced_filters,
+        if not specified, or specified with a timestamp filter, it adds a filter for the last 10 minutes.
+    - limit: number of log events to return, defaults to 1,000
+    :return: a dictionary with an "events" attribute containing the events returned by GCP, containing
+        for example "jsonPayload" or "textPayload" and "timestamp" attributes.
+    """
+    request_dict: Dict = request.json if request.method == "POST" else request.args  # type: ignore
+    trace_id: Optional[str] = request_dict.get("trace_id")
+    limit_str = request_dict.get("limit")
+    logs_filter: Optional[str] = request_dict.get("filter")
+
+    logger.info(
+        "gcp/logs/list requested",
+        extra=main.logging_utils.build_extra(
+            trace_id=trace_id,
+            operation_name="gcp/logs/list",
+            extra=dict(
+                filter=logs_filter,
+                limit=limit_str,
+                mcd_trace_id=trace_id,
+            ),
+        ),
+    )
+    try:
+        events = CloudRunPlatformProvider.get_gcp_logs(
+            gcp_logging_client=gcp_logging_client,
+            logs_filter=logs_filter,
+            limit=int(limit_str) if limit_str else _DEFAULT_LOGS_LIMIT,
+        )
+        response = AgentUtils.agent_ok_response(
+            {
+                "events": events,
+            },
+            trace_id=trace_id,
+        )
+    except Exception:
+        response = AgentUtils.agent_response_for_last_exception(trace_id=trace_id)
+
+    return response.result, response.status_code
