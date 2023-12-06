@@ -126,6 +126,34 @@ def aws_logs_start_query() -> Tuple[Dict, int]:
     return response.result, response.status_code
 
 
+@app.route("/api/v1/aws/logs/stop_query", methods=["GET", "POST"])
+def aws_logs_stop_query() -> Tuple[Dict, int]:
+    """
+    Stops the query with the given ID, previously triggered using /aws/logs/start_query.
+    Docs: https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/logs/client/stop_query.html
+    Required parameters:
+    - query_id: the query ID returned by start_query.
+    Optional parameters:
+    - trace_id
+    :return: a dictionary with a single boolean attribute: "success" as returned by `CloudWatchLogs.Client.stop_query`.
+    """
+    request_dict: Dict = request.json if request.method == "POST" else request.args  # type: ignore
+    trace_id: Optional[str] = request_dict.get("trace_id")
+    query_id: Optional[str] = request_dict.get("query_id")
+    if not query_id:
+        raise ValueError("query_id is a required parameter")
+
+    response = _perform_aws_operation(
+        "/aws/logs/stop_query",
+        method=CFPlatformProvider.stop_logs_query,
+        trace_id=trace_id,
+        params=dict(
+            query_id=query_id,
+        ),
+    )
+    return response.result, response.status_code
+
+
 @app.route("/api/v1/aws/logs/query_results", methods=["GET", "POST"])
 def aws_logs_get_query_results() -> Tuple[Dict, int]:
     """
