@@ -149,6 +149,19 @@ class CFPlatformProvider(AgentPlatformProvider):
             "query_id": result.get("queryId"),
         }
 
+    def stop_logs_query(
+        self,
+        query_id: str,
+    ) -> Dict:
+        """
+        Stops the query with the given ID previously started with `start_logs_query`.
+        Returns a dictionary with a single boolean attribute "success", for more information see:
+            https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/logs/client/stop_query.html
+        """
+        logs_client = boto3.client("logs")
+        result = logs_client.stop_query(queryId=query_id)
+        return result
+
     def get_logs_query_results(
         self,
         query_id: str,

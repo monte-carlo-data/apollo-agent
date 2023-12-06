@@ -81,7 +81,7 @@ RUN pip install --no-cache-dir setuptools==68.0.0
 
 COPY --from=lambda-builder "${LAMBDA_TASK_ROOT}" "${LAMBDA_TASK_ROOT}"
 
-# install unixodbc and 'ODBC Driver 17 for SQL Server', needed for Azure database client
+# install unixodbc and 'ODBC Driver 17 for SQL Server', needed for Azure Dedicated SQL Pools
 RUN yum -y update \
     && yum -y install \
     unixODBC \
