@@ -58,6 +58,8 @@ dataclasses-json==0.6.0
     # via -r requirements.in
 decorator==5.1.1
     # via retry2
+defusedxml==0.7.1
+    # via tableauserverclient
 et-xmlfile==1.1.0
     # via openpyxl
 filelock==3.13.1
@@ -151,6 +153,7 @@ packaging==23.1
     #   gunicorn
     #   marshmallow
     #   snowflake-connector-python
+    #   tableauserverclient
 pandas==2.0.3
     # via databricks-sql-connector
 platformdirs==3.8.1
@@ -178,7 +181,9 @@ pycryptodome==3.19.0
 pycryptodomex==3.19.0
     # via snowflake-connector-python
 pyjwt==2.8.0
-    # via snowflake-connector-python
+    # via
+    #   -r requirements.in
+    #   snowflake-connector-python
 pymssql==2.2.8
     # via -r requirements.in
 pymysql==1.1.0
@@ -205,6 +210,7 @@ requests==2.31.0
     #   google-cloud-storage
     #   looker-sdk
     #   snowflake-connector-python
+    #   tableauserverclient
 retry2==0.9.5
     # via -r requirements.in
 rsa==4.9
@@ -227,6 +233,8 @@ sqlalchemy==1.4.49
     # via
     #   alembic
     #   databricks-sql-connector
+tableauserverclient==0.25
+    # via -r requirements.in
 teradatasql==20.0.0.1
     # via -r requirements.in
 thrift==0.16.0
@@ -254,5 +262,6 @@ urllib3==1.26.18
     #   google-auth
     #   requests
     #   snowflake-connector-python
+    #   tableauserverclient
 werkzeug==3.0.1
     # via flask
