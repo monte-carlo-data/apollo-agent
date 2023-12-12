@@ -35,7 +35,7 @@ class SqlServerClientTests(TestCase):
         self._mock_connection.cursor.return_value = self._mock_cursor
         self.maxDiff = None
 
-    @patch("pymssql.connect")
+    @patch("pyodbc.connect")
     def test_query(self, mock_connect):
         query = (
             "SELECT name, value FROM table OFFSET ? ROWS FETCH NEXT ? ROWS ONLY"  # noqa
@@ -59,7 +59,7 @@ class SqlServerClientTests(TestCase):
             mock_connect, query, args, expected_data, expected_description
         )
 
-    @patch("pymssql.connect")
+    @patch("pyodbc.connect")
     def test_datetime_query(self, mock_connect):
         query = "SELECT name, created_date, updated_datetime FROM table"  # noqa
         data = [
@@ -72,7 +72,7 @@ class SqlServerClientTests(TestCase):
         description = [
             ["name", str.__class__, None, None, None, None, None],
             ["created_date", str.__class__, None, None, None, None, None],
-            ["updated_datetime", "date", None, None, None, None, None],
+            ["updated_datetime", str.__class__, None, None, None, None, None],
         ]
         self._test_run_query(mock_connect, query, None, data, description)
 
@@ -145,10 +145,10 @@ class SqlServerClientTests(TestCase):
         self.assertTrue(ATTRIBUTE_NAME_RESULT in response.result)
         result = response.result.get(ATTRIBUTE_NAME_RESULT)
 
-        mock_connect.assert_called_with(**_SQL_SERVER_CREDENTIALS)
+        mock_connect.assert_called_with(_SQL_SERVER_CREDENTIALS)
         self._mock_cursor.execute.assert_has_calls(
             [
-                call(query, tuple(query_args) if query_args else None),
+                call(query, query_args if query_args else None),
             ]
         )
         self._mock_cursor.description.assert_called()
@@ -158,11 +158,20 @@ class SqlServerClientTests(TestCase):
         self.assertTrue("all_results" in result)
         self.assertEqual(expected_data, result["all_results"])
 
+        expected_description = self._serialized_description(description)
         self.assertTrue("description" in result)
-        self.assertEqual(description, result["description"])
+        self.assertEqual(expected_description, result["description"])
 
         self.assertTrue("rowcount" in result)
         self.assertEqual(expected_rows, result["rowcount"])
+
+    @classmethod
+    def _serialized_description(cls, description: List) -> List:
+        return [cls._serialized_col(v) for v in description]
+
+    @classmethod
+    def _serialized_col(cls, col: List) -> List:
+        return [col[0], col[1].__name__, col[2], col[3], col[4], col[5], col[6]]
 
     @classmethod
     def _serialized_data(cls, data: List) -> List:
