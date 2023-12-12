@@ -17,12 +17,14 @@ from apollo.agent.constants import (
 )
 from apollo.agent.logging_utils import LoggingUtils
 
-_SQL_SERVER_CREDENTIALS = {
-    "host": "www.test.com",
-    "user": "u",
-    "password": "p",
-    "port": "1433",
-}
+_SQL_SERVER_CREDENTIALS = (
+    f"DRIVER={{ODBC Driver 17 for SQL Server}};"
+    f"SERVER=tcp:www.fake.com;"
+    f"PORT=1433;"
+    f"DATABASE=my_db;"
+    f"UID=user;"
+    f"PWD=password"
+)
 
 
 class SqlServerClientTests(TestCase):
@@ -35,7 +37,9 @@ class SqlServerClientTests(TestCase):
 
     @patch("pymssql.connect")
     def test_query(self, mock_connect):
-        query = "SELECT name, value FROM table OFFSET ? ROWS FETCH NEXT ? ROWS ONLY"  # noqa
+        query = (
+            "SELECT name, value FROM table OFFSET ? ROWS FETCH NEXT ? ROWS ONLY"  # noqa
+        )
         args = [0, 2]
         expected_data = [
             [
