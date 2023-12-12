@@ -35,7 +35,7 @@ class SqlServerClientTests(TestCase):
 
     @patch("pymssql.connect")
     def test_query(self, mock_connect):
-        query = "SELECT name, value FROM table OFFSET %s ROWS FETCH NEXT %s ROWS ONLY"  # noqa
+        query = "SELECT name, value FROM table OFFSET ? ROWS FETCH NEXT ? ROWS ONLY"  # noqa
         args = [0, 2]
         expected_data = [
             [
@@ -48,8 +48,8 @@ class SqlServerClientTests(TestCase):
             ],
         ]
         expected_description = [
-            ["name", "string", None, None, None, None, None],
-            ["value", "float", None, None, None, None, None],
+            ["name", str.__class__, None, None, None, None, None],
+            ["value", float.__class__, None, None, None, None, None],
         ]
         self._test_run_query(
             mock_connect, query, args, expected_data, expected_description
@@ -66,8 +66,8 @@ class SqlServerClientTests(TestCase):
             ],
         ]
         description = [
-            ["name", "string", None, None, None, None, None],
-            ["created_date", "date", None, None, None, None, None],
+            ["name", str.__class__, None, None, None, None, None],
+            ["created_date", str.__class__, None, None, None, None, None],
             ["updated_datetime", "date", None, None, None, None, None],
         ]
         self._test_run_query(mock_connect, query, None, data, description)
