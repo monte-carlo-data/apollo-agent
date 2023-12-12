@@ -16,6 +16,8 @@ from apollo.agent.constants import (
     ATTRIBUTE_NAME_ERROR_TYPE,
 )
 from apollo.agent.logging_utils import LoggingUtils
+from apollo.agent.models import AgentError
+from apollo.integrations.db.sql_server_proxy_client import SqlServerProxyClient
 
 _SQL_SERVER_CREDENTIALS = (
     f"DRIVER={{ODBC Driver 17 for SQL Server}};"
@@ -34,6 +36,12 @@ class SqlServerClientTests(TestCase):
         self._mock_cursor = Mock()
         self._mock_connection.cursor.return_value = self._mock_cursor
         self.maxDiff = None
+
+    def test_wrong_connection_detail_datatype(self):
+        # Older DC versions will send the credentials as a dictionary instead of a string. Testing to make sure we
+        # gracefully handle these cases
+        with self.assertRaises(AgentError):
+            SqlServerProxyClient(credentials={"connect_args": {"a": "dictionary"}})
 
     @patch("pyodbc.connect")
     def test_query(self, mock_connect):

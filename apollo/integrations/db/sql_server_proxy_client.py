@@ -7,6 +7,7 @@ from typing import (
 
 import pyodbc
 
+from apollo.agent.models import AgentError
 from apollo.integrations.db.base_db_proxy_client import BaseDbProxyClient
 
 _ATTR_CONNECT_ARGS = "connect_args"
@@ -24,6 +25,11 @@ class SqlServerProxyClient(BaseDbProxyClient):
             raise ValueError(
                 f"SQL Server agent client requires {_ATTR_CONNECT_ARGS} in credentials"
             )
+        if isinstance(credentials[_ATTR_CONNECT_ARGS], dict):
+            # TODO: update the min DC version before merging this PR
+            # Older DC versions will send the credentials as a dictionary instead of a string. Gracefully catch these
+            # cases and tell the user to update their DC.
+            raise AgentError(f"Connection details format is not supported. Please update your Date Collector to >=xxxxx")
         self._connection = pyodbc.connect(credentials[_ATTR_CONNECT_ARGS])  # type: ignore
 
     @property
