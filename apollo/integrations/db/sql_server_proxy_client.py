@@ -29,7 +29,9 @@ class SqlServerProxyClient(BaseDbProxyClient):
             # TODO: update the min DC version before merging this PR
             # Older DC versions will send the credentials as a dictionary instead of a string. Gracefully catch these
             # cases and tell the user to update their DC.
-            raise AgentError(f"Connection details format is not supported. Please update your Date Collector to >=xxxxx")
+            raise AgentError(
+                f"Connection details format is not supported. Please update your Date Collector to >=xxxxx"
+            )
         self._connection = pyodbc.connect(credentials[_ATTR_CONNECT_ARGS])  # type: ignore
 
     @property
