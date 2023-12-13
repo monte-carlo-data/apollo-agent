@@ -19,6 +19,13 @@ _UPDATE_LAMBDA_WAIT_MAX_ATTEMPTS = 720
 
 
 class LambdaDirectUpdater(AgentUpdater):
+    """
+    Agent updater for Lambda direct updates, used for Terraform templates, it uses `boto3.lambda` API to
+    update the function code and parameters like MemorySize and ConcurrentExecutions.
+    It gets the name of the lambda function from `AWS_LAMBDA_FUNCTION_NAME` env var that is automatically set by
+    the Lambda runtime.
+    """
+
     def update(
         self,
         image: Optional[str],
@@ -27,6 +34,17 @@ class LambdaDirectUpdater(AgentUpdater):
         wait_for_completion: bool = False,
         **kwargs,  # type: ignore
     ) -> Dict:
+        """
+        Updates the function code to the specified image, the following parameters are supported and will update
+        the associated setting in the function: `MemorySize` and `ConcurrentExecutions`.
+        :param image: The new image URI to use, if not specified the ImageUri attribute won't be updated, "*" will
+            be replaced with the current region.
+        :param timeout_seconds: Ignored by this updater
+        :param parameters: An optional dictionary specifying new values for the following supported parameters:
+            "MemorySize" and "ConcurrentExecutions".
+        :param wait_for_completion: If `true` this code will wait for the update to complete using a
+            `function_updated_v2` waiter, defaults to False.
+        """
         function_name = self._get_function_name()
         parameters = parameters or {}
         memory_size = parameters.get("MemorySize")
@@ -47,7 +65,7 @@ class LambdaDirectUpdater(AgentUpdater):
             if image_uri == prev_image:
                 logger.info(
                     "Direct update ignored, no change in image_uri",
-                    extra=dict(image=image),
+                    extra=dict(prev_image=prev_image, image=image),
                 )
                 result = {}
             else:
@@ -104,6 +122,9 @@ class LambdaDirectUpdater(AgentUpdater):
         return result
 
     def get_current_image(self) -> Optional[str]:
+        """
+        Returns the current value for `ImageUri` in the function.
+        """
         client = self._get_lambda_client()
         function = client.get_function(FunctionName=self._get_function_name())
         return function.get("Code", {}).get("ImageUri")
@@ -113,6 +134,10 @@ class LambdaDirectUpdater(AgentUpdater):
 
     @classmethod
     def get_infra_details(cls) -> Dict:
+        """
+        Returns a dictionary containing a `parameters` entry with the current values for `MemorySize` and
+        `ConcurrentExecutions`.
+        """
         client = cls._get_lambda_client()
         function = client.get_function(FunctionName=cls._get_function_name())
         configuration = function.get("Configuration", {})
@@ -146,7 +171,7 @@ class LambdaDirectUpdater(AgentUpdater):
         client: BaseClient, function_name: str
     ) -> Optional[str]:
         """
-        Waits for the stack to update, returns `None` if update was successful and the error message if
+        Waits for the function to update, returns `None` if update was successful and the error message if
         it was not.
         """
         try:

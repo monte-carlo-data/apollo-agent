@@ -330,7 +330,7 @@ class Agent:
         log_payload = self._logging_utils.build_extra(
             trace_id=trace_id,
             operation_name="update",
-            extra={"timeout": timeout_seconds, **kwargs},
+            extra={"timeout": timeout_seconds, "image": image, **kwargs},
         )
         logger.info(
             "Update requested",

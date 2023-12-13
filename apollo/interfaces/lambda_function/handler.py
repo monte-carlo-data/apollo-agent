@@ -1,7 +1,6 @@
 import logging
 import os
 
-from apollo.interfaces.lambda_function.platform import AwsPlatformProvider
 from apollo.interfaces.lambda_function.json_log_formatter import (
     ExtraLogger,
     JsonLogFormatter,
@@ -17,6 +16,7 @@ from apollo.agent.env_vars import (
     DEBUG_ENV_VAR,
 )
 from apollo.interfaces.lambda_function.main import main
+from apollo.interfaces.lambda_function.platform import AwsPlatformProvider
 
 log_context = LambdaLogContext()
 formatter = JsonLogFormatter()
