@@ -21,7 +21,7 @@ from apollo.integrations.tableau.tableau_proxy_client import JwtAuth
 _TABLEAU_CREDENTIALS = {
     "server_name": "https://prod-useast-a.online.tableau.com",
     "site_name": "mc_dev",
-    "user_email": "test@example.com",
+    "username": "test@example.com",
     "client_id": "client_id",
     "secret_id": "secret_id",
     "secret_value": "secret_value",

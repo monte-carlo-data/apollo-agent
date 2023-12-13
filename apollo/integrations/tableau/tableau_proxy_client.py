@@ -21,7 +21,7 @@ _DEFAULT_TOKEN_EXPIRATION_SECONDS = 60 * 5  # 5 minutes
 
 
 def _generate_jwt(
-    user_email: str,
+    user_name: str,
     client_id: str,
     secret_id: str,
     secret_value: str,
@@ -40,7 +40,7 @@ def _generate_jwt(
         "exp": expires_at,
         "jti": token_id,
         "aud": "tableau",
-        "sub": user_email,
+        "sub": user_name,
         "scp": ["tableau:content:read"],
     }
     return jwt.encode(
@@ -49,6 +49,11 @@ def _generate_jwt(
 
 
 class JwtAuth(Credentials):
+    """
+    Adapted from:
+    https://github.com/tableau/server-client-python/blob/3ec49bccdb5cc2fb038476ddd77bcb0e1e32df56/tableauserverclient/models/tableau_auth.py#L91-L107
+    """
+
     def __init__(self, token: str, site_id: Optional[str] = None):
         super().__init__(site_id)
         self.token = token
@@ -71,7 +76,7 @@ class TableauProxyClient(BaseProxyClient):
     def __init__(self, credentials: Optional[Dict], **kwargs: Any):  # noqa
         """
         initializing the tableau client. The credentials dictionary should include the following:
-        user_email (string)
+        username (string)
         client_id (string)
         secret_id (string)
         secret_value (string)
@@ -83,7 +88,7 @@ class TableauProxyClient(BaseProxyClient):
         if not credentials:
             raise ValueError("Credentials are required for Tableau")
 
-        self._user_email = credentials["user_email"]
+        self._user_name = credentials["username"]
         self._client_id = credentials["client_id"]
         self._secret_id = credentials["secret_id"]
         self._secret_value = credentials["secret_value"]
@@ -103,7 +108,7 @@ class TableauProxyClient(BaseProxyClient):
 
     def _sign_in(self, expiration_seconds: int):
         token = _generate_jwt(
-            user_email=self._user_email,
+            user_name=self._user_name,
             client_id=self._client_id,
             secret_id=self._secret_id,
             secret_value=self._secret_value,

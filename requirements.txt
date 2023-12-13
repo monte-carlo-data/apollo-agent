@@ -181,7 +181,9 @@ pycryptodome==3.19.0
 pycryptodomex==3.19.0
     # via snowflake-connector-python
 pyjwt==2.8.0
-    # via snowflake-connector-python
+    # via
+    #   -r requirements.in
+    #   snowflake-connector-python
 pymysql==1.1.0
     # via -r requirements.in
 pyodbc==5.0.1
