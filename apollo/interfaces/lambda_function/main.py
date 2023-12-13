@@ -6,7 +6,7 @@ from apollo.agent.constants import PLATFORM_AWS
 from apollo.agent.utils import AgentUtils
 from apollo.interfaces.agent_response import AgentResponse
 from apollo.interfaces.generic import main
-from apollo.interfaces.lambda_function.cf_platform import CFPlatformProvider
+from apollo.interfaces.lambda_function.platform import AwsPlatformProvider
 
 _DEFAULT_LOGS_LIMIT = 1000
 
@@ -18,12 +18,12 @@ logger = logging.getLogger(__name__)
 
 def _check_aws_platform(
     trace_id: Optional[str],
-) -> Tuple[Optional[CFPlatformProvider], Optional[AgentResponse]]:
+) -> Tuple[Optional[AwsPlatformProvider], Optional[AgentResponse]]:
     if agent.platform != PLATFORM_AWS:
         return None, AgentUtils.agent_response_for_error(
             "Only supported for AWS platform", trace_id=trace_id
         )
-    return cast(CFPlatformProvider, agent.platform_provider), None
+    return cast(AwsPlatformProvider, agent.platform_provider), None
 
 
 def _perform_aws_operation(
@@ -76,7 +76,7 @@ def aws_logs_filter() -> Tuple[Dict, int]:
 
     response = _perform_aws_operation(
         "/aws/logs/filter",
-        method=CFPlatformProvider.filter_log_events,
+        method=AwsPlatformProvider.filter_log_events,
         trace_id=trace_id,
         params=dict(
             pattern=pattern,
@@ -114,7 +114,7 @@ def aws_logs_start_query() -> Tuple[Dict, int]:
 
     response = _perform_aws_operation(
         "/aws/logs/start_query",
-        method=CFPlatformProvider.start_logs_query,
+        method=AwsPlatformProvider.start_logs_query,
         trace_id=trace_id,
         params=dict(
             query=query,
@@ -145,7 +145,7 @@ def aws_logs_stop_query() -> Tuple[Dict, int]:
 
     response = _perform_aws_operation(
         "/aws/logs/stop_query",
-        method=CFPlatformProvider.stop_logs_query,
+        method=AwsPlatformProvider.stop_logs_query,
         trace_id=trace_id,
         params=dict(
             query_id=query_id,
@@ -173,7 +173,7 @@ def aws_logs_get_query_results() -> Tuple[Dict, int]:
 
     response = _perform_aws_operation(
         "/aws/logs/get_query_results",
-        method=CFPlatformProvider.get_logs_query_results,
+        method=AwsPlatformProvider.get_logs_query_results,
         trace_id=trace_id,
         params=dict(
             query_id=query_id,
