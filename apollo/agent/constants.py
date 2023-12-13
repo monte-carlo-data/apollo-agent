@@ -4,6 +4,9 @@ ATTRIBUTE_NAME_ERROR = "__mcd_error__"
 # Name of the attribute used in the operation result to include the error type, if any
 ATTRIBUTE_NAME_ERROR_TYPE = "__mcd_error_type__"
 
+# Name of the attribute used in the operation result to include the error attributes, if any
+ATTRIBUTE_NAME_ERROR_ATTRS = "__mcd_error_attrs__"
+
 # Name of the attribute used in the operation result to include the exception text, if any
 ATTRIBUTE_NAME_EXCEPTION = "__mcd_exception__"
 
@@ -15,6 +18,9 @@ ATTRIBUTE_NAME_TRACE_ID = "__mcd_trace_id__"
 
 # Name of the attribute used in the operation response to wrap the result, not included if there was an error
 ATTRIBUTE_NAME_RESULT = "__mcd_result__"
+
+# Name of the attribute used in the operation response to wrap the result location, not included if there was an error
+ATTRIBUTE_NAME_RESULT_LOCATION = "__mcd_result_location__"
 
 # Name of the attribute used in call arguments to reference a local variable in the context
 ATTRIBUTE_NAME_REFERENCE = "__reference__"
@@ -31,11 +37,17 @@ ATTRIBUTE_NAME_DATA = "__data__"
 # of args for `method_a`.
 ATTRIBUTE_VALUE_TYPE_CALL = "call"
 
-# Value for the attribute __type__ to indicate this is a bytes array
+# Value for the attribute __type__ to indicate this is a bytes array, data is encoded in base64
 ATTRIBUTE_VALUE_TYPE_BYTES = "bytes"
 
 # Value for the attribute __type__ to indicate this is a datetime
 ATTRIBUTE_VALUE_TYPE_DATETIME = "datetime"
+
+# Value for the attribute __type__ to indicate this is a date
+ATTRIBUTE_VALUE_TYPE_DATE = "date"
+
+# Value for the attribute __type__ to indicate this is a decimal
+ATTRIBUTE_VALUE_TYPE_DECIMAL = "decimal"
 
 # Value for the attribute __type__ to indicate this is a Looker category enum, client side it will be converted to
 # the right type
@@ -63,7 +75,9 @@ TRACE_ID_HEADER = "x-mcd-trace-id"
 PLATFORM_GENERIC = "Generic"
 PLATFORM_GCP = "GCP"
 PLATFORM_AWS = "AWS"
+PLATFORM_AZURE = "Azure"
 
 # Storage types
 STORAGE_TYPE_S3 = "S3"
 STORAGE_TYPE_GCS = "GCS"
+STORAGE_TYPE_AZURE = "AZURE_BLOB"

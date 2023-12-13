@@ -70,6 +70,74 @@ def _get_proxy_client_git(
     return GitProxyClient(credentials=credentials, platform=platform)
 
 
+def _get_proxy_client_redshift(
+    credentials: Optional[Dict], platform: str, **kwargs  # type: ignore
+) -> BaseProxyClient:
+    from apollo.integrations.redshift.redshift_proxy_client import RedshiftProxyClient
+
+    return RedshiftProxyClient(credentials=credentials, platform=platform)
+
+
+def _get_proxy_client_postgres(
+    credentials: Optional[Dict], platform: str, **kwargs  # type: ignore
+) -> BaseProxyClient:
+    from apollo.integrations.db.postgres_proxy_client import PostgresProxyClient
+
+    return PostgresProxyClient(credentials=credentials, platform=platform)
+
+
+def _get_proxy_client_sql_server(
+    credentials: Optional[Dict], platform: str, **kwargs  # type: ignore
+) -> BaseProxyClient:
+    from apollo.integrations.db.sql_server_proxy_client import SqlServerProxyClient
+
+    return SqlServerProxyClient(credentials=credentials, platform=platform)
+
+
+def _get_proxy_client_snowflake(
+    credentials: Optional[Dict], platform: str, **kwargs  # type: ignore
+) -> BaseProxyClient:
+    from apollo.integrations.snowflake.snowflake_proxy_client import (
+        SnowflakeProxyClient,
+    )
+
+    return SnowflakeProxyClient(credentials=credentials, platform=platform)
+
+
+def _get_proxy_client_mysql(
+    credentials: Optional[Dict], platform: str, **kwargs  # type: ignore
+) -> BaseProxyClient:
+    from apollo.integrations.db.mysql_proxy_client import MysqlProxyClient
+
+    return MysqlProxyClient(credentials=credentials, platform=platform)
+
+
+def _get_proxy_client_oracle(
+    credentials: Optional[Dict], platform: str, **kwargs  # type: ignore
+) -> BaseProxyClient:
+    from apollo.integrations.db.oracle_proxy_client import OracleProxyClient
+
+    return OracleProxyClient(credentials=credentials, platform=platform)
+
+
+def _get_proxy_client_teradata(
+    credentials: Optional[Dict], platform: str, **kwargs  # type: ignore
+) -> BaseProxyClient:
+    from apollo.integrations.db.teradata_proxy_client import TeradataProxyClient
+
+    return TeradataProxyClient(credentials=credentials, platform=platform)
+
+
+def _get_proxy_client_azure_database(
+    credentials: Optional[Dict], platform: str, **kwargs  # type: ignore
+) -> BaseProxyClient:
+    from apollo.integrations.db.azure_database_proxy_client import (
+        AzureDatabaseProxyClient,
+    )
+
+    return AzureDatabaseProxyClient(credentials=credentials, platform=platform)
+
+
 @dataclass
 class ProxyClientCacheEntry:
     created_time: datetime
@@ -83,6 +151,15 @@ _CLIENT_FACTORY_MAPPING = {
     "storage": _get_proxy_client_storage,
     "looker": _get_proxy_client_looker,
     "git": _get_proxy_client_git,
+    "redshift": _get_proxy_client_redshift,
+    "postgres": _get_proxy_client_postgres,
+    "sql-server": _get_proxy_client_sql_server,
+    "snowflake": _get_proxy_client_snowflake,
+    "mysql": _get_proxy_client_mysql,
+    "oracle": _get_proxy_client_oracle,
+    "teradata": _get_proxy_client_teradata,
+    "azure-dedicated-sql-pool": _get_proxy_client_azure_database,
+    "azure-sql-database": _get_proxy_client_azure_database,
 }
 
 
@@ -133,6 +210,19 @@ class ProxyClientFactory:
             raise
 
     @classmethod
+    def dispose_proxy_client(
+        cls,
+        connection_type: str,
+        credentials: Optional[Dict],
+        skip_cache: bool,
+    ):
+        if skip_cache:
+            return
+        key = cls._get_cache_key(connection_type, credentials)
+        cls._dispose_cached_client(key)
+        logger.info(f"Discarded {connection_type} client")
+
+    @classmethod
     def _create_proxy_client(
         cls, connection_type: str, credentials: Optional[Dict], platform: str
     ) -> BaseProxyClient:
@@ -178,3 +268,7 @@ class ProxyClientFactory:
         ):
             return None
         return entry.client
+
+    @classmethod
+    def _dispose_cached_client(cls, key: str):
+        cls._clients_cache.pop(key, None)

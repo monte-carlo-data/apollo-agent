@@ -1,15 +1,33 @@
 # Environment variables reported back in the `/test/health` endpoint
 IS_REMOTE_UPGRADABLE_ENV_VAR = "MCD_AGENT_IS_REMOTE_UPGRADABLE"
 AGENT_IMAGE_TAG_ENV_VAR = "MCD_AGENT_IMAGE_TAG"
+AGENT_WRAPPER_TYPE_ENV_VAR = "MCD_AGENT_WRAPPER_TYPE"
+
+# CloudFormation Stack ID, used for updates, returned in health endpoint
+CLOUDFORMATION_STACK_ID_ENV_VAR = "MCD_STACK_ID"
+
+# CloudWatch Log Group ID
+CLOUDWATCH_LOG_GROUP_ID_ENV_VAR = "MCD_LOG_GROUP_ID"
+
+# AWS Function Name
+AWS_LAMBDA_FUNCTION_NAME_ENV_VAR = "AWS_LAMBDA_FUNCTION_NAME"
+
 HEALTH_ENV_VARS = [
     "PYTHON_VERSION",
     "SERVER_SOFTWARE",
     "MCD_AGENT_CLOUD_PLATFORM",
-    "MCD_AGENT_WRAPPER_TYPE",
+    AGENT_WRAPPER_TYPE_ENV_VAR,
     "MCD_AGENT_WRAPPER_VERSION",
     IS_REMOTE_UPGRADABLE_ENV_VAR,
     AGENT_IMAGE_TAG_ENV_VAR,
+    CLOUDFORMATION_STACK_ID_ENV_VAR,
+    "AWS_REGION",
+    "AWS_DEFAULT_REGION",
+    AWS_LAMBDA_FUNCTION_NAME_ENV_VAR,
+    "AWS_LAMBDA_FUNCTION_MEMORY_SIZE",
 ]
+
+WRAPPER_TYPE_CLOUDFORMATION = "CLOUDFORMATION"
 
 # Environment variable used in the `Generic` platform to select the storage type
 STORAGE_TYPE_ENV_VAR = "MCD_STORAGE"
@@ -24,6 +42,14 @@ STORAGE_PREFIX_DEFAULT_VALUE = "mcd"
 # Environment variable used to control the expiration in seconds for the clients cache
 CLIENT_CACHE_EXPIRATION_SECONDS_ENV_VAR = "MCD_CLIENT_CACHE_EXPIRATION_SECONDS"
 
+# Environment variable used to control the expiration in seconds for the pre-signed URL responses
+PRE_SIGNED_URL_RESPONSE_EXPIRATION_SECONDS_ENV_VAR = (
+    "MCD_PRE_SIGNED_URL_RESPONSE_EXPIRATION_SECONDS"
+)
+
+# Default value for expiration in seconds of pre-signed URL responses
+PRE_SIGNED_URL_RESPONSE_EXPIRATION_SECONDS_DEFAULT_VALUE = str(60 * 60 * 1)  # 1 hour
+
 # Environment variable used to configure the bucket name for both S3 and GCS
 STORAGE_BUCKET_NAME_ENV_VAR = "MCD_STORAGE_BUCKET_NAME"
 
@@ -34,3 +60,8 @@ DEBUG_LOG_ENV_VAR = "MCD_DEBUG_LOG"
 
 TEMP_PATH_ENV_VAR = "MCD_TEMP_FOLDER"
 DEFAULT_TEMP_PATH = "/tmp"
+
+# URL used to retrieve the public IP address of the agent
+# It must return just the IP address, other urls are: https://ifconfig.me or https://ident.me
+CHECK_OUTBOUND_IP_ADDRESS_URL_ENV_VAR = "MCD_CHECK_OUTBOUND_IP_URL"
+CHECK_OUTBOUND_IP_ADDRESS_URL_DEFAULT_VALUE = "https://checkip.amazonaws.com"

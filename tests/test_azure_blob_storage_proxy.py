@@ -1,14 +1,23 @@
 import datetime
 import os
 from unittest import TestCase
-from unittest.mock import patch, create_autospec, Mock, mock_open
+from unittest.mock import (
+    MagicMock,
+    patch,
+    create_autospec,
+    mock_open,
+)
 
+from azure.storage.blob import (
+    BlobServiceClient,
+    ContainerClient,
+    BlobClient,
+)
 from box import Box
-from google.cloud.storage import Client, Bucket, Blob
 
 from apollo.agent.agent import Agent
 from apollo.agent.constants import (
-    PLATFORM_GCP,
+    PLATFORM_AZURE,
     ATTRIBUTE_NAME_RESULT,
     ATTRIBUTE_NAME_ERROR,
 )
@@ -19,21 +28,19 @@ from apollo.agent.env_vars import (
 )
 from apollo.agent.logging_utils import LoggingUtils
 from apollo.agent.utils import AgentUtils
+from tests.platform import TestPlatformProvider
 
 _TEST_BUCKET_NAME = "test_bucket"
 
 
-class StorageGcsTests(TestCase):
+class StorageAzureTests(TestCase):
     def setUp(self) -> None:
         self._agent = Agent(LoggingUtils())
-        self._agent.platform = PLATFORM_GCP
+        self._agent.platform_provider = TestPlatformProvider(PLATFORM_AZURE)
 
-        self._mock_client = create_autospec(Client)
-        self._mock_bucket = create_autospec(Bucket)
-        self._mock_blob = create_autospec(Blob)
-
-        self._mock_client.get_bucket.return_value = self._mock_bucket
-        self._mock_bucket.blob.return_value = self._mock_blob
+        self._mock_service_client = create_autospec(BlobServiceClient)
+        self._mock_container_client = create_autospec(ContainerClient)
+        self._mock_blob_client = create_autospec(BlobClient)
 
     @patch.dict(
         os.environ,
@@ -42,24 +49,29 @@ class StorageGcsTests(TestCase):
             STORAGE_PREFIX_ENV_VAR: "",
         },
     )
-    @patch("apollo.integrations.gcs.gcs_base_reader_writer.Client")
+    @patch(
+        "apollo.integrations.azure_blob.azure_blob_base_reader_writer.BlobServiceClient"
+    )
     def test_list_objects(self, mock_client_type):
-        mock_client_type.return_value = self._mock_client
-        pages = [
-            [
-                Box(
-                    etag="123",
-                    name="file_1.txt",
-                    size=23,
-                    updated=datetime.datetime.utcnow(),
-                    storage_class="STANDARD",
-                )
-            ]
+        self._mock_service_client.get_container_client.return_value = (
+            self._mock_container_client
+        )
+        mock_client_type.from_connection_string.return_value = self._mock_service_client
+        page = [
+            Box(
+                etag="123",
+                name="file_1.txt",
+                size=23,
+                last_modified=datetime.datetime.utcnow(),
+                blob_tier="Hot",
+            )
         ]
-        list_blobs_result = Mock()
-        list_blobs_result.pages = (p for p in pages)
-        list_blobs_result.next_page_token = "12345"
-        self._mock_client.list_blobs.return_value = list_blobs_result
+        pages_result = MagicMock()
+        pages_result.__next__.return_value = page
+        pages_result.continuation_token = "12345"
+        list_blobs_result = MagicMock()
+        list_blobs_result.by_page.return_value = pages_result
+        self._mock_container_client.list_blobs.return_value = list_blobs_result
 
         result = self._agent.execute_operation(
             "storage",
@@ -72,43 +84,45 @@ class StorageGcsTests(TestCase):
             credentials={},
         )
         self.assertIsNone(result.result.get(ATTRIBUTE_NAME_ERROR))
-
-        self._mock_client.list_blobs.assert_called_with(
-            bucket_or_name=_TEST_BUCKET_NAME
-        )
+        self._mock_container_client.list_blobs.assert_called_with()
 
         response = result.result[ATTRIBUTE_NAME_RESULT]
         self.assertEqual("12345", response["page_token"])
-        self.assertEqual(pages[0][0].name, response["list"][0]["Key"])
-        self.assertEqual(pages[0][0].size, response["list"][0]["Size"])
-        self.assertEqual(pages[0][0].etag, response["list"][0]["ETag"])
-        self.assertEqual(pages[0][0].updated, response["list"][0]["LastModified"])
-        self.assertEqual(pages[0][0].storage_class, response["list"][0]["StorageClass"])
+        self.assertEqual(page[0].name, response["list"][0]["Key"])
+        self.assertEqual(page[0].size, response["list"][0]["Size"])
+        self.assertEqual(page[0].etag, response["list"][0]["ETag"])
+        self.assertEqual(page[0].last_modified, response["list"][0]["LastModified"])
+        self.assertEqual(page[0].blob_tier, response["list"][0]["StorageClass"])
 
     @patch.dict(
         os.environ,
         {STORAGE_BUCKET_NAME_ENV_VAR: _TEST_BUCKET_NAME},
     )
-    @patch("apollo.integrations.gcs.gcs_base_reader_writer.Client")
+    @patch(
+        "apollo.integrations.azure_blob.azure_blob_base_reader_writer.BlobServiceClient"
+    )
     def test_list_objects_default_prefix(self, mock_client_type):
-        mock_client_type.return_value = self._mock_client
+        self._mock_service_client.get_container_client.return_value = (
+            self._mock_container_client
+        )
+        mock_client_type.from_connection_string.return_value = self._mock_service_client
         expected_prefix = f"{STORAGE_PREFIX_DEFAULT_VALUE}/"
         file_name = "file_1.txt"
-        pages = [
-            [
-                Box(
-                    etag="123",
-                    name=f"{expected_prefix}{file_name}",
-                    size=23,
-                    updated=datetime.datetime.utcnow(),
-                    storage_class="STANDARD",
-                )
-            ]
+        page = [
+            Box(
+                etag="123",
+                name=f"{expected_prefix}{file_name}",
+                size=23,
+                last_modified=datetime.datetime.utcnow(),
+                blob_tier="Hot",
+            )
         ]
-        list_blobs_result = Mock()
-        list_blobs_result.pages = (p for p in pages)
-        list_blobs_result.next_page_token = "12345"
-        self._mock_client.list_blobs.return_value = list_blobs_result
+        pages_result = MagicMock()
+        pages_result.__next__.return_value = page
+        pages_result.continuation_token = "12345"
+        list_blobs_result = MagicMock()
+        list_blobs_result.by_page.return_value = pages_result
+        self._mock_container_client.list_blobs.return_value = list_blobs_result
 
         result = self._agent.execute_operation(
             "storage",
@@ -122,18 +136,17 @@ class StorageGcsTests(TestCase):
         )
         self.assertIsNone(result.result.get(ATTRIBUTE_NAME_ERROR))
 
-        self._mock_client.list_blobs.assert_called_with(
-            bucket_or_name=_TEST_BUCKET_NAME,
-            prefix=expected_prefix,
+        self._mock_container_client.list_blobs.assert_called_with(
+            name_starts_with=expected_prefix,
         )
 
         response = result.result[ATTRIBUTE_NAME_RESULT]
         self.assertEqual("12345", response["page_token"])
         self.assertEqual(file_name, response["list"][0]["Key"])
-        self.assertEqual(pages[0][0].size, response["list"][0]["Size"])
-        self.assertEqual(pages[0][0].etag, response["list"][0]["ETag"])
-        self.assertEqual(pages[0][0].updated, response["list"][0]["LastModified"])
-        self.assertEqual(pages[0][0].storage_class, response["list"][0]["StorageClass"])
+        self.assertEqual(page[0].size, response["list"][0]["Size"])
+        self.assertEqual(page[0].etag, response["list"][0]["ETag"])
+        self.assertEqual(page[0].last_modified, response["list"][0]["LastModified"])
+        self.assertEqual(page[0].blob_tier, response["list"][0]["StorageClass"])
 
     @patch.dict(
         os.environ,
@@ -142,9 +155,12 @@ class StorageGcsTests(TestCase):
             STORAGE_PREFIX_ENV_VAR: "",
         },
     )
-    @patch("apollo.integrations.gcs.gcs_base_reader_writer.Client")
+    @patch(
+        "apollo.integrations.azure_blob.azure_blob_base_reader_writer.BlobServiceClient"
+    )
     def test_delete(self, mock_client_type):
-        mock_client_type.return_value = self._mock_client
+        self._mock_service_client.get_blob_client.return_value = self._mock_blob_client
+        mock_client_type.from_connection_string.return_value = self._mock_service_client
 
         file_key = "file.txt"
         result = self._agent.execute_operation(
@@ -159,16 +175,21 @@ class StorageGcsTests(TestCase):
         )
         self.assertIsNone(result.result.get(ATTRIBUTE_NAME_ERROR))
 
-        self._mock_bucket.blob.assert_called_with(file_key)
-        self._mock_blob.delete.assert_called()
+        self._mock_service_client.get_blob_client.assert_called_once_with(
+            container=_TEST_BUCKET_NAME, blob=file_key
+        )
+        self._mock_blob_client.delete_blob.assert_called_once_with()
 
     @patch.dict(
         os.environ,
         {STORAGE_BUCKET_NAME_ENV_VAR: _TEST_BUCKET_NAME},
     )
-    @patch("apollo.integrations.gcs.gcs_base_reader_writer.Client")
+    @patch(
+        "apollo.integrations.azure_blob.azure_blob_base_reader_writer.BlobServiceClient"
+    )
     def test_delete_default_prefix(self, mock_client_type):
-        mock_client_type.return_value = self._mock_client
+        self._mock_service_client.get_blob_client.return_value = self._mock_blob_client
+        mock_client_type.from_connection_string.return_value = self._mock_service_client
         expected_prefix = f"{STORAGE_PREFIX_DEFAULT_VALUE}/"
 
         file_key = "file.txt"
@@ -184,8 +205,10 @@ class StorageGcsTests(TestCase):
         )
         self.assertIsNone(result.result.get(ATTRIBUTE_NAME_ERROR))
 
-        self._mock_bucket.blob.assert_called_with(f"{expected_prefix}{file_key}")
-        self._mock_blob.delete.assert_called()
+        self._mock_service_client.get_blob_client.assert_called_once_with(
+            container=_TEST_BUCKET_NAME, blob=f"{expected_prefix}{file_key}"
+        )
+        self._mock_blob_client.delete_blob.assert_called_once_with()
 
     @patch.dict(
         os.environ,
@@ -194,9 +217,12 @@ class StorageGcsTests(TestCase):
             STORAGE_PREFIX_ENV_VAR: "",
         },
     )
-    @patch("apollo.integrations.gcs.gcs_base_reader_writer.Client")
+    @patch(
+        "apollo.integrations.azure_blob.azure_blob_base_reader_writer.BlobServiceClient"
+    )
     def test_read(self, mock_client_type):
-        mock_client_type.return_value = self._mock_client
+        self._mock_service_client.get_blob_client.return_value = self._mock_blob_client
+        mock_client_type.from_connection_string.return_value = self._mock_service_client
 
         file_key = "file.txt"
         result = self._agent.execute_operation(
@@ -211,16 +237,21 @@ class StorageGcsTests(TestCase):
         )
         self.assertIsNone(result.result.get(ATTRIBUTE_NAME_ERROR))
 
-        self._mock_bucket.blob.assert_called_with(file_key)
-        self._mock_blob.download_as_bytes.assert_called()
+        self._mock_service_client.get_blob_client.assert_called_once_with(
+            container=_TEST_BUCKET_NAME, blob=file_key
+        )
+        self._mock_blob_client.download_blob.assert_called_once_with()
 
     @patch.dict(
         os.environ,
         {STORAGE_BUCKET_NAME_ENV_VAR: _TEST_BUCKET_NAME},
     )
-    @patch("apollo.integrations.gcs.gcs_base_reader_writer.Client")
+    @patch(
+        "apollo.integrations.azure_blob.azure_blob_base_reader_writer.BlobServiceClient"
+    )
     def test_read_default_prefix(self, mock_client_type):
-        mock_client_type.return_value = self._mock_client
+        self._mock_service_client.get_blob_client.return_value = self._mock_blob_client
+        mock_client_type.from_connection_string.return_value = self._mock_service_client
         expected_prefix = f"{STORAGE_PREFIX_DEFAULT_VALUE}/"
 
         file_key = "file.txt"
@@ -236,8 +267,10 @@ class StorageGcsTests(TestCase):
         )
         self.assertIsNone(result.result.get(ATTRIBUTE_NAME_ERROR))
 
-        self._mock_bucket.blob.assert_called_with(f"{expected_prefix}{file_key}")
-        self._mock_blob.download_as_bytes.assert_called()
+        self._mock_service_client.get_blob_client.assert_called_once_with(
+            container=_TEST_BUCKET_NAME, blob=f"{expected_prefix}{file_key}"
+        )
+        self._mock_blob_client.download_blob.assert_called_once_with()
 
     @patch.dict(
         os.environ,
@@ -246,15 +279,18 @@ class StorageGcsTests(TestCase):
             STORAGE_PREFIX_ENV_VAR: "",
         },
     )
-    @patch("apollo.integrations.gcs.gcs_base_reader_writer.Client")
+    @patch(
+        "apollo.integrations.azure_blob.azure_blob_base_reader_writer.BlobServiceClient"
+    )
     @patch.object(AgentUtils, "temp_file_path")
     def test_download(self, mock_temp_file_path, mock_client_type):
         tmp_path = "/tmp/temp.data"
         mock_temp_file_path.return_value = tmp_path
-        mock_client_type.return_value = self._mock_client
+        self._mock_service_client.get_blob_client.return_value = self._mock_blob_client
+        mock_client_type.from_connection_string.return_value = self._mock_service_client
 
         file_key = "file.txt"
-        with patch("builtins.open", mock_open()) as open_file_mock:
+        with patch("builtins.open", mock_open()):
             result = self._agent.execute_operation(
                 "storage",
                 "download_file",
@@ -268,26 +304,30 @@ class StorageGcsTests(TestCase):
                 credentials={},
             )
         self.assertIsNone(result.result.get(ATTRIBUTE_NAME_ERROR))
-        open_file_mock.assert_called_once_with(tmp_path, "rb")
 
-        self._mock_bucket.blob.assert_called_with(file_key)
-        self._mock_blob.download_to_filename.assert_called_with(tmp_path)
+        self._mock_service_client.get_blob_client.assert_called_once_with(
+            container=_TEST_BUCKET_NAME, blob=file_key
+        )
+        self._mock_blob_client.download_blob.assert_called_once_with()
         self.assertTrue(mock_temp_file_path.called_once())
 
     @patch.dict(
         os.environ,
         {STORAGE_BUCKET_NAME_ENV_VAR: _TEST_BUCKET_NAME},
     )
-    @patch("apollo.integrations.gcs.gcs_base_reader_writer.Client")
+    @patch(
+        "apollo.integrations.azure_blob.azure_blob_base_reader_writer.BlobServiceClient"
+    )
     @patch.object(AgentUtils, "temp_file_path")
     def test_download_default_prefix(self, mock_temp_file_path, mock_client_type):
         tmp_path = "/tmp/temp.data"
         mock_temp_file_path.return_value = tmp_path
-        mock_client_type.return_value = self._mock_client
+        self._mock_service_client.get_blob_client.return_value = self._mock_blob_client
+        mock_client_type.from_connection_string.return_value = self._mock_service_client
         expected_prefix = f"{STORAGE_PREFIX_DEFAULT_VALUE}/"
 
         file_key = "file.txt"
-        with patch("builtins.open", mock_open()) as open_file_mock:
+        with patch("builtins.open", mock_open()):
             result = self._agent.execute_operation(
                 "storage",
                 "download_file",
@@ -301,8 +341,9 @@ class StorageGcsTests(TestCase):
                 credentials={},
             )
         self.assertIsNone(result.result.get(ATTRIBUTE_NAME_ERROR))
-        open_file_mock.assert_called_once_with(tmp_path, "rb")
 
-        self._mock_bucket.blob.assert_called_with(f"{expected_prefix}{file_key}")
-        self._mock_blob.download_to_filename.assert_called_with(tmp_path)
+        self._mock_service_client.get_blob_client.assert_called_once_with(
+            container=_TEST_BUCKET_NAME, blob=f"{expected_prefix}{file_key}"
+        )
+        self._mock_blob_client.download_blob.assert_called_once_with()
         self.assertTrue(mock_temp_file_path.called_once())

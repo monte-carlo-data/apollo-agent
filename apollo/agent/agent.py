@@ -3,10 +3,17 @@ import os
 import sys
 import time
 from contextlib import contextmanager
+from datetime import datetime
 from typing import Any, Dict, Optional
 
-from apollo.agent.env_vars import HEALTH_ENV_VARS, IS_REMOTE_UPGRADABLE_ENV_VAR
+from apollo.agent.env_vars import (
+    HEALTH_ENV_VARS,
+    IS_REMOTE_UPGRADABLE_ENV_VAR,
+    PRE_SIGNED_URL_RESPONSE_EXPIRATION_SECONDS_DEFAULT_VALUE,
+    PRE_SIGNED_URL_RESPONSE_EXPIRATION_SECONDS_ENV_VAR,
+)
 from apollo.agent.evaluation_utils import AgentEvaluationUtils
+from apollo.agent.platform import AgentPlatformProvider
 from apollo.agent.log_context import AgentLogContext
 from apollo.agent.logging_utils import LoggingUtils
 from apollo.agent.constants import (
@@ -27,6 +34,7 @@ from apollo.agent.settings import VERSION, BUILD_NUMBER
 from apollo.agent.updater import AgentUpdater
 from apollo.agent.utils import AgentUtils
 from apollo.integrations.base_proxy_client import BaseProxyClient
+from apollo.integrations.storage.storage_proxy_client import StorageProxyClient
 from apollo.interfaces.agent_response import AgentResponse
 from apollo.interfaces.cloudrun.metadata_service import GCP_PLATFORM_INFO_KEY_IMAGE
 from apollo.validators.validate_network import ValidateNetwork
@@ -37,9 +45,7 @@ logger = logging.getLogger(__name__)
 class Agent:
     def __init__(self, logging_utils: LoggingUtils):
         self._logging_utils = logging_utils
-        self._platform = PLATFORM_GENERIC
-        self._platform_info = {}
-        self._updater: Optional[AgentUpdater] = None
+        self._platform_provider: Optional[AgentPlatformProvider] = None
         self._log_context: Optional[AgentLogContext] = None
 
     @property
@@ -47,11 +53,11 @@ class Agent:
         """
         The name of the platform running this agent, for example: Generic, AWS, GCP, etc.
         """
-        return self._platform
-
-    @platform.setter
-    def platform(self, platform: str):
-        self._platform = platform
+        return (
+            self._platform_provider.platform
+            if self._platform_provider
+            else PLATFORM_GENERIC
+        )
 
     @property
     def platform_info(self) -> Optional[Dict]:
@@ -59,19 +65,21 @@ class Agent:
         Dictionary containing platform specific information, it could be container information like versions or
         some other settings relevant to the container.
         """
-        return self._platform_info
-
-    @platform_info.setter
-    def platform_info(self, platform_info: Optional[Dict]):
-        self._platform_info = platform_info
+        return (
+            self._platform_provider.platform_info if self._platform_provider else None
+        )
 
     @property
     def updater(self) -> Optional[AgentUpdater]:
-        return self._updater
+        return self._platform_provider.updater if self._platform_provider else None
 
-    @updater.setter
-    def updater(self, updater: Optional[AgentUpdater]):
-        self._updater = updater
+    @property
+    def platform_provider(self) -> Optional[AgentPlatformProvider]:
+        return self._platform_provider
+
+    @platform_provider.setter
+    def platform_provider(self, value: Optional[AgentPlatformProvider]):
+        self._platform_provider = value
 
     @property
     def log_context(self) -> Optional[AgentLogContext]:
@@ -81,15 +89,19 @@ class Agent:
     def log_context(self, log_context: Optional[AgentLogContext]):
         self._log_context = log_context
 
-    def health_information(self, trace_id: Optional[str]) -> AgentHealthInformation:
+    def health_information(
+        self, trace_id: Optional[str], full: bool = False
+    ) -> AgentHealthInformation:
         """
         Returns platform and environment information about the agent:
         - version
         - build
         - platform
-        - env (some relevant env information like sys.version or vars like PYTHON_VERSION and MCD_*)
+        - env (some relevant env information like `sys.version` or vars like PYTHON_VERSION and MCD_*)
         - specific platform information set using `platform_info` setter
         - the received value for `trace_id` if any
+        :param trace_id: The optional trace id to include back in the response.
+        :param full: If true extra information like outbound IP address will be included, defaults to false.
         :return: an `AgentHealthInformation` object that can be converted to JSON.
         """
         with self._inject_log_context("health_information", trace_id):
@@ -100,21 +112,27 @@ class Agent:
                     operation_name="health_information",
                 ),
             )
-            if self._updater:
-                if self._platform_info is None:
-                    self._platform_info = {}
-                self._platform_info[
+            platform_info = {**(self.platform_info or {})}
+            if self.updater:
+                platform_info[
                     GCP_PLATFORM_INFO_KEY_IMAGE
-                ] = self._updater.get_current_image(self._platform_info)
+                ] = self.updater.get_current_image()
 
         return AgentHealthInformation(
             version=VERSION,
             build=BUILD_NUMBER,
-            platform=self._platform,
+            platform=self.platform,
             env=self._env_dictionary(),
-            platform_info=self._platform_info,
+            platform_info=platform_info,
             trace_id=trace_id,
+            extra=self._extra_health_information() if full else None,
         )
+
+    @staticmethod
+    def _extra_health_information():
+        return {
+            "outbound_ip_address": AgentUtils.get_outbound_ip_address(),
+        }
 
     def validate_tcp_open_connection(
         self,
@@ -155,7 +173,7 @@ class Agent:
         port_str: Optional[str],
         timeout_str: Optional[str],
         trace_id: Optional[str] = None,
-    ):
+    ) -> AgentResponse:
         """
         Checks if telnet connection is usable.
         :param host: Host to check, will raise `BadRequestError` if None.
@@ -182,6 +200,30 @@ class Agent:
                 host, port_str, timeout_str, trace_id
             )
 
+    def get_outbound_ip_address(
+        self,
+        trace_id: Optional[str] = None,
+    ) -> AgentResponse:
+        """
+        Returns the public IP address used by the agent for outbound connections.
+        :param trace_id: Optional trace ID received from the client that will be included in the response, if present.
+        """
+        with self._inject_log_context("get_outbound_ip_address", trace_id):
+            logger.info(
+                "Get Outbound IP Address request received",
+                extra=self._logging_utils.build_extra(
+                    trace_id=trace_id,
+                    operation_name="get_outbound_ip_address",
+                ),
+            )
+            return AgentResponse(
+                {
+                    "outbound_ip_address": AgentUtils.get_outbound_ip_address(),
+                },
+                200,
+                trace_id,
+            )
+
     def update(
         self,
         trace_id: Optional[str],
@@ -205,8 +247,75 @@ class Agent:
                     **kwargs,
                 )
                 return AgentUtils.agent_ok_response(result, trace_id)
-            except Exception:
+            except Exception:  # noqa
                 return AgentUtils.agent_response_for_last_exception("Update failed:")
+
+    def get_update_logs(
+        self,
+        trace_id: Optional[str],
+        start_time: datetime,
+        limit: int,
+    ) -> AgentResponse:
+        """
+        Returns up to `limit` log events from the updater after the given datetime.
+        This method checks if there's an agent updater installed in `agent.updater` property and that
+        the env var `MCD_AGENT_IS_REMOTE_UPGRADABLE` is set to `true`.
+        The returned response is dictionary with an "events" attribute containing the
+        list of dictionaries returned by the agent updater implementation.
+        """
+        with self._inject_log_context("get_update_logs", trace_id):
+            try:
+                logger.info(
+                    "update logs requested",
+                    extra=self._logging_utils.build_extra(
+                        trace_id=trace_id,
+                        operation_name="get_update_logs",
+                        extra={
+                            "start_time": start_time.isoformat(),
+                            "limit": limit,
+                        },
+                    ),
+                )
+                updater = self._check_updates_enabled()
+                events = updater.get_update_logs(
+                    start_time=start_time,
+                    limit=limit,
+                )
+                return AgentUtils.agent_ok_response(
+                    {
+                        "events": events,
+                    },
+                    trace_id,
+                )
+            except Exception:  # noqa
+                return AgentUtils.agent_response_for_last_exception(
+                    "get_update_logs failed:"
+                )
+
+    def get_infra_details(self, trace_id: Optional[str]) -> AgentResponse:
+        """
+        Returns the infrastructure details returned by the `infra_provider` set on this agent.
+        An error is returned if no infra_provider is set.
+        """
+        with self._inject_log_context("get_infra_details", trace_id):
+            try:
+                logger.info("infra_details requested")
+                if not self._platform_provider:
+                    raise AgentConfigurationError("No platform_provider set")
+                details = self._platform_provider.get_infra_details()
+                return AgentUtils.agent_ok_response(details, trace_id)
+            except Exception:  # noqa
+                return AgentUtils.agent_response_for_last_exception(
+                    "get_infra_details failed:"
+                )
+
+    def _check_updates_enabled(self) -> AgentUpdater:
+        if not self.updater:
+            raise AgentConfigurationError("No updater configured")
+        upgradable = os.getenv(IS_REMOTE_UPGRADABLE_ENV_VAR, "false").lower() == "true"
+        if not upgradable:
+            raise AgentConfigurationError("Remote upgrades are disabled for this agent")
+        return self.updater
 
     def _perform_update(
         self,
@@ -215,17 +324,11 @@ class Agent:
         timeout_seconds: Optional[int],
         **kwargs,  # type: ignore
     ) -> Dict:
-        if not self._updater:
-            raise AgentConfigurationError("No updater configured")
-
-        upgradable = os.getenv(IS_REMOTE_UPGRADABLE_ENV_VAR, "false").lower() == "true"
-        if not upgradable:
-            raise AgentConfigurationError("Remote upgrades are disabled for this agent")
-
+        updater = self._check_updates_enabled()
         log_payload = self._logging_utils.build_extra(
             trace_id=trace_id,
             operation_name="update",
-            extra={"timeout": timeout_seconds, **kwargs},
+            extra={"timeout": timeout_seconds, "image": image, **kwargs},
         )
         logger.info(
             "Update requested",
@@ -234,8 +337,7 @@ class Agent:
 
         update_result: Dict
         try:
-            update_result = self._updater.update(
-                platform_info=self._platform_info,
+            update_result = updater.update(
                 image=image,
                 timeout_seconds=timeout_seconds,
                 **kwargs,
@@ -274,7 +376,8 @@ class Agent:
         and then the list of commands in the operation are executed on the client object.
         :param connection_type: for example "bigquery"
         :param operation_name: operation name, just for logging purposes
-        :param operation_dict: the required dictionary containing the definition of the operation to run, if None an error will be raised
+        :param operation_dict: the required dictionary containing the definition of the operation to run,
+            if None an error will be raised.
         :param credentials: the optional credentials dictionary
         :return: the result of executing the given operation
         """
@@ -284,7 +387,7 @@ class Agent:
             )
         try:
             operation = AgentOperation.from_dict(operation_dict)
-        except Exception:
+        except Exception:  # noqa
             logger.exception("Failed to read operation")
             return AgentUtils.agent_response_for_last_exception(
                 prefix="Failed to read operation:", status_code=400
@@ -293,16 +396,24 @@ class Agent:
         with self._inject_log_context(
             f"{connection_type}/{operation_name}", operation.trace_id
         ):
+            response: Optional[AgentResponse] = None
             client: Optional[BaseProxyClient] = None
             try:
                 client = ProxyClientFactory.get_proxy_client(
-                    connection_type, credentials, operation.skip_cache, self._platform
+                    connection_type, credentials, operation.skip_cache, self.platform
                 )
-                return self._execute_client_operation(
+                response = self._execute_client_operation(
                     connection_type, client, operation_name, operation
                 )
-            except Exception:
+                return response
+            except Exception:  # noqa
                 return AgentUtils.agent_response_for_last_exception(client=client)
+            finally:
+                # discard clients that raised exceptions, clients like Redshift keep failing after an error
+                if (response is None or response.is_error) and not operation.skip_cache:
+                    ProxyClientFactory.dispose_proxy_client(
+                        connection_type, credentials, operation.skip_cache
+                    )
 
     def _execute_client_operation(
         self,
@@ -330,7 +441,22 @@ class Agent:
                 dict(elapsed_time=time.time() - start_time),
             ),
         )
-        return AgentResponse(result or {}, 200, operation.trace_id)
+        response = AgentResponse(result or {}, 200, operation.trace_id)
+        if operation.can_use_pre_signed_url():
+            size = response.calculate_result_size()
+            if operation.should_use_pre_signed_url(size):
+                key = f"responses/{operation.trace_id}"
+                storage_client = StorageProxyClient(self.platform)
+                storage_client.write(key=key, obj_to_write=response.serialize_result())
+                expiration_seconds = int(
+                    os.getenv(
+                        PRE_SIGNED_URL_RESPONSE_EXPIRATION_SECONDS_ENV_VAR,
+                        PRE_SIGNED_URL_RESPONSE_EXPIRATION_SECONDS_DEFAULT_VALUE,
+                    )
+                )
+                url = storage_client.generate_presigned_url(key, expiration_seconds)
+                response.use_location(url)
+        return response
 
     @staticmethod
     def _execute(

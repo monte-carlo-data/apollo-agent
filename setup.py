@@ -5,7 +5,7 @@ from typing import List, Optional
 from setuptools import setup, find_packages
 
 
-def parse_requirements(file_name: Optional[str] = "requirements.txt") -> List[str]:
+def parse_requirements(file_name: Optional[str] = "requirements.in") -> List[str]:
     return distutils.text_file.TextFile(
         filename=str(Path(__file__).with_name(file_name))  # type: ignore
     ).readlines()

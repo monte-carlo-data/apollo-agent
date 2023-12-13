@@ -45,11 +45,13 @@ class GcpUpdaterTests(TestCase):
     @patch("apollo.interfaces.cloudrun.cloudrun_updater.run_v2.ServicesClient")
     @patch("apollo.interfaces.cloudrun.cloudrun_updater.run_v2.UpdateServiceRequest")
     def test_updater(self, cloudrun_update_request_mock, cloudrun_client_mock):
-        updater = CloudRunUpdater()
-        platform_info = {
-            GCP_PLATFORM_INFO_KEY_SERVICE_NAME: "test-agent",
-            GCP_PLATFORM_INFO_KEY_REGION: "projects/prj-id/regions/us-east2",
-        }
+        updater = CloudRunUpdater(
+            {
+                GCP_PLATFORM_INFO_KEY_SERVICE_NAME: "test-agent",
+                GCP_PLATFORM_INFO_KEY_REGION: "projects/prj-id/regions/us-east2",
+            }
+        )
+
         image_old = "montecarlodata/agent:0.0.8-cloudrun"
         image = "montecarlodata/agent:0.0.9-cloudrun"
 
@@ -85,9 +87,7 @@ class GcpUpdaterTests(TestCase):
         mock_client.update_service.return_value = operation_mock
         operation_mock.result.return_value = updated_service_mock
 
-        result = updater.update(
-            platform_info=platform_info, image=image, timeout_seconds=20
-        )
+        result = updater.update(image=image, timeout_seconds=20)
         # assert that we updated the image in the service passed to update service
         self.assertEqual(image, service_mock.template.containers[0].image)
         self.assertEqual(image, service_mock.template.containers[0].env[0].value)

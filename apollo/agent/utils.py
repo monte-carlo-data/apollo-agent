@@ -1,10 +1,10 @@
 import os
 import sys
-import tempfile
 import traceback
 import uuid
-from datetime import datetime
-from typing import Optional, Dict, List, BinaryIO, Any
+from typing import Optional, Dict, List, BinaryIO, Any, Tuple
+
+import requests
 
 from apollo.agent.constants import (
     ATTRIBUTE_NAME_ERROR,
@@ -12,11 +12,14 @@ from apollo.agent.constants import (
     ATTRIBUTE_NAME_STACK_TRACE,
     ATTRIBUTE_NAME_ERROR_TYPE,
     ATTRIBUTE_VALUE_REDACTED,
-    ATTRIBUTE_NAME_TYPE,
-    ATTRIBUTE_NAME_DATA,
-    ATTRIBUTE_VALUE_TYPE_DATETIME,
+    ATTRIBUTE_NAME_ERROR_ATTRS,
 )
-from apollo.agent.env_vars import TEMP_PATH_ENV_VAR, DEFAULT_TEMP_PATH
+from apollo.agent.env_vars import (
+    TEMP_PATH_ENV_VAR,
+    DEFAULT_TEMP_PATH,
+    CHECK_OUTBOUND_IP_ADDRESS_URL_ENV_VAR,
+    CHECK_OUTBOUND_IP_ADDRESS_URL_DEFAULT_VALUE,
+)
 from apollo.integrations.base_proxy_client import BaseProxyClient
 from apollo.interfaces.agent_response import AgentResponse
 
@@ -27,7 +30,9 @@ class AgentUtils:
     """
 
     @staticmethod
-    def agent_ok_response(result: Dict, trace_id: Optional[str] = None):
+    def agent_ok_response(
+        result: Dict, trace_id: Optional[str] = None
+    ) -> AgentResponse:
         return AgentResponse(result, 200, trace_id)
 
     @classmethod
@@ -37,7 +42,7 @@ class AgentUtils:
         status_code: int = 200,
         trace_id: Optional[str] = None,
         client: Optional[BaseProxyClient] = None,
-    ):
+    ) -> AgentResponse:
         return AgentResponse(
             cls.response_for_last_exception(prefix=prefix, client=client),
             status_code,
@@ -51,7 +56,7 @@ class AgentUtils:
         stack_trace: Optional[List] = None,
         status_code: int = 200,
         trace_id: Optional[str] = None,
-    ):
+    ) -> AgentResponse:
         return AgentResponse(
             cls._response_for_error(message, stack_trace=stack_trace),
             status_code,
@@ -70,11 +75,13 @@ class AgentUtils:
         if prefix:
             error = f"{prefix} {error}"
         stack_trace = traceback.format_tb(last_value.__traceback__)  # type: ignore
+        error_type, error_attrs = cls._get_error_details(last_value, client)  # type: ignore
         return cls._response_for_error(
             error,
             exception_message=exception_message,
             stack_trace=stack_trace,
-            error_type=cls._get_error_type(last_value, client),  # type: ignore
+            error_type=error_type,
+            error_attrs=error_attrs,
         )
 
     @staticmethod
@@ -119,21 +126,24 @@ class AgentUtils:
             return value
 
     @staticmethod
-    def serialize_value(value: Any) -> Any:
-        if isinstance(value, datetime):
-            return {
-                ATTRIBUTE_NAME_TYPE: ATTRIBUTE_VALUE_TYPE_DATETIME,
-                ATTRIBUTE_NAME_DATA: value.isoformat(),
-            }
-        return value
+    def get_outbound_ip_address() -> str:
+        url = os.getenv(
+            CHECK_OUTBOUND_IP_ADDRESS_URL_ENV_VAR,
+            CHECK_OUTBOUND_IP_ADDRESS_URL_DEFAULT_VALUE,
+        )
+        response = requests.get(url)
+        # truncate the response, we don't want to return a full webpage if the url is wrong or not working
+        return response.content.decode("utf-8")[:20].strip() if response.content else ""
 
     @staticmethod
-    def _get_error_type(
+    def _get_error_details(
         error: Exception, client: Optional[BaseProxyClient] = None
-    ) -> Optional[str]:
+    ) -> Tuple[Optional[str], Optional[Dict]]:
         if client:
-            return client.get_error_type(error)
-        return None
+            return client.get_error_type(error), client.get_error_extra_attributes(
+                error
+            )
+        return None, None
 
     @staticmethod
     def _response_for_error(
@@ -141,6 +151,7 @@ class AgentUtils:
         exception_message: Optional[str] = None,
         stack_trace: Optional[List] = None,
         error_type: Optional[str] = None,
+        error_attrs: Optional[Dict] = None,
     ) -> Dict:
         response: Dict[str, Any] = {
             ATTRIBUTE_NAME_ERROR: message,
@@ -151,4 +162,6 @@ class AgentUtils:
             response[ATTRIBUTE_NAME_STACK_TRACE] = stack_trace
         if error_type:
             response[ATTRIBUTE_NAME_ERROR_TYPE] = error_type
+        if error_attrs:
+            response[ATTRIBUTE_NAME_ERROR_ATTRS] = error_attrs
         return response
