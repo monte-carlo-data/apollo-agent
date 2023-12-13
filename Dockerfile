@@ -98,3 +98,36 @@ ARG build_number="0"
 RUN echo $code_version,$build_number > ./apollo/agent/version
 
 CMD [ "apollo.interfaces.lambda_function.handler.lambda_handler" ]
+
+FROM mcr.microsoft.com/azure-functions/python:4-python3.11 AS azure
+
+ENV AzureWebJobsScriptRoot=/home/site/wwwroot \
+    AzureFunctionsJobHost__Logging__Console__IsEnabled=true
+
+RUN apt update
+# install git as we need it for the direct oscrypto dependency
+# this is a temporary workaround and it should be removed once we update oscrypto to 1.3.1+
+# see: https://community.snowflake.com/s/article/Python-Connector-fails-to-connect-with-LibraryNotFoundError-Error-detecting-the-version-of-libcrypto
+RUN apt install git -y
+
+# TODO: check how to install these libraries in the Azure image
+# Azure database clients uses pyodbc which requires unixODBC and 'ODBC Driver 17 for SQL Server'
+#RUN apt-get update \
+#    && apt-get install -y gnupg gnupg2 gnupg1 curl apt-transport-https \
+#    && curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add - \
+#    && curl https://packages.microsoft.com/config/debian/10/prod.list > /etc/apt/sources.list.d/mssql-release.list \
+#    && apt-get update \
+#    && ACCEPT_EULA=Y apt-get install -y msodbcsql17 unixodbc unixodbc-dev
+
+COPY requirements.txt /
+COPY requirements-azure.txt /
+RUN pip install -r /requirements.txt -r /requirements-azure.txt
+
+COPY apollo /home/site/wwwroot/apollo
+
+# the files under apollo/interfaces/azure like function_app.py must be in the root folder of the app
+COPY apollo/interfaces/azure /home/site/wwwroot
+
+ARG code_version="local"
+ARG build_number="0"
+RUN echo $code_version,$build_number > /home/site/wwwroot/apollo/agent/version
