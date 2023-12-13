@@ -47,10 +47,10 @@ class AwsPlatformProvider(AgentPlatformProvider):
 
     def get_infra_details(self) -> Dict:
         """
-        Returns a dictionary with infrastructure information only if CloudFormation is in use,
-        the dictionary contains the following attributes:
-        - template: the TemplateBody from the CloudFormation template.
-        - parameters: the "Parameters" attribute from the CloudFormation stack details.
+        Returns a dictionary with infrastructure information, the dictionary contains the following attributes:
+        - template: the TemplateBody from the CloudFormation template. Only returned when CloudFormation is in use.
+        - parameters: the "Parameters" attribute from the CloudFormation stack details if CloudFormation is in use, if
+            not it returns the value for MemorySize and ConcurrentExecutions from the lambda settings.
         """
         if self.is_cloudformation:
             return CloudFormationUtils.get_infra_details()
