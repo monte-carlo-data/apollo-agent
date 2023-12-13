@@ -19,6 +19,13 @@ from apollo.interfaces.lambda_function.direct_updater import LambdaDirectUpdater
 
 
 class AwsPlatformProvider(AgentPlatformProvider):
+    """
+    AWS Platform provider that supports:
+    - Access to CloudWatch logs.
+    - CloudFormation Updater if MCD_AGENT_WRAPPER_TYPE env var is "CLOUDFORMATION"
+    - Direct Updater if MCD_AGENT_WRAPPER_TYPE env var is not "CLOUDFORMATION".
+    """
+
     _epoch = datetime.utcfromtimestamp(0).astimezone(timezone.utc)
 
     @property
