@@ -131,3 +131,6 @@ COPY apollo/interfaces/azure /home/site/wwwroot
 ARG code_version="local"
 ARG build_number="0"
 RUN echo $code_version,$build_number > /home/site/wwwroot/apollo/agent/version
+
+# required for the verify-version-in-docker-image step in circle-ci
+WORKDIR /home/site/wwwroot
