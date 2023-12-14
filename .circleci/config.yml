@@ -81,7 +81,8 @@ jobs:
             python -m venv .venv
             . .venv/bin/activate
             pip install --no-cache-dir --upgrade pip
-            pip install --no-cache-dir -r requirements.txt -r requirements-dev.txt -r requirements-cloudrun.txt -r requirements-lambda.txt -r requirements-azure.txt
+            pip install --no-cache-dir -r requirements.txt -r requirements-dev.txt -r requirements-cloudrun.txt -r requirements-lambda.txt
+            pip install azure-functions azure-functions-durable
       - run:
           name: 'Run black / pyright'
           command: |
