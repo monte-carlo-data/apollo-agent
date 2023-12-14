@@ -19,7 +19,7 @@ class CloudFormationUtils:
         return cast(BaseClient, boto3.client("cloudformation"))
 
     @staticmethod
-    def get_stack_id():
+    def get_stack_id() -> str:
         stack_id = os.getenv(CLOUDFORMATION_STACK_ID_ENV_VAR)
         if not stack_id:
             raise AgentConfigurationError(
@@ -38,3 +38,15 @@ class CloudFormationUtils:
     @classmethod
     def get_stack_status(cls, client: BaseClient) -> str:
         return cls.get_stack_details(client=client)["Stacks"][0]["StackStatus"]
+
+    @classmethod
+    def get_infra_details(cls) -> Dict:
+        client = cls.get_cloudformation_client()
+        stack_id = cls.get_stack_id()
+
+        template = client.get_template(StackName=stack_id).get("TemplateBody")
+        parameters = cls.get_stack_parameters(client)
+        return {
+            "template": template,
+            "parameters": parameters,
+        }

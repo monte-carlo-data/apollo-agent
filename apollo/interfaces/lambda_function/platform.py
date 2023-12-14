@@ -5,15 +5,27 @@ from typing import Dict, Optional, List, cast
 import boto3
 
 from apollo.agent.constants import PLATFORM_AWS
-from apollo.agent.env_vars import CLOUDFORMATION_LOG_GROUP_ID_ENV_VAR
+from apollo.agent.env_vars import (
+    CLOUDWATCH_LOG_GROUP_ID_ENV_VAR,
+    AGENT_WRAPPER_TYPE_ENV_VAR,
+    WRAPPER_TYPE_CLOUDFORMATION,
+)
 from apollo.agent.models import AgentConfigurationError
 from apollo.agent.platform import AgentPlatformProvider
 from apollo.agent.updater import AgentUpdater
 from apollo.interfaces.lambda_function.cf_updater import LambdaCFUpdater
 from apollo.interfaces.lambda_function.cf_utils import CloudFormationUtils
+from apollo.interfaces.lambda_function.direct_updater import LambdaDirectUpdater
 
 
-class CFPlatformProvider(AgentPlatformProvider):
+class AwsPlatformProvider(AgentPlatformProvider):
+    """
+    AWS Platform provider that supports:
+    - Access to CloudWatch logs.
+    - CloudFormation Updater if MCD_AGENT_WRAPPER_TYPE env var is "CLOUDFORMATION"
+    - Direct Updater if MCD_AGENT_WRAPPER_TYPE env var is not "CLOUDFORMATION".
+    """
+
     _epoch = datetime.utcfromtimestamp(0).astimezone(timezone.utc)
 
     @property
@@ -25,28 +37,25 @@ class CFPlatformProvider(AgentPlatformProvider):
         return PLATFORM_AWS
 
     @property
+    def is_cloudformation(self) -> bool:
+        wrapper_type = os.getenv(AGENT_WRAPPER_TYPE_ENV_VAR)
+        return wrapper_type == WRAPPER_TYPE_CLOUDFORMATION
+
+    @property
     def updater(self) -> AgentUpdater:
-        return LambdaCFUpdater()
+        return LambdaCFUpdater() if self.is_cloudformation else LambdaDirectUpdater()
 
     def get_infra_details(self) -> Dict:
         """
-        Returns a dictionary with infrastructure information, containing the following attributes:
-        - template: the TemplateBody from the CloudFormation template.
-        - parameters: the "Parameters" attribute from the CloudFormation stack details.
+        Returns a dictionary with infrastructure information, the dictionary contains the following attributes:
+        - template: the TemplateBody from the CloudFormation template. Only returned when CloudFormation is in use.
+        - parameters: the "Parameters" attribute from the CloudFormation stack details if CloudFormation is in use, if
+            not it returns the value for MemorySize and ConcurrentExecutions from the lambda settings.
         """
-        client = CloudFormationUtils.get_cloudformation_client()
-        stack_id = CloudFormationUtils.get_stack_id()
-
-        template = client.get_template(StackName=stack_id).get("TemplateBody")
-        parameters = CloudFormationUtils.get_stack_parameters(client)
-        return {
-            "template": template,
-            "parameters": parameters,
-        }
-
-    @classmethod
-    def millis_since_1970(cls, dt: datetime) -> int:
-        return int((dt - cls._epoch).total_seconds() * 1000)
+        if self.is_cloudformation:
+            return CloudFormationUtils.get_infra_details()
+        else:
+            return LambdaDirectUpdater.get_infra_details()
 
     @classmethod
     def parse_datetime(
@@ -70,10 +79,10 @@ class CFPlatformProvider(AgentPlatformProvider):
         Returns a dictionary with an "events" attribute containing all events returned by CloudWatch
         with the specified restrictions.
         """
-        log_group_arn = os.getenv(CLOUDFORMATION_LOG_GROUP_ID_ENV_VAR)
+        log_group_arn = os.getenv(CLOUDWATCH_LOG_GROUP_ID_ENV_VAR)
         if not log_group_arn:
             raise AgentConfigurationError(
-                f"Missing {CLOUDFORMATION_LOG_GROUP_ID_ENV_VAR} environment variable"
+                f"Missing {CLOUDWATCH_LOG_GROUP_ID_ENV_VAR} environment variable"
             )
 
         start_time = self.parse_datetime(
@@ -88,9 +97,9 @@ class CFPlatformProvider(AgentPlatformProvider):
         if pattern:
             filter_params["filterPattern"] = pattern
         if start_time:
-            filter_params["startTime"] = self.millis_since_1970(start_time)
+            filter_params["startTime"] = self._millis_since_1970(start_time)
         if end_time:
-            filter_params["endTime"] = self.millis_since_1970(end_time)
+            filter_params["endTime"] = self._millis_since_1970(end_time)
 
         logs_client = boto3.client("logs")
         all_events: List[Dict] = []
@@ -119,10 +128,10 @@ class CFPlatformProvider(AgentPlatformProvider):
         Returns a dictionary with a "query_id" with the ID of the query, results can be obtained using
         get_logs_query_results.
         """
-        log_group_arn = os.getenv(CLOUDFORMATION_LOG_GROUP_ID_ENV_VAR)
+        log_group_arn = os.getenv(CLOUDWATCH_LOG_GROUP_ID_ENV_VAR)
         if not log_group_arn:
             raise AgentConfigurationError(
-                f"Missing {CLOUDFORMATION_LOG_GROUP_ID_ENV_VAR} environment variable"
+                f"Missing {CLOUDWATCH_LOG_GROUP_ID_ENV_VAR} environment variable"
             )
 
         start_time = cast(
@@ -139,8 +148,8 @@ class CFPlatformProvider(AgentPlatformProvider):
             "queryString": query,
             "logGroupIdentifiers": [log_group_arn],
             "limit": limit,
-            "startTime": self.millis_since_1970(start_time),
-            "endTime": self.millis_since_1970(end_time),
+            "startTime": self._millis_since_1970(start_time),
+            "endTime": self._millis_since_1970(end_time),
         }
 
         logs_client = boto3.client("logs")
@@ -187,3 +196,7 @@ class CFPlatformProvider(AgentPlatformProvider):
             ],
             "status": result.get("status"),
         }
+
+    @classmethod
+    def _millis_since_1970(cls, dt: datetime) -> int:
+        return int((dt - cls._epoch).total_seconds() * 1000)

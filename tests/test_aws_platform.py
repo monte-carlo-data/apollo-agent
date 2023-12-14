@@ -5,21 +5,23 @@ from unittest.mock import patch, Mock, ANY, call
 
 from apollo.agent.agent import Agent
 from apollo.agent.constants import ATTRIBUTE_NAME_ERROR, ATTRIBUTE_NAME_RESULT
+from apollo.agent.env_vars import AWS_LAMBDA_FUNCTION_NAME_ENV_VAR
 from apollo.agent.logging_utils import LoggingUtils
-from apollo.interfaces.lambda_function.cf_platform import CFPlatformProvider
+from apollo.interfaces.lambda_function.platform import AwsPlatformProvider
 
 
-class TestCFPlatform(TestCase):
+class TestAwsPlatform(TestCase):
     @patch("boto3.client")
     @patch.dict(
         os.environ,
         {
             "MCD_STACK_ID": "arn:stack_id",
+            "MCD_AGENT_WRAPPER_TYPE": "CLOUDFORMATION",
         },
     )
-    def test_get_infra_details(self, mock_boto_client):
+    def test_get_infra_details_cloudformation(self, mock_boto_client):
         agent = Agent(LoggingUtils())
-        agent.platform_provider = CFPlatformProvider()
+        agent.platform_provider = AwsPlatformProvider()
 
         mock_client = Mock()
         mock_boto_client.return_value = mock_client
@@ -55,10 +57,43 @@ class TestCFPlatform(TestCase):
     @patch("boto3.client")
     @patch.dict(
         os.environ,
+        {
+            AWS_LAMBDA_FUNCTION_NAME_ENV_VAR: "test_function",
+        },
+    )
+    def test_get_infra_details_no_cloudformation(self, mock_boto_client):
+        agent = Agent(LoggingUtils())
+        agent.platform_provider = AwsPlatformProvider()
+
+        mock_client = Mock()
+        mock_boto_client.return_value = mock_client
+        mock_client.get_function.return_value = {
+            "Configuration": {
+                "MemorySize": 123,
+            },
+            "Concurrency": {
+                "ReservedConcurrentExecutions": 12,
+            },
+        }
+
+        response = agent.get_infra_details("123")
+        result = response.result.get(ATTRIBUTE_NAME_RESULT)
+        self.assertIsNone(result.get(ATTRIBUTE_NAME_ERROR))
+        self.assertEqual(
+            {
+                "MemorySize": 123,
+                "ConcurrentExecutions": 12,
+            },
+            result.get("parameters"),
+        )
+
+    @patch("boto3.client")
+    @patch.dict(
+        os.environ,
         {"MCD_LOG_GROUP_ID": "arn:log_group"},
     )
     def test_filter_logs(self, mock_boto_client):
-        platform_provider = CFPlatformProvider()
+        platform_provider = AwsPlatformProvider()
 
         expected_events = [
             {"ts": 1, "message": "abc"},
@@ -88,7 +123,7 @@ class TestCFPlatform(TestCase):
         {"MCD_LOG_GROUP_ID": "arn:log_group"},
     )
     def test_filter_logs_paging(self, mock_boto_client):
-        platform_provider = CFPlatformProvider()
+        platform_provider = AwsPlatformProvider()
 
         expected_events_1 = [
             {"ts": 1, "message": "abc"},
@@ -146,7 +181,7 @@ class TestCFPlatform(TestCase):
         {"MCD_LOG_GROUP_ID": "arn:log_group"},
     )
     def test_logs_start_query(self, mock_boto_client):
-        platform_provider = CFPlatformProvider()
+        platform_provider = AwsPlatformProvider()
 
         expected_query_id = "123"
         mock_client = Mock()
@@ -176,7 +211,7 @@ class TestCFPlatform(TestCase):
         {"MCD_LOG_GROUP_ID": "arn:log_group"},
     )
     def test_logs_query_results(self, mock_boto_client):
-        platform_provider = CFPlatformProvider()
+        platform_provider = AwsPlatformProvider()
 
         query_id = "123"
         mock_client = Mock()
