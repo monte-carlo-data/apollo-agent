@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 _DEFAULT_TOKEN_EXPIRATION_SECONDS = 60 * 5  # 5 minutes
 
 
-def _generate_jwt(
+def generate_jwt(
     user_name: str,
     client_id: str,
     secret_id: str,
@@ -107,7 +107,7 @@ class TableauProxyClient(BaseProxyClient):
         return self
 
     def _sign_in(self, expiration_seconds: int):
-        token = _generate_jwt(
+        token = generate_jwt(
             user_name=self._user_name,
             client_id=self._client_id,
             secret_id=self._secret_id,

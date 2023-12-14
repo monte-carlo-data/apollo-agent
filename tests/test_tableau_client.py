@@ -40,7 +40,7 @@ class TableauTests(TestCase):
 
     @patch("apollo.integrations.tableau.tableau_proxy_client.JwtAuth")
     @patch("apollo.integrations.tableau.tableau_proxy_client.Server")
-    @patch("apollo.integrations.tableau.tableau_proxy_client._generate_jwt")
+    @patch("apollo.integrations.tableau.tableau_proxy_client.generate_jwt")
     def test_metadata_query(
         self,
         mock_jwt_gen: MagicMock,
@@ -82,7 +82,7 @@ class TableauTests(TestCase):
 
     @patch("apollo.integrations.tableau.tableau_proxy_client.JwtAuth")
     @patch("apollo.integrations.tableau.tableau_proxy_client.Server")
-    @patch("apollo.integrations.tableau.tableau_proxy_client._generate_jwt")
+    @patch("apollo.integrations.tableau.tableau_proxy_client.generate_jwt")
     @patch("requests.request")
     def test_api_request(
         self, mock_request, mock_jwt_gen, mock_server_init, mock_creds_init

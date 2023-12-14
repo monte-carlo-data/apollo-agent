@@ -98,6 +98,8 @@ googleapis-common-protos==1.60.0
     # via google-api-core
 gunicorn==21.2.0
     # via -r requirements.in
+hdbcli==2.18.27
+    # via -r requirements.in
 httplib2==0.22.0
     # via
     #   google-api-python-client
