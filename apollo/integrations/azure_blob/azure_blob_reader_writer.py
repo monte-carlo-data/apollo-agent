@@ -23,7 +23,9 @@ class AzureBlobReaderWriter(AzureBlobBaseReaderWriter):
             )
         super().__init__(
             bucket_name=bucket_name,
-            connection_string=kwargs.get("connection_string", ""),
+            connection_string=kwargs.get(
+                "connection_string", os.getenv("AzureWebJobsStorage", "")
+            ),
             prefix=prefix,
             **kwargs,
         )
