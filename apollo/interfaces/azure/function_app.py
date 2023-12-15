@@ -10,8 +10,10 @@ from azure.durable_functions import (
 )
 from azure.functions import WsgiMiddleware
 
+from apollo.interfaces.azure.platform import AzurePlatformProvider
 from apollo.interfaces.generic import main
 
+main.agent.platform_provider = AzurePlatformProvider()
 wsgi_middleware = WsgiMiddleware(main.app.wsgi_app)
 
 app = df.DFApp(http_auth_level=func.AuthLevel.FUNCTION)
