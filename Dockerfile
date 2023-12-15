@@ -121,7 +121,7 @@ RUN apt install git -y
 
 COPY requirements.txt /
 COPY requirements-azure.txt /
-RUN pip install -r /requirements.txt -r /requirements-azure.txt
+RUN pip install --no-cache-dir -r /requirements.txt -r /requirements-azure.txt
 
 COPY apollo /home/site/wwwroot/apollo
 
@@ -131,6 +131,10 @@ COPY apollo/interfaces/azure /home/site/wwwroot
 ARG code_version="local"
 ARG build_number="0"
 RUN echo $code_version,$build_number > /home/site/wwwroot/apollo/agent/version
+
+# delete MS provided SBOM as it's outdated after the packages we installed
+# docker scout will find vulnerabilities anyway by scanning the image
+RUN rm -rf /usr/local/_manifest
 
 # required for the verify-version-in-docker-image step in circle-ci
 WORKDIR /home/site/wwwroot
