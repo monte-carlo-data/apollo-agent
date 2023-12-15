@@ -10,7 +10,7 @@ from azure.durable_functions import (
 )
 from azure.functions import WsgiMiddleware
 
-from apollo.interfaces.azure.platform import AzurePlatformProvider
+from apollo.interfaces.azure.azure_platform import AzurePlatformProvider
 from apollo.interfaces.generic import main
 
 main.agent.platform_provider = AzurePlatformProvider()
