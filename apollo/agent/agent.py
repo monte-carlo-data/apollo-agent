@@ -36,7 +36,7 @@ from apollo.agent.utils import AgentUtils
 from apollo.integrations.base_proxy_client import BaseProxyClient
 from apollo.integrations.storage.storage_proxy_client import StorageProxyClient
 from apollo.interfaces.agent_response import AgentResponse
-from apollo.interfaces.cloudrun.metadata_service import GCP_PLATFORM_INFO_KEY_IMAGE
+from apollo.interfaces.cloudrun.metadata_service import PLATFORM_INFO_KEY_IMAGE
 from apollo.validators.validate_network import ValidateNetwork
 
 logger = logging.getLogger(__name__)
@@ -115,7 +115,7 @@ class Agent:
             platform_info = {**(self.platform_info or {})}
             if self.updater:
                 platform_info[
-                    GCP_PLATFORM_INFO_KEY_IMAGE
+                    PLATFORM_INFO_KEY_IMAGE
                 ] = self.updater.get_current_image()
 
         return AgentHealthInformation(
@@ -352,7 +352,7 @@ class Agent:
     @staticmethod
     def _env_dictionary() -> Dict:
         env: Dict[str, Optional[str]] = {
-            "sys_version": sys.version,
+            "PYTHON_SYS_VERSION": sys.version,
         }
         env.update(
             {
