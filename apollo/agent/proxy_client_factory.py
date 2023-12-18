@@ -138,6 +138,16 @@ def _get_proxy_client_azure_database(
     return AzureDatabaseProxyClient(credentials=credentials, platform=platform)
 
 
+def _get_proxy_client_sap_hana(
+    credentials: Optional[Dict], platform: str, **kwargs  # type: ignore
+) -> BaseProxyClient:
+    from apollo.integrations.db.sap_hana_proxy_client import (
+        SAPHanaProxyClient,
+    )
+
+    return SAPHanaProxyClient(credentials=credentials, platform=platform)
+
+
 def _get_proxy_client_tableau(
     credentials: Optional[Dict], platform: str, **kwargs  # type: ignore
 ) -> BaseProxyClient:
@@ -171,6 +181,7 @@ _CLIENT_FACTORY_MAPPING = {
     "azure-dedicated-sql-pool": _get_proxy_client_azure_database,
     "azure-sql-database": _get_proxy_client_azure_database,
     "tableau": _get_proxy_client_tableau,
+    "sap-hana": _get_proxy_client_sap_hana,
 }
 
 
