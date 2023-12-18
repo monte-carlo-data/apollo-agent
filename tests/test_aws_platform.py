@@ -80,10 +80,16 @@ class TestAwsPlatform(TestCase):
         result = response.result.get(ATTRIBUTE_NAME_RESULT)
         self.assertIsNone(result.get(ATTRIBUTE_NAME_ERROR))
         self.assertEqual(
-            {
-                "MemorySize": 123,
-                "ConcurrentExecutions": 12,
-            },
+            [
+                {
+                    "ParameterKey": "MemorySize",
+                    "ParameterValue": 123,
+                },
+                {
+                    "ParameterKey": "ConcurrentExecutions",
+                    "ParameterValue": 12,
+                },
+            ],
             result.get("parameters"),
         )
 
