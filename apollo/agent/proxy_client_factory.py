@@ -158,6 +158,16 @@ def _get_proxy_client_tableau(
     return TableauProxyClient(credentials=credentials, platform=platform)
 
 
+def _get_proxy_client_power_bi(
+    credentials: Optional[Dict], platform: str, **kwargs  # type: ignore
+) -> BaseProxyClient:
+    from apollo.integrations.powerbi.powerbi_proxy_client import (
+        PowerBiProxyClient,
+    )
+
+    return PowerBiProxyClient(credentials=credentials, platform=platform)
+
+
 @dataclass
 class ProxyClientCacheEntry:
     created_time: datetime
@@ -182,6 +192,7 @@ _CLIENT_FACTORY_MAPPING = {
     "azure-sql-database": _get_proxy_client_azure_database,
     "tableau": _get_proxy_client_tableau,
     "sap-hana": _get_proxy_client_sap_hana,
+    "power-bi": _get_proxy_client_power_bi,
 }
 
 
