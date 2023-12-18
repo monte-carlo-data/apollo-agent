@@ -143,10 +143,17 @@ class LambdaDirectUpdater(AgentUpdater):
         configuration = function.get("Configuration", {})
         concurrency = function.get("Concurrency", {})
         return {
-            "parameters": {
-                "MemorySize": configuration.get("MemorySize"),
-                "ConcurrentExecutions": concurrency.get("ReservedConcurrentExecutions"),
-            }
+            "template": "",
+            "parameters": [
+                {
+                    "ParameterKey": "MemorySize",
+                    "ParameterValue": configuration.get("MemorySize"),
+                },
+                {
+                    "ParameterKey": "ConcurrentExecutions",
+                    "ParameterValue": concurrency.get("ReservedConcurrentExecutions"),
+                },
+            ],
         }
 
     @staticmethod
