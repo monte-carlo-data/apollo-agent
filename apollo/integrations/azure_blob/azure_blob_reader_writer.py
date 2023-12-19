@@ -27,14 +27,21 @@ class AzureBlobReaderWriter(AzureBlobBaseReaderWriter):
                 f"Bucket not configured, {STORAGE_BUCKET_NAME_ENV_VAR} env var expected"
             )
         account_name = os.getenv(STORAGE_ACCOUNT_NAME_ENV_VAR)
-        if not account_name:
-            raise AgentConfigurationError(
-                f"Storage account not configured, {STORAGE_ACCOUNT_NAME_ENV_VAR} env var expected"
+        if account_name:
+            connection_string = account_name
+            credential = DefaultAzureCredential()
+        else:
+            connection_string = kwargs.get(
+                "connection_string", os.getenv("AzureWebJobsStorage", "")
             )
+            credential = None
+            # raise AgentConfigurationError(
+            #     f"Storage account not configured, {STORAGE_ACCOUNT_NAME_ENV_VAR} env var expected"
+            # )
         super().__init__(
             bucket_name=bucket_name,
-            connection_string=account_name,
+            connection_string=connection_string,
             prefix=prefix,
-            credential=DefaultAzureCredential(),
+            credential=credential,
             **kwargs,
         )
