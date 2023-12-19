@@ -278,7 +278,7 @@ class Agent:
                         },
                     ),
                 )
-                updater = self._check_updates_enabled()
+                updater = self._check_updater()
                 events = updater.get_update_logs(
                     start_time=start_time,
                     limit=limit,
@@ -311,12 +311,9 @@ class Agent:
                     "get_infra_details failed:"
                 )
 
-    def _check_updates_enabled(self) -> AgentUpdater:
+    def _check_updater(self) -> AgentUpdater:
         if not self.updater:
             raise AgentConfigurationError("No updater configured")
-        upgradable = os.getenv(IS_REMOTE_UPGRADABLE_ENV_VAR, "false").lower() == "true"
-        if not upgradable:
-            raise AgentConfigurationError("Remote upgrades are disabled for this agent")
         return self.updater
 
     def _perform_update(
@@ -326,7 +323,11 @@ class Agent:
         timeout_seconds: Optional[int],
         **kwargs,  # type: ignore
     ) -> Dict:
-        updater = self._check_updates_enabled()
+        updater = self._check_updater()
+        upgradable = os.getenv(IS_REMOTE_UPGRADABLE_ENV_VAR, "false").lower() == "true"
+        if not upgradable:
+            raise AgentConfigurationError("Remote upgrades are disabled for this agent")
+
         log_payload = self._logging_utils.build_extra(
             trace_id=trace_id,
             operation_name="update",
