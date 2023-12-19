@@ -12,20 +12,38 @@ attrs==23.1.0
     # via
     #   -c requirements.txt
     #   aiohttp
+azure-core==1.29.5
+    # via
+    #   -c requirements.txt
+    #   azure-identity
 azure-functions==1.17.0
     # via
     #   -r requirements-azure.in
     #   azure-functions-durable
 azure-functions-durable==1.2.8
     # via -r requirements-azure.in
+azure-identity==1.14.0
+    # via
+    #   -c requirements.txt
+    #   -r requirements-azure.in
 certifi==2023.11.17
     # via
     #   -c requirements.txt
     #   requests
+cffi==1.16.0
+    # via
+    #   -c requirements.txt
+    #   cryptography
 charset-normalizer==3.3.2
     # via
     #   -c requirements.txt
     #   requests
+cryptography==41.0.7
+    # via
+    #   -c requirements.txt
+    #   azure-identity
+    #   msal
+    #   pyjwt
 frozenlist==1.4.0
     # via
     #   aiohttp
@@ -37,12 +55,38 @@ idna==3.6
     #   -c requirements.txt
     #   requests
     #   yarl
+msal==1.26.0
+    # via
+    #   -c requirements.txt
+    #   azure-identity
+    #   msal-extensions
+msal-extensions==1.1.0
+    # via
+    #   -c requirements.txt
+    #   azure-identity
 multidict==6.0.4
     # via
     #   aiohttp
     #   yarl
 orderedmultidict==1.0.1
     # via furl
+packaging==23.2
+    # via
+    #   -c requirements.txt
+    #   msal-extensions
+portalocker==2.8.2
+    # via
+    #   -c requirements.txt
+    #   msal-extensions
+pycparser==2.21
+    # via
+    #   -c requirements.txt
+    #   cffi
+pyjwt[crypto]==2.8.0
+    # via
+    #   -c requirements.txt
+    #   msal
+    #   pyjwt
 python-dateutil==2.8.2
     # via
     #   -c requirements.txt
@@ -50,13 +94,20 @@ python-dateutil==2.8.2
 requests==2.31.0
     # via
     #   -c requirements.txt
+    #   azure-core
     #   azure-functions-durable
+    #   msal
 six==1.16.0
     # via
     #   -c requirements.txt
+    #   azure-core
     #   furl
     #   orderedmultidict
     #   python-dateutil
+typing-extensions==4.9.0
+    # via
+    #   -c requirements.txt
+    #   azure-core
 urllib3==2.0.6
     # via
     #   -c requirements.txt
