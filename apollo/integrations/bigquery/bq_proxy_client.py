@@ -3,7 +3,6 @@ from typing import Optional, Dict
 
 import googleapiclient.discovery
 from google.oauth2.service_account import Credentials
-from google.auth.transport.requests import Request
 
 from apollo.integrations.base_proxy_client import BaseProxyClient
 

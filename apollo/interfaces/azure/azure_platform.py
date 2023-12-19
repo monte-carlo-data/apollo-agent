@@ -13,7 +13,7 @@ class AzurePlatformProvider(AgentPlatformProvider):
 
     @property
     def platform_info(self) -> Dict:
-        return dict(os.environ)
+        return {}
 
     @property
     def updater(self) -> Optional[AgentUpdater]:
