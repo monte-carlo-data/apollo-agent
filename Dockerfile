@@ -110,14 +110,16 @@ RUN apt update
 # see: https://community.snowflake.com/s/article/Python-Connector-fails-to-connect-with-LibraryNotFoundError-Error-detecting-the-version-of-libcrypto
 RUN apt install git -y
 
-# TODO: check how to install these libraries in the Azure image
-# Azure database clients uses pyodbc which requires unixODBC and 'ODBC Driver 17 for SQL Server'
-#RUN apt-get update \
-#    && apt-get install -y gnupg gnupg2 gnupg1 curl apt-transport-https \
-#    && curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add - \
-#    && curl https://packages.microsoft.com/config/debian/10/prod.list > /etc/apt/sources.list.d/mssql-release.list \
-#    && apt-get update \
-#    && ACCEPT_EULA=Y apt-get install -y msodbcsql17 unixodbc unixodbc-dev
+# Azure database clients and sql-server uses pyodbc which requires unixODBC and 'ODBC Driver 17 for SQL Server'
+# Microsoft's python 3.11 base image comes with msodbcsql18 but we are expecting to use the msodbcsql17 driver so need
+# to install specific versions of some libraries and allow Docker to downgrade some pre-installed packages.
+RUN apt-get update \
+   && apt-get install -y gnupg gnupg2 gnupg1 curl apt-transport-https \
+   && curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add - \
+   && curl https://packages.microsoft.com/config/debian/10/prod.list > /etc/apt/sources.list.d/mssql-release.list \
+   && apt-get update \
+   && ACCEPT_EULA=Y apt-get install -y msodbcsql17 unixodbc=2.3.11-1 \
+   unixodbc-dev=2.3.11-1 odbcinst1debian2=2.3.11-1 odbcinst=2.3.11-1 --allow-downgrades
 
 COPY requirements.txt /
 COPY requirements-azure.txt /
