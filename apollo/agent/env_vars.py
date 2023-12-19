@@ -52,8 +52,11 @@ PRE_SIGNED_URL_RESPONSE_EXPIRATION_SECONDS_ENV_VAR = (
 # Default value for expiration in seconds of pre-signed URL responses
 PRE_SIGNED_URL_RESPONSE_EXPIRATION_SECONDS_DEFAULT_VALUE = str(60 * 60 * 1)  # 1 hour
 
-# Environment variable used to configure the bucket name for both S3 and GCS
+# Environment variable used to configure the bucket name for S3, GCS and Azure
 STORAGE_BUCKET_NAME_ENV_VAR = "MCD_STORAGE_BUCKET_NAME"
+
+# Environment variable used to configure the storage account name for Azure
+STORAGE_ACCOUNT_NAME_ENV_VAR = "MCD_STORAGE_ACCOUNT_NAME"
 
 # Environment variable used to initialize Flask application with debug=True and to set log level to debug
 # Used only by the generic interface when `interfaces/generic/main.py` is executed.
