@@ -17,25 +17,13 @@ class AzurePlatformProvider(AgentPlatformProvider):
 
     @property
     def platform_info(self) -> Dict:
-        return {}
+        return dict(os.environ)
 
     @property
     def updater(self) -> Optional[AgentUpdater]:
         return AzureUpdater()
 
     def get_infra_details(self) -> Dict:
-        client = ResourceManagementClient(
-            DefaultAzureCredential(), "a8874c8e-8e44-44c2-8e3d-8ff3174cac1d"
-        )
-        resource = client.resources.get(
-            resource_group_name="mrostan-dev-agent-rg",
-            resource_provider_namespace="Microsoft.Web",
-            parent_resource_path="sites",
-            resource_type="",
-            resource_name="mrostan-dev-agent",
-            api_version="2022-03-01",
-        )
-
         return {
-            "resource": resource.as_dict(),
+            "resource": AzureUpdater.get_resource(),
         }
