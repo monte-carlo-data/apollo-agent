@@ -33,7 +33,7 @@ class AzureBlobReaderWriter(AzureBlobBaseReaderWriter):
     Additionally, the identity needs to have access to the storage account, for example by having the
     `Storage Blob Data Contributor` role assigned at the storage account level.
     For checking if public access is disabled to the container, we need to authenticate with a shared key
-    and thus the identity needs to have the `Storage Account Contributor` role assigned, also at the
+    and thus the identity needs to have the `Storage Account Key Operator Service Role` role assigned, also at the
     storage account level.
     """
 
@@ -81,8 +81,8 @@ class AzureBlobReaderWriter(AzureBlobBaseReaderWriter):
         # https://learn.microsoft.com/en-us/rest/api/storageservices/authorize-with-azure-active-directory#
         # permissions-for-blob-service-operations ("Get Container ACL" not supported).
 
-        # first get the shared keys for the storage account, this requires the
-        # "Storage Account Contributor" Role
+        # first get the shared keys for the storage account, this requires one of
+        # "Storage Account Key Operator Service Role" or "Storage Account Contributor" roles.
         st_client = self._get_storage_management_client()
         resource_group = AzureUtils.get_resource_group()
         keys = st_client.storage_accounts.list_keys(

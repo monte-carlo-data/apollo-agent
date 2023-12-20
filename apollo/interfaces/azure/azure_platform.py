@@ -7,6 +7,11 @@ from apollo.interfaces.azure.azure_updater import AzureUpdater
 
 
 class AzurePlatformProvider(AgentPlatformProvider):
+    """
+    Azure Platform Provider, uses AzureUpdater to update and return the infra details (that is currently
+    returning the Azure Resource for the function.
+    """
+
     @property
     def platform(self) -> str:
         return PLATFORM_AZURE
