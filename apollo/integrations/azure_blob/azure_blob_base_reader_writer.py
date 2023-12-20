@@ -292,11 +292,16 @@ class AzureBlobBaseReaderWriter(BaseStorageClient):
         :return: True if public access is off and False otherwise.
         """
 
-        container_client = self._client.get_container_client(self._bucket_name)
+        container_client = self._get_client_to_get_access_policy().get_container_client(
+            self._bucket_name
+        )
         access_policy = container_client.get_container_access_policy()
         return (
             "public_access" in access_policy and access_policy["public_access"] is None
         )
+
+    def _get_client_to_get_access_policy(self) -> BlobServiceClient:
+        return self._client
 
     def _generate_sas_token(
         self, blob_client: BlobClient, expiry: datetime, permission: BlobSasPermissions
