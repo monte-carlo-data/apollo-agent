@@ -41,6 +41,15 @@ Get key to access function:
 func azure functionapp list-functions <FUNCTION_NAME> --show-keys
 ```
 
+Assign a managed identity to the function, first create a user-managed identity:
+```shell
+az identity create --resource-group <RESOURCE_GROUP> --name <IDENTITY_NAME> 
+```
+and then assign it to the function:
+```shell
+az webapp identity assign --resource-group <RESOURCE_GROUP> --name <FUNCTION_NAME> --identities <IDENTITY_RESOURCE_FULL_ID>
+```
+
 Is this actually required? it is according to docs but everything seems to be working fine without it:
 ```shell
 az functionapp config appsettings set --name <FUNCTION_NAME> --resource-group <RESOURCE_GROUP> --settings AzureWebJobsFeatureFlags=EnableWorkerIndexing

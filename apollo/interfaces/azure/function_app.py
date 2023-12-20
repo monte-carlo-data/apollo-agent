@@ -24,6 +24,11 @@ app = df.DFApp(http_auth_level=func.AuthLevel.FUNCTION)
 async def execute_async_operation(
     req: func.HttpRequest, client: DurableOrchestrationClient
 ):
+    """
+    Entry point for triggering async operations, please note the path is the same but prefixed with async.
+    It returns the id for the request in the attribute "__mcd_request_id__", this id can be be used to check
+    the status with the `async/api/v1/status` endpoint.
+    """
     connection_type = req.route_params.get("connection_type")
     operation_name = req.route_params.get("operation_name")
     client_input = {
@@ -51,6 +56,11 @@ async def execute_async_operation(
 async def get_async_operation_status(
     req: func.HttpRequest, client: DurableOrchestrationClient
 ):
+    """
+    Uses the Azure Durable Functions runtime to get the status for a given request.
+    The only required path parameter is "instance_id" that is expected to be the value returned by a
+    request to `async/api/v1/agent/execute` in __mcd_request_id__.
+    """
     instance_id = req.route_params.get("instance_id", "")
     status = await client.get_status(instance_id=instance_id)
     response_payload = {
@@ -82,6 +92,9 @@ def agent_operation_orchestrator(context: DurableOrchestrationContext):
 
 @app.activity_trigger(input_name="body")
 def agent_operation(body: Dict):
+    """
+    Called by the Azure Durable Functions runtime to perform the operation.
+    """
     agent_response = main.execute_agent_operation(
         connection_type=body["connection_type"],
         operation_name=body["operation_name"],
@@ -93,4 +106,7 @@ def agent_operation(body: Dict):
 @app.http_type(http_type="wsgi")
 @app.route(route="/api/{*route}")
 def agent_api(req: func.HttpRequest, context: func.Context):
+    """
+    Endpoint to execute sync operations.
+    """
     return wsgi_middleware.handle(req, context)
