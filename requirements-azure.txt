@@ -14,8 +14,8 @@ attrs==23.1.0
     #   aiohttp
 azure-common==1.1.28
     # via
+    #   -c requirements.txt
     #   azure-mgmt-resource
-    #   azure-mgmt-storage
 azure-core==1.29.5
     # via
     #   -c requirements.txt
@@ -33,11 +33,9 @@ azure-identity==1.14.0
     #   -r requirements-azure.in
 azure-mgmt-core==1.4.0
     # via
+    #   -c requirements.txt
     #   azure-mgmt-resource
-    #   azure-mgmt-storage
 azure-mgmt-resource==23.0.1
-    # via -r requirements-azure.in
-azure-mgmt-storage==21.1.0
     # via -r requirements-azure.in
 certifi==2023.11.17
     # via
@@ -72,7 +70,6 @@ isodate==0.6.1
     # via
     #   -c requirements.txt
     #   azure-mgmt-resource
-    #   azure-mgmt-storage
 msal==1.24.1
     # via
     #   -c requirements.txt

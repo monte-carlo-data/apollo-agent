@@ -14,11 +14,18 @@ attrs==23.1.0
     # via
     #   cattrs
     #   looker-sdk
+azure-common==1.1.28
+    # via azure-mgmt-storage
 azure-core==1.29.5
     # via
     #   azure-identity
+    #   azure-mgmt-core
     #   azure-storage-blob
 azure-identity==1.14.0
+    # via -r requirements.in
+azure-mgmt-core==1.4.0
+    # via azure-mgmt-storage
+azure-mgmt-storage==21.1.0
     # via -r requirements.in
 azure-storage-blob==12.18.3
     # via -r requirements.in
@@ -116,7 +123,9 @@ idna==3.6
     #   requests
     #   snowflake-connector-python
 isodate==0.6.1
-    # via azure-storage-blob
+    # via
+    #   azure-mgmt-storage
+    #   azure-storage-blob
 itsdangerous==2.1.2
     # via flask
 jinja2==3.1.2
