@@ -1,7 +1,9 @@
 import os
+from datetime import datetime
 from typing import Optional
 
 from azure.identity import DefaultAzureCredential
+from azure.storage.blob import BlobClient, BlobSasPermissions, generate_blob_sas
 
 from apollo.agent.env_vars import (
     STORAGE_BUCKET_NAME_ENV_VAR,
@@ -28,16 +30,11 @@ class AzureBlobReaderWriter(AzureBlobBaseReaderWriter):
             )
         account_name = os.getenv(STORAGE_ACCOUNT_NAME_ENV_VAR)
         if account_name:
-            connection_string = account_name
+            connection_string = f"https://{account_name}.blob.core.windows.net"
             credential = DefaultAzureCredential()
         else:
-            connection_string = kwargs.get(
-                "connection_string", os.getenv("AzureWebJobsStorage", "")
-            )
+            connection_string = kwargs.get("connection_string", "")
             credential = None
-            # raise AgentConfigurationError(
-            #     f"Storage account not configured, {STORAGE_ACCOUNT_NAME_ENV_VAR} env var expected"
-            # )
         super().__init__(
             bucket_name=bucket_name,
             connection_string=connection_string,
@@ -45,3 +42,22 @@ class AzureBlobReaderWriter(AzureBlobBaseReaderWriter):
             credential=credential,
             **kwargs,
         )
+
+    def _generate_sas_token(
+        self, blob_client: BlobClient, expiry: datetime, permission: BlobSasPermissions
+    ):
+        account_name = os.getenv(STORAGE_ACCOUNT_NAME_ENV_VAR)
+        if account_name:
+            return generate_blob_sas(
+                account_name=account_name,
+                user_delegation_key=self._client.get_user_delegation_key(
+                    key_start_time=datetime.utcnow(),
+                    key_expiry_time=expiry,
+                ),
+                container_name=blob_client.container_name,
+                blob_name=blob_client.blob_name,
+                expiry=expiry,
+                permission=permission,
+            )
+        else:
+            return super()._generate_sas_token(blob_client, expiry, permission)

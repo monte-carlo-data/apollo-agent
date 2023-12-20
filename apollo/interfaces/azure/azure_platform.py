@@ -1,8 +1,4 @@
-import os
 from typing import Dict, Optional
-
-from azure.identity import DefaultAzureCredential
-from azure.mgmt.resource import ResourceManagementClient
 
 from apollo.agent.constants import PLATFORM_AZURE
 from apollo.agent.platform import AgentPlatformProvider
@@ -26,4 +22,6 @@ class AzurePlatformProvider(AgentPlatformProvider):
     def get_infra_details(self) -> Dict:
         return {
             "resource": AzureUpdater.get_resource(),
+            "template": {},
+            "parameters": [],
         }
