@@ -2,7 +2,6 @@ import json
 import logging
 import os
 from datetime import datetime
-from io import StringIO
 from typing import List, Dict, Optional, cast
 
 from azure.identity import DefaultAzureCredential
@@ -30,7 +29,7 @@ class AzureUpdater(AgentUpdater):
         parameters = {
             "properties": {"siteConfig": {"linuxFxVersion": f"DOCKER|{image}"}}
         }
-        serialized_parameters = StringIO(json.dumps(parameters))
+        serialized_parameters = json.dumps(parameters).encode("utf-8")
 
         client = self._get_resource_management_client()
         client.resources.begin_update(
