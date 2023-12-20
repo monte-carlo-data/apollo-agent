@@ -11,7 +11,7 @@ GCP_ENV_NAME_SERVICE_NAME = "K_SERVICE"  # https://cloud.google.com/run/docs/con
 GCP_PLATFORM_INFO_KEY_PROJECT_ID = "project-id"
 GCP_PLATFORM_INFO_KEY_REGION = "region"
 GCP_PLATFORM_INFO_KEY_SERVICE_NAME = "service-name"
-GCP_PLATFORM_INFO_KEY_IMAGE = "image"
+PLATFORM_INFO_KEY_IMAGE = "image"
 
 _METADATA_BASE_URL = "http://metadata.google.internal"
 _METADATA_PATH_PROJECT_ID = "/computeMetadata/v1/project/project-id"

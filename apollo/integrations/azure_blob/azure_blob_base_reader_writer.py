@@ -14,6 +14,7 @@ from typing import (
 )
 from urllib.parse import urljoin
 
+from azure.core.credentials import TokenCredential
 from azure.core.exceptions import (
     ClientAuthenticationError,
     ResourceNotFoundError,
@@ -58,13 +59,17 @@ class AzureBlobBaseReaderWriter(BaseStorageClient):
         bucket_name: str,
         connection_string: str,
         prefix: Optional[str] = None,
+        credential: Optional[TokenCredential] = None,
         **kwargs,  # type: ignore
     ):
         super().__init__(prefix=prefix)
         self._bucket_name = bucket_name
-        self._client = BlobServiceClient.from_connection_string(
-            conn_str=connection_string
-        )
+        if credential:
+            self._client = BlobServiceClient(connection_string, credential)
+        else:
+            self._client = BlobServiceClient.from_connection_string(
+                conn_str=connection_string
+            )
 
     @property
     def bucket_name(self) -> str:

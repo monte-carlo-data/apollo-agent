@@ -1,7 +1,12 @@
 import os
 from typing import Optional
 
-from apollo.agent.env_vars import STORAGE_BUCKET_NAME_ENV_VAR
+from azure.identity import DefaultAzureCredential
+
+from apollo.agent.env_vars import (
+    STORAGE_BUCKET_NAME_ENV_VAR,
+    STORAGE_ACCOUNT_NAME_ENV_VAR,
+)
 from apollo.agent.models import AgentConfigurationError
 from apollo.integrations.azure_blob.azure_blob_base_reader_writer import (
     AzureBlobBaseReaderWriter,
@@ -21,9 +26,22 @@ class AzureBlobReaderWriter(AzureBlobBaseReaderWriter):
             raise AgentConfigurationError(
                 f"Bucket not configured, {STORAGE_BUCKET_NAME_ENV_VAR} env var expected"
             )
+        account_name = os.getenv(STORAGE_ACCOUNT_NAME_ENV_VAR)
+        if account_name:
+            connection_string = account_name
+            credential = DefaultAzureCredential()
+        else:
+            connection_string = kwargs.get(
+                "connection_string", os.getenv("AzureWebJobsStorage", "")
+            )
+            credential = None
+            # raise AgentConfigurationError(
+            #     f"Storage account not configured, {STORAGE_ACCOUNT_NAME_ENV_VAR} env var expected"
+            # )
         super().__init__(
             bucket_name=bucket_name,
-            connection_string=kwargs.get("connection_string", ""),
+            connection_string=connection_string,
             prefix=prefix,
+            credential=credential,
             **kwargs,
         )
