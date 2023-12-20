@@ -24,6 +24,7 @@ from azure.storage.blob import (
     BlobSasPermissions,
     BlobServiceClient,
     generate_blob_sas,
+    BlobClient,
 )
 
 from apollo.integrations.storage.base_storage_client import BaseStorageClient
@@ -270,11 +271,8 @@ class AzureBlobBaseReaderWriter(BaseStorageClient):
         blob_client = self._client.get_blob_client(
             container=self._bucket_name, blob=self._apply_prefix(key)  # type: ignore
         )
-        sas_token = generate_blob_sas(
-            account_name=blob_client.credential.account_name,
-            account_key=blob_client.credential.account_key,
-            container_name=blob_client.container_name,
-            blob_name=blob_client.blob_name,
+        sas_token = self._generate_sas_token(
+            blob_client=blob_client,
             expiry=datetime.utcnow() + expiration,
             permission=BlobSasPermissions(read=True),
         )
@@ -293,4 +291,16 @@ class AzureBlobBaseReaderWriter(BaseStorageClient):
         access_policy = container_client.get_container_access_policy()
         return (
             "public_access" in access_policy and access_policy["public_access"] is None
+        )
+
+    def _generate_sas_token(
+        self, blob_client: BlobClient, expiry: datetime, permission: BlobSasPermissions
+    ):
+        return generate_blob_sas(
+            account_name=blob_client.credential.account_name,
+            account_key=blob_client.credential.account_key,
+            container_name=blob_client.container_name,
+            blob_name=blob_client.blob_name,
+            expiry=expiry,
+            permission=permission,
         )
