@@ -21,7 +21,7 @@ class AzurePlatformProvider(AgentPlatformProvider):
 
     def get_infra_details(self) -> Dict:
         return {
-            "resource": AzureUpdater.get_resource(),
+            "resource": AzureUpdater.get_function_resource(),
             "template": {},
             "parameters": [],
         }
