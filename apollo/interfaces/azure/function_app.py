@@ -1,6 +1,13 @@
 import json
 from typing import Dict
 
+from azure.monitor.opentelemetry import configure_azure_monitor
+from opentelemetry import trace
+from opentelemetry.trace import SpanKind
+
+configure_azure_monitor()
+tracer = trace.get_tracer(__name__)
+
 import azure.functions as func
 import azure.durable_functions as df
 from azure.durable_functions import (
@@ -109,4 +116,5 @@ def agent_api(req: func.HttpRequest, context: func.Context):
     """
     Endpoint to execute sync operations.
     """
-    return wsgi_middleware.handle(req, context)
+    with tracer.start_as_current_span("agent_api", kind=SpanKind.SERVER):
+        return wsgi_middleware.handle(req, context)
