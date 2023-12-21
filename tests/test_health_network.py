@@ -2,7 +2,6 @@ import os
 import socket
 import sys
 from telnetlib import Telnet
-from typing import Dict, Optional
 from unittest import TestCase
 from unittest.mock import patch, create_autospec
 
@@ -13,8 +12,6 @@ from apollo.agent.constants import (
     ATTRIBUTE_NAME_RESULT,
 )
 from apollo.agent.logging_utils import LoggingUtils
-from apollo.agent.platform import AgentPlatformProvider
-from apollo.agent.updater import AgentUpdater
 from apollo.agent.utils import AgentUtils
 from apollo.validators.validate_network import _DEFAULT_TIMEOUT_SECS
 from tests.platform import TestPlatformProvider

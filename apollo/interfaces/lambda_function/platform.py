@@ -11,7 +11,7 @@ from apollo.agent.env_vars import (
     WRAPPER_TYPE_CLOUDFORMATION,
 )
 from apollo.agent.models import AgentConfigurationError
-from apollo.agent.platform import AgentPlatformProvider
+from apollo.agent.agent_platform import AgentPlatformProvider
 from apollo.agent.updater import AgentUpdater
 from apollo.interfaces.generic.utils import AgentPlatformUtils
 from apollo.interfaces.lambda_function.cf_updater import LambdaCFUpdater

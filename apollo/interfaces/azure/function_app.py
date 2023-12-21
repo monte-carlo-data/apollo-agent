@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import Dict, Optional
+from typing import Dict
 
 from azure.monitor.opentelemetry import configure_azure_monitor
 
