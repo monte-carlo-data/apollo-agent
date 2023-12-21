@@ -14,7 +14,11 @@ class LoggingUtils:
                 extra[LOG_ATTRIBUTE_TRACE_ID] = trace_id
             return extra
 
+        def filter_extra(extra: Optional[Dict]) -> Optional[Dict]:
+            return extra
+
         self.extra_builder = builder
+        self.extra_filterer = filter_extra
 
     def build_extra(
         self,
@@ -22,4 +26,6 @@ class LoggingUtils:
         operation_name: str,
         extra: Optional[Dict] = None,
     ) -> Dict:
-        return self.extra_builder(trace_id, operation_name, extra or {})
+        return self.extra_builder(
+            trace_id, operation_name, self.extra_filterer(extra) or {}
+        )

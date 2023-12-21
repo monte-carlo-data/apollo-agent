@@ -1,9 +1,14 @@
-from typing import Dict, Optional
+from datetime import datetime, timezone, timedelta
+from typing import Dict, Optional, List, cast
+
+from azure.monitor.query import LogsQueryClient, LogsQueryStatus, LogsQueryPartialResult
 
 from apollo.agent.constants import PLATFORM_AZURE
 from apollo.agent.platform import AgentPlatformProvider
 from apollo.agent.updater import AgentUpdater
+from apollo.integrations.azure_blob.utils import AzureUtils
 from apollo.interfaces.azure.azure_updater import AzureUpdater
+from apollo.interfaces.generic.utils import AgentPlatformUtils
 
 
 class AzurePlatformProvider(AgentPlatformProvider):
@@ -28,3 +33,43 @@ class AzurePlatformProvider(AgentPlatformProvider):
         return {
             "resource": AzureUpdater.get_function_resource(),
         }
+
+    @classmethod
+    def get_logs(
+        cls,
+        query: Optional[str],
+        start_time_str: Optional[str],
+        end_time_str: Optional[str],
+        limit: int,
+    ) -> List[Dict]:
+        start_time = cast(
+            datetime,
+            AgentPlatformUtils.parse_datetime(
+                start_time_str, datetime.now(timezone.utc) - timedelta(minutes=10)
+            ),
+        )
+        end_time = cast(
+            datetime,
+            AgentPlatformUtils.parse_datetime(end_time_str, datetime.now(timezone.utc)),
+        )
+        resource_id = cast(str, AzureUpdater.get_function_resource().get("id"))
+        query_filter = f"| {query}" if query else ""
+        complete_query = (
+            f"traces {query_filter} | project message, customDimensions, timestamp |  take {limit} "
+            f"| order by timestamp desc"
+        )
+
+        logs_client = LogsQueryClient(AzureUtils.get_default_credential())
+        response = logs_client.query_resource(
+            resource_id=resource_id,
+            query=complete_query,
+            timespan=(start_time, end_time),
+        )
+        if isinstance(response, LogsQueryPartialResult):
+            error = response.partial_error
+            data = response.partial_data
+        else:
+            data = response.tables
+
+        rows = data[0].rows if data else []
+        return [dict(row) for row in rows]
