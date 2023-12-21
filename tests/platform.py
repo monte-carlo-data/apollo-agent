@@ -1,6 +1,6 @@
 from typing import Dict, Optional
 
-from apollo.agent.platform import AgentPlatformProvider
+from apollo.agent.agent_platform import AgentPlatformProvider
 from apollo.agent.updater import AgentUpdater
 
 

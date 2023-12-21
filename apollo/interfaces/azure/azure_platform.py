@@ -1,7 +1,7 @@
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Optional, List, cast
 
-from azure.monitor.query import LogsQueryClient, LogsQueryStatus, LogsQueryPartialResult
+from azure.monitor.query import LogsQueryClient, LogsQueryPartialResult
 
 from apollo.agent.constants import PLATFORM_AZURE
 from apollo.agent.agent_platform import AgentPlatformProvider
