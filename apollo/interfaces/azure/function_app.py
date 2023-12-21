@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import Dict
+from typing import Dict, Optional
 
 from azure.monitor.opentelemetry import configure_azure_monitor
 
@@ -129,4 +129,8 @@ def agent_api(req: func.HttpRequest, context: func.Context):
     """
     Endpoint to execute sync operations.
     """
-    return wsgi_middleware.handle(req, context)
+    try:
+        return wsgi_middleware.handle(req, context)
+    except Exception as exc:
+        root_logger.exception(exc)
+        raise
