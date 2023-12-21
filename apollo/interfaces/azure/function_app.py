@@ -1,12 +1,17 @@
 import json
+import logging
 from typing import Dict
 
 from azure.monitor.opentelemetry import configure_azure_monitor
-from opentelemetry import trace
-from opentelemetry.trace import SpanKind
+
+# remove default handlers to prevent duplicate log messages
+# https://learn.microsoft.com/en-us/python/api/overview/azure/monitor-opentelemetry-readme?view=azure-python#logging-issues
+root_logger = logging.getLogger()
+for handler in root_logger.handlers[:]:
+    root_logger.removeHandler(handler)
 
 configure_azure_monitor()
-tracer = trace.get_tracer(__name__)
+# tracer = trace.get_tracer(__name__)
 
 import azure.functions as func
 import azure.durable_functions as df
@@ -116,5 +121,4 @@ def agent_api(req: func.HttpRequest, context: func.Context):
     """
     Endpoint to execute sync operations.
     """
-    with tracer.start_as_current_span("agent_api", kind=SpanKind.SERVER):
-        return wsgi_middleware.handle(req, context)
+    return wsgi_middleware.handle(req, context)
