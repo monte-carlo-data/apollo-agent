@@ -22,7 +22,6 @@ azure-core==1.29.5
     # via
     #   -c requirements.txt
     #   azure-core-tracing-opentelemetry
-    #   azure-identity
     #   azure-mgmt-core
     #   azure-monitor-opentelemetry
     #   azure-monitor-opentelemetry-exporter
@@ -36,10 +35,6 @@ azure-functions==1.17.0
     #   azure-functions-durable
 azure-functions-durable==1.2.8
     # via -r requirements-azure.in
-azure-identity==1.14.0
-    # via
-    #   -c requirements.txt
-    #   -r requirements-azure.in
 azure-mgmt-core==1.4.0
     # via
     #   -c requirements.txt
@@ -57,20 +52,10 @@ certifi==2023.11.17
     #   -c requirements.txt
     #   msrest
     #   requests
-cffi==1.16.0
-    # via
-    #   -c requirements.txt
-    #   cryptography
 charset-normalizer==3.3.2
     # via
     #   -c requirements.txt
     #   requests
-cryptography==41.0.7
-    # via
-    #   -c requirements.txt
-    #   azure-identity
-    #   msal
-    #   pyjwt
 deprecated==1.2.14
     # via opentelemetry-api
 fixedint==0.1.6
@@ -94,15 +79,6 @@ isodate==0.6.1
     #   azure-mgmt-resource
     #   azure-monitor-query
     #   msrest
-msal==1.24.1
-    # via
-    #   -c requirements.txt
-    #   azure-identity
-    #   msal-extensions
-msal-extensions==1.1.0
-    # via
-    #   -c requirements.txt
-    #   azure-identity
 msrest==0.7.1
     # via azure-monitor-opentelemetry-exporter
 multidict==6.0.4
@@ -196,21 +172,7 @@ orderedmultidict==1.0.1
 packaging==23.2
     # via
     #   -c requirements.txt
-    #   msal-extensions
     #   opentelemetry-instrumentation-flask
-portalocker==2.8.2
-    # via
-    #   -c requirements.txt
-    #   msal-extensions
-pycparser==2.21
-    # via
-    #   -c requirements.txt
-    #   cffi
-pyjwt[crypto]==2.8.0
-    # via
-    #   -c requirements.txt
-    #   msal
-    #   pyjwt
 python-dateutil==2.8.2
     # via
     #   -c requirements.txt
@@ -220,7 +182,6 @@ requests==2.31.0
     #   -c requirements.txt
     #   azure-core
     #   azure-functions-durable
-    #   msal
     #   msrest
     #   requests-oauthlib
 requests-oauthlib==1.3.1

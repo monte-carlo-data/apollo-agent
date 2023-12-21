@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 class AzureUpdater(AgentUpdater):
     """
-    Agent updated implementation for Azure Functions.
+    Agent updater implementation for Azure Functions.
     The update operations works by updating the resource using Azure Resource Manager API and setting the new
     value for the "LinuxFxVersion" property that is expected to be "DOCKER|docker.io/org/repo/image:tag".
     """
@@ -40,7 +40,7 @@ class AzureUpdater(AgentUpdater):
         client.resources.begin_update(
             **self._get_function_resource_args(), parameters=serialized_parameters  # type: ignore
         )
-        logger.info("Update complete", extra={"image": image})
+        logger.info("Update triggered", extra={"image": image})
         return {"message": f"Update in progress, image: {image}"}
 
     def get_current_image(self) -> Optional[str]:

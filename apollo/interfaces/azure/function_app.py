@@ -4,7 +4,7 @@ from typing import Dict, Optional
 
 from azure.monitor.opentelemetry import configure_azure_monitor
 
-from apollo.interfaces.generic.log_context import BaseLogContext
+from apollo.interfaces.azure.log_context import AzureLogContext
 
 # remove default handlers to prevent duplicate log messages
 # https://learn.microsoft.com/en-us/python/api/overview/azure/monitor-opentelemetry-readme?view=azure-python#logging-issues
@@ -16,7 +16,7 @@ for handler in root_logger.handlers[:]:
 configure_azure_monitor()
 
 # configure the log context to include the agent context in all log messages
-log_context = BaseLogContext()
+log_context = AzureLogContext()
 log_context.install()
 
 # intentionally imported here after log is initialized
