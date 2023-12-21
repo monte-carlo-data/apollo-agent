@@ -129,4 +129,8 @@ def agent_api(req: func.HttpRequest, context: func.Context):
     """
     Endpoint to execute sync operations.
     """
-    return wsgi_middleware.handle(req, context)
+    try:
+        return wsgi_middleware.handle(req, context)
+    except Exception as exc:
+        root_logger.exception(exc)
+        raise
