@@ -20,19 +20,22 @@ class BaseLogContext(AgentLogContext):
     def install(self):
         root_logger = logging.getLogger()
         for h in root_logger.handlers:
-            h.addFilter(lambda record: self.filter(record))
+            h.addFilter(lambda record: self._filter(record))
 
     def set_agent_context(self, context: Dict):
         self._context = deepcopy(context)
 
-    def filter(self, record: Any) -> Any:
+    def _filter(self, record: Any) -> Any:
         """
         Updates the log record with the agent context
         """
         if not self._context:
             return record
 
-        extra: Dict = getattr(record, self._attr_name, {})
-        extra.update(self._context)
-        setattr(record, self._attr_name, extra)
+        # don't update the attribute if already present, causing a recursion issue in Azure
+        if hasattr(record, self._attr_name):
+            extra: Dict = getattr(record, self._attr_name, {})
+            extra.update(self._context)
+        else:
+            setattr(record, self._attr_name, self._context)
         return record
