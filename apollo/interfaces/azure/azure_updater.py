@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 class AzureUpdater(AgentUpdater):
     """
-    Agent updated implementation for Azure Functions.
+    Agent updater implementation for Azure Functions.
     The update operations works by updating the resource using Azure Resource Manager API and setting the new
     value for the "LinuxFxVersion" property that is expected to be "DOCKER|docker.io/org/repo/image:tag".
     """
