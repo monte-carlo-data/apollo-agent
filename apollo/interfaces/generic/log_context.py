@@ -30,12 +30,19 @@ class BaseLogContext(AgentLogContext):
         Updates the log record with the agent context
         """
         if not self._context:
+            logging.getLogger().warning("NO CONTEXT, RECURSIVE CALL")
             return record
 
-        # don't update the attribute if already present, causing a recursion issue in Azure
-        if hasattr(record, self._attr_name):
-            extra: Dict = getattr(record, self._attr_name, {})
-            extra.update(self._context)
-        else:
-            setattr(record, self._attr_name, self._context)
+        context = self._context
+        self._context = {}
+        try:
+            # don't update the attribute if already present, causing a recursion issue in Azure
+            if hasattr(record, self._attr_name):
+                extra: Dict = getattr(record, self._attr_name, {})
+                extra.update(context)
+            else:
+                setattr(record, self._attr_name, context)
+        finally:
+            self._context = context
+
         return record

@@ -3,6 +3,7 @@ from typing import Tuple, Dict, Optional
 
 from apollo.agent.utils import AgentUtils
 from apollo.interfaces.azure.azure_platform import AzurePlatformProvider
+from apollo.interfaces.azure.log_context import AzureLogContext
 from apollo.interfaces.generic import main
 
 _DEFAULT_LOGS_LIMIT = 1000
@@ -14,12 +15,10 @@ agent = main.agent
 execute_agent_operation = main.execute_agent_operation
 
 
-# Azure is not including complex objects like lists in logs, as we want commands to be logged we're converting it
-# to str here
+# Azure is not including complex objects like lists in logs, as we want for example commands
+# to be logged we're converting it to a json string here.
 def azure_filter_extra(extra: Optional[Dict]) -> Optional[Dict]:
-    if extra and "commands" in extra:
-        return {**extra, "commands": str(extra["commands"])}
-    return extra
+    return AzureLogContext.filter_log_context(extra) if extra else None
 
 
 main.logging_utils.extra_filterer = azure_filter_extra
