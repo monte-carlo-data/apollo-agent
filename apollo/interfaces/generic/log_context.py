@@ -32,15 +32,15 @@ class BaseLogContext(AgentLogContext):
         """
         if not self._context:
             if self._backup_context:
-                logging.getLogger().warning(
-                    f"NO CONTEXT, RECURSIVE CALL: {self._backup_context}"
-                )
+                print(f"NO CONTEXT, RECURSIVE CALL: {self._backup_context}")
+                if hasattr(record, "body"):
+                    print(f"RECURSIVE LOG RECORD: {record.body}")
             return record
 
         self._backup_context = self._context
         self._context = {}
         try:
-            # don't update the attribute if already present, causing a recursion issue in Azure
+            # don't update the attribute if already present
             if hasattr(record, self._attr_name):
                 extra: Dict = getattr(record, self._attr_name, {})
                 extra.update(self._backup_context)
