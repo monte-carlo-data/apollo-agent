@@ -40,7 +40,7 @@ class AzureUpdater(AgentUpdater):
         client.resources.begin_update(
             **self._get_function_resource_args(), parameters=serialized_parameters  # type: ignore
         )
-        logger.info("Update complete", extra={"image": image})
+        logger.info("Update triggered", extra={"image": image})
         return {"message": f"Update in progress, image: {image}"}
 
     def get_current_image(self) -> Optional[str]:

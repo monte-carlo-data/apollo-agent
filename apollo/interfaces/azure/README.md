@@ -14,12 +14,21 @@ az acr create --resource-group <RESOURCE_GROUP> --name <REGISTRY> --sku Basic
 az acr login --name <REGISTRY>
 ```
 
-Docker build, tag and push (update to docker.io if using dockerhub):
+Docker build and tag
 ```shell
 docker build -t agent -f Dockerfile_az --platform linux/amd64 .
 docker tag agent <REGISTRY>.azurecr.io/mcd-agent/agent
-docker push <REGISTRY>.azurecr.io/mcd-agent/agent
 ```
+
+Docker push:
+- If using dockerhub: the easiest way is to push to dev and circleci will automatically push to dockerhub, but you can manually push it:
+  ```shell
+  docker push docker.io/montecarlodata/pre-release-agent:latest-azure
+  ```
+- If using Azure registry:
+  ```shell
+  docker push <REGISTRY>.azurecr.io/mcd-agent/agent
+  ```
 
 Create plan:
 ```shell
@@ -48,11 +57,6 @@ az identity create --resource-group <RESOURCE_GROUP> --name <IDENTITY_NAME>
 and then assign it to the function:
 ```shell
 az webapp identity assign --resource-group <RESOURCE_GROUP> --name <FUNCTION_NAME> --identities <IDENTITY_RESOURCE_FULL_ID>
-```
-
-Is this actually required? it is according to docs but everything seems to be working fine without it:
-```shell
-az functionapp config appsettings set --name <FUNCTION_NAME> --resource-group <RESOURCE_GROUP> --settings AzureWebJobsFeatureFlags=EnableWorkerIndexing
 ```
 
 After updating the docker image:
