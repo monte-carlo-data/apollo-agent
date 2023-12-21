@@ -1,5 +1,4 @@
 import gzip
-import logging
 from datetime import (
     datetime,
     timedelta,
@@ -30,8 +29,6 @@ from azure.storage.blob import (
 
 from apollo.integrations.storage.base_storage_client import BaseStorageClient
 
-logger = logging.getLogger(__name__)
-
 
 def convert_azure_errors(func: Callable):
     """
@@ -43,7 +40,6 @@ def convert_azure_errors(func: Callable):
         try:
             return func(*args, **kwargs)
         except ResourceNotFoundError as e:
-            logger.exception(e)
             raise BaseStorageClient.NotFoundError(str(e)) from e
         except ClientAuthenticationError as e:
             raise BaseStorageClient.PermissionsError(str(e)) from e
@@ -62,7 +58,7 @@ class AzureBlobBaseReaderWriter(BaseStorageClient):
     def __init__(
         self,
         bucket_name: str,
-        connection_string: str,
+        connection_string: Optional[str] = None,
         prefix: Optional[str] = None,
         account_url: Optional[str] = None,
         credential: Optional[TokenCredential] = None,
@@ -72,9 +68,13 @@ class AzureBlobBaseReaderWriter(BaseStorageClient):
         self._bucket_name = bucket_name
         if account_url and credential:
             self._client = BlobServiceClient(account_url, credential)
-        else:
+        elif connection_string:
             self._client = BlobServiceClient.from_connection_string(
                 conn_str=connection_string
+            )
+        else:
+            raise ValueError(
+                "connection_string or account_url/credential are required to connect to Azure Blob Storage"
             )
 
     @property

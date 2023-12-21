@@ -52,7 +52,6 @@ class AzureBlobReaderWriter(AzureBlobBaseReaderWriter):
         self._account_url = f"https://{self._account_name}.blob.core.windows.net"
         super().__init__(
             bucket_name=bucket_name,
-            connection_string="",
             prefix=prefix,
             account_url=self._account_url,
             credential=AzureUtils.get_default_credential(),
