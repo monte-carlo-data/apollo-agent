@@ -4,7 +4,7 @@ from typing import Dict, Optional, List, cast
 from azure.monitor.query import LogsQueryClient, LogsQueryStatus, LogsQueryPartialResult
 
 from apollo.agent.constants import PLATFORM_AZURE
-from apollo.agent.platform import AgentPlatformProvider
+from apollo.agent.agent_platform import AgentPlatformProvider
 from apollo.agent.updater import AgentUpdater
 from apollo.integrations.azure_blob.utils import AzureUtils
 from apollo.interfaces.azure.azure_updater import AzureUpdater
