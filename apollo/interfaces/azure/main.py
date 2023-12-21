@@ -26,7 +26,7 @@ main.logging_utils.extra_filterer = azure_filter_extra
 
 
 @app.route("/api/v1/azure/logs/query", methods=["GET", "POST"])
-def azure_logs_query() -> Tuple[Dict, int]:
+def gcp_logs_list() -> Tuple[Dict, int]:
     """
     Uses Azure Monitor Query client library to return a list of log events.
     https://learn.microsoft.com/en-us/python/api/overview/azure/monitor-query-readme?view=azure-python
@@ -47,10 +47,10 @@ def azure_logs_query() -> Tuple[Dict, int]:
     query: Optional[str] = request_dict.get("query")
 
     logger.info(
-        "azure/logs/query requested",
+        "azure/logs/list requested",
         extra=main.logging_utils.build_extra(
             trace_id=trace_id,
-            operation_name="azure/logs/query",
+            operation_name="azure/logs/list",
             extra=dict(
                 query=query,
                 start_time_str=start_time_str,

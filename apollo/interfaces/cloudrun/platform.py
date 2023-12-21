@@ -4,7 +4,7 @@ from typing import Dict, Optional, List
 from google.cloud.logging_v2 import ASCENDING, Client
 
 from apollo.agent.constants import PLATFORM_GCP
-from apollo.agent.agent_platform import AgentPlatformProvider
+from apollo.agent.platform import AgentPlatformProvider
 from apollo.agent.updater import AgentUpdater
 from apollo.interfaces.cloudrun.cloudrun_updater import CloudRunUpdater
 from apollo.interfaces.cloudrun.metadata_service import (

@@ -13,7 +13,7 @@ from apollo.agent.env_vars import (
     PRE_SIGNED_URL_RESPONSE_EXPIRATION_SECONDS_ENV_VAR,
 )
 from apollo.agent.evaluation_utils import AgentEvaluationUtils
-from apollo.agent.agent_platform import AgentPlatformProvider
+from apollo.agent.platform import AgentPlatformProvider
 from apollo.agent.log_context import AgentLogContext
 from apollo.agent.logging_utils import LoggingUtils
 from apollo.agent.constants import (
