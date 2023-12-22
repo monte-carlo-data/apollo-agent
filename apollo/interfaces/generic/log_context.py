@@ -31,23 +31,10 @@ class BaseLogContext(AgentLogContext):
         Updates the log record with the agent context
         """
         if not self._context:
-            if self._backup_context:
-                print(f"NO CONTEXT, RECURSIVE CALL: {self._backup_context}")
-                if hasattr(record, "body"):
-                    print(f"RECURSIVE LOG RECORD: {record.body}")
             return record
 
-        self._backup_context = self._context
-        self._context = {}
-        try:
-            # don't update the attribute if already present
-            if hasattr(record, self._attr_name):
-                extra: Dict = getattr(record, self._attr_name, {})
-                extra.update(self._backup_context)
-            else:
-                setattr(record, self._attr_name, self._backup_context)
-        finally:
-            self._context = self._backup_context
-            self._backup_context = None
+        extra: Dict = getattr(record, self._attr_name, {})
+        extra.update(self._context)
+        setattr(record, self._attr_name, extra)
 
         return record
