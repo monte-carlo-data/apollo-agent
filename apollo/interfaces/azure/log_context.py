@@ -14,11 +14,12 @@ class AzureLogContext(BaseLogContext):
         # we're converting list and dictionaries to json and anything else to str.
         return {
             key: value
-            if value is None or isinstance(value, (str, float, int, bool))
+            if isinstance(value, (str, float, int, bool))
             else json.dumps(value)
             if isinstance(value, (list, dict, tuple))
             else str(value)
             for key, value in context.items()
+            if value is not None
         }
 
     def _filter(self, record: Any) -> Any:
