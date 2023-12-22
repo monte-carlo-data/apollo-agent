@@ -103,4 +103,5 @@ class AzurePlatformProvider(AgentPlatformProvider):
         )
 
         rows = data[0].rows if data else []
-        return [{key: row[key] for key in row} for row in rows]
+        columns = data[0].columns if data else []
+        return [{key: row[key] for key in columns} for row in rows]
