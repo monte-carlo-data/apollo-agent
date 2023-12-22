@@ -76,7 +76,6 @@ def azure_logs_query() -> Tuple[Dict, int]:
             trace_id=trace_id,
         )
     except Exception as exc:
-        logger.exception("Failed to get azure logs")
         logger.error(f"Failed to get azure logs: {exc}")
         response = AgentUtils.agent_response_for_last_exception(trace_id=trace_id)
 

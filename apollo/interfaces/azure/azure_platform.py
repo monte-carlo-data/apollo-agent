@@ -5,6 +5,7 @@ from typing import Dict, Optional, List, cast
 from azure.monitor.query import LogsQueryClient, LogsQueryStatus, LogsQueryPartialResult
 
 from apollo.agent.constants import PLATFORM_AZURE
+from apollo.agent.models import AgentConfigurationError
 from apollo.agent.platform import AgentPlatformProvider
 from apollo.agent.updater import AgentUpdater
 from apollo.integrations.azure_blob.utils import AzureUtils
@@ -59,7 +60,12 @@ class AzurePlatformProvider(AgentPlatformProvider):
         )
         logger.info("AzurePlatformProvider.get_logs getting resource id")
 
-        resource_id = cast(str, AzureUpdater.get_function_resource().get("id"))
+        resource = AzureUpdater.get_function_resource()
+        resource_id = resource.get("tags", {}).get(
+            "hidden-link: /app-insights-resource-id"
+        )
+        if not resource_id:
+            raise AgentConfigurationError("Unable to get app-insights resource-id")
 
         logger.info(
             "AzurePlatformProvider.get_logs obtained resource id",
@@ -82,11 +88,11 @@ class AzurePlatformProvider(AgentPlatformProvider):
             query=complete_query,
             timespan=(start_time, end_time),
         )
-        if isinstance(response, LogsQueryPartialResult):
-            error = response.partial_error
-            data = response.partial_data
-        else:
-            data = response.tables
+        data = (
+            response.partial_data
+            if isinstance(response, LogsQueryPartialResult)
+            else response.tables
+        )
 
         rows = data[0].rows if data else []
         return [dict(row) for row in rows]
