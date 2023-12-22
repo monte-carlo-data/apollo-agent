@@ -1,3 +1,4 @@
+import json
 import logging
 import traceback
 from typing import Tuple, Dict, Optional
@@ -84,7 +85,7 @@ def azure_logs_query() -> Tuple[Dict, int]:
     return response.result, response.status_code
 
 
-@app.errorhandler(InternalServerError)
+@app.errorhandler(InternalServerError)  # type: ignore
 def handle_internal_server_error(e: InternalServerError):
     error = e.original_exception if e.original_exception else e
     stack_trace = traceback.format_tb(error.__traceback__)  # type: ignore
@@ -97,4 +98,7 @@ def handle_internal_server_error(e: InternalServerError):
     agent_response = AgentUtils.agent_response_for_error(
         f"Internal Server Error: {error}", stack_trace=stack_trace, status_code=500
     )
-    return agent_response.result, agent_response.status_code
+    response = e.get_response()
+    response.data = json.dumps(agent_response.result)  # type: ignore
+    response.content_type = "application/json"
+    return response
