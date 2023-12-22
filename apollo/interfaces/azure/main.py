@@ -1,4 +1,5 @@
 import logging
+import traceback
 from typing import Tuple, Dict, Optional
 
 from flask import request
@@ -86,8 +87,14 @@ def azure_logs_query() -> Tuple[Dict, int]:
 @app.errorhandler(InternalServerError)
 def handle_internal_server_error(e: InternalServerError):
     error = e.original_exception if e.original_exception else e
-    logger.error(f"Internal Server Error: {error}")
+    stack_trace = traceback.format_tb(error.__traceback__)  # type: ignore
+    logger.error(
+        f"Internal Server Error: {error}",
+        extra={
+            "stack_trace": stack_trace,
+        },
+    )
     agent_response = AgentUtils.agent_response_for_error(
-        f"Internal Server Error: {error}", status_code=500
+        f"Internal Server Error: {error}", stack_trace=stack_trace, status_code=500
     )
     return agent_response.result, agent_response.status_code
