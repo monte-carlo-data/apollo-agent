@@ -40,11 +40,10 @@ from azure.durable_functions import (
     DurableOrchestrationClient,
     OrchestrationRuntimeStatus,
 )
-from azure.functions import WsgiMiddleware, HttpResponse
+from azure.functions import WsgiMiddleware
 
 from apollo.interfaces.azure.azure_platform import AzurePlatformProvider
 from apollo.interfaces.azure import main
-from apollo.agent.utils import AgentUtils
 
 main.agent.platform_provider = AzurePlatformProvider()
 main.agent.log_context = log_context

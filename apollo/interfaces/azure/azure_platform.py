@@ -68,6 +68,8 @@ class AzurePlatformProvider(AgentPlatformProvider):
         )
 
         resource = AzureUpdater.get_function_resource()
+
+        # get the id for the Application Insights resource used by this function
         resource_id = resource.get("tags", {}).get(
             "hidden-link: /app-insights-resource-id"
         )
