@@ -19,6 +19,9 @@ configure_azure_monitor()
 log_context = AzureLogContext()
 log_context.install()
 
+# disable annoying logs every time OT logs are sent
+logging.getLogger("azure_monitor.export").setLevel(logging.ERROR)
+
 # intentionally imported here after log is initialized
 import azure.functions as func
 import azure.durable_functions as df
