@@ -4,6 +4,7 @@ from typing import Dict, Optional
 
 from azure.monitor.opentelemetry import configure_azure_monitor
 
+from apollo.agent.utils import AgentUtils
 from apollo.interfaces.azure.log_context import AzureLogContext
 
 # remove default handlers to prevent duplicate log messages
@@ -35,7 +36,7 @@ from azure.durable_functions import (
     DurableOrchestrationClient,
     OrchestrationRuntimeStatus,
 )
-from azure.functions import WsgiMiddleware
+from azure.functions import WsgiMiddleware, HttpResponse
 
 from apollo.interfaces.azure.azure_platform import AzurePlatformProvider
 from apollo.interfaces.azure import main
@@ -137,4 +138,10 @@ def agent_api(req: func.HttpRequest, context: func.Context):
     """
     Endpoint to execute sync operations.
     """
-    return wsgi_middleware.handle(req, context)
+    try:
+        return wsgi_middleware.handle(req, context)
+    except Exception:
+        agent_response = AgentUtils.agent_response_for_last_exception()
+        return HttpResponse(
+            body=json.dumps(agent_response), mimetype="application/json"
+        )
