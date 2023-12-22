@@ -1,8 +1,15 @@
+import json
 import logging
 from datetime import datetime, timezone, timedelta
-from typing import Dict, Optional, List, cast
+from json import JSONDecodeError
+from typing import Dict, Optional, List, cast, Any
 
-from azure.monitor.query import LogsQueryClient, LogsQueryStatus, LogsQueryPartialResult
+from azure.monitor.query import (
+    LogsQueryClient,
+    LogsQueryStatus,
+    LogsQueryPartialResult,
+    LogsTableRow,
+)
 
 from apollo.agent.constants import PLATFORM_AZURE
 from apollo.agent.models import AgentConfigurationError
@@ -83,13 +90,23 @@ class AzurePlatformProvider(AgentPlatformProvider):
             },
         )
 
-        query_filter = f"| {query}" if query else ""
-        complete_query = (
-            f"traces {query_filter} | project timestamp, message, customDimensions"
-            f"| order by timestamp desc"
-            f"| take {limit} "
-            f"| order by timestamp asc"
-        )
+        complete_query = None
+        if query:
+            if query.startswith("traces") or query.startswith("requests"):
+                # we assume this is a full query
+                complete_query = query
+            else:
+                # query could be 'where message like "pattern"'
+                query = f"traces | {query} |"
+        else:
+            query = "traces |"
+        if not complete_query:
+            complete_query = (
+                f"{query} project timestamp, message, customDimensions"
+                f"| order by timestamp desc"
+                f"| take {limit} "
+                f"| order by timestamp asc"
+            )
 
         logs_client = LogsQueryClient(AzureUtils.get_default_credential())
         response = logs_client.query_resource(
@@ -105,4 +122,14 @@ class AzurePlatformProvider(AgentPlatformProvider):
 
         rows = data[0].rows if data else []
         columns = data[0].columns if data else []
-        return [{key: row[key] for key in columns} for row in rows]
+        return [{key: cls._get_log_value(row, key) for key in columns} for row in rows]
+
+    @staticmethod
+    def _get_log_value(row: LogsTableRow, column_name: str) -> Any:
+        value = row[column_name]
+        if column_name == "customDimensions" and isinstance(value, str):
+            try:
+                return json.loads(value)
+            except JSONDecodeError:
+                pass  # ignore parsing errors
+        return value
