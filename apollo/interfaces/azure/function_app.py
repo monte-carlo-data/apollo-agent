@@ -148,5 +148,7 @@ def agent_api(req: func.HttpRequest, context: func.Context):
     except Exception:
         agent_response = AgentUtils.agent_response_for_last_exception()
         return HttpResponse(
-            body=json.dumps(agent_response), mimetype="application/json"
+            body=json.dumps(agent_response.result),
+            status_code=agent_response.status_code,
+            mimetype="application/json",
         )
