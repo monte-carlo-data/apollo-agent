@@ -5,6 +5,8 @@ from apollo.agent.constants import LOG_ATTRIBUTE_TRACE_ID, LOG_ATTRIBUTE_OPERATI
 
 class LoggingUtils:
     def __init__(self):
+        # builder is used to construct the object passed to the logger, for example GCP requires a "json_fields"
+        # attribute
         def builder(trace_id: Optional[str], operation_name: str, extra: Dict):
             extra = {
                 LOG_ATTRIBUTE_OPERATION_NAME: operation_name,
@@ -14,6 +16,8 @@ class LoggingUtils:
                 extra[LOG_ATTRIBUTE_TRACE_ID] = trace_id
             return extra
 
+        # filter_extra is used to filter the contents of the "extra" dictionary, for example Azure requires
+        # logged attributes to be only str, int, float, bool
         def filter_extra(extra: Optional[Dict]) -> Optional[Dict]:
             return extra
 

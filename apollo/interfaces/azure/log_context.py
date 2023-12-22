@@ -10,7 +10,7 @@ class AzureLogContext(BaseLogContext):
 
     @staticmethod
     def filter_log_context(context: Dict) -> Dict:
-        # open telemetry supports only: None, str, float, int and bool
+        # open telemetry supports only: str, float, int and bool
         # we're converting list and dictionaries to json and anything else to str.
         return {
             key: value
