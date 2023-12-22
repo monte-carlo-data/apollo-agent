@@ -1,9 +1,11 @@
 import json
 import logging
+import os
 from typing import Dict, Optional
 
 from azure.monitor.opentelemetry import configure_azure_monitor
 
+from apollo.agent.env_vars import DEBUG_ENV_VAR
 from apollo.agent.utils import AgentUtils
 from apollo.interfaces.azure.log_context import AzureLogContext
 
@@ -12,6 +14,9 @@ from apollo.interfaces.azure.log_context import AzureLogContext
 root_logger = logging.getLogger()
 for handler in root_logger.handlers[:]:
     root_logger.removeHandler(handler)
+
+is_debug = os.getenv(DEBUG_ENV_VAR, "false").lower() == "true"
+root_logger.setLevel(logging.DEBUG if is_debug else logging.INFO)
 
 # configure the Azure Log Monitor, it gets the Instrumentation Key from APPINSIGHTS_INSTRUMENTATIONKEY env var
 configure_azure_monitor()
