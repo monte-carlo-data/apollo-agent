@@ -20,8 +20,8 @@ class AzureLogContext(BaseLogContext):
 
     def _filter(self, record: Any) -> Any:
         """
-        Updates the log record with the agent context, for OpenTelemetry we don't set an "extra" attribute, we
-        just set the attributes as individual attributes in record, we just make sure they are prefixed with mcd_
+        Updates the log record with the agent context, OpenTelemetry doesn't support an "extra" attribute, we
+        just set the attributes as individual attributes in record making sure they are prefixed with "mcd_".
         """
         if not self._context:
             return record
