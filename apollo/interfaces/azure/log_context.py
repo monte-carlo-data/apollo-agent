@@ -10,18 +10,21 @@ class AzureLogContext(BaseLogContext):
 
     @staticmethod
     def filter_log_context(context: Dict) -> Dict:
-        # open telemetry supports only: None, str, bytes, float, int and bool
+        # open telemetry supports only: None, str, float, int and bool
+        # we're converting list and dictionaries to json and anything else to str.
         return {
             key: value
             if value is None or isinstance(value, (str, float, int, bool))
             else json.dumps(value)
+            if isinstance(value, (list, dict, tuple))
+            else str(value)
             for key, value in context.items()
         }
 
     def _filter(self, record: Any) -> Any:
         """
         Updates the log record with the agent context, OpenTelemetry doesn't support an "extra" attribute, we
-        just set the attributes as individual attributes in record making sure they are prefixed with "mcd_".
+        set the attributes as individual attributes in `record` making sure they are prefixed with "mcd_".
         """
         if not self._context:
             return record
