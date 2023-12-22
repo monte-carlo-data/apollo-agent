@@ -46,6 +46,8 @@ def azure_logs_query() -> Tuple[Dict, int]:
     query: Optional[str] = request_dict.get("query")
 
     try:
+        logger.info("azure/logs/query requested(1)")
+
         logger.info(
             "azure/logs/query requested",
             extra=main.logging_utils.build_extra(
@@ -56,7 +58,6 @@ def azure_logs_query() -> Tuple[Dict, int]:
                     start_time_str=start_time_str,
                     end_time_str=end_time_str,
                     limit=limit_str,
-                    mcd_trace_id=trace_id,
                 ),
             ),
         )
@@ -73,6 +74,7 @@ def azure_logs_query() -> Tuple[Dict, int]:
             trace_id=trace_id,
         )
     except Exception:
+        logger.exception("Failed to get azure logs")
         response = AgentUtils.agent_response_for_last_exception(trace_id=trace_id)
 
     return response.result, response.status_code

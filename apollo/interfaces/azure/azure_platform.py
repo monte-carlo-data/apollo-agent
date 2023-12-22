@@ -55,8 +55,10 @@ class AzurePlatformProvider(AgentPlatformProvider):
         resource_id = cast(str, AzureUpdater.get_function_resource().get("id"))
         query_filter = f"| {query}" if query else ""
         complete_query = (
-            f"traces {query_filter} | project message, customDimensions, timestamp |  take {limit} "
+            f"traces {query_filter} | project timestamp, message, customDimensions"
             f"| order by timestamp desc"
+            f"| take {limit} "
+            f"| order by timestamp asc"
         )
 
         logs_client = LogsQueryClient(AzureUtils.get_default_credential())
