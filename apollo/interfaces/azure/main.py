@@ -1,6 +1,8 @@
 import logging
 from typing import Tuple, Dict, Optional
 
+from flask import request
+
 from apollo.agent.utils import AgentUtils
 from apollo.interfaces.azure.azure_platform import AzurePlatformProvider
 from apollo.interfaces.azure.log_context import AzureLogContext
@@ -38,24 +40,12 @@ def azure_logs_query() -> Tuple[Dict, int]:
     :return: a dictionary with an "events" attribute containing the events returned by Azure, containing
         "message", "customDimensions" and "timestamp" attributes.
     """
-    logger.info("azure/logs/query requested(0)")
-
-    try:
-        request_dict: Dict = request.json if request.method == "POST" else request.args  # type: ignore
-        trace_id: Optional[str] = request_dict.get("trace_id")
-        start_time_str: Optional[str] = request_dict.get("start_time")
-        end_time_str: Optional[str] = request_dict.get("end_time")
-        limit_str = request_dict.get("limit")
-        query: Optional[str] = request_dict.get("query")
-    except Exception as exc:
-        logger.info(f"Failed to get request parameters: {exc}")
-        trace_id = "failed_trace"
-        start_time_str = None
-        end_time_str = None
-        limit_str = None
-        query = None
-
-    logger.info("azure/logs/query requested(1)")
+    request_dict: Dict = request.json if request.method == "POST" else request.args  # type: ignore
+    trace_id: Optional[str] = request_dict.get("trace_id")
+    start_time_str: Optional[str] = request_dict.get("start_time")
+    end_time_str: Optional[str] = request_dict.get("end_time")
+    limit_str = request_dict.get("limit")
+    query: Optional[str] = request_dict.get("query")
 
     logger.info(
         "azure/logs/query requested",
@@ -85,11 +75,9 @@ def azure_logs_query() -> Tuple[Dict, int]:
             },
             trace_id=trace_id,
         )
-    except Exception:
+    except Exception as exc:
         logger.exception("Failed to get azure logs")
+        logger.error(f"Failed to get azure logs: {exc}")
         response = AgentUtils.agent_response_for_last_exception(trace_id=trace_id)
 
-    response = AgentUtils.agent_ok_response({"events": []}, trace_id="test_123")
     return response.result, response.status_code
-
-    # return response.result, response.status_code
