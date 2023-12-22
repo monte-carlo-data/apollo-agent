@@ -39,15 +39,41 @@ def azure_logs_query() -> Tuple[Dict, int]:
         "message", "customDimensions" and "timestamp" attributes.
     """
     logger.info("azure/logs/query requested(0)")
+
+    try:
+        request_dict: Dict = request.json if request.method == "POST" else request.args  # type: ignore
+        trace_id: Optional[str] = request_dict.get("trace_id")
+        start_time_str: Optional[str] = request_dict.get("start_time")
+        end_time_str: Optional[str] = request_dict.get("end_time")
+        limit_str = request_dict.get("limit")
+        query: Optional[str] = request_dict.get("query")
+    except Exception:
+        trace_id = None
+        query = None
+        start_time_str = None
+        end_time_str = None
+        limit_str = None
+        logger.exception("Failed to get request parameters")
+
+    logger.info("azure/logs/query requested(1)")
+
+    logger.info(
+        "azure/logs/query requested",
+        extra=main.logging_utils.build_extra(
+            trace_id=trace_id,
+            operation_name="azure/logs/query",
+            extra=dict(
+                query=query,
+                start_time_str=start_time_str,
+                end_time_str=end_time_str,
+                limit=limit_str,
+            ),
+        ),
+    )
+
     response = AgentUtils.agent_ok_response({"events": []}, trace_id="test_123")
     return response.result, response.status_code
 
-    # request_dict: Dict = request.json if request.method == "POST" else request.args  # type: ignore
-    # trace_id: Optional[str] = request_dict.get("trace_id")
-    # start_time_str: Optional[str] = request_dict.get("start_time")
-    # end_time_str: Optional[str] = request_dict.get("end_time")
-    # limit_str = request_dict.get("limit")
-    # query: Optional[str] = request_dict.get("query")
     #
     # try:
     #     logger.info("azure/logs/query requested(1)")
