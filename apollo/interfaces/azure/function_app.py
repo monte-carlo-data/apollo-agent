@@ -143,15 +143,4 @@ def agent_api(req: func.HttpRequest, context: func.Context):
     """
     Endpoint to execute sync operations.
     """
-    try:
-        return wsgi_middleware.handle(req, context)
-    except Exception as exc:
-        logging.getLogger().exception("sync agent invocation failed")
-        if exc.__cause__:
-            logging.getLogger().error(f"agent invocation failed: {exc.__cause__}")
-        agent_response = AgentUtils.agent_response_for_last_exception()
-        return HttpResponse(
-            body=json.dumps(agent_response.result),
-            status_code=agent_response.status_code,
-            mimetype="application/json",
-        )
+    return wsgi_middleware.handle(req, context)
