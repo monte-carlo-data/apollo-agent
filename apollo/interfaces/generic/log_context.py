@@ -1,6 +1,6 @@
 import logging
 from copy import deepcopy
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 from apollo.agent.log_context import AgentLogContext
 
@@ -15,6 +15,7 @@ class BaseLogContext(AgentLogContext):
 
     def __init__(self, attr_name: str = "extra"):
         self._context: Dict = {}
+        self._backup_context: Optional[Dict] = None
         self._attr_name = attr_name
 
     def install(self):
@@ -32,10 +33,8 @@ class BaseLogContext(AgentLogContext):
         if not self._context:
             return record
 
-        # don't update the attribute if already present, causing a recursion issue in Azure
-        if hasattr(record, self._attr_name):
-            extra: Dict = getattr(record, self._attr_name, {})
-            extra.update(self._context)
-        else:
-            setattr(record, self._attr_name, self._context)
+        extra: Dict = getattr(record, self._attr_name, {})
+        extra.update(self._context)
+        setattr(record, self._attr_name, extra)
+
         return record

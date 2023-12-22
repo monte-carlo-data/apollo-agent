@@ -1,18 +1,31 @@
-from copy import deepcopy
-from types import NoneType
-from typing import Dict
+import json
+from typing import Dict, cast, Any
 
 from apollo.interfaces.generic.log_context import BaseLogContext
 
 
 class AzureLogContext(BaseLogContext):
     def set_agent_context(self, context: Dict):
-        self._context = self._filter_context(context)
+        self._context = self.filter_log_context(context)
 
     @staticmethod
-    def _filter_context(context: Dict) -> Dict:
+    def filter_log_context(context: Dict) -> Dict:
+        # open telemetry supports only: None, str, bytes, float, int and bool
         return {
             key: value
+            if value is None or isinstance(value, (str, float, int, bool))
+            else json.dumps(value)
             for key, value in context.items()
-            if value is None or type(value) in (str, bytes, float, int, bool)
         }
+
+    def _filter(self, record: Any) -> Any:
+        """
+        Updates the log record with the agent context, OpenTelemetry doesn't support an "extra" attribute, we
+        just set the attributes as individual attributes in record making sure they are prefixed with "mcd_".
+        """
+        if not self._context:
+            return record
+
+        for key, value in cast(Dict[str, Any], self._context).items():
+            setattr(record, key if key.startswith("mcd_") else f"mcd_{key}", value)
+        return record
