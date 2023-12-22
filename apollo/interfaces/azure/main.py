@@ -2,6 +2,7 @@ import logging
 from typing import Tuple, Dict, Optional
 
 from flask import request
+from werkzeug.exceptions import InternalServerError
 
 from apollo.agent.utils import AgentUtils
 from apollo.interfaces.azure.azure_platform import AzurePlatformProvider
@@ -80,3 +81,13 @@ def azure_logs_query() -> Tuple[Dict, int]:
         response = AgentUtils.agent_response_for_last_exception(trace_id=trace_id)
 
     return response.result, response.status_code
+
+
+@app.errorhandler(InternalServerError)
+def handle_internal_server_error(e: InternalServerError):
+    error = e.original_exception if e.original_exception else e
+    logger.error(f"Internal Server Error: {error}")
+    agent_response = AgentUtils.agent_response_for_error(
+        f"Internal Server Error: {error}", status_code=500
+    )
+    return agent_response.result, agent_response.status_code
