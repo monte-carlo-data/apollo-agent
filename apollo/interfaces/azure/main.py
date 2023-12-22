@@ -1,6 +1,8 @@
 import logging
 from typing import Tuple, Dict, Optional
 
+from flask import request
+
 from apollo.agent.utils import AgentUtils
 from apollo.interfaces.azure.azure_platform import AzurePlatformProvider
 from apollo.interfaces.azure.log_context import AzureLogContext
@@ -45,21 +47,22 @@ def azure_logs_query() -> Tuple[Dict, int]:
     limit_str = request_dict.get("limit")
     query: Optional[str] = request_dict.get("query")
 
-    try:
-        logger.info(
-            "azure/logs/query requested",
-            extra=main.logging_utils.build_extra(
-                trace_id=trace_id,
-                operation_name="azure/logs/query",
-                extra=dict(
-                    query=query,
-                    start_time_str=start_time_str,
-                    end_time_str=end_time_str,
-                    limit=limit_str,
-                    mcd_trace_id=trace_id,
-                ),
+    logger.info(
+        "azure/logs/query requested",
+        extra=main.logging_utils.build_extra(
+            trace_id=trace_id,
+            operation_name="azure/logs/query",
+            extra=dict(
+                query=query,
+                start_time_str=start_time_str,
+                end_time_str=end_time_str,
+                limit=limit_str,
+                mcd_trace_id=trace_id,
             ),
-        )
+        ),
+    )
+
+    try:
         events = AzurePlatformProvider.get_logs(
             query=query,
             start_time_str=start_time_str,
@@ -72,7 +75,9 @@ def azure_logs_query() -> Tuple[Dict, int]:
             },
             trace_id=trace_id,
         )
-    except Exception:
+    except Exception as exc:
+        logger.exception("Failed to get azure logs")
+        logger.error(f"Failed to get azure logs: {exc}")
         response = AgentUtils.agent_response_for_last_exception(trace_id=trace_id)
 
     return response.result, response.status_code
