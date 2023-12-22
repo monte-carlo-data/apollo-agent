@@ -20,7 +20,9 @@ log_context = AzureLogContext()
 log_context.install()
 
 # disable annoying logs every time OT logs are sent
-logging.getLogger("azure_monitor.export").setLevel(logging.ERROR)
+logging.getLogger("azure.monitor.opentelemetry.exporter.export._base").setLevel(
+    logging.ERROR
+)
 
 # intentionally imported here after log is initialized
 import azure.functions as func
