@@ -54,8 +54,7 @@ class AzurePlatformProvider(AgentPlatformProvider):
         :param start_time_str: start_time (iso format), defaults to now - 10 minutes
         :param end_time_str: end_time (iso format), defaults to now
         :param limit: number of log events to return
-        :return: a dictionary with an "events" attribute containing the events returned by Azure, containing
-            "message", "customDimensions" and "timestamp" attributes.
+        :return: a list of dictionaries containing "message", "customDimensions" and "timestamp" attributes.
         """
         start_time = cast(
             datetime,
