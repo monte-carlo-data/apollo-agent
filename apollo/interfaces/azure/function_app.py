@@ -22,7 +22,7 @@ log_context.install()
 # disable annoying logs every time OT logs are sent
 disable_loggers = [
     "azure.monitor.opentelemetry.exporter.export._base",
-    "azure.core.pipeline.policies._universal",
+    "azure.core.pipeline.policies",
 ]
 for logger_name in disable_loggers:
     logging.getLogger(logger_name).setLevel(logging.ERROR)
