@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Optional, List, cast
 
@@ -9,6 +10,9 @@ from apollo.agent.updater import AgentUpdater
 from apollo.integrations.azure_blob.utils import AzureUtils
 from apollo.interfaces.azure.azure_updater import AzureUpdater
 from apollo.interfaces.generic.utils import AgentPlatformUtils
+
+
+logger = logging.getLogger(__name__)
 
 
 class AzurePlatformProvider(AgentPlatformProvider):
@@ -42,6 +46,7 @@ class AzurePlatformProvider(AgentPlatformProvider):
         end_time_str: Optional[str],
         limit: int,
     ) -> List[Dict]:
+        logger.info("AzurePlatformProvider.get_logs called")
         start_time = cast(
             datetime,
             AgentPlatformUtils.parse_datetime(
@@ -52,7 +57,17 @@ class AzurePlatformProvider(AgentPlatformProvider):
             datetime,
             AgentPlatformUtils.parse_datetime(end_time_str, datetime.now(timezone.utc)),
         )
+        logger.info("AzurePlatformProvider.get_logs getting resource id")
+
         resource_id = cast(str, AzureUpdater.get_function_resource().get("id"))
+
+        logger.info(
+            "AzurePlatformProvider.get_logs obtained resource id",
+            extra={
+                "resource_id": resource_id,
+            },
+        )
+
         query_filter = f"| {query}" if query else ""
         complete_query = (
             f"traces {query_filter} | project timestamp, message, customDimensions"
