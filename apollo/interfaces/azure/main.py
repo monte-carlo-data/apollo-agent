@@ -38,43 +38,47 @@ def azure_logs_query() -> Tuple[Dict, int]:
     :return: a dictionary with an "events" attribute containing the events returned by Azure, containing
         "message", "customDimensions" and "timestamp" attributes.
     """
-    request_dict: Dict = request.json if request.method == "POST" else request.args  # type: ignore
-    trace_id: Optional[str] = request_dict.get("trace_id")
-    start_time_str: Optional[str] = request_dict.get("start_time")
-    end_time_str: Optional[str] = request_dict.get("end_time")
-    limit_str = request_dict.get("limit")
-    query: Optional[str] = request_dict.get("query")
-
-    try:
-        logger.info("azure/logs/query requested(1)")
-
-        logger.info(
-            "azure/logs/query requested",
-            extra=main.logging_utils.build_extra(
-                trace_id=trace_id,
-                operation_name="azure/logs/query",
-                extra=dict(
-                    query=query,
-                    start_time_str=start_time_str,
-                    end_time_str=end_time_str,
-                    limit=limit_str,
-                ),
-            ),
-        )
-        events = AzurePlatformProvider.get_logs(
-            query=query,
-            start_time_str=start_time_str,
-            end_time_str=end_time_str,
-            limit=int(limit_str) if limit_str else _DEFAULT_LOGS_LIMIT,
-        )
-        response = AgentUtils.agent_ok_response(
-            {
-                "events": events,
-            },
-            trace_id=trace_id,
-        )
-    except Exception:
-        logger.exception("Failed to get azure logs")
-        response = AgentUtils.agent_response_for_last_exception(trace_id=trace_id)
-
+    logger.info("azure/logs/query requested(0)")
+    response = AgentUtils.agent_ok_response({"events": []}, trace_id="test_123")
     return response.result, response.status_code
+
+    # request_dict: Dict = request.json if request.method == "POST" else request.args  # type: ignore
+    # trace_id: Optional[str] = request_dict.get("trace_id")
+    # start_time_str: Optional[str] = request_dict.get("start_time")
+    # end_time_str: Optional[str] = request_dict.get("end_time")
+    # limit_str = request_dict.get("limit")
+    # query: Optional[str] = request_dict.get("query")
+    #
+    # try:
+    #     logger.info("azure/logs/query requested(1)")
+    #
+    #     logger.info(
+    #         "azure/logs/query requested",
+    #         extra=main.logging_utils.build_extra(
+    #             trace_id=trace_id,
+    #             operation_name="azure/logs/query",
+    #             extra=dict(
+    #                 query=query,
+    #                 start_time_str=start_time_str,
+    #                 end_time_str=end_time_str,
+    #                 limit=limit_str,
+    #             ),
+    #         ),
+    #     )
+    #     events = AzurePlatformProvider.get_logs(
+    #         query=query,
+    #         start_time_str=start_time_str,
+    #         end_time_str=end_time_str,
+    #         limit=int(limit_str) if limit_str else _DEFAULT_LOGS_LIMIT,
+    #     )
+    #     response = AgentUtils.agent_ok_response(
+    #         {
+    #             "events": events,
+    #         },
+    #         trace_id=trace_id,
+    #     )
+    # except Exception:
+    #     logger.exception("Failed to get azure logs")
+    #     response = AgentUtils.agent_response_for_last_exception(trace_id=trace_id)
+
+    # return response.result, response.status_code

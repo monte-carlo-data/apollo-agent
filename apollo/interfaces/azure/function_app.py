@@ -1,12 +1,11 @@
 import json
 import logging
 import os
-from typing import Dict, Optional
+from typing import Dict
 
 from azure.monitor.opentelemetry import configure_azure_monitor
 
 from apollo.agent.env_vars import DEBUG_ENV_VAR
-from apollo.agent.utils import AgentUtils
 from apollo.interfaces.azure.log_context import AzureLogContext
 
 # remove default handlers to prevent duplicate log messages
@@ -45,6 +44,7 @@ from azure.functions import WsgiMiddleware, HttpResponse
 
 from apollo.interfaces.azure.azure_platform import AzurePlatformProvider
 from apollo.interfaces.azure import main
+from apollo.agent.utils import AgentUtils
 
 main.agent.platform_provider = AzurePlatformProvider()
 main.agent.log_context = log_context
