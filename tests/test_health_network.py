@@ -43,7 +43,7 @@ class HealthNetworkTests(TestCase):
         self.assertEqual("test platform", health_info["platform"])
         self.assertEqual("local", health_info["version"])
         self.assertEqual("0", health_info["build"])
-        self.assertEqual(sys.version, health_info["env"]["sys_version"])
+        self.assertEqual(sys.version, health_info["env"]["PYTHON_SYS_VERSION"])
         self.assertEqual("1234", health_info["trace_id"])
         self.assertEqual("3.5", health_info["env"]["PYTHON_VERSION"])
         self.assertEqual("terraform", health_info["env"]["MCD_AGENT_WRAPPER_TYPE"])

@@ -25,12 +25,22 @@ from apollo.agent.env_vars import (
     STORAGE_BUCKET_NAME_ENV_VAR,
     STORAGE_PREFIX_ENV_VAR,
     STORAGE_PREFIX_DEFAULT_VALUE,
+    STORAGE_ACCOUNT_NAME_ENV_VAR,
 )
 from apollo.agent.logging_utils import LoggingUtils
 from apollo.agent.utils import AgentUtils
 from tests.platform import TestPlatformProvider
 
 _TEST_BUCKET_NAME = "test_bucket"
+_TEST_ACCOUNT_NAME = "test_account"
+_TEST_ENVIRON = {
+    STORAGE_BUCKET_NAME_ENV_VAR: _TEST_BUCKET_NAME,
+    STORAGE_ACCOUNT_NAME_ENV_VAR: _TEST_ACCOUNT_NAME,
+}
+_TEST_ENVIRON_EMPTY_PREFIX = {
+    **_TEST_ENVIRON,
+    STORAGE_PREFIX_ENV_VAR: "",
+}
 
 
 class StorageAzureTests(TestCase):
@@ -44,10 +54,7 @@ class StorageAzureTests(TestCase):
 
     @patch.dict(
         os.environ,
-        {
-            STORAGE_BUCKET_NAME_ENV_VAR: _TEST_BUCKET_NAME,
-            STORAGE_PREFIX_ENV_VAR: "",
-        },
+        _TEST_ENVIRON_EMPTY_PREFIX,
     )
     @patch(
         "apollo.integrations.azure_blob.azure_blob_base_reader_writer.BlobServiceClient"
@@ -56,7 +63,7 @@ class StorageAzureTests(TestCase):
         self._mock_service_client.get_container_client.return_value = (
             self._mock_container_client
         )
-        mock_client_type.from_connection_string.return_value = self._mock_service_client
+        mock_client_type.return_value = self._mock_service_client
         page = [
             Box(
                 etag="123",
@@ -96,7 +103,7 @@ class StorageAzureTests(TestCase):
 
     @patch.dict(
         os.environ,
-        {STORAGE_BUCKET_NAME_ENV_VAR: _TEST_BUCKET_NAME},
+        _TEST_ENVIRON,
     )
     @patch(
         "apollo.integrations.azure_blob.azure_blob_base_reader_writer.BlobServiceClient"
@@ -105,7 +112,7 @@ class StorageAzureTests(TestCase):
         self._mock_service_client.get_container_client.return_value = (
             self._mock_container_client
         )
-        mock_client_type.from_connection_string.return_value = self._mock_service_client
+        mock_client_type.return_value = self._mock_service_client
         expected_prefix = f"{STORAGE_PREFIX_DEFAULT_VALUE}/"
         file_name = "file_1.txt"
         page = [
@@ -150,17 +157,14 @@ class StorageAzureTests(TestCase):
 
     @patch.dict(
         os.environ,
-        {
-            STORAGE_BUCKET_NAME_ENV_VAR: _TEST_BUCKET_NAME,
-            STORAGE_PREFIX_ENV_VAR: "",
-        },
+        _TEST_ENVIRON_EMPTY_PREFIX,
     )
     @patch(
         "apollo.integrations.azure_blob.azure_blob_base_reader_writer.BlobServiceClient"
     )
     def test_delete(self, mock_client_type):
         self._mock_service_client.get_blob_client.return_value = self._mock_blob_client
-        mock_client_type.from_connection_string.return_value = self._mock_service_client
+        mock_client_type.return_value = self._mock_service_client
 
         file_key = "file.txt"
         result = self._agent.execute_operation(
@@ -180,16 +184,13 @@ class StorageAzureTests(TestCase):
         )
         self._mock_blob_client.delete_blob.assert_called_once_with()
 
-    @patch.dict(
-        os.environ,
-        {STORAGE_BUCKET_NAME_ENV_VAR: _TEST_BUCKET_NAME},
-    )
+    @patch.dict(os.environ, _TEST_ENVIRON)
     @patch(
         "apollo.integrations.azure_blob.azure_blob_base_reader_writer.BlobServiceClient"
     )
     def test_delete_default_prefix(self, mock_client_type):
         self._mock_service_client.get_blob_client.return_value = self._mock_blob_client
-        mock_client_type.from_connection_string.return_value = self._mock_service_client
+        mock_client_type.return_value = self._mock_service_client
         expected_prefix = f"{STORAGE_PREFIX_DEFAULT_VALUE}/"
 
         file_key = "file.txt"
@@ -212,17 +213,14 @@ class StorageAzureTests(TestCase):
 
     @patch.dict(
         os.environ,
-        {
-            STORAGE_BUCKET_NAME_ENV_VAR: _TEST_BUCKET_NAME,
-            STORAGE_PREFIX_ENV_VAR: "",
-        },
+        _TEST_ENVIRON_EMPTY_PREFIX,
     )
     @patch(
         "apollo.integrations.azure_blob.azure_blob_base_reader_writer.BlobServiceClient"
     )
     def test_read(self, mock_client_type):
         self._mock_service_client.get_blob_client.return_value = self._mock_blob_client
-        mock_client_type.from_connection_string.return_value = self._mock_service_client
+        mock_client_type.return_value = self._mock_service_client
 
         file_key = "file.txt"
         result = self._agent.execute_operation(
@@ -244,14 +242,14 @@ class StorageAzureTests(TestCase):
 
     @patch.dict(
         os.environ,
-        {STORAGE_BUCKET_NAME_ENV_VAR: _TEST_BUCKET_NAME},
+        _TEST_ENVIRON,
     )
     @patch(
         "apollo.integrations.azure_blob.azure_blob_base_reader_writer.BlobServiceClient"
     )
     def test_read_default_prefix(self, mock_client_type):
         self._mock_service_client.get_blob_client.return_value = self._mock_blob_client
-        mock_client_type.from_connection_string.return_value = self._mock_service_client
+        mock_client_type.return_value = self._mock_service_client
         expected_prefix = f"{STORAGE_PREFIX_DEFAULT_VALUE}/"
 
         file_key = "file.txt"
@@ -274,10 +272,7 @@ class StorageAzureTests(TestCase):
 
     @patch.dict(
         os.environ,
-        {
-            STORAGE_BUCKET_NAME_ENV_VAR: _TEST_BUCKET_NAME,
-            STORAGE_PREFIX_ENV_VAR: "",
-        },
+        _TEST_ENVIRON_EMPTY_PREFIX,
     )
     @patch(
         "apollo.integrations.azure_blob.azure_blob_base_reader_writer.BlobServiceClient"
@@ -287,7 +282,7 @@ class StorageAzureTests(TestCase):
         tmp_path = "/tmp/temp.data"
         mock_temp_file_path.return_value = tmp_path
         self._mock_service_client.get_blob_client.return_value = self._mock_blob_client
-        mock_client_type.from_connection_string.return_value = self._mock_service_client
+        mock_client_type.return_value = self._mock_service_client
 
         file_key = "file.txt"
         with patch("builtins.open", mock_open()):
@@ -313,7 +308,7 @@ class StorageAzureTests(TestCase):
 
     @patch.dict(
         os.environ,
-        {STORAGE_BUCKET_NAME_ENV_VAR: _TEST_BUCKET_NAME},
+        _TEST_ENVIRON,
     )
     @patch(
         "apollo.integrations.azure_blob.azure_blob_base_reader_writer.BlobServiceClient"
@@ -323,7 +318,7 @@ class StorageAzureTests(TestCase):
         tmp_path = "/tmp/temp.data"
         mock_temp_file_path.return_value = tmp_path
         self._mock_service_client.get_blob_client.return_value = self._mock_blob_client
-        mock_client_type.from_connection_string.return_value = self._mock_service_client
+        mock_client_type.return_value = self._mock_service_client
         expected_prefix = f"{STORAGE_PREFIX_DEFAULT_VALUE}/"
 
         file_key = "file.txt"
