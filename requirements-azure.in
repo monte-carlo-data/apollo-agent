@@ -1,0 +1,4 @@
+-c requirements.txt
+azure-functions==1.17.0
+azure-functions-durable==1.2.8
+azure-mgmt-resource==23.0.1

@@ -1,3 +1,5 @@
+azure-identity==1.14.0
+azure-mgmt-storage==21.1.0
 azure-storage-blob==12.18.3
 boto3==1.28.21
 databricks-sql-connector==2.8.0
@@ -21,5 +23,4 @@ retry2==0.9.5
 snowflake-connector-python>=3.1.0
 tableauserverclient>=0.25
 teradatasql>=17.20.0.31
-urllib3==1.26.18
 oscrypto @ git+https://github.com/wbond/oscrypto@master

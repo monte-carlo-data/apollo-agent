@@ -71,7 +71,7 @@ jobs:
 
   run-linter:
     docker:
-      - image: cimg/python:3.8-node
+      - image: cimg/python:3.11-node
 
     steps:
       - checkout
@@ -81,7 +81,7 @@ jobs:
             python -m venv .venv
             . .venv/bin/activate
             pip install --no-cache-dir --upgrade pip
-            pip install --no-cache-dir -r requirements.txt -r requirements-dev.txt -r requirements-cloudrun.txt -r requirements-lambda.txt
+            pip install --no-cache-dir -r requirements.txt -r requirements-dev.txt -r requirements-cloudrun.txt -r requirements-lambda.txt -r requirements-azure.txt
       - run:
           name: 'Run black / pyright'
           command: |
@@ -129,6 +129,12 @@ jobs:
           extra_build_args: --target lambda --build-arg code_version=<< parameters.code_version >> --build-arg build_number=<< pipeline.number >>
           image: montecarlodata/<< parameters.docker_hub_repository >>
           tag: latest-lambda,<< parameters.code_version >>-lambda
+      - docker/build:
+          step-name: Build azure image
+          use-buildkit: true # to build only the required stages
+          extra_build_args: --target azure --build-arg code_version=<< parameters.code_version >> --build-arg build_number=<< pipeline.number >>
+          image: montecarlodata/<< parameters.docker_hub_repository >>
+          tag: latest-azure,<< parameters.code_version >>-azure
       - verify-version-in-docker-image:
           image: montecarlodata/<< parameters.docker_hub_repository >>:latest-generic
           version: << parameters.code_version >>,<< pipeline.number >>
@@ -138,9 +144,12 @@ jobs:
       - verify-version-in-docker-image:
           image: montecarlodata/<< parameters.docker_hub_repository >>:latest-lambda
           version: << parameters.code_version >>,<< pipeline.number >>
+      - verify-version-in-docker-image:
+          image: montecarlodata/<< parameters.docker_hub_repository >>:latest-azure
+          version: << parameters.code_version >>,<< pipeline.number >>
       - docker/push:
           image: montecarlodata/<< parameters.docker_hub_repository >>
-          tag: latest-generic,<< parameters.code_version >>-generic,latest-cloudrun,<< parameters.code_version >>-cloudrun,latest-lambda,<< parameters.code_version >>-lambda
+          tag: latest-generic,<< parameters.code_version >>-generic,latest-cloudrun,<< parameters.code_version >>-cloudrun,latest-lambda,<< parameters.code_version >>-lambda,latest-azure,<< parameters.code_version >>-azure
 
   build-and-push-lambda:
     machine:
