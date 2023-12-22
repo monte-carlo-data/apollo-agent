@@ -47,7 +47,15 @@ class AzurePlatformProvider(AgentPlatformProvider):
         end_time_str: Optional[str],
         limit: int,
     ) -> List[Dict]:
-        logger.info("AzurePlatformProvider.get_logs called")
+        """
+        Uses Azure Monitor Query client library to return a list of log events.
+        https://learn.microsoft.com/en-us/python/api/overview/azure/monitor-query-readme?view=azure-python
+        :param query: a KQL query expression, see https://learn.microsoft.com/en-us/azure/data-explorer/kusto/query/.
+        :param start_time_str: start_time (iso format), defaults to now - 10 minutes
+        :param end_time_str: end_time (iso format), defaults to now
+        :param limit: number of log events to return
+        :return: a list of dictionaries containing "message", "customDimensions" and "timestamp" attributes.
+        """
         start_time = cast(
             datetime,
             AgentPlatformUtils.parse_datetime(
@@ -58,7 +66,6 @@ class AzurePlatformProvider(AgentPlatformProvider):
             datetime,
             AgentPlatformUtils.parse_datetime(end_time_str, datetime.now(timezone.utc)),
         )
-        logger.info("AzurePlatformProvider.get_logs getting resource id")
 
         resource = AzureUpdater.get_function_resource()
         resource_id = resource.get("tags", {}).get(
@@ -95,4 +102,5 @@ class AzurePlatformProvider(AgentPlatformProvider):
         )
 
         rows = data[0].rows if data else []
-        return [dict(row) for row in rows]
+        columns = data[0].columns if data else []
+        return [{key: row[key] for key in columns} for row in rows]
