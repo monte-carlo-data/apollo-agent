@@ -1,13 +1,11 @@
 import json
 import logging
 from datetime import datetime, timezone, timedelta
-from email.utils import parsedate_to_datetime
 from json import JSONDecodeError
 from typing import Dict, Optional, List, cast, Any
 
 from azure.monitor.query import (
     LogsQueryClient,
-    LogsQueryStatus,
     LogsQueryPartialResult,
     LogsTableRow,
 )
@@ -145,10 +143,6 @@ class AzurePlatformProvider(AgentPlatformProvider):
                 except JSONDecodeError:
                     pass  # ignore parsing errors
             return custom_dimensions
-        elif column_name == "timestamp":
-            try:
-                return parsedate_to_datetime(str(value)).isoformat()
-            except Exception as err:
-                logger.error(f"Failed to parse timestamp: {err}")
-                pass  # ignore parsing errors
+        elif column_name == "timestamp" and isinstance(value, datetime):
+            return value.isoformat()
         return value

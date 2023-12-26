@@ -100,12 +100,16 @@ class TestAzurePlatform(TestCase):
                     {
                         "rows": [
                             {
-                                "timestamp": "Mon, 25 Dec 2023 13:13:49 GMT",
+                                "timestamp": datetime.fromisoformat(
+                                    "2023-12-25T13:13:49+00:00"
+                                ),
                                 "message": "abc",
                                 "customDimensions": '{"mcd_trace_id": "123"}',
                             },
                             {
-                                "timestamp": "Tue, 26 Dec 2023 13:13:49 GMT",
+                                "timestamp": datetime.fromisoformat(
+                                    "2023-12-26T13:13:49+00:00"
+                                ),
                                 "message": "def",
                                 "customDimensions": '{"mcd_trace_id": "321"}',
                             },
@@ -251,7 +255,9 @@ class TestAzurePlatform(TestCase):
                                 ),
                             },
                             {
-                                "timestamp": "Tue, 26 Dec 2023 13:13:49 GMT",
+                                "timestamp": datetime.fromisoformat(
+                                    "2023-12-26T13:13:49+00:00"
+                                ),
                                 "message": "def",
                                 "customDimensions": '{"mcd_trace_id": "321", "commands": "invalid json"}',
                             },
