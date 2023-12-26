@@ -65,14 +65,14 @@ class TestAzurePlatform(TestCase):
 
         expected_events = [
             {
-                "timestamp": 1,
+                "timestamp": "2023-12-25T13:13:49+00:00",
                 "message": "abc",
                 "customDimensions": {
                     "mcd_trace_id": "123",
                 },
             },
             {
-                "timestamp": 2,
+                "timestamp": "2023-12-26T13:13:49+00:00",
                 "message": "def",
                 "customDimensions": {
                     "mcd_trace_id": "321",
@@ -100,12 +100,12 @@ class TestAzurePlatform(TestCase):
                     {
                         "rows": [
                             {
-                                "timestamp": 1,
+                                "timestamp": "Mon, 25 Dec 2023 13:13:49 GMT",
                                 "message": "abc",
                                 "customDimensions": '{"mcd_trace_id": "123"}',
                             },
                             {
-                                "timestamp": 2,
+                                "timestamp": "Tue, 26 Dec 2023 13:13:49 GMT",
                                 "message": "def",
                                 "customDimensions": '{"mcd_trace_id": "321"}',
                             },
@@ -204,7 +204,7 @@ class TestAzurePlatform(TestCase):
         ]
         expected_events = [
             {
-                "timestamp": 1,
+                "timestamp": "invalid ts",
                 "message": "abc",
                 "customDimensions": {
                     "mcd_trace_id": "123",
@@ -212,7 +212,7 @@ class TestAzurePlatform(TestCase):
                 },
             },
             {
-                "timestamp": 2,
+                "timestamp": "2023-12-26T13:13:49+00:00",
                 "message": "def",
                 "customDimensions": {
                     "mcd_trace_id": "321",
@@ -241,7 +241,7 @@ class TestAzurePlatform(TestCase):
                     {
                         "rows": [
                             {
-                                "timestamp": 1,
+                                "timestamp": "invalid ts",
                                 "message": "abc",
                                 "customDimensions": json.dumps(
                                     {
@@ -251,7 +251,7 @@ class TestAzurePlatform(TestCase):
                                 ),
                             },
                             {
-                                "timestamp": 2,
+                                "timestamp": "Tue, 26 Dec 2023 13:13:49 GMT",
                                 "message": "def",
                                 "customDimensions": '{"mcd_trace_id": "321", "commands": "invalid json"}',
                             },
