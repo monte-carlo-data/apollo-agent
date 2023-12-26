@@ -58,6 +58,10 @@ class AzurePlatformProvider(AgentPlatformProvider):
         Uses Azure Monitor Query client library to return a list of log events.
         https://learn.microsoft.com/en-us/python/api/overview/azure/monitor-query-readme?view=azure-python
         :param query: a KQL query expression, see https://learn.microsoft.com/en-us/azure/data-explorer/kusto/query/.
+            If it starts with "traces" or "requests" it is expected to be a "full" query and will be sent "as is", if
+            not and not empty it will be assumed to be only the filtering portion of a query
+            (like "where message like pattern") and it will be added to the standard query that get traces
+            in descending order by timestamp.
         :param start_time_str: start_time (iso format), defaults to now - 10 minutes
         :param end_time_str: end_time (iso format), defaults to now
         :param limit: number of log events to return
@@ -129,7 +133,15 @@ class AzurePlatformProvider(AgentPlatformProvider):
         value = row[column_name]
         if column_name == "customDimensions" and isinstance(value, str):
             try:
-                return json.loads(value)
+                custom_dimensions = json.loads(value)
             except JSONDecodeError:
-                pass  # ignore parsing errors
+                return value  # ignore parsing errors
+            if "commands" in custom_dimensions:
+                try:
+                    custom_dimensions["commands"] = json.loads(
+                        custom_dimensions["commands"]
+                    )
+                except JSONDecodeError:
+                    pass  # ignore parsing errors
+            return custom_dimensions
         return value

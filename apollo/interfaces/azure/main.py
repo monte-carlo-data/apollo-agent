@@ -40,6 +40,10 @@ def azure_logs_query() -> Tuple[Dict, int]:
     - end_time (iso format), defaults to now
     - query: a KQL query expression, see https://learn.microsoft.com/en-us/azure/data-explorer/kusto/query/.
     - limit: number of log events to return, defaults to 1,000
+    For query, if it starts with "traces" or "requests" it is expected to be a "full" query and will be sent "as is",
+    if not and not empty it will be assumed to be only the filtering portion of a query
+    (like "where message like pattern") and it will be added to the standard query that get traces
+    in descending order by timestamp.
     :return: a dictionary with an "events" attribute containing the events returned by Azure, containing
         "message", "customDimensions" and "timestamp" attributes.
     """
@@ -87,6 +91,12 @@ def azure_logs_query() -> Tuple[Dict, int]:
 
 @app.errorhandler(InternalServerError)
 def handle_internal_server_error(e: InternalServerError):
+    """
+    Flask error handler to log unhandled exceptions, without this code there was no log at all for unhandled
+    exceptions and no helpful information in the response.
+    This is also returning an "agent like" response (with __mcd_error__) and changing the status code to 200, if we
+    return 500 the error response is ignored and an empty body returned.
+    """
     error = e.original_exception if e.original_exception else e
     stack_trace = traceback.format_tb(error.__traceback__)  # type: ignore
     logger.error(
