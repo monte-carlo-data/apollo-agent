@@ -148,6 +148,7 @@ class AzurePlatformProvider(AgentPlatformProvider):
         elif column_name == "timestamp" and isinstance(value, str):
             try:
                 return parsedate_to_datetime(value).isoformat()
-            except ValueError:
+            except ValueError as err:
+                logger.error(f"Failed to parse timestamp: {err}")
                 pass  # ignore parsing errors
         return value
