@@ -145,10 +145,10 @@ class AzurePlatformProvider(AgentPlatformProvider):
                 except JSONDecodeError:
                     pass  # ignore parsing errors
             return custom_dimensions
-        elif column_name == "timestamp" and isinstance(value, str):
+        elif column_name == "timestamp":
             try:
-                return parsedate_to_datetime(value).isoformat()
-            except ValueError as err:
+                return parsedate_to_datetime(str(value)).isoformat()
+            except Exception as err:
                 logger.error(f"Failed to parse timestamp: {err}")
                 pass  # ignore parsing errors
         return value
