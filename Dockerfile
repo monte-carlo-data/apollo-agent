@@ -39,7 +39,8 @@ FROM base AS tests
 
 COPY requirements-dev.txt ./
 COPY requirements-cloudrun.txt ./
-RUN . $VENV_DIR/bin/activate && pip install --no-cache-dir -r requirements-dev.txt -r requirements-cloudrun.txt
+COPY requirements-azure.txt ./
+RUN . $VENV_DIR/bin/activate && pip install --no-cache-dir -r requirements-dev.txt -r requirements-cloudrun.txt -r requirements-azure.txt
 
 COPY tests ./tests
 ARG CACHEBUST=1
