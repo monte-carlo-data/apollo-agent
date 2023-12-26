@@ -27,6 +27,7 @@ _HTTP_OPERATION = {
                 "user_agent": _HTTP_USER_AGENT,
                 "additional_headers": None,
                 "retry_status_code_ranges": None,
+                "verify_ssl": None,
             },
         }
     ],
@@ -97,6 +98,49 @@ class TestHttpClient(TestCase):
                 "User-Agent": _HTTP_USER_AGENT,
             },
             params=params,
+        )
+
+    @patch("requests.request")
+    def test_http_request_with_verify_ssl(self, mock_request):
+        mock_response = create_autospec(Response)
+        mock_request.return_value = mock_response
+        expected_result = {
+            "ok": True,
+        }
+        mock_response.json.return_value = expected_result
+        operation = deepcopy(_HTTP_OPERATION)
+        operation["commands"][0]["kwargs"]["verify_ssl"] = True
+        self._agent.execute_operation(
+            "http",
+            "do_request",
+            operation,
+            _HTTP_CREDENTIALS,
+        )
+        mock_request.assert_called_with(
+            "GET",
+            "https://test.com/path",
+            headers={
+                "Authorization": f"Bearer {_HTTP_CREDENTIALS['token']}",
+                "User-Agent": _HTTP_USER_AGENT,
+            },
+            verify=True,
+        )
+
+        operation["commands"][0]["kwargs"]["verify_ssl"] = False
+        self._agent.execute_operation(
+            "http",
+            "do_request",
+            operation,
+            _HTTP_CREDENTIALS,
+        )
+        mock_request.assert_called_with(
+            "GET",
+            "https://test.com/path",
+            headers={
+                "Authorization": f"Bearer {_HTTP_CREDENTIALS['token']}",
+                "User-Agent": _HTTP_USER_AGENT,
+            },
+            verify=False,
         )
 
     @patch("requests.request")
