@@ -1,7 +1,9 @@
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 import snowflake.connector
 from snowflake.connector.errors import DatabaseError, ProgrammingError
+
+from apollo.agent.serde import AgentSerializer, RowsSerializer
 from apollo.integrations.db.base_db_proxy_client import BaseDbProxyClient
 
 _ATTR_CONNECT_ARGS = "connect_args"
@@ -48,3 +50,30 @@ class SnowflakeProxyClient(BaseDbProxyClient):
                 "sqlstate": error.sqlstate,
             }
         return super().get_error_extra_attributes(error)
+
+    def execute_sql_query(
+        self, sql_query: str, max_results: int, query_timeout: int
+    ) -> None:
+        """
+        Execute a SQL query synchronously and collect results.
+        """
+        with self._connection.cursor() as cursor:
+            cursor.execute(sql_query, timeout=query_timeout)
+            results = cursor.fetchmany(max_results + 1)
+            if len(results) > max_results:
+                is_partial = True
+                results = results[:-1]
+            else:
+                is_partial = False
+
+            description = cursor.description or []
+
+            return {
+                "number_rows_fetched": len(results),
+                "fields_names": [field[0] for field in description],
+                "rows": [
+                    [RowsSerializer.serialize(value) for value in row]
+                    for row in results
+                ],
+                "is_partial": is_partial,
+            }

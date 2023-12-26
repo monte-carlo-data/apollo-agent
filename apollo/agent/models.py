@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from typing import Optional, Any, List, Dict
 
-from dataclasses_json import dataclass_json, config
+from dataclasses_json import DataClassJsonMixin, config
 
 
 # used so we don't include an empty platform info
@@ -22,9 +22,8 @@ class AgentConfigurationError(AgentError):
     pass
 
 
-@dataclass_json
 @dataclass
-class AgentCommand:
+class AgentCommand(DataClassJsonMixin):
     method: str
 
     # configure fields to be excluded when value is None, to reduce size of log messages
@@ -49,19 +48,21 @@ class AgentCommand:
         pass
 
 
-@dataclass_json
 @dataclass
-class AgentOperation:
+class AgentOperation(DataClassJsonMixin):
     trace_id: str
     commands: List[AgentCommand]
     response_size_limit_bytes: int = 0
+    response_type: str = "json"
     skip_cache: bool = False
 
     def can_use_pre_signed_url(self) -> bool:
-        return 0 < self.response_size_limit_bytes
+        return 0 < self.response_size_limit_bytes or self.response_type == "url"
 
     def should_use_pre_signed_url(self, size: int) -> bool:
-        return self.can_use_pre_signed_url() and self.response_size_limit_bytes < size
+        return (
+            0 < self.response_size_limit_bytes < size
+        ) or self.response_type == "url"
 
     @staticmethod
     def from_dict(param) -> "AgentOperation":  # type: ignore
@@ -71,9 +72,8 @@ class AgentOperation:
         pass
 
 
-@dataclass_json
 @dataclass
-class AgentHealthInformation:
+class AgentHealthInformation(DataClassJsonMixin):
     platform: str
     version: str
     build: str
