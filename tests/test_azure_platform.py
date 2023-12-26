@@ -181,6 +181,105 @@ class TestAzurePlatform(TestCase):
         {
             "WEBSITE_RESOURCE_GROUP": "rg",
             "WEBSITE_SITE_NAME": "test_function",
+        },
+    )
+    @patch("apollo.interfaces.azure.azure_platform.LogsQueryClient")
+    def test_logs_parsing(self, mock_logs_client, mock_arm_client):
+        platform_provider = AzurePlatformProvider()
+        start_time = datetime.now(timezone.utc) - timedelta(minutes=20)
+        end_time = datetime.now(timezone.utc)
+
+        commands = [
+            {
+                "target": "_cursor",
+                "method": "cursor",
+            },
+            {
+                "target": "_cursor",
+                "method": "execute",
+                "args": [
+                    "select * from table",
+                ],
+            },
+        ]
+        expected_events = [
+            {
+                "timestamp": 1,
+                "message": "abc",
+                "customDimensions": {
+                    "mcd_trace_id": "123",
+                    "commands": commands,
+                },
+            },
+            {
+                "timestamp": 2,
+                "message": "def",
+                "customDimensions": {
+                    "mcd_trace_id": "321",
+                    "commands": "invalid json",
+                },
+            },
+        ]
+
+        mock_client = Mock()
+        mock_arm_client.return_value = mock_client
+        mock_resource = Mock()
+        mock_client.resources.get.return_value = mock_resource
+        resource = {
+            "id": "123",
+            "tags": {
+                "hidden-link: /app-insights-resource-id": "app-insights-resource-id",
+            },
+        }
+        mock_resource.as_dict.return_value = resource
+
+        mock_logs_client_instance = Mock()
+        mock_logs_client.return_value = mock_logs_client_instance
+        mock_logs_client_instance.query_resource.return_value = Box(
+            {
+                "tables": [
+                    {
+                        "rows": [
+                            {
+                                "timestamp": 1,
+                                "message": "abc",
+                                "customDimensions": json.dumps(
+                                    {
+                                        "mcd_trace_id": "123",
+                                        "commands": json.dumps(commands),
+                                    }
+                                ),
+                            },
+                            {
+                                "timestamp": 2,
+                                "message": "def",
+                                "customDimensions": '{"mcd_trace_id": "321", "commands": "invalid json"}',
+                            },
+                        ],
+                        "columns": [
+                            "timestamp",
+                            "message",
+                            "customDimensions",
+                        ],
+                    }
+                ]
+            }
+        )
+
+        result = platform_provider.get_logs(
+            query=None,
+            start_time_str=start_time.isoformat(),
+            end_time_str=end_time.isoformat(),
+            limit=10,
+        )
+        self.assertEqual(expected_events, result)
+
+    @patch.object(AzureUpdater, "_get_resource_management_client")
+    @patch.dict(
+        os.environ,
+        {
+            "WEBSITE_RESOURCE_GROUP": "rg",
+            "WEBSITE_SITE_NAME": "test_function",
             IS_REMOTE_UPGRADABLE_ENV_VAR: "true",
         },
     )
