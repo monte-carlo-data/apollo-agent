@@ -3,7 +3,7 @@ from typing import Dict, List, Optional
 import snowflake.connector
 from snowflake.connector.errors import DatabaseError, ProgrammingError
 
-from apollo.agent.serde import AgentSerializer, RowsSerializer
+from apollo.agent.models import AgentExecuteSqlQueryResponse
 from apollo.integrations.db.base_db_proxy_client import BaseDbProxyClient
 
 _ATTR_CONNECT_ARGS = "connect_args"
@@ -53,7 +53,7 @@ class SnowflakeProxyClient(BaseDbProxyClient):
 
     def execute_sql_query(
         self, sql_query: str, max_results: int, query_timeout: int
-    ) -> None:
+    ) -> AgentExecuteSqlQueryResponse:
         """
         Execute a SQL query synchronously and collect results.
         """
@@ -68,12 +68,9 @@ class SnowflakeProxyClient(BaseDbProxyClient):
 
             description = cursor.description or []
 
-            return {
-                "number_rows_fetched": len(results),
-                "fields_names": [field[0] for field in description],
-                "rows": [
-                    [RowsSerializer.serialize(value) for value in row]
-                    for row in results
-                ],
-                "is_partial": is_partial,
-            }
+            return AgentExecuteSqlQueryResponse(
+                number_of_rows_fetched=len(results),
+                field_names=[field[0] for field in description],
+                rows=results,
+                is_partial=is_partial,
+            )
