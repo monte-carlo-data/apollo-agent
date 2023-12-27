@@ -1,10 +1,14 @@
 from dataclasses import dataclass, field
-from typing import Optional, Any, List, Dict
+from typing import Optional, Any, List, Dict, Tuple, Union
 
-from dataclasses_json import dataclass_json, config
+from dataclasses_json import DataClassJsonMixin, config
 
 
 # used so we don't include an empty platform info
+from apollo.agent.constants import RESPONSE_TYPE_JSON, RESPONSE_TYPE_URL
+from apollo.agent.serde import rows_encoder
+
+
 def exclude_empty_values(value: Any) -> bool:
     return not bool(value)
 
@@ -22,9 +26,12 @@ class AgentConfigurationError(AgentError):
     pass
 
 
-@dataclass_json
+class AgentRequestError(AgentError):
+    pass
+
+
 @dataclass
-class AgentCommand:
+class AgentCommand(DataClassJsonMixin):
     method: str
 
     # configure fields to be excluded when value is None, to reduce size of log messages
@@ -44,36 +51,35 @@ class AgentCommand:
         metadata=config(exclude=exclude_none_values), default=None
     )
 
-    @staticmethod
-    def from_dict(param: Dict) -> "AgentCommand":  # type: ignore
-        pass
 
-
-@dataclass_json
 @dataclass
-class AgentOperation:
+class AgentOperation(DataClassJsonMixin):
     trace_id: str
     commands: List[AgentCommand]
     response_size_limit_bytes: int = 0
+    response_type: str = RESPONSE_TYPE_JSON
     skip_cache: bool = False
 
+    def __post_init__(self):
+        if self.response_type not in (RESPONSE_TYPE_URL, RESPONSE_TYPE_JSON):
+            raise AgentRequestError(
+                f"Invalid response_type '{self.response_type}'. Must be one of {RESPONSE_TYPE_URL}, {RESPONSE_TYPE_JSON}"
+            )
+
     def can_use_pre_signed_url(self) -> bool:
-        return 0 < self.response_size_limit_bytes
+        return (
+            0 < self.response_size_limit_bytes
+            or self.response_type == RESPONSE_TYPE_URL
+        )
 
     def should_use_pre_signed_url(self, size: int) -> bool:
-        return self.can_use_pre_signed_url() and self.response_size_limit_bytes < size
-
-    @staticmethod
-    def from_dict(param) -> "AgentOperation":  # type: ignore
-        pass
-
-    def to_dict(self) -> Dict:  # type: ignore
-        pass
+        return (
+            0 < self.response_size_limit_bytes < size
+        ) or self.response_type == RESPONSE_TYPE_URL
 
 
-@dataclass_json
 @dataclass
-class AgentHealthInformation:
+class AgentHealthInformation(DataClassJsonMixin):
     platform: str
     version: str
     build: str
@@ -88,5 +94,15 @@ class AgentHealthInformation:
         metadata=config(exclude=exclude_none_values), default=None
     )
 
-    def to_dict(self) -> Dict:  # type: ignore
-        pass
+
+@dataclass
+class AgentExecuteSqlQueryResponse(DataClassJsonMixin):
+    """Response schema for the built-in execute_sql_query command."""
+
+    number_of_rows_fetched: int
+    field_names: List[str]
+    rows: Union[List[List[Any]], List[Tuple], List[Dict]]
+    is_partial: bool = False
+
+    def __post_init__(self):
+        self.rows = rows_encoder(self.rows)
