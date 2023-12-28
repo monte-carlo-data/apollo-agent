@@ -11,7 +11,7 @@ from apollo.agent.constants import (
 )
 from apollo.agent.env_vars import DEBUG_LOG_ENV_VAR
 from apollo.agent.utils import AgentUtils
-from apollo.interfaces.cloudrun.cloudrun_log_context import CloudRunLogContext
+from apollo.interfaces.generic.log_context import BaseLogContext
 from apollo.interfaces.cloudrun.platform import CloudRunPlatformProvider
 
 # CloudRun specific application that adds support for structured logging
@@ -23,10 +23,8 @@ gcp_logging_client.setup_logging(
     log_level=logging.DEBUG if is_debug_log else logging.INFO
 )
 
-log_context = CloudRunLogContext()
-root_logger = logging.getLogger()
-for h in root_logger.handlers:
-    h.addFilter(lambda record: log_context.filter(record))
+log_context = BaseLogContext(attr_name="json_fields")
+log_context.install()
 
 # intentionally imported here to initialize generic main after gcp logging
 from apollo.interfaces.generic import main

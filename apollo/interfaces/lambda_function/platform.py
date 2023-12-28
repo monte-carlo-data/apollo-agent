@@ -13,6 +13,7 @@ from apollo.agent.env_vars import (
 from apollo.agent.models import AgentConfigurationError
 from apollo.agent.platform import AgentPlatformProvider
 from apollo.agent.updater import AgentUpdater
+from apollo.interfaces.generic.utils import AgentPlatformUtils
 from apollo.interfaces.lambda_function.cf_updater import LambdaCFUpdater
 from apollo.interfaces.lambda_function.cf_utils import CloudFormationUtils
 from apollo.interfaces.lambda_function.direct_updater import LambdaDirectUpdater
@@ -57,17 +58,6 @@ class AwsPlatformProvider(AgentPlatformProvider):
         else:
             return LambdaDirectUpdater.get_infra_details()
 
-    @classmethod
-    def parse_datetime(
-        cls, dt_str: Optional[str], default_value: Optional[datetime] = None
-    ) -> Optional[datetime]:
-        if not dt_str:
-            return default_value
-        dt = datetime.fromisoformat(dt_str)
-        if not dt.tzinfo:
-            dt = dt.astimezone(timezone.utc)  # make it offset-aware
-        return dt
-
     def filter_log_events(
         self,
         pattern: Optional[str],
@@ -85,10 +75,10 @@ class AwsPlatformProvider(AgentPlatformProvider):
                 f"Missing {CLOUDWATCH_LOG_GROUP_ID_ENV_VAR} environment variable"
             )
 
-        start_time = self.parse_datetime(
+        start_time = AgentPlatformUtils.parse_datetime(
             start_time_str, datetime.now(timezone.utc) - timedelta(minutes=10)
         )
-        end_time = self.parse_datetime(end_time_str)
+        end_time = AgentPlatformUtils.parse_datetime(end_time_str)
 
         filter_params = {
             "logGroupIdentifier": log_group_arn,
@@ -136,12 +126,13 @@ class AwsPlatformProvider(AgentPlatformProvider):
 
         start_time = cast(
             datetime,
-            self.parse_datetime(
+            AgentPlatformUtils.parse_datetime(
                 start_time_str, datetime.now(timezone.utc) - timedelta(minutes=10)
             ),
         )
         end_time: datetime = cast(
-            datetime, self.parse_datetime(end_time_str, datetime.now(timezone.utc))
+            datetime,
+            AgentPlatformUtils.parse_datetime(end_time_str, datetime.now(timezone.utc)),
         )
 
         start_query_params = {
