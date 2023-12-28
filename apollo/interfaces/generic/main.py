@@ -55,19 +55,26 @@ def agent_execute(
     The body is expected to be a JSON document including a `credentials` attribute with the credentials to use for
     the connection and an `operation` attribute with the definition of the operation, as described in the README file.
     ---
-    produces: application/json
+    produces:
+        - application/json
     security:
         - Agent Authentication: []
     parameters:
         - in: path
           name: connection_type
-          description: the connection type to use, for example `bigquery`.
-          example: bigquery
+          required: true
+          description: the connection type to use.
+          schema:
+              type: string
+              example: snowflake
         - in: path
           name: operation_name
+          required: true
           description: the name of the operation to execute, this is used only for logging purposes as the
             definition of what is executed is included in the "operation" attribute in the body.
-          example: execute_query
+          schema:
+              type: string
+              example: execute_query
         - in: body
           name: body
           schema:
@@ -115,10 +122,76 @@ def agent_execute(
                                     kwargs:
                                         type: object
                                         description: Keyword arguments for the method to invoke.
+            example:
+                credentials:
+                    connect_args:
+                        user: user_name
+                        password: password
+                        account: account
+                        warehouse: warehouse
+                operation:
+                    trace_id: 324986b4-b185-4187-b4af-b0c2cd60f7a0
+                    commands:
+                        - method: cursor
+                          store: _cursor
+                        - target: _cursor
+                          method: execute
+                          args: [
+                            "select database_name from snowflake.information_schema.databases"
+                          ]
+                        - target: _cursor
+                          method: fetchall
+    responses:
+        200:
+            description: Returns the result of the operation (that is expected to be a Dictionary).
+                If there was an error executing the operation a dictionary containing __mcd_error__ and
+                __mcd_stack_trace__ will be returned.
+            schema:
+                properties:
+                    __mcd_result__:
+                        type: object
+                        description: The operation result if the execution was successful.
+                            If there was an error executing the operation this
+                            element won't be present, see `__mcd_error__` for more information.
+                    __mcd_error__:
+                        type: string
+                        description: The error message occurred (if any).
+                    __mcd_exception__:
+                        type: string
+                        description: Additional information about the error occurred (if any).
+                    __mcd_stack_trace__:
+                        type: array
+                        description: The stack trace for the error occurred (if any).
+                        items:
+                            type: string
+                example:
+                    __mcd_result__:
+                        all_results: [
+                            [
+                                "value_1",
+                                123.4
+                            ],
+                            [
+                                "value_2",
+                                321.9
+                            ],
+                        ]
+                        description: [
+                            [
+                                "column_1",
+                                "string"
+                            ],
+                            [
+                                "column_2",
+                                "decimal"
+                            ]
+                        ]
+                        rowcount: 2
+
     :param connection_type: the connection type to use, for example bigquery.
     :param operation_name: the name of the operation to execute, this is used only for logging purposes as the
         definition of what is executed is included in the "operation" attribute in the body.
-    :return: the result of the operation (that is expected to be a Dictionary) and the status code to send in the
+    :return: the result of the operation (that is expected to be a Dictionary) and the status code to sent in the
         response. If there was an error executing the operation a dictionary containing __error__ and __stack_trace__
         will be returned, see :class:`AgentUtils` for more information.
     """
@@ -149,19 +222,22 @@ def test_health_get() -> Tuple[Dict, int]:
     Endpoint that returns health information about the agent, can be used as a "ping" endpoint.
     Receives an optional parameter: "full" that if "true" includes extra information like outbound IP address.
     ---
-    produces: application/json
+    produces:
+        - application/json
     security:
         - Agent Authentication: []
     parameters:
         - in: query
           name: trace_id
-          type: string
           description: An optional trace_id
-          example: 324986b4-b185-4187-b4af-b0c2cd60f7a0
+          schema:
+              type: string
+              example: 324986b4-b185-4187-b4af-b0c2cd60f7a0
         - in: query
           name: full
-          type: boolean
           description: Include extra information like "outbound_ip_address".
+          type: boolean
+          default: false
     definitions:
         - schema:
             id: HealthInformationResponse
@@ -214,21 +290,24 @@ def test_health_post() -> Tuple[Dict, int]:
     Endpoint that returns health information about the agent, can be used as a "ping" endpoint.
     Receives an optional parameter: "full" that if "true" includes extra information like outbound IP address.
     ---
-    produces: application/json
+    produces:
+        - application/json
     security:
         - Agent Authentication: []
     parameters:
         - in: body
           name: body
-          properties:
-            trace_id:
-                type: string
-                description: An optional trace_id
-                example: 324986b4-b185-4187-b4af-b0c2cd60f7a0
-            full:
-                type: boolean
-                default: false
-                description: Include extra information like "outbound_ip_address".
+          schema:
+            id: TestHealthRequest
+            properties:
+                trace_id:
+                    type: string
+                    description: An optional trace_id
+                    example: 324986b4-b185-4187-b4af-b0c2cd60f7a0
+                full:
+                    type: boolean
+                    default: false
+                    description: Include extra information like "outbound_ip_address".
     responses:
         200:
             description: Returns health information for this agent.
@@ -256,22 +335,25 @@ def test_network_open_get() -> Tuple[Dict, int]:
     - port
     - timeout (in seconds)
     ---
-    produces: application/json
+    produces:
+        - application/json
     security:
         - Agent Authentication: []
     parameters:
         - in: query
           name: host
-          type: string
           description: The host name to test
           required: true
-          example: getmontecarlo.com
+          schema:
+              type: string
+              example: getmontecarlo.com
         - in: query
           name: port
-          type: integer
           description: The port number to test
           required: true
-          example: 80
+          schema:
+              type: integer
+              example: 80
         - in: query
           name: timeout
           type: integer
@@ -279,9 +361,10 @@ def test_network_open_get() -> Tuple[Dict, int]:
           description: Optional timeout in seconds
         - in: query
           name: trace_id
-          type: string
           description: An optional trace_id
-          example: 324986b4-b185-4187-b4af-b0c2cd60f7a0
+          schema:
+              type: string
+              example: 324986b4-b185-4187-b4af-b0c2cd60f7a0
     definitions:
         - schema:
             id: TestNetworkOpenResponse
@@ -319,31 +402,34 @@ def test_network_open_post() -> Tuple[Dict, int]:
     - port
     - timeout (in seconds)
     ---
-    produces: application/json
+    produces:
+        - application/json
     security:
         - Agent Authentication: []
     parameters:
         - in: body
           name: body
-          properties:
-            host:
-              type: string
-              description: The host name to test
-              required: true
-              example: getmontecarlo.com
-            port:
-              type: integer
-              description: The port number to test
-              required: true
-              example: 80
-            timeout:
-              type: integer
-              default: 5
-              description: Optional timeout in seconds
-            trace_id:
-              type: string
-              description: An optional trace_id
-              example: 324986b4-b185-4187-b4af-b0c2cd60f7a0
+          schema:
+            id: TestNetworkOpenRequest
+            properties:
+                host:
+                  type: string
+                  description: The host name to test
+                  required: true
+                  example: getmontecarlo.com
+                port:
+                  type: integer
+                  description: The port number to test
+                  required: true
+                  example: 80
+                timeout:
+                  type: integer
+                  default: 5
+                  description: Optional timeout in seconds
+                trace_id:
+                  type: string
+                  description: An optional trace_id
+                  example: 324986b4-b185-4187-b4af-b0c2cd60f7a0
     responses:
         200:
             description: Returns a message indicating if the connection was successful or not.
@@ -364,22 +450,25 @@ def test_network_telnet_get() -> Tuple[Dict, int]:
     - port
     - timeout (in seconds)
     ---
-    produces: application/json
+    produces:
+        - application/json
     security:
         - Agent Authentication: []
     parameters:
         - in: query
           name: host
-          type: string
           description: The host name to test
           required: true
-          example: getmontecarlo.com
+          schema:
+              type: string
+              example: getmontecarlo.com
         - in: query
           name: port
-          type: integer
           description: The port number to test
           required: true
-          example: 80
+          schema:
+              type: integer
+              example: 80
         - in: query
           name: timeout
           type: integer
@@ -387,8 +476,10 @@ def test_network_telnet_get() -> Tuple[Dict, int]:
           description: Optional timeout in seconds
         - in: query
           name: trace_id
-          type: string
           description: An optional trace_id
+          schema:
+              type: string
+              example: 324986b4-b185-4187-b4af-b0c2cd60f7a0
     definitions:
         - schema:
             id: TestNetworkTelnetResponse
@@ -425,30 +516,33 @@ def test_network_telnet_post() -> Tuple[Dict, int]:
     - port
     - timeout (in seconds)
     ---
-    produces: application/json
+    produces:
+        - application/json
     security:
         - Agent Authentication: []
     parameters:
         - in: body
           name: body
-          properties:
-            host:
-              type: string
-              description: The host name to test
-              required: true
-              example: getmontecarlo.com
-            port:
-              type: integer
-              description: The port number to test
-              required: true
-              example: 80
-            timeout:
-              type: integer
-              default: 5
-              description: Optional timeout in seconds
-            trace_id:
-              type: string
-              description: An optional trace_id
+          schema:
+            id: TestNetworkTelnetRequest
+            properties:
+                host:
+                  type: string
+                  description: The host name to test
+                  required: true
+                  example: getmontecarlo.com
+                port:
+                  type: integer
+                  description: The port number to test
+                  required: true
+                  example: 80
+                timeout:
+                  type: integer
+                  default: 5
+                  description: Optional timeout in seconds
+                trace_id:
+                  type: string
+                  description: An optional trace_id
     responses:
         200:
             description: Returns a message indicating if the connection was successful or not.
@@ -469,7 +563,8 @@ def upgrade_agent() -> Tuple[Dict, int]:
     - timeout (in seconds)
     - **kwargs optional extra args supported by the updater implementation
     ---
-    produces: application/json
+    produces:
+        - application/json
     security:
         - Agent Authentication: []
     parameters:
@@ -543,19 +638,23 @@ def get_upgrade_logs_get() -> Tuple[Dict, int]:
     - start_time (defaults to now - 10 minutes)
     - limit (defaults to 100)
     ---
-    produces: application/json
+    produces:
+        - application/json
     security:
         - Agent Authentication: []
     parameters:
         - in: query
           name: trace_id
-          type: string
           description: An optional trace_id
+          schema:
+            type: string
+            example: 324986b4-b185-4187-b4af-b0c2cd60f7a0
         - in: query
           name: start_time
-          type: string
           description: The start time for the log events, a datetime in ISO format. Defaults to 10 minutes ago.
-          example: "2023-12-25T12:31:45+00:00"
+          schema:
+              type: string
+              example: "2023-12-25T12:31:45+00:00"
         - in: query
           name: limit
           type: integer
@@ -615,24 +714,28 @@ def get_upgrade_logs_post() -> Tuple[Dict, int]:
     - start_time (defaults to now - 10 minutes)
     - limit (defaults to 100)
     ---
-    produces: application/json
+    produces:
+        - application/json
     security:
         - Agent Authentication: []
     parameters:
         - in: body
           name: body
-          properties:
-            trace_id:
-              type: string
-              description: An optional trace_id
-            start_time:
-              type: string
-              description: The start time for the log events, a datetime in ISO format. Defaults to 10 minutes ago.
-              example: "2023-12-25T12:31:45+00:00"
-            limit:
-              type: integer
-              description: Maximum number of events to return.
-              default: 100
+          schema:
+            id: UpgradeLogsRequest
+            properties:
+                trace_id:
+                  type: string
+                  description: An optional trace_id
+                  example: 324986b4-b185-4187-b4af-b0c2cd60f7a0
+                start_time:
+                  type: string
+                  description: The start time for the log events, a datetime in ISO format. Defaults to 10 minutes ago.
+                  example: "2023-12-25T12:31:45+00:00"
+                limit:
+                  type: integer
+                  description: Maximum number of events to return.
+                  default: 100
     responses:
         200:
             description: Returns a list of upgrade log events after the given datetime.
@@ -674,14 +777,17 @@ def get_infra_details_get() -> Tuple[Dict, int]:
     Returns a dictionary with the infrastructure details returned by the infra_provider implementation
     set in the agent.
     ---
-    produces: application/json
+    produces:
+        - application/json
     security:
         - Agent Authentication: []
     parameters:
         - in: query
           name: trace_id
-          type: string
           description: An optional trace_id
+          schema:
+            type: string
+            example: 324986b4-b185-4187-b4af-b0c2cd60f7a0
     definitions:
         - schema:
             id: InfraDetailsResponse
@@ -714,16 +820,20 @@ def get_infra_details_post() -> Tuple[Dict, int]:
     Returns a dictionary with the infrastructure details returned by the infra_provider implementation
     set in the agent.
     ---
-    produces: application/json
+    produces:
+        - application/json
     security:
         - Agent Authentication: []
     parameters:
         - in: body
           name: body
-          properties:
-            trace_id:
-              type: string
-              description: An optional trace_id
+          schema:
+            id: InfraDetailsRequest
+            properties:
+                trace_id:
+                  type: string
+                  description: An optional trace_id
+                  example: 324986b4-b185-4187-b4af-b0c2cd60f7a0
     responses:
         200:
             description: Returns infrastructure information for this agent, the attributes returned depend on the
@@ -748,14 +858,17 @@ def get_outbound_ip_address() -> Tuple[Dict, int]:
     Get outbound IP Address.
     Returns the public IP address used by the agent for outbound connections.
     ---
-    produces: application/json
+    produces:
+        - application/json
     security:
         - Agent Authentication: []
     parameters:
         - in: query
           name: trace_id
-          type: string
           description: An optional trace_id
+          schema:
+            type: string
+            example: 324986b4-b185-4187-b4af-b0c2cd60f7a0
     responses:
         200:
             description: Returns the outbound IP address for this agent.
