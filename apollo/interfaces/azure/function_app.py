@@ -8,7 +8,7 @@ from azure.durable_functions import (
     DurableOrchestrationClient,
     OrchestrationRuntimeStatus,
 )
-from azure.functions import WsgiMiddleware
+from azure.functions import WsgiMiddleware, AuthLevel
 
 from apollo.interfaces.azure.azure_platform import AzurePlatformProvider
 from apollo.interfaces.generic import main
@@ -117,5 +117,14 @@ def agent_operation(body: Dict):
 def agent_api(req: func.HttpRequest, context: func.Context):
     """
     Endpoint to execute sync operations.
+    """
+    return wsgi_middleware.handle(req, context)
+
+
+@app.http_type(http_type="wsgi")
+@app.route(route="/swagger/(*route}", auth_level=AuthLevel.ANONYMOUS)
+def swagger_api(req: func.HttpRequest, context: func.Context):
+    """
+    Endpoint to get swagger related information.
     """
     return wsgi_middleware.handle(req, context)

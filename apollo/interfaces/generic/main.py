@@ -774,7 +774,7 @@ def get_outbound_ip_address() -> Tuple[Dict, int]:
     return response.result, response.status_code
 
 
-@app.route("/api/v1/openapi.json")
+@app.route("/swagger/openapi.json")
 def open_api():
     # base_path = os.path.join(app.root_path, 'docs')
     swag = swagger(app)
@@ -787,7 +787,7 @@ def open_api():
     return jsonify(swag)
 
 
-@app.route("/swagger")
+@app.route("/swagger/")
 def swagger_index():
     return render_template("swagger.html")
 
