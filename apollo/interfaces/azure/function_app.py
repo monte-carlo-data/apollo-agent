@@ -147,7 +147,7 @@ def agent_api(req: func.HttpRequest, context: func.Context):
 
 
 @app.http_type(http_type="wsgi")
-@app.route(route="/swagger/(*route}", auth_level=AuthLevel.ANONYMOUS)
+@app.route(route="/swagger/{*route}", auth_level=AuthLevel.ANONYMOUS)
 def swagger_api(req: func.HttpRequest, context: func.Context):
     """
     Endpoint to get swagger related information.
