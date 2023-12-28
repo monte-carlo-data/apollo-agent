@@ -165,28 +165,14 @@ def agent_execute(
                         items:
                             type: string
                 example:
-                    __mcd_result__:
-                        all_results: [
-                            [
-                                "value_1",
-                                123.4
-                            ],
-                            [
-                                "value_2",
-                                321.9
-                            ],
-                        ]
-                        description: [
-                            [
-                                "column_1",
-                                "string"
-                            ],
-                            [
-                                "column_2",
-                                "decimal"
-                            ]
-                        ]
-                        rowcount: 2
+                    __mcd_result__: [
+                        [
+                            "database_1"
+                        ],
+                        [
+                            "database_2"
+                        ],
+                    ]
 
     :param connection_type: the connection type to use, for example bigquery.
     :param operation_name: the name of the operation to execute, this is used only for logging purposes as the
