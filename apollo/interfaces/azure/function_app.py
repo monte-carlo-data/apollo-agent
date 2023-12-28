@@ -14,6 +14,15 @@ from apollo.interfaces.azure.azure_platform import AzurePlatformProvider
 from apollo.interfaces.generic import main
 
 main.agent.platform_provider = AzurePlatformProvider()
+main.swagger_security_definitions = {
+    "Agent Authentication": {
+        "type": "apiKey",
+        "name": "x-functions-key",
+        "in": "header",
+        "description": "Enter the Azure Function App Key.",
+    }
+}
+
 wsgi_middleware = WsgiMiddleware(main.app.wsgi_app)
 
 app = df.DFApp(http_auth_level=func.AuthLevel.FUNCTION)
