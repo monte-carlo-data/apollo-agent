@@ -318,7 +318,6 @@ workflows:
             branches:
               only:
                 - dev
-                - mrostan/kil-2946-generate-api-docs-for-the-agent
       - build-and-push-docs:
           name: build-and-push-docs-prod
           code_version: ${VERSION_TAG}

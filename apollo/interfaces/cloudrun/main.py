@@ -56,14 +56,15 @@ app = main.app
 # set the container platform as GCP for the health endpoint
 main.agent.platform_provider = CloudRunPlatformProvider()
 main.agent.log_context = log_context
-main.swagger_security_definitions = {
-    "Agent Authentication": {
+main.swagger_security_settings = {
+    "securityDefinitions": {
         "type": "apiKey",
         "name": "Authorization",
         "in": "header",
         "description": 'Enter the GCP authentication token with the Bearer prefix, e.g. "Bearer abc123". '
         "You can generate the token using: gcloud auth print-identity-token <service_account>.",
-    }
+    },
+    "security": {"Azure App Key": []},
 }
 
 # CloudRun specific endpoints

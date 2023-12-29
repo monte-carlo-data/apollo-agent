@@ -19,13 +19,16 @@ app = main.app
 agent = main.agent
 execute_agent_operation = main.execute_agent_operation
 
-main.swagger_security_definitions = {
-    "Agent Authentication": {
-        "type": "apiKey",
-        "name": "x-functions-key",
-        "in": "header",
-        "description": "Enter the Azure Function App Key.",
-    }
+main.swagger_security_settings = {
+    "securityDefinitions": {
+        "Azure App Key": {
+            "type": "apiKey",
+            "name": "x-functions-key",
+            "in": "header",
+            "description": "Enter the Azure Function App Key.",
+        }
+    },
+    "security": {"Azure App Key": []},
 }
 
 
