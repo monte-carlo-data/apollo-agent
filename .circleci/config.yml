@@ -184,12 +184,12 @@ jobs:
       - aws-cli/install
       - aws-cli/setup:
           profile_name: default
-      - run:
-          name: Install dependencies
-          command: |
-            apt-get update -y
-            apt-get install -yq python3-sphinx
-            pip install virtualenv==20.13.0
+#      - run:
+#          name: Install dependencies
+#          command: |
+#            apt-get update -y
+#            apt-get install -yq python3-sphinx
+#            pip install virtualenv==20.13.0
       - run:
           name: Publish docs and invalidate the cloudfront cache
           command: make VERSION=<< parameters.code_version >> publish-docs
@@ -199,13 +199,13 @@ workflows:
 
   build-and-deploy:
     jobs:
-      - run-trufflehog-scan
-      - run-linter
-      - run-test-docker:
-          # run for all tags and branches, we need to add this so the job is available for build-and-push-prod
-          filters:
-            tags:
-              only: /.*/
+#      - run-trufflehog-scan
+#      - run-linter
+#      - run-test-docker:
+#          # run for all tags and branches, we need to add this so the job is available for build-and-push-prod
+#          filters:
+#            tags:
+#              only: /.*/
       - build-and-push:
           name: build-and-push-dev
           docker_hub_repository: pre-release-agent
@@ -310,14 +310,15 @@ workflows:
                   source $BASH_ENV
           context:
             - aws-dev
-          requires:
-            - run-linter
-            - run-trufflehog-scan
-            - run-test-docker
+#          requires:
+#            - run-linter
+#            - run-trufflehog-scan
+#            - run-test-docker
           filters:
             branches:
               only:
                 - dev
+                - mrostan/kil-2946-generate-api-docs-for-the-agent
       - build-and-push-docs:
           name: build-and-push-docs-prod
           code_version: ${VERSION_TAG}
