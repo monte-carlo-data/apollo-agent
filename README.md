@@ -83,7 +83,7 @@ with the following body:
 }
 ```
 
-### Adding new integrations
+## Adding new integrations
 How to add new integrations is documented in Notion [here](https://www.notion.so/montecarlodata/Adding-support-for-Remote-Agents-to-integrations-3d5025ef36eb47de8488cdafdc39d42c?pvs=4). 
 You can use `BqProxyClient` as a reference, basically you just need to:
 - Create a new class extending `BaseProxyClient` that:
@@ -102,14 +102,14 @@ You can use `BqProxyClient` as a reference, basically you just need to:
     class.
 - Register the new client in `ProxyClientFactory`.
 
-### Dev environment
+## Dev environment
 In order to test in our dev environment you need to merge your branch into `dev`, that will automatically trigger a 
 dev build and upload the image to our `pre-release-agent` repository in DockerHub.
 For now, that build is not updating the dev agents for the different platforms, the easiest way to update 
 them is to connect to MC Dev environment with `dev.apollo.agent` user (credentials in 1Pwd), go to
 Settings -> Integrations -> Agents & Data Store and update them.
 
-#### Deploying new agents
+### Deploying new agents
 You can also deploy new agents instead of using the existing dev agents, you can follow the instructions for each 
 platform linked from the Apollo Hub [here](https://www.notion.so/montecarlodata/Apollo-Hub-Agent-Architecture-for-Hybrid-Hosted-Collection-8ea81cccf3f04bc38179f4c7566607da?pvs=4),
 by using a Terraform or CloudFormation template:
@@ -121,7 +121,7 @@ is recommended to deploy a new DC to use with your agent.
 For testing, you can also deploy the agent without registering it with a DC and invoke the endpoints manually,
 for Azure and GCP you can use Postman and for Lambda you'll need to use `aws` CLI.
 
-### Release process
+## Release process
 To release a new version:
 - create the PR from your branch
 - once approved merge to `main`
@@ -142,7 +142,7 @@ See [LICENSE](https://github.com/monte-carlo-data/apollo-agent/blob/main/LICENSE
 
 See [SECURITY](https://github.com/monte-carlo-data/apollo-agent/blob/main/SECURITY.md) for more information.
 
-### Advanced deployment
+## Advanced deployment
 
 ### Cloud Run deployment
 - You need to have `gcloud` CLI configured, instructions [here](https://cloud.google.com/sdk/docs/install-sdk).
