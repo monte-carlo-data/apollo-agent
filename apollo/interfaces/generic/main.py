@@ -876,8 +876,15 @@ def get_outbound_ip_address() -> Tuple[Dict, int]:
 def open_api():
     # base_path = os.path.join(app.root_path, 'docs')
     swag = swagger(app)
-    swag["info"]["title"] = "Apollo Agent"
+    swag["info"]["title"] = "Monte Carlo - Apollo Agent API"
     swag["info"]["version"] = VERSION
+    swag["info"]["license"] = {
+        "name": "Monte Carlo Data, Inc. License",
+        "url": "https://github.com/monte-carlo-data/apollo-agent/blob/main/LICENSE.md",
+    }
+    swag["externalDocs"] = {
+        "url": "https://docs.getmontecarlo.com",
+    }
     swag["host"] = request.host
     swag["schemes"] = ["http"] if VERSION == "local" else ["https"]
     if swagger_security_settings:
