@@ -47,7 +47,6 @@ from apollo.interfaces.azure import main
 
 main.agent.platform_provider = AzurePlatformProvider()
 main.agent.log_context = log_context
-
 wsgi_middleware = WsgiMiddleware(main.app.wsgi_app)
 
 app = df.DFApp(http_auth_level=func.AuthLevel.FUNCTION)

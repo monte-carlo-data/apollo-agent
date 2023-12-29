@@ -20,7 +20,7 @@ Compress(app)
 logger = logging.getLogger(__name__)
 logging_utils = LoggingUtils()
 agent = Agent(logging_utils)
-swagger_security_definitions = {}
+swagger_security_settings = {}
 _DEFAULT_UPDATE_EVENTS_LIMIT = 100
 
 
@@ -57,8 +57,6 @@ def agent_execute(
     ---
     produces:
         - application/json
-    security:
-        - Agent Authentication: []
     parameters:
         - in: path
           name: connection_type
@@ -210,8 +208,6 @@ def test_health_get() -> Tuple[Dict, int]:
     ---
     produces:
         - application/json
-    security:
-        - Agent Authentication: []
     parameters:
         - in: query
           name: trace_id
@@ -278,8 +274,6 @@ def test_health_post() -> Tuple[Dict, int]:
     ---
     produces:
         - application/json
-    security:
-        - Agent Authentication: []
     parameters:
         - in: body
           name: body
@@ -323,8 +317,6 @@ def test_network_open_get() -> Tuple[Dict, int]:
     ---
     produces:
         - application/json
-    security:
-        - Agent Authentication: []
     parameters:
         - in: query
           name: host
@@ -390,8 +382,6 @@ def test_network_open_post() -> Tuple[Dict, int]:
     ---
     produces:
         - application/json
-    security:
-        - Agent Authentication: []
     parameters:
         - in: body
           name: body
@@ -438,8 +428,6 @@ def test_network_telnet_get() -> Tuple[Dict, int]:
     ---
     produces:
         - application/json
-    security:
-        - Agent Authentication: []
     parameters:
         - in: query
           name: host
@@ -504,8 +492,6 @@ def test_network_telnet_post() -> Tuple[Dict, int]:
     ---
     produces:
         - application/json
-    security:
-        - Agent Authentication: []
     parameters:
         - in: body
           name: body
@@ -551,8 +537,6 @@ def upgrade_agent() -> Tuple[Dict, int]:
     ---
     produces:
         - application/json
-    security:
-        - Agent Authentication: []
     parameters:
         - in: body
           name: body
@@ -626,8 +610,6 @@ def get_upgrade_logs_get() -> Tuple[Dict, int]:
     ---
     produces:
         - application/json
-    security:
-        - Agent Authentication: []
     parameters:
         - in: query
           name: trace_id
@@ -702,8 +684,6 @@ def get_upgrade_logs_post() -> Tuple[Dict, int]:
     ---
     produces:
         - application/json
-    security:
-        - Agent Authentication: []
     parameters:
         - in: body
           name: body
@@ -765,8 +745,6 @@ def get_infra_details_get() -> Tuple[Dict, int]:
     ---
     produces:
         - application/json
-    security:
-        - Agent Authentication: []
     parameters:
         - in: query
           name: trace_id
@@ -808,8 +786,6 @@ def get_infra_details_post() -> Tuple[Dict, int]:
     ---
     produces:
         - application/json
-    security:
-        - Agent Authentication: []
     parameters:
         - in: body
           name: body
@@ -846,8 +822,6 @@ def get_outbound_ip_address() -> Tuple[Dict, int]:
     ---
     produces:
         - application/json
-    security:
-        - Agent Authentication: []
     parameters:
         - in: query
           name: trace_id
@@ -881,8 +855,9 @@ def open_api():
     swag["info"]["version"] = VERSION
     swag["host"] = request.host
     swag["schemes"] = ["http"] if VERSION == "local" else ["https"]
-    if swagger_security_definitions:
-        swag["securityDefinitions"] = swagger_security_definitions
+    if swagger_security_settings:
+        swag.update(swagger_security_settings)
+
     return jsonify(swag)
 
 
