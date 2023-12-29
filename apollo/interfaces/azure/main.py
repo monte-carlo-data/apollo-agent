@@ -48,6 +48,8 @@ def azure_logs_query_get() -> Tuple[Dict, int]:
     Uses Azure Monitor Query client library to return a list of log events.
     See: https://learn.microsoft.com/en-us/python/api/overview/azure/monitor-query-readme?view=azure-python
     ---
+    tags:
+        - Troubleshooting
     produces:
         - application/json
     parameters:

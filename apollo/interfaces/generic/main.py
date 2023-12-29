@@ -55,6 +55,8 @@ def agent_execute(
     The body is expected to be a JSON document including a `credentials` attribute with the credentials to use for
     the connection and an `operation` attribute with the definition of the operation, as described in the README file.
     ---
+    tags:
+        - Agent Operations
     produces:
         - application/json
     parameters:
@@ -206,6 +208,8 @@ def test_health_get() -> Tuple[Dict, int]:
     Endpoint that returns health information about the agent, can be used as a "ping" endpoint.
     Receives an optional parameter: "full" that if "true" includes extra information like outbound IP address.
     ---
+    tags:
+        - Troubleshooting
     produces:
         - application/json
     parameters:
@@ -272,6 +276,8 @@ def test_health_post() -> Tuple[Dict, int]:
     Endpoint that returns health information about the agent, can be used as a "ping" endpoint.
     Receives an optional parameter: "full" that if "true" includes extra information like outbound IP address.
     ---
+    tags:
+        - Troubleshooting
     produces:
         - application/json
     parameters:
@@ -314,6 +320,8 @@ def test_network_open_get() -> Tuple[Dict, int]:
     - port
     - timeout (in seconds)
     ---
+    tags:
+        - Troubleshooting
     produces:
         - application/json
     parameters:
@@ -379,6 +387,8 @@ def test_network_open_post() -> Tuple[Dict, int]:
     - port
     - timeout (in seconds)
     ---
+    tags:
+        - Troubleshooting
     produces:
         - application/json
     parameters:
@@ -425,6 +435,8 @@ def test_network_telnet_get() -> Tuple[Dict, int]:
     - port
     - timeout (in seconds)
     ---
+    tags:
+        - Troubleshooting
     produces:
         - application/json
     parameters:
@@ -489,6 +501,8 @@ def test_network_telnet_post() -> Tuple[Dict, int]:
     - port
     - timeout (in seconds)
     ---
+    tags:
+        - Troubleshooting
     produces:
         - application/json
     parameters:
@@ -534,6 +548,8 @@ def upgrade_agent() -> Tuple[Dict, int]:
     - timeout (in seconds)
     - **kwargs optional extra args supported by the updater implementation
     ---
+    tags:
+        - Upgrading
     produces:
         - application/json
     parameters:
@@ -607,6 +623,8 @@ def get_upgrade_logs_get() -> Tuple[Dict, int]:
     - start_time (defaults to now - 10 minutes)
     - limit (defaults to 100)
     ---
+    tags:
+        - Upgrading
     produces:
         - application/json
     parameters:
@@ -681,6 +699,8 @@ def get_upgrade_logs_post() -> Tuple[Dict, int]:
     - start_time (defaults to now - 10 minutes)
     - limit (defaults to 100)
     ---
+    tags:
+        - Upgrading
     produces:
         - application/json
     parameters:
@@ -742,6 +762,8 @@ def get_infra_details_get() -> Tuple[Dict, int]:
     Returns a dictionary with the infrastructure details returned by the infra_provider implementation
     set in the agent.
     ---
+    tags:
+        - Infrastructure
     produces:
         - application/json
     parameters:
@@ -783,6 +805,8 @@ def get_infra_details_post() -> Tuple[Dict, int]:
     Returns a dictionary with the infrastructure details returned by the infra_provider implementation
     set in the agent.
     ---
+    tags:
+        - Infrastructure
     produces:
         - application/json
     parameters:
@@ -819,6 +843,8 @@ def get_outbound_ip_address() -> Tuple[Dict, int]:
     Get outbound IP Address.
     Returns the public IP address used by the agent for outbound connections.
     ---
+    tags:
+        - Troubleshooting
     produces:
         - application/json
     parameters:
