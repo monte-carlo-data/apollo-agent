@@ -1,3 +1,4 @@
+### Required steps to manually deploy a new Azure Function
 Create resource group
 ```shell
 az group create --name <RESOURCE_GROUP> --location <LOCATION>
