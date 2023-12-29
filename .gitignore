@@ -162,3 +162,4 @@ cython_debug/
 
 # Swagger generated file
 /docs/swagger.json
+/docs/swagger_template_updated.json
