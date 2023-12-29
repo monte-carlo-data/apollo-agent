@@ -105,6 +105,7 @@ You can use `BqProxyClient` as a reference, basically you just need to:
 ## Dev environment
 In order to test in our dev environment you need to merge your branch into `dev`, that will automatically trigger a 
 dev build and upload the image to our `pre-release-agent` repository in DockerHub.
+
 For now, that build is not updating the dev agents for the different platforms, the easiest way to update 
 them is to connect to MC Dev environment with `dev.apollo.agent` user (credentials in 1Pwd), go to
 Settings -> Integrations -> Agents & Data Store and update them.
@@ -118,6 +119,7 @@ by using a Terraform or CloudFormation template:
 
 A DC will send all traffic (for the supported integrations) through the agent once configured, so it
 is recommended to deploy a new DC to use with your agent.
+
 For testing, you can also deploy the agent without registering it with a DC and invoke the endpoints manually,
 for Azure and GCP you can use Postman and for Lambda you'll need to use `aws` CLI.
 
