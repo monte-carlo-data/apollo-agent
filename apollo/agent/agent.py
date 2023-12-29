@@ -462,6 +462,14 @@ class Agent:
                 )
                 url = storage_client.generate_presigned_url(key, expiration_seconds)
                 response.use_location(url)
+                logger.info(
+                    f"Generated pre-signed url for operation: {connection_type}/{operation_name}",
+                    extra=self._logging_utils.build_extra(
+                        operation.trace_id,
+                        operation_name,
+                        dict(key=key, unwrap_result=operation.must_unwrap_result()),
+                    ),
+                )
         return response
 
     @staticmethod
