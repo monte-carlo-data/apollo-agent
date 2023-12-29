@@ -174,8 +174,8 @@ jobs:
           source-tag: << parameters.code_version >>
 
   build-and-push-docs:
-    machine:
-      image: ubuntu-2004:202201-02
+    docker:
+      - image: python:3.11.7
     parameters:
       code_version:
         type: string
