@@ -98,6 +98,20 @@ gcloud run deploy dev-apollo-agent --image montecarlodata/pre-release-agent:late
 The same build process publishes also the `generic` image with the tag `latest-generic`, so you can use it to run a
 standalone agent.
 
+### API Docs
+API is documented using [flask-swagger](https://github.com/getsling/flask-swagger) and published automatically to
+https://apollodocs.dev.getmontecarlo.com/ when a dev build completes and to https://apollodocs.getmontecarlo.com/ 
+for production builds.
+In order to get better documentation, endpoints supporting multiple methods (like `GET` and `POST`) are 
+implemented using two methods to document the required parameters in the right way for each method. 
+The response element is defined in one of them and re-used in the other one, see `test_health` 
+in `generic/main.py` for an example.
+
+When running the agent locally, docs can be accessed using http://localhost:8081/swagger/ allowing endpoints to
+be tried out.
+For Azure, docs can also be accessed using the `/swagger` path, this works the same as the local development
+server but with security configured so `swagger-ui` allows you to set the App Key used for authentication.
+
 ### Release process
 To release a new version:
 - create the PR from your branch
