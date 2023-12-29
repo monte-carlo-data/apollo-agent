@@ -174,17 +174,21 @@ jobs:
           source-tag: << parameters.code_version >>
 
   build-and-push-docs:
-    executor: aws-cli/default
+    machine:
+      image: ubuntu-2004:202201-02
     parameters:
       code_version:
         type: string
     steps:
       - checkout
+      - aws-cli/install
       - aws-cli/setup:
           profile_name: default
       - run:
           name: Install dependencies
           command: |
+            apt-get update -y
+            apt-get install -yq python3-sphinx
             pip install virtualenv==20.13.0
       - run:
           name: Publish docs and invalidate the cloudfront cache
