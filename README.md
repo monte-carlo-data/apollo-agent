@@ -108,7 +108,7 @@ dev build and upload the image to our `pre-release-agent` repository in DockerHu
 
 For now, that build is not updating the dev agents for the different platforms, the easiest way to update 
 them is to connect to MC Dev environment with `dev.apollo.agent` user (credentials in 1Pwd), go to
-Settings -> Integrations -> Agents & Data Store and update them.
+Settings -> Integrations -> Agents & Data Store and update the (or use the `agents upgrade` command in MC CLI).
 
 ### Deploying new agents
 You can also deploy new agents instead of using the existing dev agents, you can follow the instructions for each 
