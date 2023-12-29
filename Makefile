@@ -11,7 +11,7 @@ clean:
 	rm -rf $(ENVIRONMENT_NAME) $(DOCS_OUT_PATH)
 
 install: clean
-	virtualenv $(ENVIRONMENT_NAME); \
+	python -m venv $(ENVIRONMENT_NAME); \
 	. $(ENVIRONMENT_NAME)/bin/activate; \
 	pip install -r requirements-dev.txt; \
 
