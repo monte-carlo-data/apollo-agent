@@ -99,8 +99,7 @@ class AgentHealthInformation(DataClassJsonMixin):
 class AgentExecuteSqlQueryResponse(DataClassJsonMixin):
     """Response schema for the built-in execute_sql_query command."""
 
-    number_of_rows_fetched: int
-    field_names: List[str]
+    columns: List[str]
     rows: Union[List[List[Any]], List[Tuple], List[Dict]]
     is_partial: bool = False
 
