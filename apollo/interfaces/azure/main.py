@@ -28,7 +28,7 @@ main.swagger_security_settings = {
             "description": "Enter the Azure Function App Key.",
         }
     },
-    "security": {"Azure App Key": []},
+    "security": [{"Azure App Key": []}],
 }
 
 

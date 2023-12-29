@@ -299,7 +299,6 @@ def test_health_post() -> Tuple[Dict, int]:
 
 
 def _test_health() -> Tuple[Dict, int]:
-    print(request.headers)
     request_dict: Dict = request.json if request.method == "POST" else request.args  # type: ignore
     trace_id = request_dict.get("trace_id")
     full = str(request_dict.get("full", "false")).lower() == "true"
