@@ -79,7 +79,7 @@ def azure_logs_query_get() -> Tuple[Dict, int]:
         - in: query
           name: query
           type: string
-          description: a KQL query expression, see https://learn.microsoft.com/en-us/azure/data-explorer/kusto/query/.
+          description: A KQL query expression, see https://learn.microsoft.com/en-us/azure/data-explorer/kusto/query/.
             If it starts with "traces" or "requests" it is expected to be a "full" query and will be sent "as is".
             Otherwise, if not empty it will be assumed to be only the filtering portion of a query
             (like "where message like pattern") and it will be added to the standard query that get traces
@@ -163,7 +163,7 @@ def azure_logs_query_post() -> Tuple[Dict, int]:
                   default: 1000
                 query:
                   type: string
-                  description: a KQL query expression, see https://learn.microsoft.com/en-us/azure/data-explorer/kusto/query/.
+                  description: A KQL query expression, see https://learn.microsoft.com/en-us/azure/data-explorer/kusto/query/.
                     If it starts with "traces" or "requests" it is expected to be a "full" query and will be sent "as is".
                     Otherwise, if not empty it will be assumed to be only the filtering portion of a query
                     (like "where message like pattern") and it will be added to the standard query that get traces

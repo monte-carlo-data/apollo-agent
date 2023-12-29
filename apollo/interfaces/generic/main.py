@@ -206,7 +206,7 @@ def test_health_get() -> Tuple[Dict, int]:
     """
     Returns health information about the agent.
     Endpoint that returns health information about the agent, can be used as a "ping" endpoint.
-    Receives an optional parameter: "full" that if "true" includes extra information like outbound IP address.
+    Receives an optional parameter: "full", which when "true" includes extra information like outbound IP address.
     ---
     tags:
         - Troubleshooting
@@ -274,7 +274,7 @@ def test_health_post() -> Tuple[Dict, int]:
     """
     Returns health information about the agent.
     Endpoint that returns health information about the agent, can be used as a "ping" endpoint.
-    Receives an optional parameter: "full" that if "true" includes extra information like outbound IP address.
+    Receives an optional parameter: "full", which when "true" includes extra information like outbound IP address.
     ---
     tags:
         - Troubleshooting
@@ -315,10 +315,6 @@ def _test_health() -> Tuple[Dict, int]:
 def test_network_open_get() -> Tuple[Dict, int]:
     """
     Tests network connectivity to the given host in the specified port.
-    Supported parameters (both in a JSON body or as query params):
-    - host
-    - port
-    - timeout (in seconds)
     ---
     tags:
         - Troubleshooting
@@ -382,10 +378,6 @@ def test_network_open_get() -> Tuple[Dict, int]:
 def test_network_open_post() -> Tuple[Dict, int]:
     """
     Tests network connectivity to the given host in the specified port.
-    Supported parameters (both in a JSON body or as query params):
-    - host
-    - port
-    - timeout (in seconds)
     ---
     tags:
         - Troubleshooting
@@ -430,10 +422,6 @@ def test_network_open_post() -> Tuple[Dict, int]:
 def test_network_telnet_get() -> Tuple[Dict, int]:
     """
     Tests network connectivity to the given host in the specified port using a Telnet connection.
-    Supported parameters (both in a JSON body or as query params):
-    - host
-    - port
-    - timeout (in seconds)
     ---
     tags:
         - Troubleshooting
@@ -496,10 +484,6 @@ def test_network_telnet_get() -> Tuple[Dict, int]:
 def test_network_telnet_post() -> Tuple[Dict, int]:
     """
     Tests network connectivity to the given host in the specified port using a Telnet connection.
-    Supported parameters (both in a JSON body or as query params):
-    - host
-    - port
-    - timeout (in seconds)
     ---
     tags:
         - Troubleshooting
@@ -528,6 +512,7 @@ def test_network_telnet_post() -> Tuple[Dict, int]:
                 trace_id:
                   type: string
                   description: An optional trace_id
+                  example: 324986b4-b185-4187-b4af-b0c2cd60f7a0
     responses:
         200:
             description: Returns a message indicating if the connection was successful or not.
@@ -542,11 +527,6 @@ def test_network_telnet_post() -> Tuple[Dict, int]:
 def upgrade_agent() -> Tuple[Dict, int]:
     """
     Requests the agent to upgrade to a given image.
-    Supported parameters (all optional):
-    - trace_id
-    - image (montecarlodata/repo_name:tag, for example: montecarlodata/agent:1.0.1-cloudrun).
-    - timeout (in seconds)
-    - **kwargs optional extra args supported by the updater implementation
     ---
     tags:
         - Upgrading
@@ -618,10 +598,6 @@ def upgrade_agent() -> Tuple[Dict, int]:
 def get_upgrade_logs_get() -> Tuple[Dict, int]:
     """
     Requests the agent to return a list of upgrade log events after the given datetime.
-    Supported parameters (all optional):
-    - trace_id
-    - start_time (defaults to now - 10 minutes)
-    - limit (defaults to 100)
     ---
     tags:
         - Upgrading
@@ -694,10 +670,6 @@ def get_upgrade_logs_get() -> Tuple[Dict, int]:
 def get_upgrade_logs_post() -> Tuple[Dict, int]:
     """
     Requests the agent to return a list of upgrade log events after the given datetime.
-    Supported parameters (all optional):
-    - trace_id
-    - start_time (defaults to now - 10 minutes)
-    - limit (defaults to 100)
     ---
     tags:
         - Upgrading
@@ -876,8 +848,15 @@ def get_outbound_ip_address() -> Tuple[Dict, int]:
 def open_api():
     # base_path = os.path.join(app.root_path, 'docs')
     swag = swagger(app)
-    swag["info"]["title"] = "Apollo Agent"
+    swag["info"]["title"] = "Monte Carlo - Apollo Agent API"
     swag["info"]["version"] = VERSION
+    swag["info"]["license"] = {
+        "name": "Monte Carlo Data, Inc. License",
+        "url": "https://github.com/monte-carlo-data/apollo-agent/blob/main/LICENSE.md",
+    }
+    swag["externalDocs"] = {
+        "url": "https://docs.getmontecarlo.com",
+    }
     swag["host"] = request.host
     swag["schemes"] = ["http"] if VERSION == "local" else ["https"]
     if swagger_security_settings:
