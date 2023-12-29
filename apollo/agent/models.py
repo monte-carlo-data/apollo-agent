@@ -72,10 +72,13 @@ class AgentOperation(DataClassJsonMixin):
             or self.response_type == RESPONSE_TYPE_URL
         )
 
-    def should_use_pre_signed_url(self, size: int) -> bool:
+    def must_use_pre_signed_url(self, size: int) -> bool:
         return (
             0 < self.response_size_limit_bytes < size
         ) or self.response_type == RESPONSE_TYPE_URL
+
+    def must_unwrap_result(self) -> bool:
+        return self.response_type == RESPONSE_TYPE_URL
 
 
 @dataclass
