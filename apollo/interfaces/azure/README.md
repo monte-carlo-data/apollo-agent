@@ -69,3 +69,13 @@ After updating the docker image:
   ```shell
   az functionapp config container set --image "<REGISTRY>.azurecr.io/mcd-agent/agent:latest"  --registry-password <REGISTRY_PWD> --registry-username <REGISTRY>  --resource-group <RESOURCE_GROUP> --name <FUNCTION_NAME>
   ```
+
+Updating the image using Azure Resource Manager
+- First get a token using `az`:
+  ```shell
+  export TOKEN=`az account get-access-token --query accessToken --output tsv`
+  ```
+- Then use the ARM endpoint to update the `linuxFxVersion` attribute:  
+  ```shell
+  curl -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -X PATCH "https://management.azure.com/subscriptions/<subscription_id>/resourceGroups/<resource_group_name>/providers/Microsoft.Web/sites/<function_name>?api-version=2022-03-01" -d '{"properties": {"siteConfig": {"linuxFxVersion": "DOCKER|docker.io/montecarlodata/pre-release-agent:0.2.4rc706-azure"}}}'
+  ```
