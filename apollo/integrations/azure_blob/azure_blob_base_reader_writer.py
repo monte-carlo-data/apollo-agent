@@ -14,6 +14,7 @@ from typing import (
 )
 from urllib.parse import urljoin
 
+from azure.core.credentials import TokenCredential
 from azure.core.exceptions import (
     ClientAuthenticationError,
     ResourceNotFoundError,
@@ -23,6 +24,7 @@ from azure.storage.blob import (
     BlobSasPermissions,
     BlobServiceClient,
     generate_blob_sas,
+    BlobClient,
 )
 
 from apollo.integrations.storage.base_storage_client import BaseStorageClient
@@ -56,15 +58,24 @@ class AzureBlobBaseReaderWriter(BaseStorageClient):
     def __init__(
         self,
         bucket_name: str,
-        connection_string: str,
+        connection_string: Optional[str] = None,
         prefix: Optional[str] = None,
+        account_url: Optional[str] = None,
+        credential: Optional[TokenCredential] = None,
         **kwargs,  # type: ignore
     ):
         super().__init__(prefix=prefix)
         self._bucket_name = bucket_name
-        self._client = BlobServiceClient.from_connection_string(
-            conn_str=connection_string
-        )
+        if account_url and credential:
+            self._client = BlobServiceClient(account_url, credential)
+        elif connection_string:
+            self._client = BlobServiceClient.from_connection_string(
+                conn_str=connection_string
+            )
+        else:
+            raise ValueError(
+                "connection_string or account_url/credential are required to connect to Azure Blob Storage"
+            )
 
     @property
     def bucket_name(self) -> str:
@@ -265,11 +276,8 @@ class AzureBlobBaseReaderWriter(BaseStorageClient):
         blob_client = self._client.get_blob_client(
             container=self._bucket_name, blob=self._apply_prefix(key)  # type: ignore
         )
-        sas_token = generate_blob_sas(
-            account_name=blob_client.credential.account_name,
-            account_key=blob_client.credential.account_key,
-            container_name=blob_client.container_name,
-            blob_name=blob_client.blob_name,
+        sas_token = self._generate_sas_token(
+            blob_client=blob_client,
             expiry=datetime.utcnow() + expiration,
             permission=BlobSasPermissions(read=True),
         )
@@ -284,8 +292,25 @@ class AzureBlobBaseReaderWriter(BaseStorageClient):
         :return: True if public access is off and False otherwise.
         """
 
-        container_client = self._client.get_container_client(self._bucket_name)
+        container_client = self._get_client_to_get_access_policy().get_container_client(
+            self._bucket_name
+        )
         access_policy = container_client.get_container_access_policy()
         return (
             "public_access" in access_policy and access_policy["public_access"] is None
+        )
+
+    def _get_client_to_get_access_policy(self) -> BlobServiceClient:
+        return self._client
+
+    def _generate_sas_token(
+        self, blob_client: BlobClient, expiry: datetime, permission: BlobSasPermissions
+    ):
+        return generate_blob_sas(
+            account_name=blob_client.credential.account_name,
+            account_key=blob_client.credential.account_key,
+            container_name=blob_client.container_name,
+            blob_name=blob_client.blob_name,
+            expiry=expiry,
+            permission=permission,
         )
