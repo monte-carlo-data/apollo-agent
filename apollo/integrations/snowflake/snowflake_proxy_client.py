@@ -69,8 +69,7 @@ class SnowflakeProxyClient(BaseDbProxyClient):
             description = cursor.description or []
 
             return AgentExecuteSqlQueryResponse(
-                number_of_rows_fetched=len(results),
-                field_names=[field[0] for field in description],
+                columns=[field[0] for field in description],
                 rows=results,
                 is_partial=is_partial,
             )
