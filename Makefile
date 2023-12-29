@@ -13,7 +13,7 @@ clean:
 install: clean
 	virtualenv $(ENVIRONMENT_NAME); \
 	. $(ENVIRONMENT_NAME)/bin/activate; \
-	pip install -r requirements-dev.txt; \
+	pip install -r requirements.txt; \
 
 generate-docs: install
 	. $(ENVIRONMENT_NAME)/bin/activate; \
