@@ -7,7 +7,6 @@ from psycopg2.errors import QueryCanceled, InsufficientPrivilege  # noqa
 from apollo.integrations.db.base_db_proxy_client import BaseDbProxyClient
 
 _ATTR_CONNECT_ARGS = "connect_args"
-_KEEP_ALIVE_SETTING = "keepalives"
 
 
 class PostgresProxyClient(BaseDbProxyClient):
@@ -28,11 +27,17 @@ class PostgresProxyClient(BaseDbProxyClient):
         }
         # we were having tcp keep alive issues in Azure, so we're forcing it now unless configured from the dc
         # https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-KEEPALIVES
-        if _KEEP_ALIVE_SETTING not in connect_args:
-            connect_args[_KEEP_ALIVE_SETTING] = 1
-            connect_args[f"{_KEEP_ALIVE_SETTING}_idle"] = 30
-            connect_args[f"{_KEEP_ALIVE_SETTING}_interval"] = 10
-            connect_args[f"{_KEEP_ALIVE_SETTING}_count"] = 5
+        if "keepalives" not in connect_args:
+            connect_args["keepalives"] = 1  # enables tcp keep alive messages.
+            connect_args[
+                "keepalives_idle"
+            ] = 30  # start sending keep-alive packets after 30 seconds of inactivity.
+            connect_args[
+                "keepalives_interval"
+            ] = 10  # re-send keep-alive messages not acknowledged after 10 secs.
+            connect_args[
+                "keepalives_count"
+            ] = 5  # 5 keep-alive messages lost before considering connection lost.
 
         self._connection = psycopg2.connect(**connect_args)
 
