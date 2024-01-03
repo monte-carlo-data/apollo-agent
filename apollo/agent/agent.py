@@ -445,10 +445,15 @@ class Agent:
         response = AgentResponse(result or {}, 200, operation.trace_id)
         if operation.can_use_pre_signed_url():
             size = response.calculate_result_size()
-            if operation.should_use_pre_signed_url(size):
+            if operation.must_use_pre_signed_url(size):
                 key = f"responses/{operation.trace_id}"
                 storage_client = StorageProxyClient(self.platform)
-                storage_client.write(key=key, obj_to_write=response.serialize_result())
+                storage_client.write(
+                    key=key,
+                    obj_to_write=response.serialize_result(
+                        unwrap_result=operation.must_unwrap_result()
+                    ),
+                )
                 expiration_seconds = int(
                     os.getenv(
                         PRE_SIGNED_URL_RESPONSE_EXPIRATION_SECONDS_ENV_VAR,
@@ -457,6 +462,14 @@ class Agent:
                 )
                 url = storage_client.generate_presigned_url(key, expiration_seconds)
                 response.use_location(url)
+                logger.info(
+                    f"Generated pre-signed url for operation: {connection_type}/{operation_name}",
+                    extra=self._logging_utils.build_extra(
+                        operation.trace_id,
+                        operation_name,
+                        dict(key=key, unwrap_result=operation.must_unwrap_result()),
+                    ),
+                )
         return response
 
     @staticmethod

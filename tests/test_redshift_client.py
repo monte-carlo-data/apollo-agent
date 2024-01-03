@@ -146,7 +146,13 @@ class RedshiftClientTests(TestCase):
         self.assertTrue(ATTRIBUTE_NAME_RESULT in response.result)
         result = response.result.get(ATTRIBUTE_NAME_RESULT)
 
-        mock_connect.assert_called_with(**_RS_CREDENTIALS)
+        mock_connect.assert_called_with(
+            **_RS_CREDENTIALS,
+            keepalives=1,
+            keepalives_idle=30,
+            keepalives_interval=10,
+            keepalives_count=5,
+        )
         self._mock_cursor.execute.assert_has_calls(
             [
                 call(query, None),

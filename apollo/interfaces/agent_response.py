@@ -56,5 +56,10 @@ class AgentResponse:
             return 0
         return len(self.serialize_result().encode())
 
-    def serialize_result(self) -> str:
-        return json.dumps(self.result, cls=AgentSerializer)
+    def serialize_result(self, unwrap_result: bool = False) -> str:
+        if unwrap_result and ATTRIBUTE_NAME_RESULT in self.result:
+            result = self.result[ATTRIBUTE_NAME_RESULT]
+        else:
+            result = self.result
+
+        return json.dumps(result, cls=AgentSerializer)
