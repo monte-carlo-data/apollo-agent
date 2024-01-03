@@ -156,7 +156,9 @@ def swagger_api(req: func.HttpRequest, context: func.Context):
 
 
 @app.function_name(name="cleanup_df_data")
-@app.schedule(schedule="0 */5 * * * *", arg_name="timer", run_on_startup=False)
+@app.schedule(
+    schedule="0 0 3,15 * * *", arg_name="timer", run_on_startup=False
+)  # run every day at 3 AM/PM
 @app.durable_client_input(client_name="client")
 async def cleanup_durable_functions_data(
     timer: func.TimerRequest, client: DurableOrchestrationClient
