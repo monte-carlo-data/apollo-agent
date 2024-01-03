@@ -146,15 +146,6 @@ def agent_api(req: func.HttpRequest, context: func.Context):
     return wsgi_middleware.handle(req, context)
 
 
-@app.http_type(http_type="wsgi")
-@app.route(route="/swagger/{*route}", auth_level=AuthLevel.ANONYMOUS)
-def swagger_api(req: func.HttpRequest, context: func.Context):
-    """
-    Endpoint to get swagger related information.
-    """
-    return wsgi_middleware.handle(req, context)
-
-
 @app.function_name(name="cleanup_df_data")
 @app.schedule(
     schedule="0 0 3,15 * * *", arg_name="timer", run_on_startup=False
