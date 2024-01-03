@@ -92,8 +92,11 @@ class HttpProxyClient(BaseProxyClient):
 
         headers = {**additional_headers} if additional_headers else {}
         if self._credentials and "token" in self._credentials:
-            auth_type = self._credentials.get("auth_type", "Bearer")
-            headers["Authorization"] = f"{auth_type} {self._credentials['token']}"
+            auth_header = self._credentials.get("auth_header", "Authorization")
+            auth_header_value = self._credentials["token"]
+            if auth_type := self._credentials.get("auth_type", "Bearer"):
+                auth_header_value = f"{auth_type} {auth_header_value}"
+            headers[auth_header] = auth_header_value
         if content_type:
             headers["Content-Type"] = content_type
         if user_agent:
