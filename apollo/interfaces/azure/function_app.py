@@ -1,6 +1,38 @@
 import json
+import logging
+import os
 from typing import Dict
 
+from azure.monitor.opentelemetry import configure_azure_monitor
+
+from apollo.agent.env_vars import DEBUG_ENV_VAR
+from apollo.interfaces.azure.log_context import AzureLogContext
+
+# remove default handlers to prevent duplicate log messages
+# https://learn.microsoft.com/en-us/python/api/overview/azure/monitor-opentelemetry-readme?view=azure-python#logging-issues
+root_logger = logging.getLogger()
+for handler in root_logger.handlers[:]:
+    root_logger.removeHandler(handler)
+
+is_debug = os.getenv(DEBUG_ENV_VAR, "false").lower() == "true"
+root_logger.setLevel(logging.DEBUG if is_debug else logging.INFO)
+
+# configure the Azure Log Monitor, it gets the Instrumentation Key from APPINSIGHTS_INSTRUMENTATIONKEY env var
+configure_azure_monitor()
+
+# configure the log context to include the agent context in all log messages
+log_context = AzureLogContext()
+log_context.install()
+
+# disable annoying logs every time OT logs are sent
+disable_loggers = [
+    "azure.monitor.opentelemetry.exporter.export._base",
+    "azure.core.pipeline.policies",
+]
+for logger_name in disable_loggers:
+    logging.getLogger(logger_name).setLevel(logging.ERROR)
+
+# intentionally imported here after log is initialized
 import azure.functions as func
 import azure.durable_functions as df
 from azure.durable_functions import (
@@ -11,9 +43,10 @@ from azure.durable_functions import (
 from azure.functions import WsgiMiddleware
 
 from apollo.interfaces.azure.azure_platform import AzurePlatformProvider
-from apollo.interfaces.generic import main
+from apollo.interfaces.azure import main
 
 main.agent.platform_provider = AzurePlatformProvider()
+main.agent.log_context = log_context
 wsgi_middleware = WsgiMiddleware(main.app.wsgi_app)
 
 app = df.DFApp(http_auth_level=func.AuthLevel.FUNCTION)
