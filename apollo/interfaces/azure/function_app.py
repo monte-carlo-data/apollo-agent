@@ -1,7 +1,7 @@
 import json
 import logging
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict
 
 from azure.monitor.opentelemetry import configure_azure_monitor
@@ -154,10 +154,10 @@ def agent_api(req: func.HttpRequest, context: func.Context):
 async def cleanup_durable_functions_data(
     timer: func.TimerRequest, client: DurableOrchestrationClient
 ) -> None:
-    created_time_from = datetime.today() - timedelta(
+    created_time_from = datetime.now(timezone.utc) - timedelta(
         days=365 * 10
     )  # datetime.min or None not supported
-    created_time_to = datetime.today() - timedelta(days=1)
+    created_time_to = datetime.now(timezone.utc) - timedelta(days=1)
     runtime_statuses = [
         OrchestrationRuntimeStatus.Canceled,
         OrchestrationRuntimeStatus.Completed,
@@ -166,7 +166,8 @@ async def cleanup_durable_functions_data(
     ]
 
     logging.info(
-        f"cleanup_durable_functions_data triggered, purging instances older than {created_time_to.isoformat()}"
+        f"cleanup_durable_functions_data triggered, purging instances older than "
+        f'{created_time_to.isoformat(timespec="seconds")}'
     )
 
     try:
