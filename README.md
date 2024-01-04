@@ -19,8 +19,12 @@ deployment options.
 
 ### Local application execution
 - Apollo Agent uses a Flask application
-- To run it: `python apollo/interfaces/generic/main.py`
-- The server will listen in port `8081` and you can execute commands with a POST to http://localhost:8081/api/v1/agent/execute/<connection_type>/<operation_name>
+- To run it: `python -m apollo.interfaces.generic.main`
+- The server will listen in port `8081` and you can call the `health` endpoint by accessing: http://localhost:8081/api/v1/test/health:
+  ```shell
+  curl http://localhost:8081/api/v1/test/health | jq
+  ```
+- You can execute commands with a POST to http://localhost:8081/api/v1/agent/execute/<connection_type>/<operation_name>
 - The body is expected to contain:
 ```json
 {
@@ -57,11 +61,22 @@ deployment options.
 }
 ```
 
+#### Local execution using Docker
+You can also execute the agent building and running a Docker image:
+```shell
+docker build -t local_agent --target generic --platform=linux/amd64 .;\
+docker run --rm --name local_agent -p8081:8081 -ePORT=8081 -it local_agent
+```
+Or running the latest dev image from DockerHub:
+```shell
+docker run --rm --name dev_agent -p8081:8081 -ePORT=8081 -it montecarlodata/pre-release-agent:latest-generic
+```
+
 #### Running storage operations locally
 If you need to run storage (S3, GCS or Azure Blob) operations locally you can run the agent setting these 
 environment variables: `MCD_STORAGE` and `MCD_STORAGE_BUCKET_NAME`, for example:
 ```shell
-PYTHONPATH=. MCD_DEBUG=true MCD_STORAGE_BUCKET_NAME=agent-bucket MCD_STORAGE=GCS python apollo/interfaces/generic/main.py
+MCD_DEBUG=true MCD_STORAGE_BUCKET_NAME=agent-bucket MCD_STORAGE=GCS python -m apollo.interfaces.generic.main
 ```
 Please note this needs your environment to be configured with credentials for the environment hosting the bucket, 
 for GCS you need to login using `gcloud` and for AWS you need to specify the required environment variables for 
@@ -112,7 +127,7 @@ Settings -> Integrations -> Agents & Data Store and update the (or use the `agen
 
 ### Deploying new agents
 You can also deploy new agents instead of using the existing dev agents, you can follow the instructions for each 
-platform linked from the Apollo Hub [here](https://www.notion.so/montecarlodata/Apollo-Hub-Agent-Architecture-for-Hybrid-Hosted-Collection-8ea81cccf3f04bc38179f4c7566607da?pvs=4),
+platform in our public docs: [AWS](https://docs.getmontecarlo.com/docs/create-and-register-an-aws-agent) and [GCP](https://docs.getmontecarlo.com/docs/create-and-register-a-gcp-agent),
 by using a Terraform or CloudFormation template:
 - For Azure and GCP: you need to use an image from our pre-release repo in DockerHub, for example: `montecarlodata/pre-release-agent:latest-cloudrun`
 - For Lambda: you need to use our dev ECR repo, for example: `arn:aws:ecr:us-east-1:404798114945:repository/mcd-pre-release-agent:latest`
@@ -121,7 +136,8 @@ A DC will send all traffic (for the supported integrations) through the agent on
 is recommended to deploy a new DC to use with your agent.
 
 For testing, you can also deploy the agent without registering it with a DC and invoke the endpoints manually,
-for Azure and GCP you can use Postman and for Lambda you'll need to use `aws` CLI.
+for Azure and GCP you can use Postman and for Lambda you'll need to use `aws` CLI, check the
+[Advanced Deployment](#advanced-deployment) section below for more information on manually deploying agents. 
 
 ## Release process
 To release a new version:
@@ -171,6 +187,7 @@ gcloud run deploy CLOUD_RUN_SERVICE_NAME_HERE --image montecarlodata/pre-release
 
 ### Azure deployment
 You can check the README file for Azure [here](apollo/interfaces/azure/README.md).
+For authentication you need to get the app-key for the Azure App and pass it in the `x-functions-key` header.
 
 ### Lambda deployment
 You can build the Docker image for the Lambda agent using:
