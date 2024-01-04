@@ -21,6 +21,7 @@ generate-docs: install
 	mkdir -p $(DOCS_OUT_PATH)/css; \
 	cp $(DOCS_IN_PATH)/index.html $(DOCS_OUT_PATH); \
 	cp $(DOCS_IN_PATH)/js/* $(DOCS_OUT_PATH)/js; \
+	cp $(DOCS_IN_PATH)/css/* $(DOCS_OUT_PATH)/css; \
 	sed -r "s/_version_/${VERSION}/" $(DOCS_IN_PATH)/swagger_template.json > $(DOCS_IN_PATH)/swagger_template_updated.json; \
 	flaskswagger apollo.interfaces.generic.main:app --out-dir $(DOCS_OUT_PATH) --template $(DOCS_IN_PATH)/swagger_template_updated.json; \
 	curl https://unpkg.com/swagger-ui-dist@4.5.0/swagger-ui-bundle.js > $(DOCS_OUT_PATH)/js/swagger-ui-bundle.js; \
