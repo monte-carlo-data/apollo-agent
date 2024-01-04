@@ -53,7 +53,8 @@ def agent_execute(
     Executes an agent operation for a given integration.
     Executes the operation named "operation_name" in a connection of type "connection_type", for example `bigquery`.
     The body is expected to be a JSON document including a `credentials` attribute with the credentials to use for
-    the connection and an `operation` attribute with the definition of the operation, as described in the README file.
+    the connection and an `operation` attribute with the definition of the operation, as described in the [README](https://github.com/monte-carlo-data/apollo-agent/blob/main/examples/README.md)
+    file in the examples directory.
     ---
     tags:
         - Agent Operations
@@ -63,7 +64,9 @@ def agent_execute(
         - in: path
           name: connection_type
           required: true
-          description: the connection type to use.
+          description: the connection type to use, one of bigquery, databricks, http, storage, looker, git,
+            redshift, postgres, sql-server, snowflake, mysql, oracle, teradata, azure-dedicated-sql-pool,
+            azure-sql-database, tableau, sap-hana, power-bi.
           schema:
               type: string
               example: snowflake
@@ -72,6 +75,8 @@ def agent_execute(
           required: true
           description: the name of the operation to execute, this is used only for logging purposes as the
             definition of what is executed is included in the "operation" attribute in the body.
+            Check the [README](https://github.com/monte-carlo-data/apollo-agent/blob/main/examples/README.md) file
+            for more information about how operations and commands work.
           schema:
               type: string
               example: execute_query
