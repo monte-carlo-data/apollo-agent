@@ -6,7 +6,6 @@ from typing import Dict, Tuple, Callable, Optional, Union, Any, BinaryIO
 
 from flask import Flask, request, Response, send_file, jsonify, render_template
 from flask_compress import Compress
-from flask_swagger import swagger
 
 from apollo.agent.agent import Agent
 from apollo.agent.constants import TRACE_ID_HEADER
@@ -20,7 +19,6 @@ Compress(app)
 logger = logging.getLogger(__name__)
 logging_utils = LoggingUtils()
 agent = Agent(logging_utils)
-swagger_security_settings = {}
 _DEFAULT_UPDATE_EVENTS_LIMIT = 100
 
 
@@ -851,7 +849,9 @@ def get_outbound_ip_address() -> Tuple[Dict, int]:
 
 @app.route("/swagger/openapi.json")
 def open_api():
-    # base_path = os.path.join(app.root_path, 'docs')
+    # imported here so we don't need to add flask-swagger to requirements.in (it's only in requirements-dev.in)
+    from flask_swagger import swagger
+
     swag = swagger(app)
     swag["info"]["title"] = "Monte Carlo - Apollo Agent API"
     swag["info"]["version"] = VERSION
@@ -864,8 +864,6 @@ def open_api():
     }
     swag["host"] = request.host
     swag["schemes"] = ["http"] if VERSION == "local" else ["https"]
-    if swagger_security_settings:
-        swag.update(swagger_security_settings)
 
     return jsonify(swag)
 

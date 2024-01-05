@@ -82,10 +82,7 @@ flask==2.3.3
     # via
     #   -r requirements.in
     #   flask-compress
-    #   flask-swagger
 flask-compress==1.14
-    # via -r requirements.in
-flask-swagger==0.2.14
     # via -r requirements.in
 google-api-core==2.15.0
     # via
@@ -228,8 +225,6 @@ pytz==2023.3.post1
     # via
     #   pandas
     #   snowflake-connector-python
-pyyaml==6.0.1
-    # via flask-swagger
 requests==2.31.0
     # via
     #   azure-core

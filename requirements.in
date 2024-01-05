@@ -6,7 +6,6 @@ databricks-sql-connector==2.8.0
 dataclasses-json==0.6.0
 flask==2.3.3
 flask-compress==1.14
-flask-swagger==0.2.14
 google-api-python-client==2.98.0
 google-cloud-storage==2.10.0
 gunicorn==21.2.0
