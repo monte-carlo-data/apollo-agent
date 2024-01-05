@@ -1,4 +1,6 @@
 import os
+import random
+import string
 import sys
 import traceback
 import uuid
@@ -134,6 +136,10 @@ class AgentUtils:
         response = requests.get(url)
         # truncate the response, we don't want to return a full webpage if the url is wrong or not working
         return response.content.decode("utf-8")[:20].strip() if response.content else ""
+
+    @staticmethod
+    def generate_random_str(rand_len: int) -> str:
+        return "".join(random.sample(string.ascii_letters, rand_len))
 
     @staticmethod
     def _get_error_details(
