@@ -84,7 +84,7 @@ environment variables: `MCD_STORAGE` and `MCD_STORAGE_BUCKET_NAME`, for example:
 ```shell
 MCD_DEBUG=true MCD_STORAGE_BUCKET_NAME=agent-bucket MCD_STORAGE=GCS python -m apollo.interfaces.generic.main
 ```
-**Note**: If you use `direnv` you can rename `.envrc.example` to `.envrc` and update the environment variables there.
+**Note**: If you use `direnv` you can copy `.envrc.example` to `.envrc` and update the environment variables there.
 
 Please note this needs your environment to be configured with credentials for the environment hosting the bucket, 
 for GCS you need to login using `gcloud` and for AWS you need to specify the required environment variables for 
