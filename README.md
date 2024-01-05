@@ -155,6 +155,7 @@ health endpoint manually for each platform.
 API is documented using [flask-swagger](https://github.com/getsling/flask-swagger) and published automatically to
 https://apollodocs.dev.getmontecarlo.com/ when a dev build completes and to https://apollodocs.getmontecarlo.com/ 
 for production builds.
+
 In order to get better documentation, endpoints supporting multiple methods (like `GET` and `POST`) are 
 implemented using two methods to document the required parameters in the right way for each method. 
 The response element is defined in one of them and re-used in the other one, see `test_health` 
