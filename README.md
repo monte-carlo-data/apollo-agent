@@ -72,12 +72,20 @@ Or running the latest dev image from DockerHub:
 docker run --rm --name dev_agent -p8081:8081 -ePORT=8081 -it montecarlodata/pre-release-agent:latest-generic
 ```
 
+And you can run the unit tests in Docker:
+```shell
+docker build -t test_agent --target tests --platform=linux/amd64 --build-arg CACHEBUST="`date`" --progress=plain .
+```
+**Note**: `CACHEBUST` is used as a way to skip the cached layer for the tests execution and force them to run again.
+
 #### Running storage operations locally
 If you need to run storage (S3, GCS or Azure Blob) operations locally you can run the agent setting these 
 environment variables: `MCD_STORAGE` and `MCD_STORAGE_BUCKET_NAME`, for example:
 ```shell
 MCD_DEBUG=true MCD_STORAGE_BUCKET_NAME=agent-bucket MCD_STORAGE=GCS python -m apollo.interfaces.generic.main
 ```
+**Note**: If you use `direnv` you can rename `.envrc.example` to `.envrc` and update the environment variables there.
+
 Please note this needs your environment to be configured with credentials for the environment hosting the bucket, 
 for GCS you need to login using `gcloud` and for AWS you need to specify the required environment variables for 
 `boto3` to connect to the bucket.
@@ -99,7 +107,6 @@ with the following body:
 ```
 
 ## Adding new integrations
-How to add new integrations is documented in Notion [here](https://www.notion.so/montecarlodata/Adding-support-for-Remote-Agents-to-integrations-3d5025ef36eb47de8488cdafdc39d42c?pvs=4). 
 You can use `BqProxyClient` as a reference, basically you just need to:
 - Create a new class extending `BaseProxyClient` that:
   - Creates the wrapped client in the constructor using the credentials parameter.
@@ -113,17 +120,16 @@ You can use `BqProxyClient` as a reference, basically you just need to:
     and that's usually enough, for example `_client.projects().list().execute()` will be sent as a single chained call
     and there's no need to create an "extension" method for it.
   - You can return `None` in `wrapped_client` if there's no wrapped object and all operations are implemented as 
-    methods in the proxy client 
-    class.
+    methods in the proxy client class.
 - Register the new client in `ProxyClientFactory`.
 
 ## Dev environment
 In order to test in our dev environment you need to merge your branch into `dev`, that will automatically trigger a 
 dev build and upload the image to our `pre-release-agent` repository in DockerHub.
 
-For now, that build is not updating the dev agents for the different platforms, the easiest way to update 
-them is to connect to MC Dev environment with `dev.apollo.agent` user (credentials in 1Pwd), go to
-Settings -> Integrations -> Agents & Data Store and update the (or use the `agents upgrade` command in MC CLI).
+Then, you can follow the instructions in our public docs to update the agents:
+- AWS: https://docs.getmontecarlo.com/docs/create-and-register-an-aws-agent#how-do-i-upgrade-the-agent
+- GCP: https://docs.getmontecarlo.com/docs/create-and-register-a-gcp-agent#how-do-i-upgrade-the-agent
 
 ### Deploying new agents
 You can also deploy new agents instead of using the existing dev agents, you can follow the instructions for each 
@@ -132,12 +138,18 @@ by using a Terraform or CloudFormation template:
 - For Azure and GCP: you need to use an image from our pre-release repo in DockerHub, for example: `montecarlodata/pre-release-agent:latest-cloudrun`
 - For Lambda: you need to use our dev ECR repo, for example: `arn:aws:ecr:us-east-1:404798114945:repository/mcd-pre-release-agent:latest`
 
+Additionally, you can check the example scripts provided with each template, as they help with tasks like deploying, testing and removing:
+- Terraform AWS Template - [Makefile](https://github.com/monte-carlo-data/terraform-aws-mcd-agent/blob/main/examples/agent/Makefile) that can be used to deploy/test/destroy the agent.
+- Terraform GCP Template - [Makefile](https://github.com/monte-carlo-data/terraform-google-mcd-agent/blob/main/examples/agent/Makefile) that can be used to deploy/test/destroy the agent.
+- CloudFormation `test_execution` script: [test_execution.sh](https://github.com/monte-carlo-data/mcd-iac-resources/blob/main/examples/agent/test_execution.sh) that can be used to test the agent by invoking the health endpoint.
+
 A DC will send all traffic (for the supported integrations) through the agent once configured, so it
 is recommended to deploy a new DC to use with your agent.
 
 For testing, you can also deploy the agent without registering it with a DC and invoke the endpoints manually,
 for Azure and GCP you can use Postman and for Lambda you'll need to use `aws` CLI, check the
-[Advanced Deployment](#advanced-deployment) section below for more information on manually deploying agents. 
+[Advanced Deployment](#advanced-deployment) section below for more information on invoking the 
+health endpoint manually for each platform. 
 
 ## Release process
 To release a new version:
@@ -161,6 +173,8 @@ See [LICENSE](https://github.com/monte-carlo-data/apollo-agent/blob/main/LICENSE
 See [SECURITY](https://github.com/monte-carlo-data/apollo-agent/blob/main/SECURITY.md) for more information.
 
 ## Advanced deployment
+This section is intended only for troubleshooting and advanced scenarios, using templates (Terraform or CloudFormation)
+is the preferred way to deploy agents (even test agents as you can customize the image to use).
 
 ### Cloud Run deployment
 - You need to have `gcloud` CLI configured, instructions [here](https://cloud.google.com/sdk/docs/install-sdk).
@@ -187,13 +201,14 @@ gcloud run deploy CLOUD_RUN_SERVICE_NAME_HERE --image montecarlodata/pre-release
 
 ### Azure deployment
 You can check the README file for Azure [here](apollo/interfaces/azure/README.md).
-For authentication you need to get the app-key for the Azure App and pass it in the `x-functions-key` header.
+For authentication, you need to get the app-key for the Azure App and pass it in the `x-functions-key` header.
 
 ### Lambda deployment
 You can build the Docker image for the Lambda agent using:
 ```shell
-docker build -t lambda_agent -f Dockerfile --target lambda --build-arg code_version=0.0.2 --build-arg build_number=106 --platform=linux/amd64 .
+docker build -t lambda_agent -f Dockerfile --target lambda --build-arg code_version=<version> --build-arg build_number=<build_number> --platform=linux/amd64 .
 ```
+With version being a semantic version like `0.0.2` and build_number just an integer number like `110`.
 
 If you have your own ECR repo used for testing you'll need to login first:
 ```shell
@@ -202,8 +217,8 @@ aws ecr get-login-password --region us-east-1 --profile <aws_profile> | docker l
 
 And then tag/push your image:
 ```shell
-docker tag lambda_agent:latest <account_id>.dkr.ecr.us-east-1.amazonaws.com/dev-agent:95
-docker push <account_id>.dkr.ecr.us-east-1.amazonaws.com/dev-agent:95 
+docker tag lambda_agent:latest <account_id>.dkr.ecr.us-east-1.amazonaws.com/dev-agent:<build_number>
+docker push <account_id>.dkr.ecr.us-east-1.amazonaws.com/dev-agent:<build_number> 
 ```
 
 Deploy a new Lambda function using the image you pushed to your ECR repo and now you can
