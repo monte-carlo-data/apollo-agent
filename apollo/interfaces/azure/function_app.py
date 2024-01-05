@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+from datetime import datetime, timedelta, timezone
 from typing import Dict
 
 from azure.monitor.opentelemetry import configure_azure_monitor
@@ -143,3 +144,38 @@ def agent_api(req: func.HttpRequest, context: func.Context):
     Endpoint to execute sync operations.
     """
     return wsgi_middleware.handle(req, context)
+
+
+@app.function_name(name="cleanup_df_data")
+@app.schedule(
+    schedule="0 0 3,15 * * *", arg_name="timer", run_on_startup=False
+)  # run every day at 3 AM/PM
+@app.durable_client_input(client_name="client")
+async def cleanup_durable_functions_data(
+    timer: func.TimerRequest, client: DurableOrchestrationClient
+) -> None:
+    created_time_from = datetime.now(timezone.utc) - timedelta(
+        days=365 * 10
+    )  # datetime.min or None not supported
+    created_time_to = datetime.now(timezone.utc) - timedelta(days=1)
+    runtime_statuses = [
+        OrchestrationRuntimeStatus.Canceled,
+        OrchestrationRuntimeStatus.Completed,
+        OrchestrationRuntimeStatus.Failed,
+        OrchestrationRuntimeStatus.Terminated,
+    ]
+
+    logging.info(
+        f"cleanup_durable_functions_data triggered, purging instances older than "
+        f'{created_time_to.isoformat(timespec="seconds")}'
+    )
+
+    try:
+        result = await client.purge_instance_history_by(
+            created_time_from=created_time_from,
+            created_time_to=created_time_to,
+            runtime_status=runtime_statuses,
+        )
+        logging.info(f"Purge completed, deleted instances: {result.instances_deleted}")
+    except Exception as ex:
+        logging.error(f"Failed to purge Durable Functions data: {ex}")
