@@ -151,6 +151,19 @@ for Azure and GCP you can use Postman and for Lambda you'll need to use `aws` CL
 [Advanced Deployment](#advanced-deployment) section below for more information on invoking the 
 health endpoint manually for each platform. 
 
+### API Docs
+API is documented using [flask-swagger](https://github.com/getsling/flask-swagger) and published automatically to
+https://apollodocs.dev.getmontecarlo.com/ when a dev build completes and to https://apollodocs.getmontecarlo.com/ 
+for production builds.
+
+In order to get better documentation, endpoints supporting multiple methods (like `GET` and `POST`) are 
+implemented using two methods to document the required parameters in the right way for each method. 
+The response element is defined in one of them and re-used in the other one, see `test_health` 
+in `generic/main.py` for an example.
+
+When running the agent locally, docs can be accessed using http://localhost:8081/swagger/ allowing endpoints to
+be tried out. You can also add the endpoints to Postman by importing http://localhost:8081/swagger/openapi.json.
+
 ## Release process
 To release a new version:
 - create the PR from your branch

@@ -160,6 +160,10 @@ cython_debug/
 .idea/
 *.DS_Store
 
+# Swagger generated file
+/docs/swagger.json
+/docs/swagger_template_updated.json
+
 # pyenv
 /.python-version
 

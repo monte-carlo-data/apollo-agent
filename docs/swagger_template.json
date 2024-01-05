@@ -1,0 +1,14 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "version": "_version_",
+        "title": "Monte Carlo - Apollo Agent API",
+        "license": {
+            "name": "Monte Carlo Data, Inc. License",
+            "url": "https://github.com/monte-carlo-data/apollo-agent/blob/main/LICENSE.md"
+        }
+    },
+    "externalDocs": {
+        "url": "https://docs.getmontecarlo.com"
+    }
+}
