@@ -19,18 +19,6 @@ app = main.app
 agent = main.agent
 execute_agent_operation = main.execute_agent_operation
 
-main.swagger_security_settings = {
-    "securityDefinitions": {
-        "Azure App Key": {
-            "type": "apiKey",
-            "name": "x-functions-key",
-            "in": "header",
-            "description": "Enter the Azure Function App Key.",
-        }
-    },
-    "security": [{"Azure App Key": []}],
-}
-
 
 # Azure is not including complex objects like lists in logs, as we want for example commands
 # to be logged we're converting it to a json string here.

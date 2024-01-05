@@ -161,9 +161,7 @@ The response element is defined in one of them and re-used in the other one, see
 in `generic/main.py` for an example.
 
 When running the agent locally, docs can be accessed using http://localhost:8081/swagger/ allowing endpoints to
-be tried out.
-For Azure, docs can also be accessed using the `/swagger` path, this works the same as the local development
-server but with security configured so `swagger-ui` allows you to set the App Key used for authentication.
+be tried out. You can also add the endpoints to Postman by importing http://localhost:8081/swagger/openapi.json.
 
 ## Release process
 To release a new version:
