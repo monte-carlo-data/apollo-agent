@@ -168,6 +168,16 @@ def _get_proxy_client_power_bi(
     return PowerBiProxyClient(credentials=credentials, platform=platform)
 
 
+def _get_proxy_client_glue(
+    credentials: Optional[Dict], platform: str, **kwargs  # type: ignore
+) -> BaseProxyClient:
+    from apollo.integrations.aws.glue_proxy_client import (
+        GlueProxyClient,
+    )
+
+    return GlueProxyClient(credentials=credentials, platform=platform)
+
+
 @dataclass
 class ProxyClientCacheEntry:
     created_time: datetime
@@ -193,6 +203,7 @@ _CLIENT_FACTORY_MAPPING = {
     "tableau": _get_proxy_client_tableau,
     "sap-hana": _get_proxy_client_sap_hana,
     "power-bi": _get_proxy_client_power_bi,
+    "glue": _get_proxy_client_glue,
 }
 
 
