@@ -30,12 +30,11 @@ class PrestoProxyClient(BaseDbProxyClient):
                 f"Presto agent client requires {_ATTR_CONNECT_ARGS} in credentials"
             )
 
-        if auth := credentials[_ATTR_CONNECT_ARGS].pop("auth"):
-            credentials[_ATTR_CONNECT_ARGS].update(
-                {"auth": prestodb.auth.BasicAuthentication(**auth)}
-            )
+        connect_args = credentials[_ATTR_CONNECT_ARGS]
+        if auth := connect_args.pop("auth"):
+            connect_args.update({"auth": prestodb.auth.BasicAuthentication(**auth)})
 
-        self._connection = prestodb.dbapi.connect(**credentials[_ATTR_CONNECT_ARGS])
+        self._connection = prestodb.dbapi.connect(**connect_args)
 
         ssl_options = credentials.get("ssl_options", {})
         if bool(ssl_options.get("skip_verification")):

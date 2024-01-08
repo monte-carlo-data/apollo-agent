@@ -19,8 +19,6 @@ from apollo.agent.logging_utils import LoggingUtils
 _PRESTO_CREDENTIALS = {
     "host": "https://example.com",
     "port": "443",
-    "user": "foo",
-    "password": "bar",
     "http_scheme": "https",
     "catalog": "fizz",
     "schema": "buzz",
