@@ -41,7 +41,7 @@ from azure.durable_functions import (
     DurableOrchestrationClient,
     OrchestrationRuntimeStatus,
 )
-from azure.functions import WsgiMiddleware
+from azure.functions import WsgiMiddleware, AuthLevel
 
 from apollo.interfaces.azure.azure_platform import AzurePlatformProvider
 from apollo.interfaces.azure import main

@@ -1,0 +1,4 @@
+/* Hide link to swagger.json */
+.main a {
+  visibility: hidden;
+}
