@@ -59,6 +59,7 @@ class AgentOperation(DataClassJsonMixin):
     response_size_limit_bytes: int = 0
     response_type: str = RESPONSE_TYPE_JSON
     skip_cache: bool = False
+    compress_response_file: bool = True
 
     def __post_init__(self):
         if self.response_type not in (RESPONSE_TYPE_URL, RESPONSE_TYPE_JSON):
@@ -76,6 +77,9 @@ class AgentOperation(DataClassJsonMixin):
         return (
             0 < self.response_size_limit_bytes < size
         ) or self.response_type == RESPONSE_TYPE_URL
+
+    def must_compress_response_file(self) -> bool:
+        return self.response_type == RESPONSE_TYPE_JSON and self.compress_response_file
 
     def must_unwrap_result(self) -> bool:
         return self.response_type == RESPONSE_TYPE_URL

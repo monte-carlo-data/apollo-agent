@@ -8,6 +8,7 @@ from apollo.agent.constants import (
     ATTRIBUTE_NAME_RESULT_LOCATION,
     ATTRIBUTE_NAME_TRACE_ID,
     ATTRIBUTE_NAME_RESULT,
+    ATTRIBUTE_NAME_RESULT_COMPRESSED,
 )
 from apollo.agent.serde import AgentSerializer
 
@@ -34,6 +35,14 @@ class AgentResponse:
         self.result[ATTRIBUTE_NAME_RESULT_LOCATION] = location
         if ATTRIBUTE_NAME_RESULT in self.result:
             self.result.pop(ATTRIBUTE_NAME_RESULT)
+
+    @property
+    def compressed(self) -> bool:
+        return self.result.get(ATTRIBUTE_NAME_RESULT_COMPRESSED, False)
+
+    @compressed.setter
+    def compressed(self, compressed: bool):
+        self.result[ATTRIBUTE_NAME_RESULT_COMPRESSED] = compressed
 
     @property
     def is_error(self) -> bool:

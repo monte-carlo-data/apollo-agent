@@ -1,3 +1,4 @@
+import gzip
 import logging
 import os
 import sys
@@ -448,11 +449,15 @@ class Agent:
             if operation.must_use_pre_signed_url(size):
                 key = f"responses/{operation.trace_id}"
                 storage_client = StorageProxyClient(self.platform)
+                contents = response.serialize_result(
+                    unwrap_result=operation.must_unwrap_result()
+                )
+                if operation.must_compress_response_file():
+                    contents = gzip.compress(contents.encode("utf-8"))
+                    response.compressed = True
                 storage_client.write(
                     key=key,
-                    obj_to_write=response.serialize_result(
-                        unwrap_result=operation.must_unwrap_result()
-                    ),
+                    obj_to_write=contents,
                 )
                 expiration_seconds = int(
                     os.getenv(
@@ -467,7 +472,11 @@ class Agent:
                     extra=self._logging_utils.build_extra(
                         operation.trace_id,
                         operation_name,
-                        dict(key=key, unwrap_result=operation.must_unwrap_result()),
+                        dict(
+                            key=key,
+                            unwrap_result=operation.must_unwrap_result(),
+                            compressed=response.compressed,
+                        ),
                     ),
                 )
         return response
