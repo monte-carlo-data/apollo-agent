@@ -56,7 +56,9 @@ charset-normalizer==3.3.2
     #   requests
     #   snowflake-connector-python
 click==8.1.7
-    # via flask
+    # via
+    #   flask
+    #   presto-python-client
 cryptography==41.0.7
     # via
     #   azure-identity
@@ -184,6 +186,8 @@ platformdirs==3.11.0
     # via snowflake-connector-python
 portalocker==2.8.2
     # via msal-extensions
+presto-python-client==0.8.3
+    # via -r requirements.in
 protobuf==4.25.1
     # via
     #   google-api-core
@@ -233,6 +237,7 @@ requests==2.31.0
     #   google-cloud-storage
     #   looker-sdk
     #   msal
+    #   presto-python-client
     #   snowflake-connector-python
     #   tableauserverclient
 retry2==0.9.5
@@ -245,6 +250,7 @@ six==1.16.0
     # via
     #   azure-core
     #   isodate
+    #   presto-python-client
     #   python-dateutil
     #   thrift
 snowflake-connector-python==3.6.0
