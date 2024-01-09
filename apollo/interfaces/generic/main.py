@@ -28,7 +28,9 @@ def _get_response_headers(response: AgentResponse) -> Dict:
         headers[TRACE_ID_HEADER] = response.trace_id
     result = response.result
     if isinstance(result, bytes) or isinstance(result, io.IOBase):
-        headers["Content-Type"] = "application/octet-stream"
+        headers["Content-Type"] = (
+            "application/gzip" if response.compressed else "application/octet-stream"
+        )
     elif isinstance(result, str):
         headers["Content-Type"] = "text/plain"
     return headers
