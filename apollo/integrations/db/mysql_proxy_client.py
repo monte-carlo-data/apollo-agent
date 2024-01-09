@@ -1,3 +1,6 @@
+import logging
+import socket
+import sys
 from typing import (
     Any,
     Dict,
@@ -9,6 +12,7 @@ import pymysql
 from apollo.integrations.db.base_db_proxy_client import BaseDbProxyClient
 
 _ATTR_CONNECT_ARGS = "connect_args"
+logger = logging.getLogger(__name__)
 
 
 class MysqlProxyClient(BaseDbProxyClient):
@@ -24,6 +28,28 @@ class MysqlProxyClient(BaseDbProxyClient):
                 f"Mysql agent client requires {_ATTR_CONNECT_ARGS} in credentials"
             )
         self._connection = pymysql.connect(**credentials[_ATTR_CONNECT_ARGS])
+
+        # we were having tcp keep alive issues in Azure, so we're forcing it to 30 secs
+        sock: Optional[socket.socket] = (
+            getattr(self._connection, "_sock")
+            if hasattr(self._connection, "_sock")
+            else None
+        )
+        if sock:
+            # enables tcp keep alive messages
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+            if sys.platform == "darwin":
+                # for macos, send tcp keep-alive packets every 30 secs
+                sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPALIVE, 30)
+            else:
+                # start sending keep-alive packets after 30 seconds of inactivity.
+                sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, 30)
+                # re-send keep-alive messages not acknowledged after 10 secs.
+                sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, 10)
+                # 5 keep-alive messages lost before considering connection lost
+                sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, 5)
+        else:
+            logger.warning("No _sock attribute found in mysql connection")
 
     @property
     def wrapped_client(self):
