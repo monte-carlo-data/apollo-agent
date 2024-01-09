@@ -5,8 +5,12 @@ from typing import (
     Optional,
 )
 from unittest import TestCase
-from unittest.mock import Mock, call, patch
-from psycopg2.errors import InsufficientPrivilege  # noqa
+from unittest.mock import (
+    ANY,
+    Mock,
+    call,
+    patch,
+)
 
 from apollo.agent.agent import Agent
 from apollo.agent.constants import (
@@ -23,6 +27,14 @@ _PRESTO_CREDENTIALS = {
     "catalog": "fizz",
     "schema": "buzz",
     "auth": {"username": "foo", "password": "bar"},
+}
+_EXPECTED_PRESTO_CREDENTIALS = {
+    "host": "https://example.com",
+    "port": "443",
+    "http_scheme": "https",
+    "catalog": "fizz",
+    "schema": "buzz",
+    "auth": ANY,
 }
 
 
@@ -120,7 +132,7 @@ class PrestoClientTests(TestCase):
         self.assertTrue(ATTRIBUTE_NAME_RESULT in response.result)
         result = response.result.get(ATTRIBUTE_NAME_RESULT)
 
-        mock_connect.assert_called_with(**_PRESTO_CREDENTIALS)
+        mock_connect.assert_called_with(**_EXPECTED_PRESTO_CREDENTIALS)
         self._mock_cursor.execute.assert_has_calls(
             [
                 call(query, None),
