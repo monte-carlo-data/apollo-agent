@@ -57,7 +57,6 @@ app = main.app
 main.agent.platform_provider = CloudRunPlatformProvider()
 main.agent.log_context = log_context
 
-
 # CloudRun specific endpoints
 
 
