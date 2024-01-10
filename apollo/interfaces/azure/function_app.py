@@ -19,7 +19,10 @@ is_debug = os.getenv(DEBUG_ENV_VAR, "false").lower() == "true"
 root_logger.setLevel(logging.DEBUG if is_debug else logging.INFO)
 
 # configure the Azure Log Monitor, it gets the Instrumentation Key from APPINSIGHTS_INSTRUMENTATIONKEY env var
-configure_azure_monitor()
+try:
+    configure_azure_monitor()
+except Exception as exc:
+    root_logger.error(f"Failed to initialize logging: {exc}")
 
 # configure the log context to include the agent context in all log messages
 log_context = AzureLogContext()
