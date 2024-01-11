@@ -69,9 +69,18 @@ RUN yum update -y
 # to use in runtime the git version installed by lambda-git package
 RUN yum install git -y
 
-COPY requirements.txt ./
+COPY requirements.in ./
 COPY requirements-lambda.txt ./
-RUN pip install --no-cache-dir --target "${LAMBDA_TASK_ROOT}" -r requirements.txt -r requirements-lambda.txt
+
+# Workaround to have urllib3 updated to 2.0.7 while tableauserverclient is not released
+# latest released tableauserverclient depends on 2.0.6 while master branch depends on 2.0.7
+# we cannot just update requirements.in because that would break the data-collector build as it depends on
+# tableauserverclient==2.0.5 and that version is pinned to urllib3==2.0.6
+RUN sed -r "s/tableauserverclient>=0.25/git+https:\\/\\/github.com\\/tableau\\/server-client-python.git/" requirements.in > requirements.fix.in
+RUN pip install --no-cache-dir pip-tools
+RUN pip-compile requirements.fix.in
+
+RUN pip install --no-cache-dir --target "${LAMBDA_TASK_ROOT}" -r requirements.fix.txt -r requirements-lambda.txt
 
 FROM public.ecr.aws/lambda/python:3.11 AS lambda
 
@@ -80,9 +89,6 @@ RUN pip install --no-cache-dir setuptools==68.0.0
 
 # VULN-230 CWE-77
 RUN pip install --no-cache-dir --upgrade pip
-
-# Updated this way because tableauserverclient pins urllib3 to 2.0.6 and we need 2.0.7
-RUN pip install --no-cache-dir --upgrade urllib3==2.0.7
 
 COPY --from=lambda-builder "${LAMBDA_TASK_ROOT}" "${LAMBDA_TASK_ROOT}"
 
