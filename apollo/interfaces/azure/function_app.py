@@ -146,7 +146,16 @@ def agent_api(req: func.HttpRequest, context: func.Context):
     """
     Endpoint to execute sync operations.
     """
-    return wsgi_middleware.handle(req, context)
+    try:
+        return wsgi_middleware.handle(req, context)
+    except Exception as exc:
+        return func.HttpResponse(
+            status_code=500,
+            body=str(exc),
+            headers={
+                "Content-Type": "text/plain",
+            },
+        )
 
 
 @app.function_name(name="cleanup_df_data")
