@@ -19,11 +19,7 @@ is_debug = os.getenv(DEBUG_ENV_VAR, "false").lower() == "true"
 root_logger.setLevel(logging.DEBUG if is_debug else logging.INFO)
 
 # configure the Azure Log Monitor, it gets the Instrumentation Key from APPINSIGHTS_INSTRUMENTATIONKEY env var
-try:
-    configure_azure_monitor()
-except Exception as exc:
-    # using print because at this point maybe logging is not properly configured
-    print(f"ERROR: Failed to initialize logging: {exc}")
+configure_azure_monitor()
 
 # configure the log context to include the agent context in all log messages
 log_context = AzureLogContext()
@@ -147,18 +143,7 @@ def agent_api(req: func.HttpRequest, context: func.Context):
     """
     Endpoint to execute sync operations.
     """
-    try:
-        return wsgi_middleware.handle(req, context)
-    except Exception as ex:
-        # using print because at this point maybe logging is not properly configured
-        print(f"ERROR: Exception in agent_api: {ex}")
-        return func.HttpResponse(
-            status_code=500,
-            body=str(ex),
-            headers={
-                "Content-Type": "text/plain",
-            },
-        )
+    return wsgi_middleware.handle(req, context)
 
 
 @app.function_name(name="cleanup_df_data")
