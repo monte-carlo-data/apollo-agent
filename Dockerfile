@@ -75,7 +75,7 @@ COPY requirements-lambda.txt ./
 # Workaround to have urllib3 updated to 2.0.7 while tableauserverclient is not released
 # latest released tableauserverclient depends on 2.0.6 while master branch depends on 2.0.7
 # we cannot just update requirements.in because that would break the data-collector build as it depends on
-# tableauserverclient==2.0.5 and that version is pinned to urllib3==2.0.6
+# tableauserverclient==0.25 and that version is pinned to urllib3==2.0.6
 RUN sed -r "s/tableauserverclient>=0.25/git+https:\\/\\/github.com\\/tableau\\/server-client-python.git/" requirements.in > requirements.fix.in
 RUN pip install --no-cache-dir pip-tools
 RUN pip-compile requirements.fix.in
