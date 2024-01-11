@@ -57,9 +57,7 @@ class AgentOperation(DataClassJsonMixin):
     trace_id: str
     commands: List[AgentCommand]
     response_size_limit_bytes: int = 0
-    compress_response_threshold_bytes: int = (
-        0  # configures the threshold to send compressed responses inline
-    )
+    compress_response_threshold_bytes: int = 0  # configures the threshold to send compressed responses inline, disabled by default
     response_type: str = RESPONSE_TYPE_JSON
     skip_cache: bool = False
     compress_response_file: bool = (
