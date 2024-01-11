@@ -4,6 +4,7 @@
     "fileLoggingMode": "always",
     "logLevel": {
       "default": "Trace",
+      "function": "Trace"
     },
     "applicationInsights": {
       "samplingSettings": {
