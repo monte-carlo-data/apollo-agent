@@ -22,7 +22,8 @@ root_logger.setLevel(logging.DEBUG if is_debug else logging.INFO)
 try:
     configure_azure_monitor()
 except Exception as exc:
-    root_logger.error(f"Failed to initialize logging: {exc}")
+    # using print because at this point maybe logging is not properly configured
+    print(f"ERROR: Failed to initialize logging: {exc}")
 
 # configure the log context to include the agent context in all log messages
 log_context = AzureLogContext()
@@ -148,10 +149,12 @@ def agent_api(req: func.HttpRequest, context: func.Context):
     """
     try:
         return wsgi_middleware.handle(req, context)
-    except Exception as exc:
+    except Exception as ex:
+        # using print because at this point maybe logging is not properly configured
+        print(f"ERROR: Exception in agent_api: {ex}")
         return func.HttpResponse(
             status_code=500,
-            body=str(exc),
+            body=str(ex),
             headers={
                 "Content-Type": "text/plain",
             },
