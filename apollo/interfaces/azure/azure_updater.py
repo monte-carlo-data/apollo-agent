@@ -44,10 +44,16 @@ class AzureUpdater(AgentUpdater):
         return {"message": f"Update in progress, image: {image}"}
 
     def get_current_image(self) -> Optional[str]:
-        resource = self.get_function_resource()
-        return (
-            resource.get("properties", {}).get("siteConfig", {}).get("linuxFxVersion")
-        )
+        try:
+            resource = self.get_function_resource()
+            return (
+                resource.get("properties", {})
+                .get("siteConfig", {})
+                .get("linuxFxVersion")
+            )
+        except Exception as exc:
+            logger.error(f"Unable to get current image: {exc}")
+            return None
 
     def get_update_logs(self, start_time: datetime, limit: int) -> List[Dict]:
         # no support for update logs in Azure

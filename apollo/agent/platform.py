@@ -35,6 +35,13 @@ class AgentPlatformProvider(ABC):
         """
         pass
 
+    @property
+    def client_cache_supported(self) -> bool:
+        """
+        Returns True if clients can be cached, platforms using multiple threads should return False.
+        """
+        return True
+
     @abstractmethod
     def get_infra_details(self) -> Dict:
         """
