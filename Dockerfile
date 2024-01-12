@@ -82,6 +82,9 @@ FROM public.ecr.aws/lambda/python:3.11 AS lambda
 # VULN-29: Base ECR image has setuptools-56.0.0 which is vulnerable (CVE-2022-40897)
 RUN pip install --no-cache-dir setuptools==68.0.0
 
+# VULN-230 CWE-77
+RUN pip install --no-cache-dir --upgrade pip
+
 COPY --from=lambda-builder "${LAMBDA_TASK_ROOT}" "${LAMBDA_TASK_ROOT}"
 
 # install unixodbc and 'ODBC Driver 17 for SQL Server', needed for Azure Dedicated SQL Pools
