@@ -6,7 +6,7 @@ from setuptools import setup, find_packages
 
 
 def parse_requirements(
-    file_name: Optional[str] = "requirements-export.in",
+    file_name: Optional[str] = "requirements.in",
 ) -> List[str]:
     return distutils.text_file.TextFile(
         filename=str(Path(__file__).with_name(file_name))  # type: ignore

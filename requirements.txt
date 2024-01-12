@@ -265,7 +265,7 @@ sqlalchemy==1.4.50
     # via
     #   alembic
     #   databricks-sql-connector
-tableauserverclient @ git+https://github.com/tableau/server-client-python.git
+tableauserverclient @ git+https://github.com/tableau/server-client-python.git ; python_version >= "3.11"
     # via -r requirements.in
 teradatasql==20.0.0.2
     # via -r requirements.in
