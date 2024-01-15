@@ -57,7 +57,10 @@ class AzureUpdater(AgentUpdater):
             )
 
         logger.info("Update triggered", extra=update_args)
-        return {"message": f"Update in progress, {update_args}"}
+        update_args_list = [
+            f"{key}: {value}" for key, value in update_args.items() if value
+        ]
+        return {"message": f"Update in progress, {', '.join(update_args_list)}"}
 
     def get_current_image(self) -> Optional[str]:
         try:
