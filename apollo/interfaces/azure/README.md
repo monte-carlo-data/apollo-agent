@@ -79,3 +79,7 @@ Updating the image using Azure Resource Manager
   ```shell
   curl -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -X PATCH "https://management.azure.com/subscriptions/<subscription_id>/resourceGroups/<resource_group_name>/providers/Microsoft.Web/sites/<function_name>?api-version=2022-03-01" -d '{"properties": {"siteConfig": {"linuxFxVersion": "DOCKER|docker.io/montecarlodata/pre-release-agent:0.2.4rc706-azure"}}}'
   ```
+- To update/add environment variables:
+  ```shell
+  curl -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -X PATCH "https://management.azure.com/subscriptions/<subscription_id>/resourceGroups/<resource_group_name>/providers/Microsoft.Web/sites/<function_name>/config/appsettings?api-version=2022-03-01" -d '{"properties": {"test_env_var": "1234"}}'
+  ```
