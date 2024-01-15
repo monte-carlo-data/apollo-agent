@@ -426,7 +426,7 @@ class Agent:
     ) -> AgentResponse:
         start_time = time.time()
         logger.info(
-            f"Agent operation, executing: {connection_type}/{operation_name}",
+            f"Executing operation: {connection_type}/{operation_name}",
             extra=self._logging_utils.build_extra(
                 operation.trace_id,
                 operation_name,
@@ -435,8 +435,8 @@ class Agent:
         )
 
         result = self._execute(client, self._logging_utils, operation_name, operation)
-        logger.info(
-            f"Agent operation, executed: {connection_type}/{operation_name}",
+        logger.debug(
+            f"Operation executed: {connection_type}/{operation_name}",
             extra=self._logging_utils.build_extra(
                 operation.trace_id,
                 operation_name,
