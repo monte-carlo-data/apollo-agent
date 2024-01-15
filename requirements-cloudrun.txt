@@ -98,7 +98,7 @@ rsa==4.9
     # via
     #   -c requirements.txt
     #   google-auth
-urllib3==2.0.6
+urllib3==2.0.7
     # via
     #   -c requirements.txt
     #   requests
