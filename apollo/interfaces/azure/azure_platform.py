@@ -40,14 +40,6 @@ class AzurePlatformProvider(AgentPlatformProvider):
     def updater(self) -> Optional[AgentUpdater]:
         return AzureUpdater()
 
-    @property
-    def client_cache_supported(self) -> bool:
-        """
-        Disabling clients cache as we're configuring multiple workers per process.
-        More information: https://learn.microsoft.com/en-us/azure/azure-functions/python-scale-performance-reference
-        """
-        return False
-
     def get_infra_details(self) -> Dict:
         return {
             "resource": AzureUpdater.get_function_resource(),

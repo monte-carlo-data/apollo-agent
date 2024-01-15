@@ -400,15 +400,9 @@ class Agent:
         ):
             response: Optional[AgentResponse] = None
             client: Optional[BaseProxyClient] = None
-            platform_cache_supported = (
-                self._platform_provider.client_cache_supported
-                if self._platform_provider
-                else True
-            )
-            skip_cache = not platform_cache_supported or operation.skip_cache
             try:
                 client = ProxyClientFactory.get_proxy_client(
-                    connection_type, credentials, skip_cache, self.platform
+                    connection_type, credentials, operation.skip_cache, self.platform
                 )
                 response = self._execute_client_operation(
                     connection_type, client, operation_name, operation
@@ -418,9 +412,9 @@ class Agent:
                 return AgentUtils.agent_response_for_last_exception(client=client)
             finally:
                 # discard clients that raised exceptions, clients like Redshift keep failing after an error
-                if (response is None or response.is_error) and not skip_cache:
+                if (response is None or response.is_error) and not operation.skip_cache:
                     ProxyClientFactory.dispose_proxy_client(
-                        connection_type, credentials, skip_cache
+                        connection_type, credentials, operation.skip_cache
                     )
 
     def _execute_client_operation(

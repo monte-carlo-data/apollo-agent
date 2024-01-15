@@ -73,36 +73,3 @@ class ProxyClientFactoryTests(TestCase):
                 call("test_type", None, agent.platform),
             ]
         )
-
-    @patch.object(Agent, "_execute_client_operation")
-    @patch.object(ProxyClientFactory, "_create_proxy_client")
-    def test_skip_cache_platform(self, mock_create_client, mock_execute):
-        mock_execute.return_value = AgentResponse({}, 200)
-        mock_create_client.return_value = SampleProxyClient()
-
-        agent = Agent(LoggingUtils())
-        agent.platform_provider = AzurePlatformProvider()
-        # Azure doesn't support caching, so it won't be used
-        operation = AgentOperation(
-            trace_id="123",
-            commands=[],
-        )
-        agent.execute_operation(
-            connection_type="test_type",
-            operation_name="test_operation",
-            operation_dict=operation.to_dict(),
-            credentials=None,
-        )
-        agent.execute_operation(
-            connection_type="test_type",
-            operation_name="test_operation",
-            operation_dict=operation.to_dict(),
-            credentials=None,
-        )
-        # two invocations, two clients created
-        mock_create_client.assert_has_calls(
-            [
-                call("test_type", None, agent.platform),
-                call("test_type", None, agent.platform),
-            ]
-        )
