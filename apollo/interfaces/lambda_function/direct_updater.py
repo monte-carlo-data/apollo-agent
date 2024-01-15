@@ -50,7 +50,7 @@ class LambdaDirectUpdater(AgentUpdater):
         memory_size = parameters.get("MemorySize")
         concurrent_executions = parameters.get("ConcurrentExecutions")
         logger.info(
-            f"Direct update requested",
+            "Direct update requested",
             extra=dict(
                 image=image,
                 memory_size=memory_size,

@@ -20,34 +20,59 @@ class AzureUpdater(AgentUpdater):
     """
 
     def update(
-        self, image: Optional[str], timeout_seconds: Optional[int], **kwargs  # type: ignore
+        self,
+        image: Optional[str],
+        timeout_seconds: Optional[int],
+        parameters: Optional[Dict] = None,
+        **kwargs,  # type: ignore
     ) -> Dict:
-        logger.info(
-            "Update requested",
-            extra={
-                "image": image,
-            },
-        )
-        if not image:
-            raise AgentError("Image parameter is required")
-
-        parameters = {
-            "properties": {"siteConfig": {"linuxFxVersion": f"DOCKER|{image}"}}
+        update_args = {
+            "image": image,
+            "parameters": parameters,
         }
-        serialized_parameters = json.dumps(parameters).encode("utf-8")
+        logger.info("Update requested", extra=update_args)
+        if not image and not parameters:
+            raise AgentError("Either image or parameters must be provided")
 
         client = self._get_resource_management_client()
-        client.resources.begin_update(
-            **self._get_function_resource_args(), parameters=serialized_parameters  # type: ignore
-        )
-        logger.info("Update triggered", extra={"image": image})
-        return {"message": f"Update in progress, image: {image}"}
+        if image:
+            update_image_parameters = {
+                "properties": {"siteConfig": {"linuxFxVersion": f"DOCKER|{image}"}}
+            }
+            serialized_parameters = json.dumps(update_image_parameters).encode("utf-8")
+
+            client.resources.begin_update(
+                **self._get_function_resource_args(),
+                parameters=serialized_parameters,  # type: ignore
+            )
+        if parameters:
+            update_appsettings_parameters = {"properties": parameters}
+            serialized_parameters = json.dumps(update_appsettings_parameters).encode(
+                "utf-8"
+            )
+
+            client.resources.begin_update(
+                **self._get_function_resource_args("/config/appsettings"),
+                parameters=serialized_parameters,  # type: ignore
+            )
+
+        logger.info("Update triggered", extra=update_args)
+        update_args_list = [
+            f"{key}: {value}" for key, value in update_args.items() if value
+        ]
+        return {"message": f"Update in progress, {', '.join(update_args_list)}"}
 
     def get_current_image(self) -> Optional[str]:
-        resource = self.get_function_resource()
-        return (
-            resource.get("properties", {}).get("siteConfig", {}).get("linuxFxVersion")
-        )
+        try:
+            resource = self.get_function_resource()
+            return (
+                resource.get("properties", {})
+                .get("siteConfig", {})
+                .get("linuxFxVersion")
+            )
+        except Exception as exc:
+            logger.error(f"Unable to get current image: {exc}")
+            return None
 
     def get_update_logs(self, start_time: datetime, limit: int) -> List[Dict]:
         # no support for update logs in Azure
@@ -66,7 +91,7 @@ class AzureUpdater(AgentUpdater):
         )
 
     @staticmethod
-    def _get_function_resource_args() -> Dict:
+    def _get_function_resource_args(sub_path: str = "") -> Dict:
         resource_group = AzureUtils.get_resource_group()
         function_name = AzureUtils.get_function_name()
         return dict(
@@ -74,6 +99,6 @@ class AzureUpdater(AgentUpdater):
             resource_provider_namespace="Microsoft.Web",
             parent_resource_path="sites",
             resource_type="",
-            resource_name=function_name,
+            resource_name=f"{function_name}{sub_path}",
             api_version="2022-03-01",
         )

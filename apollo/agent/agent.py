@@ -357,6 +357,7 @@ class Agent:
     def _env_dictionary() -> Dict:
         env: Dict[str, Optional[str]] = {
             "PYTHON_SYS_VERSION": sys.version,
+            "CPU_COUNT": str(os.cpu_count()),
         }
         env.update(
             {
@@ -428,7 +429,7 @@ class Agent:
     ) -> AgentResponse:
         start_time = time.time()
         logger.info(
-            f"Executing operation: {connection_type}/{operation_name}",
+            f"Agent operation, executing: {connection_type}/{operation_name}",
             extra=self._logging_utils.build_extra(
                 operation.trace_id,
                 operation_name,
@@ -437,8 +438,8 @@ class Agent:
         )
 
         result = self._execute(client, self._logging_utils, operation_name, operation)
-        logger.debug(
-            f"Operation executed: {connection_type}/{operation_name}",
+        logger.info(
+            f"Agent operation, executed: {connection_type}/{operation_name}",
             extra=self._logging_utils.build_extra(
                 operation.trace_id,
                 operation_name,
