@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 from datetime import datetime
 from typing import List, Dict, Optional
 
@@ -96,6 +97,13 @@ class AzureUpdater(AgentUpdater):
         client = cls._get_resource_management_client()
         resource = client.resources.get(**cls._get_function_resource_args())
         return dict(resource.as_dict())
+
+    @classmethod
+    def get_current_parameter_values(cls) -> Dict:
+        return {
+            param_name: os.getenv(env_var)
+            for param_name, env_var in _PARAMETERS_ENV_VARS.items()
+        }
 
     @staticmethod
     def _get_resource_management_client() -> ResourceManagementClient:
