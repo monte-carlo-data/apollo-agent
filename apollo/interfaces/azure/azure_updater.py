@@ -29,6 +29,10 @@ class AzureUpdater(AgentUpdater):
     Agent updater implementation for Azure Functions.
     The update operations works by updating the resource using Azure Resource Manager API and setting the new
     value for the "LinuxFxVersion" property that is expected to be "DOCKER|docker.io/org/repo/image:tag".
+    Updating environment variables is also supported by specifying parameters when running the update operation,
+    the default parameters: WorkerProcessCount, ThreadCount and MaxConcurrentActivities are mapped to the
+    corresponding environment variables, any other parameter prefixed with "env." will set the corresponding
+    environment variable, for example "env.MCD_DEBUG" parameter will set "MCD_DEBUG" env var.
     """
 
     def update(
@@ -65,6 +69,7 @@ class AzureUpdater(AgentUpdater):
                 "utf-8"
             )
 
+            # to update env vars we need to update <function_name>/config/appsettings
             client.resources.begin_update(
                 **self._get_function_resource_args("/config/appsettings"),
                 parameters=serialized_parameters,  # type: ignore
