@@ -2,7 +2,7 @@ import json
 import os
 from datetime import datetime, timezone, timedelta
 from unittest import TestCase
-from unittest.mock import patch, Mock
+from unittest.mock import patch, Mock, call
 
 from box import Box
 
@@ -313,9 +313,10 @@ class TestAzurePlatform(TestCase):
         current_image = agent.platform_provider.updater.get_current_image()
         self.assertEqual(f"DOCKER|{prev_image}", current_image)
 
+        # update only image
         update_result = agent.update("1234", image=new_image, timeout_seconds=None)
 
-        update_properties = {
+        update_image_properties = {
             "properties": {"siteConfig": {"linuxFxVersion": f"DOCKER|{new_image}"}}
         }
         mock_client.resources.begin_update.assert_called_with(
@@ -325,9 +326,140 @@ class TestAzurePlatform(TestCase):
             resource_type="",
             resource_name="test_function",
             api_version="2022-03-01",
-            parameters=json.dumps(update_properties).encode("utf-8"),
+            parameters=json.dumps(update_image_properties).encode("utf-8"),
         )
         expected_result = {"message": f"Update in progress, image: {new_image}"}
+        self.assertEqual(
+            expected_result, update_result.result.get(ATTRIBUTE_NAME_RESULT)
+        )
+
+        # update only parameters
+        mock_client.reset_mock()
+        new_env_vars = {"env.env_var": "abc"}
+        update_result = agent.update(
+            "1234", image=None, timeout_seconds=None, parameters=new_env_vars
+        )
+        update_env_properties = {
+            "properties": {
+                "env_var": "abc",
+            }
+        }
+        mock_client.resources.begin_update.assert_called_with(
+            resource_group_name="rg",
+            resource_provider_namespace="Microsoft.Web",
+            parent_resource_path="sites",
+            resource_type="",
+            resource_name="test_function/config/appsettings",
+            api_version="2022-03-01",
+            parameters=json.dumps(update_env_properties).encode("utf-8"),
+        )
+        expected_result = {"message": f"Update in progress, parameters: {new_env_vars}"}
+        self.assertEqual(
+            expected_result, update_result.result.get(ATTRIBUTE_NAME_RESULT)
+        )
+
+        # update image and parameters
+        mock_client.reset_mock()
+        update_result = agent.update(
+            "1234", image=new_image, timeout_seconds=None, parameters=new_env_vars
+        )
+        mock_client.resources.begin_update.assert_has_calls(
+            [
+                call(
+                    resource_group_name="rg",
+                    resource_provider_namespace="Microsoft.Web",
+                    parent_resource_path="sites",
+                    resource_type="",
+                    resource_name="test_function",
+                    api_version="2022-03-01",
+                    parameters=json.dumps(update_image_properties).encode("utf-8"),
+                ),
+                call(
+                    resource_group_name="rg",
+                    resource_provider_namespace="Microsoft.Web",
+                    parent_resource_path="sites",
+                    resource_type="",
+                    resource_name="test_function/config/appsettings",
+                    api_version="2022-03-01",
+                    parameters=json.dumps(update_env_properties).encode("utf-8"),
+                ),
+            ]
+        )
+        expected_result = {
+            "message": f"Update in progress, image: {new_image}, parameters: {new_env_vars}"
+        }
+        self.assertEqual(
+            expected_result, update_result.result.get(ATTRIBUTE_NAME_RESULT)
+        )
+
+    @patch.object(AzureUpdater, "_get_resource_management_client")
+    @patch.dict(
+        os.environ,
+        {
+            "WEBSITE_RESOURCE_GROUP": "rg",
+            "WEBSITE_SITE_NAME": "test_function",
+            IS_REMOTE_UPGRADABLE_ENV_VAR: "true",
+        },
+    )
+    def test_update_parameters(self, mock_arm_client):
+        agent = Agent(LoggingUtils())
+        agent.platform_provider = AzurePlatformProvider()
+
+        mock_client = Mock()
+        mock_arm_client.return_value = mock_client
+
+        new_parameters = {"WorkerProcessCount": 10}
+        update_result = agent.update(
+            "1234", image=None, timeout_seconds=None, parameters=new_parameters
+        )
+        update_env_properties = {"properties": {"FUNCTIONS_WORKER_PROCESS_COUNT": "10"}}
+        mock_client.resources.begin_update.assert_called_with(
+            resource_group_name="rg",
+            resource_provider_namespace="Microsoft.Web",
+            parent_resource_path="sites",
+            resource_type="",
+            resource_name="test_function/config/appsettings",
+            api_version="2022-03-01",
+            parameters=json.dumps(update_env_properties).encode("utf-8"),
+        )
+        expected_result = {
+            "message": f"Update in progress, parameters: {new_parameters}"
+        }
+        self.assertEqual(
+            expected_result, update_result.result.get(ATTRIBUTE_NAME_RESULT)
+        )
+
+        mock_client.reset_mock()
+        new_parameters = {
+            "WorkerProcessCount": 10,
+            "ThreadCount": 5,
+            "MaxConcurrentActivities": 20,
+            "ignored": "ignored",
+            "env.name": "abc",
+        }
+        update_result = agent.update(
+            "1234", image=None, timeout_seconds=None, parameters=new_parameters
+        )
+        update_env_properties = {
+            "properties": {
+                "FUNCTIONS_WORKER_PROCESS_COUNT": "10",
+                "PYTHON_THREADPOOL_THREAD_COUNT": "5",
+                "AzureFunctionsJobHost__extensions__durableTask__maxConcurrentActivityFunctions": "20",
+                "name": "abc",
+            }
+        }
+        mock_client.resources.begin_update.assert_called_with(
+            resource_group_name="rg",
+            resource_provider_namespace="Microsoft.Web",
+            parent_resource_path="sites",
+            resource_type="",
+            resource_name="test_function/config/appsettings",
+            api_version="2022-03-01",
+            parameters=json.dumps(update_env_properties).encode("utf-8"),
+        )
+        expected_result = {
+            "message": f"Update in progress, parameters: {new_parameters}"
+        }
         self.assertEqual(
             expected_result, update_result.result.get(ATTRIBUTE_NAME_RESULT)
         )

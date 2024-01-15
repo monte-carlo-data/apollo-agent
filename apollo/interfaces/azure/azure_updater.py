@@ -11,6 +11,17 @@ from apollo.integrations.azure_blob.utils import AzureUtils
 
 logger = logging.getLogger(__name__)
 
+# use this mapping to expose more user-friendly parameter names
+_PARAMETERS_ENV_VARS = {
+    "WorkerProcessCount": "FUNCTIONS_WORKER_PROCESS_COUNT",
+    "ThreadCount": "PYTHON_THREADPOOL_THREAD_COUNT",
+    "MaxConcurrentActivities": "AzureFunctionsJobHost__extensions__durableTask__maxConcurrentActivityFunctions",
+}
+
+# any other parameter prefixed with "env." will be mapped to an env var, for example
+# the parameter env.DEBUG will set DEBUG
+_ENV_PREFIX = "env."
+
 
 class AzureUpdater(AgentUpdater):
     """
@@ -46,7 +57,9 @@ class AzureUpdater(AgentUpdater):
                 parameters=serialized_parameters,  # type: ignore
             )
         if parameters:
-            update_appsettings_parameters = {"properties": parameters}
+            update_appsettings_parameters = {
+                "properties": self._get_update_env_vars(parameters)
+            }
             serialized_parameters = json.dumps(update_appsettings_parameters).encode(
                 "utf-8"
             )
@@ -102,3 +115,20 @@ class AzureUpdater(AgentUpdater):
             resource_name=f"{function_name}{sub_path}",
             api_version="2022-03-01",
         )
+
+    @staticmethod
+    def _get_update_env_vars(parameters: Dict) -> Dict:
+        env_vars = {
+            env_var: str(parameters[param_name])
+            for param_name, env_var in _PARAMETERS_ENV_VARS.items()
+            if param_name in parameters
+        }
+        env_vars.update(
+            {
+                key[len(_ENV_PREFIX) :]: value
+                for key, value in parameters.items()
+                if key.startswith(_ENV_PREFIX)
+            }
+        )
+        logger.info(f"Updating env vars: {env_vars}")
+        return env_vars
