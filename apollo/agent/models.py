@@ -57,8 +57,12 @@ class AgentOperation(DataClassJsonMixin):
     trace_id: str
     commands: List[AgentCommand]
     response_size_limit_bytes: int = 0
+    compress_response_threshold_bytes: int = 0  # configures the threshold to send compressed responses inline, disabled by default
     response_type: str = RESPONSE_TYPE_JSON
     skip_cache: bool = False
+    compress_response_file: bool = (
+        False  # indicates if response files should be compressed
+    )
 
     def __post_init__(self):
         if self.response_type not in (RESPONSE_TYPE_URL, RESPONSE_TYPE_JSON):
@@ -77,8 +81,23 @@ class AgentOperation(DataClassJsonMixin):
             0 < self.response_size_limit_bytes < size
         ) or self.response_type == RESPONSE_TYPE_URL
 
+    def must_compress_response_file(self) -> bool:
+        # RESPONSE_TYPE_URL is used to send results to the UI, compression is not supported
+        return self.response_type == RESPONSE_TYPE_JSON and self.compress_response_file
+
     def must_unwrap_result(self) -> bool:
         return self.response_type == RESPONSE_TYPE_URL
+
+    def can_compress_response(self) -> bool:
+        return (
+            0 < self.compress_response_threshold_bytes
+            and self.response_type == RESPONSE_TYPE_JSON
+        )
+
+    def must_compress_response(self, size: int) -> bool:
+        return (
+            0 < self.compress_response_threshold_bytes < size
+        ) and self.response_type == RESPONSE_TYPE_JSON
 
 
 @dataclass
