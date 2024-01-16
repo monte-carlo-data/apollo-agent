@@ -100,10 +100,7 @@ async def get_async_operation_status(
     response_payload = {
         "__mcd_status__": status.runtime_status.name
         if status.runtime_status
-        else "unknown",
-        "__mcd_created_time__": status.created_time.isoformat()
-        if status.created_time
-        else None,
+        else "unknown"
     }
     if status.runtime_status == OrchestrationRuntimeStatus.Completed and status.output:
         if isinstance(status.output, Dict):
