@@ -71,4 +71,7 @@ HEALTH_ENV_VARS = [
     "REGION_NAME",
     STORAGE_BUCKET_NAME_ENV_VAR,
     STORAGE_ACCOUNT_NAME_ENV_VAR,
+    "FUNCTIONS_WORKER_PROCESS_COUNT",
+    "PYTHON_THREADPOOL_THREAD_COUNT",
+    "AzureFunctionsJobHost__extensions__durableTask__maxConcurrentActivityFunctions",
 ]
