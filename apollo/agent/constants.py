@@ -22,6 +22,9 @@ ATTRIBUTE_NAME_RESULT = "__mcd_result__"
 # Name of the attribute used in the operation response to wrap the result location, not included if there was an error
 ATTRIBUTE_NAME_RESULT_LOCATION = "__mcd_result_location__"
 
+# Name of the attribute used in the operation response to indicate if the response is compressed or not
+ATTRIBUTE_NAME_RESULT_COMPRESSED = "__mcd_result_compressed__"
+
 # Name of the attribute used in call arguments to reference a local variable in the context
 ATTRIBUTE_NAME_REFERENCE = "__reference__"
 
