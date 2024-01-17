@@ -19,7 +19,7 @@ class AzureDatabaseProxyClient(BaseDbProxyClient):
             raise ValueError(
                 f"Azure database agent client requires {_ATTR_CONNECT_ARGS} in credentials"
             )
-        self._connection = pyodbc.connect(credentials[_ATTR_CONNECT_ARGS])  # type: ignore
+        self._connection = pyodbc.connect(**credentials[_ATTR_CONNECT_ARGS])  # type: ignore
 
     @property
     def wrapped_client(self):
