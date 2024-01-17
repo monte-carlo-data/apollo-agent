@@ -43,6 +43,7 @@ class AzurePlatformProvider(AgentPlatformProvider):
     def get_infra_details(self) -> Dict:
         return {
             "resource": AzureUpdater.get_function_resource(),
+            "parameters": AzureUpdater.get_current_parameter_values(),
         }
 
     @classmethod

@@ -355,6 +355,7 @@ class Agent:
     def _env_dictionary() -> Dict:
         env: Dict[str, Optional[str]] = {
             "PYTHON_SYS_VERSION": sys.version,
+            "CPU_COUNT": str(os.cpu_count()),
         }
         env.update(
             {
