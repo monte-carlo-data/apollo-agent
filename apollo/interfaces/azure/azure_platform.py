@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 from datetime import datetime, timezone, timedelta
 from json import JSONDecodeError
 from typing import Dict, Optional, List, cast, Any
@@ -78,12 +79,7 @@ class AzurePlatformProvider(AgentPlatformProvider):
             AgentPlatformUtils.parse_datetime(end_time_str, datetime.now(timezone.utc)),
         )
 
-        resource = AzureUpdater.get_function_resource()
-
-        # get the id for the Application Insights resource used by this function
-        resource_id = resource.get("tags", {}).get(
-            "hidden-link: /app-insights-resource-id"
-        )
+        resource_id = os.getenv("APPINSIGHTS_RESOURCE_ID")
         if not resource_id:
             raise AgentConfigurationError("Unable to get app-insights resource-id")
 

@@ -49,16 +49,16 @@ class TestAzurePlatform(TestCase):
         result = response.result.get(ATTRIBUTE_NAME_RESULT)
         self.assertEqual(resource, result.get("resource"))
 
-    @patch.object(AzureUpdater, "_get_resource_management_client")
     @patch.dict(
         os.environ,
         {
             "WEBSITE_RESOURCE_GROUP": "rg",
             "WEBSITE_SITE_NAME": "test_function",
+            "APPINSIGHTS_RESOURCE_ID": "app-insights-resource-id",
         },
     )
     @patch("apollo.interfaces.azure.azure_platform.LogsQueryClient")
-    def test_logs_query(self, mock_logs_client, mock_arm_client):
+    def test_logs_query(self, mock_logs_client):
         platform_provider = AzurePlatformProvider()
         start_time = datetime.now(timezone.utc) - timedelta(minutes=20)
         end_time = datetime.now(timezone.utc)
@@ -79,18 +79,6 @@ class TestAzurePlatform(TestCase):
                 },
             },
         ]
-
-        mock_client = Mock()
-        mock_arm_client.return_value = mock_client
-        mock_resource = Mock()
-        mock_client.resources.get.return_value = mock_resource
-        resource = {
-            "id": "123",
-            "tags": {
-                "hidden-link: /app-insights-resource-id": "app-insights-resource-id",
-            },
-        }
-        mock_resource.as_dict.return_value = resource
 
         mock_logs_client_instance = Mock()
         mock_logs_client.return_value = mock_logs_client_instance
@@ -179,16 +167,16 @@ class TestAzurePlatform(TestCase):
             timespan=(start_time, end_time),
         )
 
-    @patch.object(AzureUpdater, "_get_resource_management_client")
     @patch.dict(
         os.environ,
         {
             "WEBSITE_RESOURCE_GROUP": "rg",
             "WEBSITE_SITE_NAME": "test_function",
+            "APPINSIGHTS_RESOURCE_ID": "app-insights-resource-id",
         },
     )
     @patch("apollo.interfaces.azure.azure_platform.LogsQueryClient")
-    def test_logs_parsing(self, mock_logs_client, mock_arm_client):
+    def test_logs_parsing(self, mock_logs_client):
         platform_provider = AzurePlatformProvider()
         start_time = datetime.now(timezone.utc) - timedelta(minutes=20)
         end_time = datetime.now(timezone.utc)
@@ -224,18 +212,6 @@ class TestAzurePlatform(TestCase):
                 },
             },
         ]
-
-        mock_client = Mock()
-        mock_arm_client.return_value = mock_client
-        mock_resource = Mock()
-        mock_client.resources.get.return_value = mock_resource
-        resource = {
-            "id": "123",
-            "tags": {
-                "hidden-link: /app-insights-resource-id": "app-insights-resource-id",
-            },
-        }
-        mock_resource.as_dict.return_value = resource
 
         mock_logs_client_instance = Mock()
         mock_logs_client.return_value = mock_logs_client_instance
@@ -279,6 +255,13 @@ class TestAzurePlatform(TestCase):
             limit=10,
         )
         self.assertEqual(expected_events, result)
+
+        mock_logs_client_instance.query_resource.assert_called_with(
+            resource_id="app-insights-resource-id",
+            query="traces | project timestamp, message, customDimensions| order by timestamp desc"
+            "| take 10 | order by timestamp asc",
+            timespan=(start_time, end_time),
+        )
 
     @patch.object(AzureUpdater, "_get_resource_management_client")
     @patch.dict(

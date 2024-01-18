@@ -164,7 +164,7 @@ class AzureBlobBaseReaderWriter(BaseStorageClient):
         :param local_file_path: local path to the file to upload.
         """
         container_client = self._client.get_container_client(self._bucket_name)
-        with open(file=local_file_path, mode="r") as blob:
+        with open(file=local_file_path, mode="rb") as blob:
             container_client.upload_blob(
                 name=self._apply_prefix(key), data=blob, overwrite=True  # type: ignore
             )
