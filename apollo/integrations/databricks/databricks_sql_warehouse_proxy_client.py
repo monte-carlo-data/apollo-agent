@@ -2,12 +2,12 @@ from typing import Dict, Optional
 
 from databricks import sql
 
-from apollo.integrations.base_proxy_client import BaseProxyClient
+from apollo.integrations.db.base_db_proxy_client import BaseDbProxyClient
 
 _ATTR_CONNECT_ARGS = "connect_args"
 
 
-class DatabricksSqlWarehouseProxyClient(BaseProxyClient):
+class DatabricksSqlWarehouseProxyClient(BaseDbProxyClient):
     """
     Proxy client for Databricks SQL Warehouse Client.
     Credentials are expected to be supplied under "connect_args" and will be passed directly to `sql.connect`, so
