@@ -12,6 +12,8 @@ import pymysql
 from apollo.integrations.db.base_db_proxy_client import BaseDbProxyClient
 
 _ATTR_CONNECT_ARGS = "connect_args"
+_MYSQL_DIRECTORY = "mysql/certs"
+
 logger = logging.getLogger(__name__)
 
 
@@ -22,12 +24,23 @@ class MysqlProxyClient(BaseDbProxyClient):
     by `pymysql.connect` should be passed.
     """
 
-    def __init__(self, credentials: Optional[Dict], **kwargs: Any):
+    def __init__(self, credentials: Optional[Dict], platform: str, **kwargs: Any):
         if not credentials or _ATTR_CONNECT_ARGS not in credentials:
             raise ValueError(
                 f"Mysql agent client requires {_ATTR_CONNECT_ARGS} in credentials"
             )
-        self._connection = pymysql.connect(**credentials[_ATTR_CONNECT_ARGS])
+
+        connect_args = credentials[_ATTR_CONNECT_ARGS]
+        ssl_options = credentials.get("ssl_options") or {}
+        if ssl_options.get("ca"):
+            cert_path = self.get_cert_path(
+                platform=platform,
+                remote_location=ssl_options["ca"],
+                sub_folder=_MYSQL_DIRECTORY,
+            )
+            if cert_path:
+                connect_args["ssl"] = {"ca": cert_path}
+        self._connection = pymysql.connect(**connect_args)
 
         # we were having tcp keep alive issues in Azure, so we're forcing it to 30 secs
         sock: Optional[socket.socket] = (
