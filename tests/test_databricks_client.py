@@ -1,8 +1,7 @@
-from typing import Dict
+from datetime import datetime, timezone
+from typing import Dict, Any
 from unittest import TestCase
-from unittest.mock import patch, create_autospec, Mock, call
-
-from requests import Response, HTTPError
+from unittest.mock import patch, Mock, call
 
 from apollo.agent.agent import Agent
 from apollo.agent.logging_utils import LoggingUtils
@@ -106,6 +105,76 @@ class DatabricksClientTests(TestCase):
             },
         )
 
+    @patch("databricks.sql.connect")
+    def test_datetime_values(self, mock_connect: Mock):
+        operation_dict = {
+            "trace_id": "1234",
+            "skip_cache": True,
+            "commands": [
+                {"method": "cursor", "store": "_cursor"},
+                {
+                    "target": "_cursor",
+                    "method": "execute",
+                    "args": [
+                        "SELECT CURRENT_TIMESTAMP()",
+                        None,
+                    ],
+                },
+                {"target": "_cursor", "method": "fetchall", "store": "tmp_1"},
+                {"target": "_cursor", "method": "description", "store": "tmp_2"},
+                {"target": "_cursor", "method": "rowcount", "store": "tmp_3"},
+                {
+                    "target": "__utils",
+                    "method": "build_dict",
+                    "kwargs": {
+                        "all_results": {"__reference__": "tmp_1"},
+                        "description": {"__reference__": "tmp_2"},
+                        "rowcount": {"__reference__": "tmp_3"},
+                    },
+                },
+            ],
+        }
+        mock_connect.return_value = self._mock_connection
+        timestamp = datetime.now(tz=timezone.utc)
+
+        data = [[timestamp]]
+        expected_data = [[self._serialized_value(timestamp)]]
+        expected_description = [
+            ["current_timestamp()", "timestamp", None, None, None, None, None],
+        ]
+        expected_rows = 1
+
+        self._mock_cursor.fetchall.return_value = data
+        self._mock_cursor.description.return_value = expected_description
+        self._mock_cursor.rowcount.return_value = expected_rows
+
+        response = self._agent.execute_operation(
+            "databricks",
+            "current_ts",
+            operation_dict,
+            {
+                "connect_args": _DATABRICKS_CREDENTIALS,
+            },
+        )
+
+        self.assertIsNone(response.result.get(ATTRIBUTE_NAME_ERROR))
+        self.assertTrue(ATTRIBUTE_NAME_RESULT in response.result)
+        result = response.result.get(ATTRIBUTE_NAME_RESULT)
+        mock_connect.assert_called_with(**_DATABRICKS_CREDENTIALS)
+        self._mock_cursor.execute.assert_has_calls(
+            [
+                call("SELECT CURRENT_TIMESTAMP()", None),
+            ]
+        )
+        self.assertTrue("all_results" in result)
+        self.assertEqual(expected_data, result["all_results"])
+
+        self.assertTrue("description" in result)
+        self.assertEqual(expected_description, result["description"])
+
+        self.assertTrue("rowcount" in result)
+        self.assertEqual(expected_rows, result["rowcount"])
+
     def _test_get_catalogs(self, mock_connect: Mock, operation_dict: Dict):
         mock_connect.return_value = self._mock_connection
 
@@ -117,7 +186,9 @@ class DatabricksClientTests(TestCase):
                 "catalog_2",
             ],
         ]
-        expected_description = [["catalog", "string"]]
+        expected_description = [
+            ["catalog", "string", None, None, None, None, None],
+        ]
         expected_rows = 2
 
         self._mock_cursor.fetchall.return_value = expected_data
@@ -151,3 +222,12 @@ class DatabricksClientTests(TestCase):
 
         self.assertTrue("rowcount" in result)
         self.assertEqual(expected_rows, result["rowcount"])
+
+    @classmethod
+    def _serialized_value(cls, value: Any) -> Any:
+        if isinstance(value, datetime):
+            return {
+                "__type__": "datetime",
+                "__data__": value.isoformat(),
+            }
+        return value

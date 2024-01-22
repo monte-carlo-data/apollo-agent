@@ -1,13 +1,20 @@
+import logging
 from abc import ABC
 from typing import (
     Any,
     Dict,
     List,
+    Optional,
 )
+from urllib.request import urlretrieve
 
 from apollo.agent.serde import AgentSerializer
 from apollo.agent.utils import AgentUtils
 from apollo.integrations.base_proxy_client import BaseProxyClient
+from apollo.integrations.storage.base_storage_client import BaseStorageClient
+from apollo.integrations.storage.storage_proxy_client import StorageProxyClient
+
+logger = logging.getLogger(__name__)
 
 
 class BaseDbProxyClient(BaseProxyClient, ABC):
@@ -41,3 +48,25 @@ class BaseDbProxyClient(BaseProxyClient, ABC):
     @classmethod
     def _process_description(cls, description: List) -> List:
         return [AgentSerializer.serialize(v) for v in description]
+
+    @classmethod
+    def get_cert_path(
+        cls,
+        platform: str,
+        remote_location: str,
+        retrieval_mechanism: str = "url",
+        sub_folder: Optional[str] = None,
+    ) -> Optional[str]:
+        download_path = AgentUtils.temp_file_path(sub_folder)
+        if retrieval_mechanism == "url":
+            urlretrieve(url=remote_location, filename=download_path)
+        else:
+            storage_client = StorageProxyClient(platform).wrapped_client
+            try:
+                storage_client.download_file(
+                    key=remote_location, download_path=download_path
+                )
+            except BaseStorageClient.NotFoundError as exc:
+                logger.warning("Certificate not found in storage bucket", exc_info=exc)
+                return None
+        return download_path
