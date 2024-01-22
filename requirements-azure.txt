@@ -41,9 +41,9 @@ azure-mgmt-core==1.4.0
     #   azure-mgmt-resource
 azure-mgmt-resource==23.0.1
     # via -r requirements-azure.in
-azure-monitor-opentelemetry==1.1.1
+azure-monitor-opentelemetry==1.2.0
     # via -r requirements-azure.in
-azure-monitor-opentelemetry-exporter==1.0.0b19
+azure-monitor-opentelemetry-exporter==1.0.0b21
     # via azure-monitor-opentelemetry
 azure-monitor-query==1.2.0
     # via -r requirements-azure.in
@@ -60,7 +60,7 @@ deprecated==1.2.14
     # via opentelemetry-api
 fixedint==0.1.6
     # via azure-monitor-opentelemetry-exporter
-frozenlist==1.4.0
+frozenlist==1.4.1
     # via
     #   aiohttp
     #   aiosignal
@@ -139,7 +139,7 @@ opentelemetry-instrumentation-wsgi==0.43b0
     # via
     #   opentelemetry-instrumentation-django
     #   opentelemetry-instrumentation-flask
-opentelemetry-resource-detector-azure==0.1.0
+opentelemetry-resource-detector-azure==0.1.1
     # via azure-monitor-opentelemetry
 opentelemetry-sdk==1.22.0
     # via
