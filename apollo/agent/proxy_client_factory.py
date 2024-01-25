@@ -138,6 +138,76 @@ def _get_proxy_client_azure_database(
     return AzureDatabaseProxyClient(credentials=credentials, platform=platform)
 
 
+def _get_proxy_client_sap_hana(
+    credentials: Optional[Dict], platform: str, **kwargs  # type: ignore
+) -> BaseProxyClient:
+    from apollo.integrations.db.sap_hana_proxy_client import (
+        SAPHanaProxyClient,
+    )
+
+    return SAPHanaProxyClient(credentials=credentials, platform=platform)
+
+
+def _get_proxy_client_tableau(
+    credentials: Optional[Dict], platform: str, **kwargs  # type: ignore
+) -> BaseProxyClient:
+    from apollo.integrations.tableau.tableau_proxy_client import (
+        TableauProxyClient,
+    )
+
+    return TableauProxyClient(credentials=credentials, platform=platform)
+
+
+def _get_proxy_client_power_bi(
+    credentials: Optional[Dict], platform: str, **kwargs  # type: ignore
+) -> BaseProxyClient:
+    from apollo.integrations.powerbi.powerbi_proxy_client import (
+        PowerBiProxyClient,
+    )
+
+    return PowerBiProxyClient(credentials=credentials, platform=platform)
+
+
+def _get_proxy_client_glue(
+    credentials: Optional[Dict], platform: str, **kwargs  # type: ignore
+) -> BaseProxyClient:
+    from apollo.integrations.aws.glue_proxy_client import (
+        GlueProxyClient,
+    )
+
+    return GlueProxyClient(credentials=credentials, platform=platform)
+
+
+def _get_proxy_client_athena(
+    credentials: Optional[Dict], platform: str, **kwargs  # type: ignore
+) -> BaseProxyClient:
+    from apollo.integrations.aws.athena_proxy_client import (
+        AthenaProxyClient,
+    )
+
+    return AthenaProxyClient(credentials=credentials, platform=platform)
+
+
+def _get_proxy_client_presto(
+    credentials: Optional[Dict], platform: str, **kwargs  # type: ignore
+) -> BaseProxyClient:
+    from apollo.integrations.db.presto_proxy_client import (
+        PrestoProxyClient,
+    )
+
+    return PrestoProxyClient(credentials=credentials, platform=platform)
+
+
+def _get_proxy_client_hive(
+    credentials: Optional[Dict], platform: str, **kwargs  # type: ignore
+) -> BaseProxyClient:
+    from apollo.integrations.db.hive_proxy_client import (
+        HiveProxyClient,
+    )
+
+    return HiveProxyClient(credentials=credentials, platform=platform)
+
+
 @dataclass
 class ProxyClientCacheEntry:
     created_time: datetime
@@ -160,6 +230,13 @@ _CLIENT_FACTORY_MAPPING = {
     "teradata": _get_proxy_client_teradata,
     "azure-dedicated-sql-pool": _get_proxy_client_azure_database,
     "azure-sql-database": _get_proxy_client_azure_database,
+    "tableau": _get_proxy_client_tableau,
+    "sap-hana": _get_proxy_client_sap_hana,
+    "power-bi": _get_proxy_client_power_bi,
+    "glue": _get_proxy_client_glue,
+    "athena": _get_proxy_client_athena,
+    "presto": _get_proxy_client_presto,
+    "hive": _get_proxy_client_hive,
 }
 
 

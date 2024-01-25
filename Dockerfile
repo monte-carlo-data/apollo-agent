@@ -39,7 +39,8 @@ FROM base AS tests
 
 COPY requirements-dev.txt ./
 COPY requirements-cloudrun.txt ./
-RUN . $VENV_DIR/bin/activate && pip install --no-cache-dir -r requirements-dev.txt -r requirements-cloudrun.txt
+COPY requirements-azure.txt ./
+RUN . $VENV_DIR/bin/activate && pip install --no-cache-dir -r requirements-dev.txt -r requirements-cloudrun.txt -r requirements-azure.txt
 
 COPY tests ./tests
 ARG CACHEBUST=1
@@ -60,8 +61,7 @@ RUN apt install git -y
 
 CMD . $VENV_DIR/bin/activate && gunicorn --timeout 930 --bind :$PORT apollo.interfaces.cloudrun.main:app
 
-# Pinning base docker image to this version so yum commands are still supported
-FROM public.ecr.aws/lambda/python:3.11.2023.11.18.02 AS lambda-builder
+FROM public.ecr.aws/lambda/python:3.11 AS lambda-builder
 
 RUN yum update -y
 # install git as we need it for the direct oscrypto dependency
@@ -77,20 +77,17 @@ COPY requirements.txt ./
 COPY requirements-lambda.txt ./
 RUN pip install --no-cache-dir --target "${LAMBDA_TASK_ROOT}" -r requirements.txt -r requirements-lambda.txt
 
-# Pinning base docker image to this version so yum commands are still supported
-FROM public.ecr.aws/lambda/python:3.11.2023.11.18.02 AS lambda
+FROM public.ecr.aws/lambda/python:3.11 AS lambda
 
 # VULN-29: Base ECR image has setuptools-56.0.0 which is vulnerable (CVE-2022-40897)
 RUN pip install --no-cache-dir setuptools==68.0.0
 
+# VULN-230 CWE-77
+RUN pip install --no-cache-dir --upgrade pip
+
 COPY --from=lambda-builder "${LAMBDA_TASK_ROOT}" "${LAMBDA_TASK_ROOT}"
 
-COPY apollo "${LAMBDA_TASK_ROOT}/apollo"
-ARG code_version="local"
-ARG build_number="0"
-RUN echo $code_version,$build_number > ./apollo/agent/version
-
-# install unixodbc and 'ODBC Driver 17 for SQL Server', needed for Azure database client
+# install unixodbc and 'ODBC Driver 17 for SQL Server', needed for Azure Dedicated SQL Pools
 RUN yum -y update \
     && yum -y install \
     unixODBC \
@@ -99,4 +96,51 @@ RUN yum -y update \
 RUN curl https://packages.microsoft.com/config/rhel/7/prod.repo | tee /etc/yum.repos.d/mssql-release.repo
 RUN ACCEPT_EULA=Y yum install -y msodbcsql17
 
+COPY apollo "${LAMBDA_TASK_ROOT}/apollo"
+ARG code_version="local"
+ARG build_number="0"
+RUN echo $code_version,$build_number > ./apollo/agent/version
+
 CMD [ "apollo.interfaces.lambda_function.handler.lambda_handler" ]
+
+FROM mcr.microsoft.com/azure-functions/python:4-python3.11 AS azure
+
+ENV AzureWebJobsScriptRoot=/home/site/wwwroot \
+    AzureFunctionsJobHost__Logging__Console__IsEnabled=true
+
+RUN apt update
+# install git as we need it for the direct oscrypto dependency
+# this is a temporary workaround and it should be removed once we update oscrypto to 1.3.1+
+# see: https://community.snowflake.com/s/article/Python-Connector-fails-to-connect-with-LibraryNotFoundError-Error-detecting-the-version-of-libcrypto
+RUN apt install git -y
+
+# Azure database clients and sql-server uses pyodbc which requires unixODBC and 'ODBC Driver 17 for SQL Server'
+# Microsoft's python 3.11 base image comes with msodbcsql18 but we are expecting to use the msodbcsql17 driver so need
+# to install specific versions of some libraries and allow Docker to downgrade some pre-installed packages.
+RUN apt-get update \
+   && apt-get install -y gnupg gnupg2 gnupg1 curl apt-transport-https \
+   && curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add - \
+   && curl https://packages.microsoft.com/config/debian/10/prod.list > /etc/apt/sources.list.d/mssql-release.list \
+   && apt-get update \
+   && ACCEPT_EULA=Y apt-get install -y msodbcsql17 unixodbc=2.3.11-1 \
+   unixodbc-dev=2.3.11-1 odbcinst1debian2=2.3.11-1 odbcinst=2.3.11-1 --allow-downgrades
+
+COPY requirements.txt /
+COPY requirements-azure.txt /
+RUN pip install --no-cache-dir -r /requirements.txt -r /requirements-azure.txt
+
+COPY apollo /home/site/wwwroot/apollo
+
+# the files under apollo/interfaces/azure like function_app.py must be in the root folder of the app
+COPY apollo/interfaces/azure /home/site/wwwroot
+
+ARG code_version="local"
+ARG build_number="0"
+RUN echo $code_version,$build_number > /home/site/wwwroot/apollo/agent/version
+
+# delete MS provided SBOM as it's outdated after the packages we installed
+# docker scout will find vulnerabilities anyway by scanning the image
+RUN rm -rf /usr/local/_manifest
+
+# required for the verify-version-in-docker-image step in circle-ci
+WORKDIR /home/site/wwwroot

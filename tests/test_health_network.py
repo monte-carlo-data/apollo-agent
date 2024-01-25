@@ -2,6 +2,7 @@ import os
 import socket
 import sys
 from telnetlib import Telnet
+from typing import Dict, Optional
 from unittest import TestCase
 from unittest.mock import patch, create_autospec
 
@@ -12,8 +13,11 @@ from apollo.agent.constants import (
     ATTRIBUTE_NAME_RESULT,
 )
 from apollo.agent.logging_utils import LoggingUtils
+from apollo.agent.platform import AgentPlatformProvider
+from apollo.agent.updater import AgentUpdater
 from apollo.agent.utils import AgentUtils
 from apollo.validators.validate_network import _DEFAULT_TIMEOUT_SECS
+from tests.platform import TestPlatformProvider
 
 
 class HealthNetworkTests(TestCase):
@@ -29,15 +33,17 @@ class HealthNetworkTests(TestCase):
     )
     @patch.object(AgentUtils, "get_outbound_ip_address")
     def test_health_information(self, outboud_mock):
-        self._agent.platform = "test platform"
-        self._agent.platform_info = {
-            "container": "test container",
-        }
+        self._agent.platform_provider = TestPlatformProvider(
+            "test platform",
+            {
+                "container": "test container",
+            },
+        )
         health_info = self._agent.health_information(trace_id="1234").to_dict()
         self.assertEqual("test platform", health_info["platform"])
         self.assertEqual("local", health_info["version"])
         self.assertEqual("0", health_info["build"])
-        self.assertEqual(sys.version, health_info["env"]["sys_version"])
+        self.assertEqual(sys.version, health_info["env"]["PYTHON_SYS_VERSION"])
         self.assertEqual("1234", health_info["trace_id"])
         self.assertEqual("3.5", health_info["env"]["PYTHON_VERSION"])
         self.assertEqual("terraform", health_info["env"]["MCD_AGENT_WRAPPER_TYPE"])

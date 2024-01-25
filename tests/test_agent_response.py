@@ -1,3 +1,4 @@
+import gzip
 import json
 import os
 from unittest import TestCase
@@ -16,7 +17,7 @@ from apollo.agent.models import (
     AgentOperation,
 )
 from apollo.integrations.storage.storage_proxy_client import StorageProxyClient
-from sample_proxy_client import SampleProxyClient
+from tests.sample_proxy_client import SampleProxyClient
 
 
 class AgentResponseTests(TestCase):
@@ -89,3 +90,78 @@ class AgentResponseTests(TestCase):
         mock_storage_client.generate_presigned_url.assert_called_once_with(
             f"responses/{self._trace_id}", expected_expiration
         )
+
+    @patch.object(Agent, "_execute")
+    @patch("apollo.agent.agent.StorageProxyClient")
+    def test_use_pre_signed_url_compressed(
+        self, storage_mock: Mock, mock_execute: Mock
+    ):
+        expected_expiration = 50
+        mock_storage_client = create_autospec(StorageProxyClient)
+        storage_mock.return_value = mock_storage_client
+        mock_storage_client.write.return_value = None
+        mock_storage_client.generate_presigned_url.return_value = (
+            "https://example.com/fizz_buzz"
+        )
+        mock_execute.return_value = {"fizz": "buzz"}
+        with patch.dict(
+            os.environ,
+            {
+                PRE_SIGNED_URL_RESPONSE_EXPIRATION_SECONDS_ENV_VAR: str(
+                    expected_expiration
+                ),
+            },
+        ):
+            response = self._agent._execute_client_operation(
+                connection_type="test",
+                client=self._client,
+                operation_name="test",
+                operation=AgentOperation(
+                    trace_id=self._trace_id,
+                    commands=self._commands,
+                    response_size_limit_bytes=5,
+                    compress_response_file=True,
+                ),
+            )
+        self.assertEqual(
+            {
+                "__mcd_result_location__": "https://example.com/fizz_buzz",
+                "__mcd_trace_id__": self._trace_id,
+                "__mcd_result_compressed__": True,
+            },
+            response.result,
+        )
+        expected_result = json.dumps(
+            {"__mcd_result__": {"fizz": "buzz"}, "__mcd_trace_id__": self._trace_id}
+        )
+        mock_storage_client.write.assert_called_once_with(
+            key=f"responses/{self._trace_id}",
+            obj_to_write=gzip.compress(expected_result.encode("utf-8")),
+        )
+        mock_storage_client.generate_presigned_url.assert_called_once_with(
+            f"responses/{self._trace_id}", expected_expiration
+        )
+
+    @patch.object(Agent, "_execute")
+    def test_no_pre_signed_urls_compressed(self, mock_execute: MagicMock):
+        mock_execute.return_value = {"foo": "bar"}
+        response = self._agent._execute_client_operation(
+            connection_type="test",
+            client=self._client,
+            operation_name="test",
+            operation=AgentOperation(
+                trace_id=self._trace_id,
+                commands=self._commands,
+                response_size_limit_bytes=0,
+                compress_response_threshold_bytes=5,
+            ),
+        )
+        expected_result = {
+            "__mcd_result__": {"foo": "bar"},
+            "__mcd_trace_id__": self._trace_id,
+        }
+        self.assertEqual(
+            gzip.compress(json.dumps(expected_result).encode("utf-8")),
+            response.result,
+        )
+        self.assertTrue(response.compressed)

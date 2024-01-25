@@ -27,6 +27,7 @@ _HTTP_OPERATION = {
                 "user_agent": _HTTP_USER_AGENT,
                 "additional_headers": None,
                 "retry_status_code_ranges": None,
+                "verify_ssl": None,
             },
         }
     ],
@@ -70,6 +71,107 @@ class TestHttpClient(TestCase):
         self.assertEqual(expected_result, response.result.get(ATTRIBUTE_NAME_RESULT))
 
     @patch("requests.request")
+    def test_http_request_with_custom_auth_type(self, mock_request):
+        credentials = {
+            "auth_type": "Token",
+            "token": "1234",
+        }
+        mock_response = create_autospec(Response)
+        mock_request.return_value = mock_response
+        expected_result = {
+            "ok": True,
+        }
+        mock_response.json.return_value = expected_result
+        response = self._agent.execute_operation(
+            "http",
+            "do_request",
+            _HTTP_OPERATION,
+            credentials,
+        )
+        mock_request.assert_called_with(
+            "GET",
+            "https://test.com/path",
+            headers={
+                "Authorization": f"{credentials['auth_type']} {credentials['token']}",
+                "User-Agent": _HTTP_USER_AGENT,
+            },
+        )
+        mock_response.assert_has_calls(
+            [
+                call.raise_for_status(),
+                call.json(),
+            ]
+        )
+        self.assertTrue(ATTRIBUTE_NAME_RESULT in response.result)
+        self.assertEqual(expected_result, response.result.get(ATTRIBUTE_NAME_RESULT))
+
+    @patch("requests.request")
+    def test_http_request_with_custom_auth_header(self, mock_request):
+        credentials = {
+            "auth_header": "Api-Key",
+            "auth_type": None,
+            "token": "1234",
+        }
+        mock_response = create_autospec(Response)
+        mock_request.return_value = mock_response
+        expected_result = {
+            "ok": True,
+        }
+        mock_response.json.return_value = expected_result
+        response = self._agent.execute_operation(
+            "http",
+            "do_request",
+            _HTTP_OPERATION,
+            credentials,
+        )
+        mock_request.assert_called_with(
+            "GET",
+            "https://test.com/path",
+            headers={
+                credentials["auth_header"]: credentials["token"],
+                "User-Agent": _HTTP_USER_AGENT,
+            },
+        )
+        mock_response.assert_has_calls(
+            [
+                call.raise_for_status(),
+                call.json(),
+            ]
+        )
+        self.assertTrue(ATTRIBUTE_NAME_RESULT in response.result)
+        self.assertEqual(expected_result, response.result.get(ATTRIBUTE_NAME_RESULT))
+
+    @patch("requests.request")
+    def test_http_request_with_no_auth(self, mock_request):
+        mock_response = create_autospec(Response)
+        mock_request.return_value = mock_response
+        expected_result = {
+            "ok": True,
+        }
+        mock_response.json.return_value = expected_result
+        response = self._agent.execute_operation(
+            "http",
+            "do_request",
+            _HTTP_OPERATION,
+            None,
+        )
+        mock_request.assert_called_with(
+            "GET",
+            "https://test.com/path",
+            headers={
+                "User-Agent": _HTTP_USER_AGENT,
+            },
+        )
+        mock_response.assert_has_calls(
+            [
+                call.raise_for_status(),
+                call.json(),
+            ]
+        )
+        self.assertTrue(ATTRIBUTE_NAME_RESULT in response.result)
+        self.assertEqual(expected_result, response.result.get(ATTRIBUTE_NAME_RESULT))
+
+    @patch("requests.request")
     def test_http_request_with_params(self, mock_request):
         mock_response = create_autospec(Response)
         mock_request.return_value = mock_response
@@ -97,6 +199,49 @@ class TestHttpClient(TestCase):
                 "User-Agent": _HTTP_USER_AGENT,
             },
             params=params,
+        )
+
+    @patch("requests.request")
+    def test_http_request_with_verify_ssl(self, mock_request):
+        mock_response = create_autospec(Response)
+        mock_request.return_value = mock_response
+        expected_result = {
+            "ok": True,
+        }
+        mock_response.json.return_value = expected_result
+        operation = deepcopy(_HTTP_OPERATION)
+        operation["commands"][0]["kwargs"]["verify_ssl"] = True
+        self._agent.execute_operation(
+            "http",
+            "do_request",
+            operation,
+            _HTTP_CREDENTIALS,
+        )
+        mock_request.assert_called_with(
+            "GET",
+            "https://test.com/path",
+            headers={
+                "Authorization": f"Bearer {_HTTP_CREDENTIALS['token']}",
+                "User-Agent": _HTTP_USER_AGENT,
+            },
+            verify=True,
+        )
+
+        operation["commands"][0]["kwargs"]["verify_ssl"] = False
+        self._agent.execute_operation(
+            "http",
+            "do_request",
+            operation,
+            _HTTP_CREDENTIALS,
+        )
+        mock_request.assert_called_with(
+            "GET",
+            "https://test.com/path",
+            headers={
+                "Authorization": f"Bearer {_HTTP_CREDENTIALS['token']}",
+                "User-Agent": _HTTP_USER_AGENT,
+            },
+            verify=False,
         )
 
     @patch("requests.request")

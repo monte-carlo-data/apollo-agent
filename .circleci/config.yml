@@ -71,7 +71,7 @@ jobs:
 
   run-linter:
     docker:
-      - image: cimg/python:3.8-node
+      - image: cimg/python:3.11-node
 
     steps:
       - checkout
@@ -81,7 +81,7 @@ jobs:
             python -m venv .venv
             . .venv/bin/activate
             pip install --no-cache-dir --upgrade pip
-            pip install --no-cache-dir -r requirements.txt -r requirements-dev.txt -r requirements-cloudrun.txt -r requirements-lambda.txt
+            pip install --no-cache-dir -r requirements.txt -r requirements-dev.txt -r requirements-cloudrun.txt -r requirements-lambda.txt -r requirements-azure.txt
       - run:
           name: 'Run black / pyright'
           command: |
@@ -129,6 +129,12 @@ jobs:
           extra_build_args: --target lambda --build-arg code_version=<< parameters.code_version >> --build-arg build_number=<< pipeline.number >>
           image: montecarlodata/<< parameters.docker_hub_repository >>
           tag: latest-lambda,<< parameters.code_version >>-lambda
+      - docker/build:
+          step-name: Build azure image
+          use-buildkit: true # to build only the required stages
+          extra_build_args: --target azure --build-arg code_version=<< parameters.code_version >> --build-arg build_number=<< pipeline.number >>
+          image: montecarlodata/<< parameters.docker_hub_repository >>
+          tag: latest-azure,<< parameters.code_version >>-azure
       - verify-version-in-docker-image:
           image: montecarlodata/<< parameters.docker_hub_repository >>:latest-generic
           version: << parameters.code_version >>,<< pipeline.number >>
@@ -138,9 +144,12 @@ jobs:
       - verify-version-in-docker-image:
           image: montecarlodata/<< parameters.docker_hub_repository >>:latest-lambda
           version: << parameters.code_version >>,<< pipeline.number >>
+      - verify-version-in-docker-image:
+          image: montecarlodata/<< parameters.docker_hub_repository >>:latest-azure
+          version: << parameters.code_version >>,<< pipeline.number >>
       - docker/push:
           image: montecarlodata/<< parameters.docker_hub_repository >>
-          tag: latest-generic,<< parameters.code_version >>-generic,latest-cloudrun,<< parameters.code_version >>-cloudrun,latest-lambda,<< parameters.code_version >>-lambda
+          tag: latest-generic,<< parameters.code_version >>-generic,latest-cloudrun,<< parameters.code_version >>-cloudrun,latest-lambda,<< parameters.code_version >>-lambda,latest-azure,<< parameters.code_version >>-azure
 
   build-and-push-lambda:
     machine:
@@ -163,6 +172,25 @@ jobs:
       - aws-ecr/tag-image:
           repo: << parameters.aws_ecr_repository >>
           source-tag: << parameters.code_version >>
+
+  build-and-push-docs:
+    docker:
+      - image: python:3.11.7
+    parameters:
+      code_version:
+        type: string
+    steps:
+      - checkout
+      - aws-cli/install
+      - aws-cli/setup:
+          profile_name: default
+      - run:
+          name: Install dependencies
+          command: |
+            pip install virtualenv==20.13.0
+      - run:
+          name: Publish docs and invalidate the cloudfront cache
+          command: make VERSION=<< parameters.code_version >> publish-docs
 
 workflows:
   version: 2
@@ -247,6 +275,49 @@ workflows:
       - build-and-push-lambda:
           name: build-and-push-lambda-prod
           aws_ecr_repository: mcd-agent
+          code_version: ${VERSION_TAG}
+          pre-steps:
+            - checkout
+            - run:
+                command: |
+                  if git describe --tags --abbrev=0; then TAG=$(git describe --tags --abbrev=0); else exit 1; fi
+                  echo "VERSION_TAG=${TAG#v}" >> $BASH_ENV
+                  source $BASH_ENV
+          context:
+            - aws-prod
+          requires:
+            - run-linter
+            - run-trufflehog-scan
+            - run-test-docker
+          filters: # run only for tags starting with v, don't run for branches
+            tags:
+              only: /^v.*/
+            branches:
+              ignore: /.*/
+      - build-and-push-docs:
+          name: build-and-push-docs-dev
+          code_version: ${NEXT_VERSION}
+          pre-steps:
+            - checkout
+            - run:
+                command: |
+                  PIPELINE_NUMBER=<< pipeline.number >>
+                  if git describe --tags --abbrev=0; then TAG=$(git describe --tags --abbrev=0); else exit 1; fi
+                  VERSION=${TAG#v}
+                  echo "NEXT_VERSION=$(echo "$VERSION" | awk 'BEGIN{FS=OFS="."} {$3+=1} 1')rc${PIPELINE_NUMBER}" >> $BASH_ENV
+                  source $BASH_ENV
+          context:
+            - aws-dev
+          requires:
+            - run-linter
+            - run-trufflehog-scan
+            - run-test-docker
+          filters:
+            branches:
+              only:
+                - dev
+      - build-and-push-docs:
+          name: build-and-push-docs-prod
           code_version: ${VERSION_TAG}
           pre-steps:
             - checkout

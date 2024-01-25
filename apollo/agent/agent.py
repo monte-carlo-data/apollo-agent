@@ -1,3 +1,4 @@
+import gzip
 import logging
 import os
 import sys
@@ -13,7 +14,7 @@ from apollo.agent.env_vars import (
     PRE_SIGNED_URL_RESPONSE_EXPIRATION_SECONDS_ENV_VAR,
 )
 from apollo.agent.evaluation_utils import AgentEvaluationUtils
-from apollo.agent.infra import AgentInfraProvider
+from apollo.agent.platform import AgentPlatformProvider
 from apollo.agent.log_context import AgentLogContext
 from apollo.agent.logging_utils import LoggingUtils
 from apollo.agent.constants import (
@@ -36,7 +37,7 @@ from apollo.agent.utils import AgentUtils
 from apollo.integrations.base_proxy_client import BaseProxyClient
 from apollo.integrations.storage.storage_proxy_client import StorageProxyClient
 from apollo.interfaces.agent_response import AgentResponse
-from apollo.interfaces.cloudrun.metadata_service import GCP_PLATFORM_INFO_KEY_IMAGE
+from apollo.interfaces.cloudrun.metadata_service import PLATFORM_INFO_KEY_IMAGE
 from apollo.validators.validate_network import ValidateNetwork
 
 logger = logging.getLogger(__name__)
@@ -45,10 +46,7 @@ logger = logging.getLogger(__name__)
 class Agent:
     def __init__(self, logging_utils: LoggingUtils):
         self._logging_utils = logging_utils
-        self._platform = PLATFORM_GENERIC
-        self._platform_info = {}
-        self._updater: Optional[AgentUpdater] = None
-        self._infra_provider: Optional[AgentInfraProvider] = None
+        self._platform_provider: Optional[AgentPlatformProvider] = None
         self._log_context: Optional[AgentLogContext] = None
 
     @property
@@ -56,11 +54,11 @@ class Agent:
         """
         The name of the platform running this agent, for example: Generic, AWS, GCP, etc.
         """
-        return self._platform
-
-    @platform.setter
-    def platform(self, platform: str):
-        self._platform = platform
+        return (
+            self._platform_provider.platform
+            if self._platform_provider
+            else PLATFORM_GENERIC
+        )
 
     @property
     def platform_info(self) -> Optional[Dict]:
@@ -68,27 +66,21 @@ class Agent:
         Dictionary containing platform specific information, it could be container information like versions or
         some other settings relevant to the container.
         """
-        return self._platform_info
-
-    @platform_info.setter
-    def platform_info(self, platform_info: Optional[Dict]):
-        self._platform_info = platform_info
+        return (
+            self._platform_provider.platform_info if self._platform_provider else None
+        )
 
     @property
     def updater(self) -> Optional[AgentUpdater]:
-        return self._updater
-
-    @updater.setter
-    def updater(self, updater: Optional[AgentUpdater]):
-        self._updater = updater
+        return self._platform_provider.updater if self._platform_provider else None
 
     @property
-    def infra_provider(self) -> Optional[AgentInfraProvider]:
-        return self._infra_provider
+    def platform_provider(self) -> Optional[AgentPlatformProvider]:
+        return self._platform_provider
 
-    @infra_provider.setter
-    def infra_provider(self, value: Optional[AgentInfraProvider]):
-        self._infra_provider = value
+    @platform_provider.setter
+    def platform_provider(self, value: Optional[AgentPlatformProvider]):
+        self._platform_provider = value
 
     @property
     def log_context(self) -> Optional[AgentLogContext]:
@@ -121,19 +113,18 @@ class Agent:
                     operation_name="health_information",
                 ),
             )
-            if self._updater:
-                if self._platform_info is None:
-                    self._platform_info = {}
-                self._platform_info[
-                    GCP_PLATFORM_INFO_KEY_IMAGE
-                ] = self._updater.get_current_image(self._platform_info)
+            platform_info = {**(self.platform_info or {})}
+            if self.updater:
+                platform_info[
+                    PLATFORM_INFO_KEY_IMAGE
+                ] = self.updater.get_current_image()
 
         return AgentHealthInformation(
             version=VERSION,
             build=BUILD_NUMBER,
-            platform=self._platform,
+            platform=self.platform,
             env=self._env_dictionary(),
-            platform_info=self._platform_info,
+            platform_info=platform_info,
             trace_id=trace_id,
             extra=self._extra_health_information() if full else None,
         )
@@ -286,7 +277,7 @@ class Agent:
                         },
                     ),
                 )
-                updater = self._check_updates_enabled()
+                updater = self._check_updater()
                 events = updater.get_update_logs(
                     start_time=start_time,
                     limit=limit,
@@ -310,22 +301,19 @@ class Agent:
         with self._inject_log_context("get_infra_details", trace_id):
             try:
                 logger.info("infra_details requested")
-                if not self._infra_provider:
-                    raise AgentConfigurationError("No infra_provider set")
-                details = self._infra_provider.get_infra_details()
+                if not self._platform_provider:
+                    raise AgentConfigurationError("No platform_provider set")
+                details = self._platform_provider.get_infra_details()
                 return AgentUtils.agent_ok_response(details, trace_id)
             except Exception:  # noqa
                 return AgentUtils.agent_response_for_last_exception(
                     "get_infra_details failed:"
                 )
 
-    def _check_updates_enabled(self) -> AgentUpdater:
-        if not self._updater:
+    def _check_updater(self) -> AgentUpdater:
+        if not self.updater:
             raise AgentConfigurationError("No updater configured")
-        upgradable = os.getenv(IS_REMOTE_UPGRADABLE_ENV_VAR, "false").lower() == "true"
-        if not upgradable:
-            raise AgentConfigurationError("Remote upgrades are disabled for this agent")
-        return self._updater
+        return self.updater
 
     def _perform_update(
         self,
@@ -334,11 +322,15 @@ class Agent:
         timeout_seconds: Optional[int],
         **kwargs,  # type: ignore
     ) -> Dict:
-        updater = self._check_updates_enabled()
+        updater = self._check_updater()
+        upgradable = os.getenv(IS_REMOTE_UPGRADABLE_ENV_VAR, "false").lower() == "true"
+        if not upgradable:
+            raise AgentConfigurationError("Remote upgrades are disabled for this agent")
+
         log_payload = self._logging_utils.build_extra(
             trace_id=trace_id,
             operation_name="update",
-            extra={"timeout": timeout_seconds, **kwargs},
+            extra={"timeout": timeout_seconds, "image": image, **kwargs},
         )
         logger.info(
             "Update requested",
@@ -348,7 +340,6 @@ class Agent:
         update_result: Dict
         try:
             update_result = updater.update(
-                platform_info=self._platform_info,
                 image=image,
                 timeout_seconds=timeout_seconds,
                 **kwargs,
@@ -363,7 +354,8 @@ class Agent:
     @staticmethod
     def _env_dictionary() -> Dict:
         env: Dict[str, Optional[str]] = {
-            "sys_version": sys.version,
+            "PYTHON_SYS_VERSION": sys.version,
+            "CPU_COUNT": str(os.cpu_count()),
         }
         env.update(
             {
@@ -411,7 +403,7 @@ class Agent:
             client: Optional[BaseProxyClient] = None
             try:
                 client = ProxyClientFactory.get_proxy_client(
-                    connection_type, credentials, operation.skip_cache, self._platform
+                    connection_type, credentials, operation.skip_cache, self.platform
                 )
                 response = self._execute_client_operation(
                     connection_type, client, operation_name, operation
@@ -453,12 +445,22 @@ class Agent:
             ),
         )
         response = AgentResponse(result or {}, 200, operation.trace_id)
-        if operation.can_use_pre_signed_url():
+        if operation.can_use_pre_signed_url() or operation.can_compress_response():
             size = response.calculate_result_size()
-            if operation.should_use_pre_signed_url(size):
+
+            if operation.must_use_pre_signed_url(size):
                 key = f"responses/{operation.trace_id}"
-                storage_client = StorageProxyClient(self._platform)
-                storage_client.write(key=key, obj_to_write=response.serialize_result())
+                storage_client = StorageProxyClient(self.platform)
+                contents = response.serialize_result(
+                    unwrap_result=operation.must_unwrap_result()
+                )
+                if operation.must_compress_response_file():
+                    contents = gzip.compress(contents.encode("utf-8"))
+                    response.compressed = True
+                storage_client.write(
+                    key=key,
+                    obj_to_write=contents,
+                )
                 expiration_seconds = int(
                     os.getenv(
                         PRE_SIGNED_URL_RESPONSE_EXPIRATION_SECONDS_ENV_VAR,
@@ -467,6 +469,24 @@ class Agent:
                 )
                 url = storage_client.generate_presigned_url(key, expiration_seconds)
                 response.use_location(url)
+                logger.info(
+                    f"Generated pre-signed url for operation: {connection_type}/{operation_name}",
+                    extra=self._logging_utils.build_extra(
+                        operation.trace_id,
+                        operation_name,
+                        dict(
+                            key=key,
+                            unwrap_result=operation.must_unwrap_result(),
+                            compressed=response.compressed,
+                        ),
+                    ),
+                )
+            elif operation.must_compress_response(size):
+                response.result = gzip.compress(
+                    response.serialize_result().encode("utf-8")
+                )
+                response.compressed = True
+
         return response
 
     @staticmethod

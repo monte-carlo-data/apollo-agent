@@ -58,6 +58,7 @@ class HttpProxyClient(BaseProxyClient):
         user_agent: Optional[str] = None,
         additional_headers: Optional[Dict] = None,
         params: Optional[Dict] = None,
+        verify_ssl: Optional[bool] = None,
         retry_status_code_ranges: Optional[List[Tuple]] = None,
     ) -> Dict:
         """
@@ -72,6 +73,7 @@ class HttpProxyClient(BaseProxyClient):
         :param user_agent: optional value for User-Agent header
         :param additional_headers: optional headers
         :param params: optional parameters dictionary to include in the query string.
+        :param verify_ssl: optional boolean which controls whether we verify the server's TLS certificate.
         :param retry_status_code_ranges: optional list of ranges specifying status code to raise `HttpRetryableError`.
             The ranges are expected to be specified in a list of tuples where each tuple includes two elements:
             inclusive from and exclusive to, for example: [(500, 600)] means: `500 <= status_code < 600`.
@@ -85,11 +87,16 @@ class HttpProxyClient(BaseProxyClient):
             request_args["timeout"] = timeout
         if params:
             request_args["params"] = params
+        if verify_ssl is not None:
+            request_args["verify"] = verify_ssl
 
         headers = {**additional_headers} if additional_headers else {}
         if self._credentials and "token" in self._credentials:
-            auth_type = self._credentials.get("auth_type", "Bearer")
-            headers["Authorization"] = f"{auth_type} {self._credentials['token']}"
+            auth_header = self._credentials.get("auth_header", "Authorization")
+            auth_header_value = self._credentials["token"]
+            if auth_type := self._credentials.get("auth_type", "Bearer"):
+                auth_header_value = f"{auth_type} {auth_header_value}"
+            headers[auth_header] = auth_header_value
         if content_type:
             headers["Content-Type"] = content_type
         if user_agent:

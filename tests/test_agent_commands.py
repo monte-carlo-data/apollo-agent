@@ -5,7 +5,7 @@ from apollo.agent.agent import Agent
 from apollo.agent.log_context import AgentLogContext
 from apollo.agent.logging_utils import LoggingUtils
 from apollo.agent.models import AgentOperation
-from sample_proxy_client import SampleProxyClient
+from tests.sample_proxy_client import SampleProxyClient
 
 
 class AgentCommandsTests(TestCase):
