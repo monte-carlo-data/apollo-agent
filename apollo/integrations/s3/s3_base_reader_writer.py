@@ -283,7 +283,7 @@ class S3BaseReaderWriter(BaseStorageClient):
                 "Bucket": self._bucket_name,
                 "Key": self._apply_prefix(key),
             },
-            ExpiresIn=expiration.total_seconds(),
+            ExpiresIn=int(expiration.total_seconds()),
         )
 
     def is_bucket_private(self) -> bool:
