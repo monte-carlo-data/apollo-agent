@@ -21,6 +21,8 @@ _PARAMETER_VALUE_ATTR_NAME = "ParameterValue"
 _PARAMETER_USE_PREVIOUS_VALUE_ATTR_NAME = "UsePreviousValue"
 
 _IMAGE_URI_TEMPLATE_PARAMETER_NAME = "ImageUri"
+_TEMPLATE_URL_PARAMETER_NAME = "TemplateURL"
+_USE_DIRECT_UPDATE_PARAMETER_NAME = "UseDirectUpdate"
 
 logger = logging.getLogger(__name__)
 
@@ -54,12 +56,16 @@ class LambdaCFUpdater(AgentUpdater):
         timeout_seconds: Optional[int],
         wait_for_completion: bool = False,
         parameters: Optional[Dict] = None,
-        template_url: Optional[str] = None,
-        use_direct_update: bool = False,
         **kwargs,  # type: ignore
     ) -> Dict:
         """
         Updates the CF Stack using a CF update or a direct Lambda update depending on the value of `use_direct_update`.
+        The following well-known parameters are supported by this updater:
+        - TemplateURL: a new value for "TemplateURL", defaults to None and triggers the update with
+            UsePreviousTemplate=true
+        - UseDirectUpdate: if `True` it uses an instance of `LambdaDirectUpdater` to update
+            the Lambda function directly instead of using CF.
+
 
         :param image: image URI, it is expected to have this format:
             <account_number>.dkr.ecr.<region>>.amazonaws.com/<repo_name>>:<image_tag>
@@ -67,11 +73,11 @@ class LambdaCFUpdater(AgentUpdater):
         :param parameters: an optional dictionary with new values for the template parameters
         :param wait_for_completion: a bool indicating if this method should wait for the update to complete,
             defaults to False
-        :param template_url: a new value for "TemplateURL", defaults to None and triggers the update with
-            UsePreviousTemplate=true
-        :param use_direct_update: if `True` it uses an instance of `LambdaDirectUpdater` to update
-            the Lambda function directly instead of using CF.
         """
+        use_direct_update = (parameters or {}).pop(
+            _USE_DIRECT_UPDATE_PARAMETER_NAME, False
+        )
+        template_url = (parameters or {}).pop(_TEMPLATE_URL_PARAMETER_NAME, None)
         if use_direct_update:
             return LambdaDirectUpdater().update(
                 image=image,
