@@ -79,6 +79,7 @@ class LambdaCFUpdater(AgentUpdater):
         )
         template_url = (parameters or {}).pop(_TEMPLATE_URL_PARAMETER_NAME, None)
         if use_direct_update:
+            logger.info("Updating Agent using direct update")
             return LambdaDirectUpdater().update(
                 image=image,
                 timeout_seconds=timeout_seconds,
