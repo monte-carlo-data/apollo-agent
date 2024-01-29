@@ -40,7 +40,7 @@ class AgentSerializer(json.JSONEncoder):
                 ATTRIBUTE_NAME_TYPE: ATTRIBUTE_VALUE_TYPE_DECIMAL,
                 ATTRIBUTE_NAME_DATA: str(value),
             }
-        elif isinstance(value, bytes):
+        elif isinstance(value, bytes) or isinstance(value, bytearray):
             return {
                 ATTRIBUTE_NAME_TYPE: ATTRIBUTE_VALUE_TYPE_BYTES,
                 ATTRIBUTE_NAME_DATA: base64.b64encode(value).decode("utf-8"),
