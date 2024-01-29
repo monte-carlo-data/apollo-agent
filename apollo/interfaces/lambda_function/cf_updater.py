@@ -6,6 +6,7 @@ from botocore.exceptions import WaiterError
 
 from apollo.agent.updater import AgentUpdater
 from apollo.interfaces.lambda_function.cf_utils import CloudFormationUtils
+from apollo.interfaces.lambda_function.direct_updater import LambdaDirectUpdater
 
 _CF_UPDATE_WAITER = "stack_update_complete"
 _STACK_SUCCESSFUL_UPDATE_STATE = "UPDATE_COMPLETE"
@@ -20,9 +21,8 @@ _PARAMETER_VALUE_ATTR_NAME = "ParameterValue"
 _PARAMETER_USE_PREVIOUS_VALUE_ATTR_NAME = "UsePreviousValue"
 
 _IMAGE_URI_TEMPLATE_PARAMETER_NAME = "ImageUri"
-
-_NEW_PARAMETERS_ARG_NAME = "parameters"
-_TEMPLATE_URL_ARG_NAME = "template_url"
+_TEMPLATE_URL_PARAMETER_NAME = "TemplateURL"
+_USE_DIRECT_UPDATE_PARAMETER_NAME = "UseDirectUpdate"
 
 logger = logging.getLogger(__name__)
 
@@ -54,38 +54,59 @@ class LambdaCFUpdater(AgentUpdater):
         self,
         image: Optional[str],
         timeout_seconds: Optional[int],
+        wait_for_completion: bool = False,
+        parameters: Optional[Dict] = None,
         **kwargs,  # type: ignore
     ) -> Dict:
         """
-        Updates the CF Stack, image is expected to have this format:
-            <account_number>.dkr.ecr.<region>>.amazonaws.com/<repo_name>>:<image_tag>
-        Optional parameters supported through kwargs:
-        - 'parameters': a dictionary with new values for the template parameters
-        - 'wait_for_completion': a bool indicating if this method should wait for the update to complete,
-            defaults to False
-        - 'template_url': a new value for "TemplateURL", defaults to None and triggers the update with
+        Updates the CF Stack using a CF update or a direct Lambda update depending on the value of `use_direct_update`.
+        The following well-known parameters are supported by this updater:
+        - TemplateURL: a new value for "TemplateURL", defaults to None and triggers the update with
             UsePreviousTemplate=true
+        - UseDirectUpdate: if `True` it uses an instance of `LambdaDirectUpdater` to update
+            the Lambda function directly instead of using CF.
+
+
+        :param image: image URI, it is expected to have this format:
+            <account_number>.dkr.ecr.<region>>.amazonaws.com/<repo_name>>:<image_tag>
+        :param timeout_seconds: Ignored by this updater
+        :param parameters: an optional dictionary with new values for the template parameters
+        :param wait_for_completion: a bool indicating if this method should wait for the update to complete,
+            defaults to False
         """
+        use_direct_update = (parameters or {}).pop(
+            _USE_DIRECT_UPDATE_PARAMETER_NAME, False
+        )
+        template_url = (parameters or {}).pop(_TEMPLATE_URL_PARAMETER_NAME, None)
+        if use_direct_update:
+            logger.info("Updating Agent using direct update")
+            return LambdaDirectUpdater().update(
+                image=image,
+                timeout_seconds=timeout_seconds,
+                wait_for_completion=wait_for_completion,
+                parameters=parameters,
+                **kwargs,
+            )
+
         client = CloudFormationUtils.get_cloudformation_client()
-        template_url = kwargs.get(_TEMPLATE_URL_ARG_NAME)
 
         stack_id = CloudFormationUtils.get_stack_id()
         logger.info(
-            f"Update CF stack requested", extra=dict(stack_id=stack_id, image=image)
+            "Update CF stack requested", extra=dict(stack_id=stack_id, image=image)
         )
         # force region to be "*" in the new ImageUri, the template will replace it with the right region
         new_image_uri = self._get_new_image_uri(image, "*") if image else None
 
-        parameters = self._merge_parameters(
+        stack_parameters = self._merge_parameters(
             client=client,
             stack_id=stack_id,
             new_image_uri=new_image_uri,
-            new_parameters=kwargs.get(_NEW_PARAMETERS_ARG_NAME) or {},
+            new_parameters=parameters or {},
         )
 
         update_stack_args: Dict[str, Any] = dict(
             StackName=stack_id,
-            Parameters=parameters,
+            Parameters=stack_parameters,
             Capabilities=[_DEFAULT_CAPABILITIES],
         )
         if template_url:
@@ -95,7 +116,7 @@ class LambdaCFUpdater(AgentUpdater):
         start_time = datetime.now(timezone.utc)
         client.update_stack(**update_stack_args)
 
-        if kwargs.get("wait_for_completion", False):
+        if wait_for_completion:
             error_message = self._wait_for_stack_update(
                 client=client, stack_id=stack_id
             )
@@ -179,7 +200,7 @@ class LambdaCFUpdater(AgentUpdater):
             for param in parameters
         }
         logger.info(
-            f"Updating stack",
+            "Updating stack",
             extra=dict(stack_id=stack_id, parameters=parameter_log_values),
         )
         return parameters

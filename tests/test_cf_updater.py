@@ -5,6 +5,7 @@ from unittest.mock import patch, Mock, ANY
 
 from apollo.agent.env_vars import CLOUDFORMATION_STACK_ID_ENV_VAR
 from apollo.interfaces.lambda_function.cf_updater import LambdaCFUpdater
+from apollo.interfaces.lambda_function.direct_updater import LambdaDirectUpdater
 
 
 class TestCFUpdater(TestCase):
@@ -135,6 +136,48 @@ class TestCFUpdater(TestCase):
         mock_client.describe_stack_events.assert_not_called()
         mock_client.describe_stacks.assert_called_with(StackName="cf_stack_id")
         self.assertEqual("UPDATE_IN_PROGRESS", response["status"])
+
+    @patch.object(LambdaDirectUpdater, "update")
+    def test_direct_update(self, mock_direct_update):
+        new_image_uri = (
+            "123_account.dkr.ecr.us-east-1.amazonaws.com/repo-name:new-tag-name"
+        )
+        updater = LambdaCFUpdater()
+
+        # update with no parameters
+        updater.update(
+            image=new_image_uri,
+            timeout_seconds=10,
+            wait_for_completion=True,
+            parameters={
+                "UseDirectUpdate": True,
+            },
+        )
+        mock_direct_update.assert_called_once_with(
+            image=new_image_uri,
+            timeout_seconds=10,
+            wait_for_completion=True,
+            parameters={},
+        )
+
+        # update with parameters
+        mock_direct_update.reset_mock()
+        parameters = {"MemorySize": 128}
+        updater.update(
+            image=new_image_uri,
+            timeout_seconds=10,
+            wait_for_completion=True,
+            parameters={
+                **parameters,
+                "UseDirectUpdate": True,
+            },
+        )
+        mock_direct_update.assert_called_once_with(
+            image=new_image_uri,
+            timeout_seconds=10,
+            wait_for_completion=True,
+            parameters=parameters,
+        )
 
     @patch.dict(
         os.environ,

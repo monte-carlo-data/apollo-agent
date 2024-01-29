@@ -1,3 +1,4 @@
+import base64
 import datetime
 from typing import List, Any, Optional, Dict
 from unittest import TestCase
@@ -38,6 +39,25 @@ class SnowflakeClientTests(TestCase):
         ]
         expected_description = [
             ["name", "string", None, None, None, None, None],
+            ["value", "float", None, None, None, None, None],
+        ]
+        self._test_run_query(mock_connect, query, expected_data, expected_description)
+
+    @patch("snowflake.connector.connect")
+    def test_query_bytearray(self, mock_connect):
+        query = "SELECT name, value FROM table"  # noqa
+        expected_data = [
+            [
+                bytearray(b"name_1"),
+                11.1,
+            ],
+            [
+                bytearray(b"name_1"),
+                22.2,
+            ],
+        ]
+        expected_description = [
+            ["name", "binary", None, None, None, None, None],
             ["value", "float", None, None, None, None, None],
         ]
         self._test_run_query(mock_connect, query, expected_data, expected_description)
@@ -170,6 +190,11 @@ class SnowflakeClientTests(TestCase):
             return {
                 "__type__": "date",
                 "__data__": value.isoformat(),
+            }
+        elif isinstance(value, bytes) or isinstance(value, bytearray):
+            return {
+                "__type__": "bytes",
+                "__data__": base64.b64encode(value).decode("utf-8"),
             }
         else:
             return value
