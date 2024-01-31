@@ -15,6 +15,7 @@ from apollo.agent.constants import (
     ATTRIBUTE_VALUE_TYPE_BYTES,
     ATTRIBUTE_NAME_DATA,
 )
+from apollo.agent.serde import decode_dict_value
 from apollo.agent.utils import AgentUtils
 from apollo.integrations.base_proxy_client import BaseProxyClient
 
@@ -186,8 +187,8 @@ class AgentEvaluationUtils:
                 return cls._execute_single_command(
                     AgentCommand.from_dict(value), context
                 )
-            elif value.get(ATTRIBUTE_NAME_TYPE) == ATTRIBUTE_VALUE_TYPE_BYTES:
-                return base64.b64decode(value.get(ATTRIBUTE_NAME_DATA))  # type: ignore
+            elif ATTRIBUTE_NAME_TYPE in value:
+                return decode_dict_value(value)
         return value
 
     @staticmethod

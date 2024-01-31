@@ -8,6 +8,7 @@ from typing import Optional, Dict
 
 from apollo.agent.env_vars import CLIENT_CACHE_EXPIRATION_SECONDS_ENV_VAR
 from apollo.agent.models import AgentError
+from apollo.agent.serde import decode_dictionary
 from apollo.integrations.base_proxy_client import BaseProxyClient
 
 logger = logging.getLogger(__name__)
@@ -314,6 +315,8 @@ class ProxyClientFactory:
     ) -> BaseProxyClient:
         factory_method = _CLIENT_FACTORY_MAPPING.get(connection_type)
         if factory_method:
+            if credentials:
+                credentials = decode_dictionary(credentials)
             return factory_method(credentials, platform=platform)
         else:
             raise AgentError(
