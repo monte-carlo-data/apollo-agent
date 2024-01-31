@@ -209,6 +209,22 @@ def _get_proxy_client_hive(
     return HiveProxyClient(credentials=credentials, platform=platform)
 
 
+def _get_proxy_client_msk_connect(
+    credentials: Optional[Dict], platform: str, **kwargs  # type: ignore
+) -> BaseProxyClient:
+    from apollo.integrations.aws.msk_proxy_client import MskConnectProxyClient
+
+    return MskConnectProxyClient(credentials=credentials, platform=platform)
+
+
+def _get_proxy_client_msk_kafka(
+    credentials: Optional[Dict], platform: str, **kwargs  # type: ignore
+) -> BaseProxyClient:
+    from apollo.integrations.aws.msk_proxy_client import MskKafkaProxyClient
+
+    return MskKafkaProxyClient(credentials=credentials, platform=platform)
+
+
 @dataclass
 class ProxyClientCacheEntry:
     created_time: datetime
@@ -238,6 +254,8 @@ _CLIENT_FACTORY_MAPPING = {
     "athena": _get_proxy_client_athena,
     "presto": _get_proxy_client_presto,
     "hive": _get_proxy_client_hive,
+    "msk-connect": _get_proxy_client_msk_connect,
+    "msk-kafka": _get_proxy_client_msk_kafka,
 }
 
 
