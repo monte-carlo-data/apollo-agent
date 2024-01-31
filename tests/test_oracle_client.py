@@ -128,7 +128,7 @@ class OracleDbClientTests(TestCase):
         self.assertTrue(ATTRIBUTE_NAME_RESULT in response.result)
         result = response.result.get(ATTRIBUTE_NAME_RESULT)
 
-        mock_connect.assert_called_with(**_ORACLE_DB_CREDENTIALS)
+        mock_connect.assert_called_with(expire_time=1, **_ORACLE_DB_CREDENTIALS)
         self._mock_cursor.execute.assert_has_calls(
             [
                 call(query, query_args),
