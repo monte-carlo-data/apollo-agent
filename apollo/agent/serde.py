@@ -81,3 +81,23 @@ def rows_encoder(
     rows: Union[List[List[Any]], List[Tuple], List[Dict]]
 ) -> List[List[Any]]:
     return [[row_value_encoder(value) for value in row] for row in rows]
+
+
+def decode_dict_value(value: Dict) -> Any:
+    if value.get(ATTRIBUTE_NAME_TYPE) == ATTRIBUTE_VALUE_TYPE_BYTES:
+        return base64.b64decode(value.get(ATTRIBUTE_NAME_DATA))  # type: ignore
+    return value
+
+
+def decode_dictionary(dict_value: Dict) -> Dict:
+    def decode_deep(value: Any) -> Any:
+        if isinstance(value, Dict):
+            return (
+                decode_dict_value(value)
+                if ATTRIBUTE_NAME_TYPE in value
+                else decode_dictionary(value)
+            )
+        else:
+            return value
+
+    return {key: decode_deep(value) for key, value in dict_value.items()}
