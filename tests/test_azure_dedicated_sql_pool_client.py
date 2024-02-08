@@ -16,6 +16,7 @@ from apollo.agent.constants import (
     ATTRIBUTE_NAME_ERROR_TYPE,
 )
 from apollo.agent.logging_utils import LoggingUtils
+from apollo.integrations.db.azure_database_proxy_client import AzureDatabaseProxyClient
 
 _AZURE_DEDICATED_SQL_POOL_CREDENTIALS = (
     f"DRIVER={{ODBC Driver 17 for SQL Server}};"
@@ -179,3 +180,27 @@ class AzureDedicatedSqlPoolClientTests(TestCase):
             }
         else:
             return value
+
+    def test_handle_datetimeoffset(self):
+        # 2025-12-10T12:32:10.000019+01:00 represented as binary
+        datetimeoffset_as_binary = (
+            b"\xe9\x07\x0c\x00\n\x00\x0c\x00 \x00\n\x008J\x00\x00\x01\x00\x00\x00"
+        )
+
+        expected_datetime = datetime.datetime(
+            year=2025,
+            month=12,
+            day=10,
+            hour=12,
+            minute=32,
+            second=10,
+            microsecond=19,
+            tzinfo=datetime.timezone(datetime.timedelta(hours=1, minutes=0)),
+        )
+
+        # Convert it to datetime
+        response = AzureDatabaseProxyClient._handle_datetimeoffset(
+            datetimeoffset_as_binary
+        )
+
+        self.assertEqual(response, expected_datetime)
