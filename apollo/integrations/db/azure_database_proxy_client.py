@@ -25,7 +25,9 @@ class AzureDatabaseProxyClient(BaseDbProxyClient):
             )
         self._connection = pyodbc.connect(credentials[_ATTR_CONNECT_ARGS])  # type: ignore
         # Add output converter to handle datetimeoffset data types that are not supported by pyodbc
-        self._connection.add_output_converter(self._DATETIMEOFFSET_SQL_TYPE_CODE, self._handle_datetimeoffset)
+        self._connection.add_output_converter(
+            self._DATETIMEOFFSET_SQL_TYPE_CODE, self._handle_datetimeoffset
+        )
 
     @property
     def wrapped_client(self):

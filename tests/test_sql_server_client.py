@@ -222,8 +222,6 @@ class SqlServerClientTests(TestCase):
         )
 
         # Convert it to datetime
-        response = SqlServerProxyClient._handle_datetimeoffset(
-            datetimeoffset_as_binary
-        )
+        response = SqlServerProxyClient._handle_datetimeoffset(datetimeoffset_as_binary)
 
         self.assertEqual(response, expected_datetime)
