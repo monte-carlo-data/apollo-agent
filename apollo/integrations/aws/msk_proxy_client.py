@@ -8,3 +8,8 @@ class MskConnectProxyClient(BaseAwsProxyClient):
         BaseAwsProxyClient.__init__(
             self, service_type="kafkaconnect", credentials=credentials
         )
+
+
+class MskKafkaProxyClient(BaseAwsProxyClient):
+    def __init__(self, credentials: Optional[Dict], **kwargs: Any):
+        BaseAwsProxyClient.__init__(self, service_type="kafka", credentials=credentials)
