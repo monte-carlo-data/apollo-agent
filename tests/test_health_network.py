@@ -2,7 +2,6 @@ import os
 import socket
 import sys
 from telnetlib import Telnet
-from typing import Dict, Optional
 from unittest import TestCase
 from unittest.mock import patch, create_autospec
 
@@ -11,10 +10,9 @@ from apollo.agent.constants import (
     ATTRIBUTE_NAME_ERROR,
     ATTRIBUTE_NAME_TRACE_ID,
     ATTRIBUTE_NAME_RESULT,
+    CONNECTION_TYPES,
 )
 from apollo.agent.logging_utils import LoggingUtils
-from apollo.agent.platform import AgentPlatformProvider
-from apollo.agent.updater import AgentUpdater
 from apollo.agent.utils import AgentUtils
 from apollo.validators.validate_network import _DEFAULT_TIMEOUT_SECS
 from tests.platform import TestPlatformProvider
@@ -59,6 +57,12 @@ class HealthNetworkTests(TestCase):
         self.assertTrue("extra" in health_info)
         self.assertTrue("outbound_ip_address" in health_info["extra"])
         self.assertEqual(ip_address, health_info["extra"]["outbound_ip_address"])
+        self.assertTrue("capabilities" in health_info["extra"])
+        self.assertTrue("connection_types" in health_info["extra"]["capabilities"])
+        self.assertEqual(
+            CONNECTION_TYPES,
+            tuple(health_info["extra"]["capabilities"]["connection_types"].keys()),
+        )
 
     def test_param_validations(self):
         response = self._agent.validate_telnet_connection(
