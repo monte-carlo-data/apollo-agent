@@ -132,6 +132,7 @@ class Agent:
     @staticmethod
     def _extra_health_information():
         return {
+            "capabilities": AgentUtils.get_capabilities(),
             "outbound_ip_address": AgentUtils.get_outbound_ip_address(),
         }
 

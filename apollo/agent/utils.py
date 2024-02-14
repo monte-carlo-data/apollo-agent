@@ -15,6 +15,7 @@ from apollo.agent.constants import (
     ATTRIBUTE_NAME_ERROR_TYPE,
     ATTRIBUTE_VALUE_REDACTED,
     ATTRIBUTE_NAME_ERROR_ATTRS,
+    CONNECTION_TYPES,
 )
 from apollo.agent.env_vars import (
     TEMP_PATH_ENV_VAR,
@@ -126,6 +127,12 @@ class AgentUtils:
             return [cls.redact_attributes(v, attributes) for v in value]
         else:
             return value
+
+    @staticmethod
+    def get_capabilities() -> Dict:
+        return dict(
+            connection_types={k: {} for k in CONNECTION_TYPES},
+        )
 
     @staticmethod
     def get_outbound_ip_address() -> str:

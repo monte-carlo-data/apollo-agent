@@ -6,6 +6,30 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional, Dict
 
+from apollo.agent.constants import (
+    CONNECTION_TYPE_BIGQUERY,
+    CONNECTION_TYPE_DATABRICKS,
+    CONNECTION_TYPE_HTTP,
+    CONNECTION_TYPE_STORAGE,
+    CONNECTION_TYPE_LOOKER,
+    CONNECTION_TYPE_GIT,
+    CONNECTION_TYPE_REDSHIFT,
+    CONNECTION_TYPE_POSTGRES,
+    CONNECTION_TYPE_SQL_SERVER,
+    CONNECTION_TYPE_SNOWFLAKE,
+    CONNECTION_TYPE_MYSQL,
+    CONNECTION_TYPE_ORACLE,
+    CONNECTION_TYPE_TERADATA,
+    CONNECTION_TYPE_AZURE_DEDICATED_SQL_POOL,
+    CONNECTION_TYPE_AZURE_SQL_DATABASE,
+    CONNECTION_TYPE_TABLEAU,
+    CONNECTION_TYPE_SAP_HANA,
+    CONNECTION_TYPE_POWER_BI,
+    CONNECTION_TYPE_GLUE,
+    CONNECTION_TYPE_ATHENA,
+    CONNECTION_TYPE_PRESTO,
+    CONNECTION_TYPE_HIVE,
+)
 from apollo.agent.env_vars import CLIENT_CACHE_EXPIRATION_SECONDS_ENV_VAR
 from apollo.agent.models import AgentError
 from apollo.agent.serde import decode_dictionary
@@ -216,28 +240,28 @@ class ProxyClientCacheEntry:
 
 
 _CLIENT_FACTORY_MAPPING = {
-    "bigquery": _get_proxy_client_bigquery,
-    "databricks": _get_proxy_client_databricks,
-    "http": _get_proxy_client_http,
-    "storage": _get_proxy_client_storage,
-    "looker": _get_proxy_client_looker,
-    "git": _get_proxy_client_git,
-    "redshift": _get_proxy_client_redshift,
-    "postgres": _get_proxy_client_postgres,
-    "sql-server": _get_proxy_client_sql_server,
-    "snowflake": _get_proxy_client_snowflake,
-    "mysql": _get_proxy_client_mysql,
-    "oracle": _get_proxy_client_oracle,
-    "teradata": _get_proxy_client_teradata,
-    "azure-dedicated-sql-pool": _get_proxy_client_azure_database,
-    "azure-sql-database": _get_proxy_client_azure_database,
-    "tableau": _get_proxy_client_tableau,
-    "sap-hana": _get_proxy_client_sap_hana,
-    "power-bi": _get_proxy_client_power_bi,
-    "glue": _get_proxy_client_glue,
-    "athena": _get_proxy_client_athena,
-    "presto": _get_proxy_client_presto,
-    "hive": _get_proxy_client_hive,
+    CONNECTION_TYPE_BIGQUERY: _get_proxy_client_bigquery,
+    CONNECTION_TYPE_DATABRICKS: _get_proxy_client_databricks,
+    CONNECTION_TYPE_HTTP: _get_proxy_client_http,
+    CONNECTION_TYPE_STORAGE: _get_proxy_client_storage,
+    CONNECTION_TYPE_LOOKER: _get_proxy_client_looker,
+    CONNECTION_TYPE_GIT: _get_proxy_client_git,
+    CONNECTION_TYPE_REDSHIFT: _get_proxy_client_redshift,
+    CONNECTION_TYPE_POSTGRES: _get_proxy_client_postgres,
+    CONNECTION_TYPE_SQL_SERVER: _get_proxy_client_sql_server,
+    CONNECTION_TYPE_SNOWFLAKE: _get_proxy_client_snowflake,
+    CONNECTION_TYPE_MYSQL: _get_proxy_client_mysql,
+    CONNECTION_TYPE_ORACLE: _get_proxy_client_oracle,
+    CONNECTION_TYPE_TERADATA: _get_proxy_client_teradata,
+    CONNECTION_TYPE_AZURE_DEDICATED_SQL_POOL: _get_proxy_client_azure_database,
+    CONNECTION_TYPE_AZURE_SQL_DATABASE: _get_proxy_client_azure_database,
+    CONNECTION_TYPE_TABLEAU: _get_proxy_client_tableau,
+    CONNECTION_TYPE_SAP_HANA: _get_proxy_client_sap_hana,
+    CONNECTION_TYPE_POWER_BI: _get_proxy_client_power_bi,
+    CONNECTION_TYPE_GLUE: _get_proxy_client_glue,
+    CONNECTION_TYPE_ATHENA: _get_proxy_client_athena,
+    CONNECTION_TYPE_PRESTO: _get_proxy_client_presto,
+    CONNECTION_TYPE_HIVE: _get_proxy_client_hive,
 }
 
 
