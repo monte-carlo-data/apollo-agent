@@ -29,7 +29,7 @@ from apollo.agent.env_vars import (
 )
 from apollo.agent.logging_utils import LoggingUtils
 from apollo.agent.utils import AgentUtils
-from tests.platform import TestPlatformProvider
+from tests.platform_provider import TestPlatformProvider
 
 _TEST_BUCKET_NAME = "test_bucket"
 _TEST_ACCOUNT_NAME = "test_account"
