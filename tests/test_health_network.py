@@ -17,7 +17,7 @@ from apollo.agent.platform import AgentPlatformProvider
 from apollo.agent.updater import AgentUpdater
 from apollo.agent.utils import AgentUtils
 from apollo.validators.validate_network import _DEFAULT_TIMEOUT_SECS
-from tests.platform import TestPlatformProvider
+from tests.platform_provider import TestPlatformProvider
 
 
 class HealthNetworkTests(TestCase):

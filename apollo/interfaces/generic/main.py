@@ -206,6 +206,124 @@ def execute_agent_operation(
     )
 
 
+@app.route("/api/v1/agent/execute_script/<connection_type>", methods=["POST"])  # type: ignore
+def agent_execute_script(
+    connection_type: str,
+) -> Union[Response, Tuple[Dict, int, Optional[Dict]]]:
+    """
+    Executes an agent script for a given integration.
+    The script must include a function called `run` that receives the connection client as an
+    argument, and a context object with information about the agent and service APIs (storage, etc.).
+    ---
+    tags:
+        - Agent Operations
+    produces:
+        - application/json
+    parameters:
+        - in: path
+          name: connection_type
+          required: true
+          description: the connection type to use, one of bigquery, databricks, http, storage, looker, git,
+            redshift, postgres, sql-server, snowflake, mysql, oracle, teradata, azure-dedicated-sql-pool,
+            azure-sql-database, tableau, sap-hana, power-bi.
+          schema:
+              type: string
+              example: snowflake
+        - in: body
+          name: body
+          schema:
+            id: ExecuteScriptRequest
+            properties:
+                credentials:
+                    type: object
+                    description: authentication information for establishing the connection.
+                    example:
+                        user: user_name
+                        password: password
+                operation:
+                    type: object
+                    description: The python script to execute.
+                    properties:
+                        trace_id:
+                            type: string
+                            description: An optional trace id
+                            example: 324986b4-b185-4187-b4af-b0c2cd60f7a0
+                        script:
+                            type: str
+                            description: The source of the script to execute.
+                        args:
+                            type: object
+                            description: Keyword arguments for the method to invoke.
+            example:
+                credentials:
+                    connect_args:
+                        user: user_name
+                        password: password
+                        account: account
+                        warehouse: warehouse
+                operation:
+                    trace_id: 324986b4-b185-4187-b4af-b0c2cd60f7a0
+                    script: |
+                         def run(connection, context, sql_query):
+                            cursor = connection.cursor()
+                            cursor.execute(sql_query)
+                            return cursor.fetchall()
+
+                    kwargs:
+                        sql_query: "select database_name from snowflake.information_schema.databases"
+    responses:
+        200:
+            description: Returns the result of the operation (that is expected to be a Dictionary).
+                If there was an error executing the operation a dictionary containing __mcd_error__ and
+                __mcd_stack_trace__ will be returned.
+            schema:
+                properties:
+                    __mcd_result__:
+                        type: object
+                        description: The operation result if the execution was successful.
+                            If there was an error executing the operation this
+                            element won't be present, see `__mcd_error__` for more information.
+                    __mcd_error__:
+                        type: string
+                        description: The error message occurred (if any).
+                    __mcd_exception__:
+                        type: string
+                        description: Additional information about the error occurred (if any).
+                    __mcd_stack_trace__:
+                        type: array
+                        description: The stack trace for the error occurred (if any).
+                        items:
+                            type: string
+                example:
+                    __mcd_result__: [
+                        [
+                            "database_1"
+                        ],
+                        [
+                            "database_2"
+                        ],
+                    ]
+
+    :param connection_type: the connection type to use, for example bigquery.
+    :return: the result of the operation (that is expected to be a Dictionary) and the status code to sent in the
+        response. If there was an error executing the operation a dictionary containing __error__ and __stack_trace__
+        will be returned, see :class:`AgentUtils` for more information.
+    """
+    json_request: Dict = request.json  # type: ignore
+    response = execute_agent_script(
+        connection_type=connection_type,
+        json_request=json_request,
+    )
+    return _get_flask_response(response)
+
+
+def execute_agent_script(connection_type: str, json_request: Dict) -> AgentResponse:
+    script = json_request.get("operation")
+    credentials = json_request.get("credentials", {})
+
+    return agent.execute_script(connection_type, script, credentials)
+
+
 @app.route("/api/v1/test/health", methods=["GET"])
 def test_health_get() -> Tuple[Dict, int]:
     """

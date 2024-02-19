@@ -24,6 +24,7 @@ pyjwt>=2.8.0
 PyMySQL>=1.1.0
 pyodbc==5.0.1
 pyOpenSSL>=24.0.0
+RestrictedPython==7.0
 retry2==0.9.5
 snowflake-connector-python>=3.7.1
 # python_version conditions below to resolve urllib3 compatibility issues with snowflake-connector-python
