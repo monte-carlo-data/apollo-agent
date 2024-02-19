@@ -29,12 +29,25 @@ class SampleCursor:
     def __init__(self):
         self._last_query_results: Optional[SampleQueryResult] = None
 
+    def execute(self, query: str) -> SampleQueryResult:
+        self._last_query_results = SampleQueryResult(query)
+        return self._last_query_results
+
+    def fetchmany(self, len: Optional[int] = None) -> List[Dict]:
+        return self._last_query_results.query_results()
+
     def cursor_execute_query(self, query: str) -> SampleQueryResult:
         self._last_query_results = SampleQueryResult(query)
         return self._last_query_results
 
     def cursor_fetch_results(self) -> List[Dict]:
         return self._last_query_results.query_results()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        pass
 
 
 class SampleInternalClient:
