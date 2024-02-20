@@ -5,7 +5,7 @@ import sys
 import time
 from contextlib import contextmanager
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 
 from apollo.agent.env_vars import (
     HEALTH_ENV_VARS,
@@ -26,9 +26,11 @@ from apollo.agent.constants import (
 )
 from apollo.agent.operation_utils import OperationUtils
 from apollo.agent.models import (
-    AgentOperation,
+    AgentCommands,
     AgentHealthInformation,
     AgentConfigurationError,
+    AgentOperation,
+    AgentScript,
 )
 from apollo.agent.proxy_client_factory import ProxyClientFactory
 from apollo.agent.settings import VERSION, BUILD_NUMBER
@@ -392,13 +394,56 @@ class Agent:
                 "operation is a required parameter", status_code=400
             )
         try:
-            operation = AgentOperation.from_dict(operation_dict)
+            operation = AgentCommands.from_dict(operation_dict)
         except Exception:  # noqa
             logger.exception("Failed to read operation")
             return AgentUtils.agent_response_for_last_exception(
                 prefix="Failed to read operation:", status_code=400
             )
 
+        return self._execute_with_client(
+            connection_type,
+            operation_name,
+            credentials,
+            operation,
+            lambda client: self._execute(client, operation_name, operation),
+        )
+
+    def execute_script(
+        self,
+        connection_type: str,
+        script_dict: Optional[Dict],
+        credentials: Optional[Dict],
+    ) -> AgentResponse:
+        if not script_dict:
+            return AgentUtils.agent_response_for_error(
+                "script is a required parameter", status_code=400
+            )
+        try:
+            script = AgentScript.from_dict(script_dict)
+        except Exception:  # noqa
+            logger.exception("Failed to read script")
+            return AgentUtils.agent_response_for_last_exception(
+                prefix="Failed to read script:", status_code=400
+            )
+
+        operation_name = "#execute_script"
+        return self._execute_with_client(
+            connection_type,
+            operation_name,
+            credentials,
+            script,
+            lambda client: self._execute_script(client, operation_name, script),
+        )
+
+    def _execute_with_client(
+        self,
+        connection_type: str,
+        operation_name: str,
+        credentials: Optional[Dict],
+        operation: AgentOperation,
+        func: Callable[[BaseProxyClient], Any],
+    ):
         with self._inject_log_context(
             f"{connection_type}/{operation_name}", operation.trace_id
         ):
@@ -409,7 +454,7 @@ class Agent:
                     connection_type, credentials, operation.skip_cache, self.platform
                 )
                 response = self._execute_client_operation(
-                    connection_type, client, operation_name, operation
+                    connection_type, client, operation_name, operation, func
                 )
                 return response
             except Exception:  # noqa
@@ -427,6 +472,7 @@ class Agent:
         client: BaseProxyClient,
         operation_name: str,
         operation: AgentOperation,
+        func: Callable[[BaseProxyClient], AgentResponse],
     ) -> AgentResponse:
         start_time = time.time()
         logger.info(
@@ -438,7 +484,7 @@ class Agent:
             ),
         )
 
-        result = self._execute(client, self._logging_utils, operation_name, operation)
+        result = func(client)
         logger.debug(
             f"Operation executed: {connection_type}/{operation_name}",
             extra=self._logging_utils.build_extra(
@@ -492,12 +538,11 @@ class Agent:
 
         return response
 
-    @staticmethod
     def _execute(
+        self,
         client: BaseProxyClient,
-        logging_utils: LoggingUtils,
         operation_name: str,
-        operation: AgentOperation,
+        commands: AgentCommands,
     ) -> Optional[Any]:
         context: Dict[str, Any] = {
             CONTEXT_VAR_CLIENT: client,
@@ -506,10 +551,25 @@ class Agent:
 
         return AgentEvaluationUtils.execute(
             context,
-            logging_utils,
+            self._logging_utils,
             operation_name,
-            operation.commands,
-            operation.trace_id,
+            commands.commands,
+            commands.trace_id,
+        )
+
+    def _execute_script(
+        self,
+        client: BaseProxyClient,
+        operation_name: str,
+        script: AgentScript,
+    ) -> Optional[Any]:
+        context: Dict[str, Any] = {
+            CONTEXT_VAR_CLIENT: client,
+        }
+        context[CONTEXT_VAR_UTILS] = OperationUtils(context)
+
+        return AgentEvaluationUtils.execute_script(
+            context, self._logging_utils, operation_name, script, script.trace_id
         )
 
     @contextmanager

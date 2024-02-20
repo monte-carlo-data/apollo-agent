@@ -4,7 +4,7 @@ from unittest.mock import create_autospec, call
 from apollo.agent.agent import Agent
 from apollo.agent.log_context import AgentLogContext
 from apollo.agent.logging_utils import LoggingUtils
-from apollo.agent.models import AgentOperation
+from apollo.agent.models import AgentCommands
 from tests.sample_proxy_client import SampleProxyClient
 
 
@@ -16,11 +16,10 @@ class AgentCommandsTests(TestCase):
         self._client = SampleProxyClient()
 
     def test_single_call_wrapper_method(self):
-        result = Agent._execute(
+        result = Agent(LoggingUtils())._execute(
             self._client,
-            LoggingUtils(),
             "test",
-            AgentOperation.from_dict(
+            AgentCommands.from_dict(
                 {
                     "operation_name": "test",
                     "trace_id": "1",
@@ -39,11 +38,10 @@ class AgentCommandsTests(TestCase):
         # _client.execute_query(query)
         # _client.fetch_results()
 
-        result = Agent._execute(
+        result = Agent(LoggingUtils())._execute(
             self._client,
-            LoggingUtils(),
             "test",
-            AgentOperation.from_dict(
+            AgentCommands.from_dict(
                 {
                     "operation_name": "test",
                     "trace_id": "1",
@@ -67,11 +65,10 @@ class AgentCommandsTests(TestCase):
         # _cursor = _client.cursor()
         # _cursor.cursor_execute_query(query)
         # _cursor.cursor_fetch_results()
-        result = Agent._execute(
+        result = Agent(LoggingUtils())._execute(
             self._client,
-            LoggingUtils(),
             "test",
-            AgentOperation.from_dict(
+            AgentCommands.from_dict(
                 {
                     "operation_name": "test",
                     "trace_id": "1",
@@ -100,11 +97,10 @@ class AgentCommandsTests(TestCase):
     def test_store_and_chained_cursor_methods(self):
         # _cursor = _client.cursor()
         # _cursor.cursor_execute_query(query).cursor_fetch_results()
-        result = Agent._execute(
+        result = Agent(LoggingUtils())._execute(
             self._client,
-            LoggingUtils(),
             "test",
-            AgentOperation.from_dict(
+            AgentCommands.from_dict(
                 {
                     "operation_name": "test",
                     "trace_id": "1",
