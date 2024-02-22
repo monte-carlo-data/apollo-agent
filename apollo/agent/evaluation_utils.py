@@ -1,8 +1,6 @@
 import logging
 from typing import Any, Callable, Optional, Dict, List, cast
 
-from RestrictedPython import compile_restricted, safe_globals
-
 from apollo.agent.annotate_logger import annotate_logger
 from apollo.agent.logging_utils import LoggingUtils
 from apollo.agent.models import (
@@ -16,7 +14,7 @@ from apollo.agent.constants import (
     ATTRIBUTE_VALUE_TYPE_CALL,
     CONTEXT_VAR_CLIENT,
 )
-from apollo.agent.script_context import ScriptContext
+from apollo.agent.scripts import AgentScriptContext, execute_script
 from apollo.agent.serde import decode_dict_value
 from apollo.agent.utils import AgentUtils
 from apollo.integrations.base_proxy_client import BaseProxyClient
@@ -81,19 +79,18 @@ class AgentEvaluationUtils:
         trace_id: str,
     ) -> Optional[Any]:
         """
-        Executes a list of commands from an operation, returns the result of the
-        last command in the list.
+        Executes a script by getting a proxy client from the context.
         :param context: the context containing variables to use as targets.
         :param logging_utils: helper class to create the log payload.
         :param operation_name: name of the operation being executed, for logging purposes only.
-        :param commands: the list of commands to execute.
+        :param script: the script to execute
         :param trace_id: trace id of the operation being executed, for logging purposes only.
-        :return: the result of the last command in the list.
+        :return: the result of the script execution.
         """
         client: BaseProxyClient = cast(BaseProxyClient, context.get(CONTEXT_VAR_CLIENT))
         try:
             client = cls._resolve_context_variable(context, CONTEXT_VAR_CLIENT)
-            script_context = ScriptContext(
+            script_context = AgentScriptContext(
                 logger=annotate_logger(
                     logger,
                     logging_utils.build_extra(
@@ -102,7 +99,7 @@ class AgentEvaluationUtils:
                     ),
                 )
             )
-            last_result = cls._execute_script(script, client, script_context)
+            last_result = execute_script(script, client, script_context)
             return client.process_result(last_result)
         except Exception as ex:
             should_log = client.should_log_exception(ex)
@@ -118,27 +115,6 @@ class AgentEvaluationUtils:
                 ),
             )
             return AgentUtils.response_for_last_exception(client=client)
-
-    @classmethod
-    def _execute_script(
-        cls, script: AgentScript, client: BaseProxyClient, script_context: ScriptContext
-    ) -> Optional[Any]:
-        """
-        Execute a single command, if the command is the root of a chain (using next attribute)
-        the whole chain is executed.
-        :param command: the command to execute
-        :param context: the context including variables to use as targets
-        :return: the result of the command (or last command in the chain)
-        """
-
-        byte_code = compile_restricted(script.script, "<inline>", "exec")
-        loc = {}
-        exec(byte_code, safe_globals, loc)
-        if "execute_script_handler" not in loc:
-            raise ValueError("execute_script_handler not found")
-        return loc["execute_script_handler"](
-            client.wrapped_client, script_context, **script.kwargs
-        )
 
     @classmethod
     def _execute_command(cls, command: AgentCommand, context: Dict) -> Optional[Any]:

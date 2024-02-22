@@ -25,7 +25,7 @@ class JsonLogFormatter(Formatter):
             if hasattr(record, "extra"):
                 message["extra"] = record.extra  # type: ignore
 
-            if record.exc_info:
+            if record.exc_info and record.exc_info[0]:
                 message["exception"] = {
                     "type": record.exc_info[0].__name__,
                     "message": str(record.exc_info[1]),
