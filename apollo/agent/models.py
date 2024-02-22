@@ -105,8 +105,15 @@ class AgentCommands(AgentOperation):
 
 
 @dataclass(kw_only=True)
+class AgentModule:
+    source: str
+    name: str
+
+
+@dataclass(kw_only=True)
 class AgentScript(AgentOperation):
-    script: str
+    entry_module: str
+    modules: List[AgentModule]
     kwargs: Dict
 
 
