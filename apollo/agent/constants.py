@@ -71,6 +71,9 @@ CONTEXT_VAR_CLIENT = "_client"
 # Name of the variable holding the `utils` object that can be used for calls like `__utils.build_dict()`
 CONTEXT_VAR_UTILS = "__utils"
 
+# Name of the function that will be called as the entry point of an agent script
+AGENT_SCRIPT_ENTRYPOINT = "execute_script_handler"
+
 # Header used to return the trace if received in the request when the result is binary
 TRACE_ID_HEADER = "x-mcd-trace-id"
 
