@@ -106,7 +106,8 @@ CMD [ "apollo.interfaces.lambda_function.handler.lambda_handler" ]
 FROM mcr.microsoft.com/azure-functions/python:4-python3.11 AS azure
 
 ENV AzureWebJobsScriptRoot=/home/site/wwwroot \
-    AzureFunctionsJobHost__Logging__Console__IsEnabled=true
+    AzureFunctionsJobHost__Logging__Console__IsEnabled=true \
+    AzureFunctionsJobHost__functionTimeout="00:15:00"
 
 RUN apt update
 # install git as we need it for the direct oscrypto dependency
