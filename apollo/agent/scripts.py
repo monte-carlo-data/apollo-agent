@@ -1,10 +1,11 @@
 import logging
 import types
 from asyncio import Protocol
-from typing import Any, List, Optional, cast
+from typing import Any, Optional, cast
 
 from RestrictedPython import compile_restricted, safe_builtins, utility_builtins
 from RestrictedPython.Eval import default_guarded_getitem, default_guarded_getiter
+from RestrictedPython.Guards import guarded_iter_unpack_sequence
 
 from apollo.agent.constants import AGENT_SCRIPT_ENTRYPOINT, AGENT_SCRIPT_BUILTIN_MODULES
 from apollo.agent.models import AgentScript
@@ -70,38 +71,37 @@ def execute_script(
 
     # we don't use the default limited builtins provided by RestrictedPython as we don't
     # intend to limit these
-    list_builtins = {
+    type_builtins = {
         "tuple": tuple,
+        "dict": dict,
         "list": list,
         "range": range,
+        "str": str,
     }
 
-    # support for classes
+    # support for classes and special constructs
     class_manipulation = {
         "staticmethod": staticmethod,
         "__metaclass__": type,
         "_getattr_": getattr,
         "_getitem_": default_guarded_getitem,
         "_getiter_": default_guarded_getiter,
+        "_iter_unpack_sequence_": guarded_iter_unpack_sequence,
         "_write_": lambda o: o,
     }
 
-    script_globals = {
-        "__builtins__": {
-            **safe_builtins,
-            **utility_builtins,
-            **list_builtins,
-            **class_manipulation,
-            "__import__": import_script_module,
-        }
+    # additional helpers
+    helper_builtins = {
+        "sum": sum,
     }
 
     script_globals = {
         "__builtins__": {
             **safe_builtins,
             **utility_builtins,
-            **list_builtins,
+            **type_builtins,
             **class_manipulation,
+            **helper_builtins,
             "__import__": import_script_module,
         }
     }
