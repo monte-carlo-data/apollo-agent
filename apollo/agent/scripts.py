@@ -1,11 +1,12 @@
 import logging
 import types
 from asyncio import Protocol
-from typing import Any, Optional, cast
+from typing import Any, List, Optional, cast
 
-from RestrictedPython import compile_restricted, safe_builtins
+from RestrictedPython import compile_restricted, safe_builtins, utility_builtins
+from RestrictedPython.Eval import default_guarded_getitem, default_guarded_getiter
 
-from apollo.agent.constants import AGENT_SCRIPT_ENTRYPOINT
+from apollo.agent.constants import AGENT_SCRIPT_ENTRYPOINT, AGENT_SCRIPT_BUILTIN_MODULES
 from apollo.agent.models import AgentScript
 from apollo.integrations.base_proxy_client import BaseProxyClient
 
@@ -49,8 +50,14 @@ def execute_script(
     cached_modules = {}
 
     def import_script_module(name: str, *args: Any, **kwargs: Any) -> types.ModuleType:
+        """Custom implementation of __import__ for agent scripts. Restrict imports
+        to a pre-defined list of modules or modules provided on the agent script."""
+        if name in AGENT_SCRIPT_BUILTIN_MODULES:
+            return __import__(name, *args, **kwargs)
         if name not in module_bytecode:
-            raise ImportError(f"Module '{name}' not found in script")
+            raise ImportError(
+                f"Module '{name}' not found in script nor in built-in modules"
+            )
         if name not in cached_modules:
             imported_module = types.ModuleType(name)
             imported_module.__dict__.update(script_globals)
@@ -61,13 +68,47 @@ def execute_script(
         cached_module = cached_modules[name]
         return cached_module
 
+    # we don't use the default limited builtins provided by RestrictedPython as we don't
+    # intend to limit these
+    list_builtins = {
+        "tuple": tuple,
+        "list": list,
+        "range": range,
+    }
+
+    # support for classes
+    class_manipulation = {
+        "staticmethod": staticmethod,
+        "__metaclass__": type,
+        "_getitem_": default_guarded_getitem,
+        "_getiter_": default_guarded_getiter,
+        "_write_": lambda o: o,
+    }
+
     script_globals = {
-        "__builtins__": {**safe_builtins, "__import__": import_script_module}
+        "__builtins__": {
+            **safe_builtins,
+            **utility_builtins,
+            **list_builtins,
+            **class_manipulation,
+            "__import__": import_script_module,
+        }
+    }
+
+    script_globals = {
+        "__builtins__": {
+            **safe_builtins,
+            **utility_builtins,
+            **list_builtins,
+            **class_manipulation,
+            "__import__": import_script_module,
+        }
     }
 
     entry_module = module_bytecode[script.entry_module]
-    loc = {**script_globals}
+
     # at module level, globals and locals are the same dictionary
+    loc = {**script_globals}
     exec(entry_module, loc)
     if AGENT_SCRIPT_ENTRYPOINT not in loc:
         raise ValueError(
