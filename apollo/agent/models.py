@@ -105,7 +105,7 @@ class AgentCommands(AgentOperation):
 
 
 @dataclass(kw_only=True)
-class AgentModule:
+class AgentScriptModule:
     source: str
     name: str
 
@@ -113,7 +113,7 @@ class AgentModule:
 @dataclass(kw_only=True)
 class AgentScript(AgentOperation):
     entry_module: str
-    modules: List[AgentModule]
+    modules: List[AgentScriptModule]
     kwargs: Dict
 
 
