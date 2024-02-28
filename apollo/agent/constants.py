@@ -74,6 +74,19 @@ CONTEXT_VAR_UTILS = "__utils"
 # Name of the function that will be called as the entry point of an agent script
 AGENT_SCRIPT_ENTRYPOINT = "execute_script_handler"
 
+# List of modules available for agent scripts
+AGENT_SCRIPT_BUILTIN_MODULES = [
+    "typing",
+    "json",
+    "re",
+    "dataclasses",
+    "time",
+    "datetime",
+    "decimal",
+    "uuid",
+    "ipaddress",
+]
+
 # Header used to return the trace if received in the request when the result is binary
 TRACE_ID_HEADER = "x-mcd-trace-id"
 

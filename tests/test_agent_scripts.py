@@ -71,7 +71,8 @@ def execute_script_handler(client, context, sql_query):
             ),
         )
         self.assertEqual(
-            result[ATTRIBUTE_NAME_ERROR], "Module 'os' not found in script"
+            result[ATTRIBUTE_NAME_ERROR],
+            "Module 'os' not found in script nor in built-in modules",
         )
 
     def test_use_import_fails_for_existing_module(self):
