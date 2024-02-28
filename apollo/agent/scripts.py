@@ -80,6 +80,7 @@ def execute_script(
     class_manipulation = {
         "staticmethod": staticmethod,
         "__metaclass__": type,
+        "_getattr_": getattr,
         "_getitem_": default_guarded_getitem,
         "_getiter_": default_guarded_getiter,
         "_write_": lambda o: o,
