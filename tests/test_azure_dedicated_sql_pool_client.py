@@ -130,7 +130,9 @@ class AzureDedicatedSqlPoolClientTests(TestCase):
         self.assertTrue(ATTRIBUTE_NAME_RESULT in response.result)
         result = response.result.get(ATTRIBUTE_NAME_RESULT)
 
-        mock_connect.assert_called_with(_AZURE_DEDICATED_SQL_POOL_CREDENTIALS)
+        mock_connect.assert_called_with(
+            _AZURE_DEDICATED_SQL_POOL_CREDENTIALS, timeout=15
+        )
         self._mock_cursor.execute.assert_has_calls(
             [
                 call(query, query_args if query_args else None),
