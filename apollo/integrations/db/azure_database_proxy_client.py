@@ -23,11 +23,19 @@ class AzureDatabaseProxyClient(BaseDbProxyClient):
             raise ValueError(
                 f"Azure database agent client requires {_ATTR_CONNECT_ARGS} in credentials"
             )
-        self._connection = pyodbc.connect(credentials[_ATTR_CONNECT_ARGS])  # type: ignore
+        self._connection = pyodbc.connect(
+            credentials[_ATTR_CONNECT_ARGS],
+            # Set timeout for establishing connection to db
+            timeout=credentials.get('login_timeout', 15)
+        )  # type: ignore
+
         # Add output converter to handle datetimeoffset data types that are not supported by pyodbc
         self._connection.add_output_converter(
             self._DATETIMEOFFSET_SQL_TYPE_CODE, self._handle_datetimeoffset
         )
+
+        # Set timeout for any query executed through this connection
+        self._connection.timeout = credentials.get('query_timeout_in_seconds', 840)
 
     @property
     def wrapped_client(self):
