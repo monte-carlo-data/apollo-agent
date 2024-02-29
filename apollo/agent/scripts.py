@@ -5,7 +5,10 @@ from typing import Any, Optional, cast
 
 from RestrictedPython import compile_restricted, safe_builtins, utility_builtins
 from RestrictedPython.Eval import default_guarded_getitem, default_guarded_getiter
-from RestrictedPython.Guards import guarded_iter_unpack_sequence
+from RestrictedPython.Guards import (
+    guarded_iter_unpack_sequence,
+    guarded_unpack_sequence,
+)
 
 from apollo.agent.constants import AGENT_SCRIPT_ENTRYPOINT, AGENT_SCRIPT_BUILTIN_MODULES
 from apollo.agent.models import AgentScript
@@ -87,6 +90,7 @@ def execute_script(
         "_getitem_": default_guarded_getitem,
         "_getiter_": default_guarded_getiter,
         "_iter_unpack_sequence_": guarded_iter_unpack_sequence,
+        "_unpack_sequence_": guarded_unpack_sequence,
         "_write_": lambda o: o,
     }
 
