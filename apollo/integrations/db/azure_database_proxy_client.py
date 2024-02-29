@@ -28,7 +28,9 @@ class AzureDatabaseProxyClient(BaseDbProxyClient):
         self._connection = pyodbc.connect(
             credentials[_ATTR_CONNECT_ARGS],
             # Set timeout for establishing connection to db
-            timeout=credentials.get("login_timeout", self._DEFAULT_LOGIN_TIMEOUT_IN_SECONDS),
+            timeout=credentials.get(
+                "login_timeout", self._DEFAULT_LOGIN_TIMEOUT_IN_SECONDS
+            ),
         )  # type: ignore
 
         # Add output converter to handle datetimeoffset data types that are not supported by pyodbc
@@ -37,7 +39,9 @@ class AzureDatabaseProxyClient(BaseDbProxyClient):
         )
 
         # Set timeout for any query executed through this connection
-        self._connection.timeout = credentials.get("query_timeout_in_seconds", self._DEFAULT_QUERY_TIMEOUT_IN_SECONDS)
+        self._connection.timeout = credentials.get(
+            "query_timeout_in_seconds", self._DEFAULT_QUERY_TIMEOUT_IN_SECONDS
+        )
 
     @property
     def wrapped_client(self):
