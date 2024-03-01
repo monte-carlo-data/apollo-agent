@@ -79,14 +79,13 @@ class AgentEvaluationUtils:
         trace_id: str,
     ) -> Optional[Any]:
         """
-        Executes a list of commands from an operation, returns the result of the
-        last command in the list.
+        Executes a script by getting a proxy client from the context.
         :param context: the context containing variables to use as targets.
         :param logging_utils: helper class to create the log payload.
         :param operation_name: name of the operation being executed, for logging purposes only.
-        :param commands: the list of commands to execute.
+        :param script: the script to execute
         :param trace_id: trace id of the operation being executed, for logging purposes only.
-        :return: the result of the last command in the list.
+        :return: the result of the script execution.
         """
         client: BaseProxyClient = cast(BaseProxyClient, context.get(CONTEXT_VAR_CLIENT))
         try:
