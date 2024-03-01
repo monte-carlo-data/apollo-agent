@@ -8,6 +8,7 @@ from RestrictedPython.Eval import default_guarded_getitem, default_guarded_getit
 from RestrictedPython.Guards import (
     guarded_iter_unpack_sequence,
     guarded_unpack_sequence,
+    safer_getattr,
 )
 
 from apollo.agent.constants import AGENT_SCRIPT_ENTRYPOINT, AGENT_SCRIPT_BUILTIN_MODULES
@@ -75,16 +76,17 @@ def execute_script(
     # we don't use the default limited builtins provided by RestrictedPython as we don't
     # intend to limit these
     type_builtins = {
-        "tuple": tuple,
         "dict": dict,
         "list": list,
-        "range": range,
-        "str": str,
+        "iter": iter,
     }
 
     # support for classes and special constructs
     class_manipulation = {
         "staticmethod": staticmethod,
+        "classmethod": classmethod,
+        "property": property,
+        "__name__": "__main__",
         "__metaclass__": type,
         "_getattr_": getattr,
         "_getitem_": default_guarded_getitem,
@@ -96,7 +98,19 @@ def execute_script(
 
     # additional helpers
     helper_builtins = {
+        "enumerate": enumerate,
+        "filter": filter,
+        "reversed": reversed,
+        "next": next,
+        "hasattr": hasattr,
+        "getattr": safer_getattr,
+        "map": map,
+        "max": max,
+        "min": min,
         "sum": sum,
+        "all": all,
+        "any": any,
+        "dir": dir,
     }
 
     script_globals = {
