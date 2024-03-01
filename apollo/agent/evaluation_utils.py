@@ -1,8 +1,5 @@
 import logging
-import types
-from typing import Any, Callable, Optional, Dict, List, Protocol, cast
-
-from RestrictedPython import compile_restricted, safe_builtins
+from typing import Any, Callable, Optional, Dict, List, cast
 
 from apollo.agent.annotate_logger import annotate_logger
 from apollo.agent.logging_utils import LoggingUtils
@@ -12,7 +9,6 @@ from apollo.agent.models import (
     AgentScript,
 )
 from apollo.agent.constants import (
-    AGENT_SCRIPT_ENTRYPOINT,
     ATTRIBUTE_NAME_REFERENCE,
     ATTRIBUTE_NAME_TYPE,
     ATTRIBUTE_VALUE_TYPE_CALL,
