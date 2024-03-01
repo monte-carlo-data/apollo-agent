@@ -59,8 +59,9 @@ click==8.1.7
     # via
     #   flask
     #   presto-python-client
-cryptography==41.0.7
+cryptography==42.0.5
     # via
+    #   -r requirements.in
     #   azure-identity
     #   azure-storage-blob
     #   msal
@@ -114,6 +115,8 @@ google-resumable-media==2.7.0
     # via google-cloud-storage
 googleapis-common-protos==1.62.0
     # via google-api-core
+greenlet==3.0.3
+    # via sqlalchemy
 gunicorn==21.2.0
     # via -r requirements.in
 hdbcli==2.18.27
@@ -164,7 +167,7 @@ msal-extensions==1.1.0
     # via azure-identity
 mypy-extensions==1.0.0
     # via typing-inspect
-numpy==1.26.2
+numpy==1.24.4
     # via
     #   databricks-sql-connector
     #   pandas
@@ -184,7 +187,7 @@ packaging==23.2
     #   msal-extensions
     #   snowflake-connector-python
     #   tableauserverclient
-pandas==2.1.4
+pandas==2.0.3
     # via databricks-sql-connector
 platformdirs==3.11.0
     # via snowflake-connector-python
@@ -229,8 +232,10 @@ pymysql==1.1.0
     # via -r requirements.in
 pyodbc==5.0.1
     # via -r requirements.in
-pyopenssl==23.3.0
-    # via snowflake-connector-python
+pyopenssl==24.0.0
+    # via
+    #   -r requirements.in
+    #   snowflake-connector-python
 pyparsing==3.1.1
     # via httplib2
 python-dateutil==2.8.2
@@ -269,7 +274,7 @@ six==1.16.0
     #   python-dateutil
     #   thrift
     #   thrift-sasl
-snowflake-connector-python==3.6.0
+snowflake-connector-python==3.7.1
     # via -r requirements.in
 sortedcontainers==2.4.0
     # via snowflake-connector-python
@@ -277,7 +282,7 @@ sqlalchemy==1.4.50
     # via
     #   alembic
     #   databricks-sql-connector
-tableauserverclient @ git+https://github.com/tableau/server-client-python.git ; python_version >= "3.11"
+tableauserverclient==0.30 ; python_version >= "3.10"
     # via -r requirements.in
 teradatasql==20.0.0.2
     # via -r requirements.in
