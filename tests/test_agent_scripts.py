@@ -1,13 +1,10 @@
-import os.path
 from os import path
 from unittest import TestCase
-from unittest.mock import create_autospec, call
 
 from apollo.agent.agent import Agent
 from apollo.agent.constants import ATTRIBUTE_NAME_ERROR
-from apollo.agent.log_context import AgentLogContext
 from apollo.agent.logging_utils import LoggingUtils
-from apollo.agent.models import AgentCommands, AgentScript
+from apollo.agent.models import AgentScript
 from tests.sample_proxy_client import SampleProxyClient
 
 
