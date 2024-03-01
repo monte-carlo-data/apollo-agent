@@ -9,12 +9,18 @@ from apollo.agent.models import AgentCommands, AgentScript
 from tests.sample_proxy_client import SampleProxyClient
 
 
+def read_script_source(script_name: str):
+    script_path = f"{path.dirname(__file__)}/sample_scripts/{script_name}.py"
+    with open(script_path, "r") as f:
+        return f.read()
+
+
 class AgentScriptsTests(TestCase):
     def setUp(self) -> None:
         self._query = "SELECT * FROM table"
         self._client = SampleProxyClient()
 
-    def test_call_client_method_and_return(self):
+    def test_fetch_rows(self):
         result = Agent(LoggingUtils())._execute_script(
             self._client,
             "test",
@@ -26,14 +32,7 @@ class AgentScriptsTests(TestCase):
                     "modules": [
                         {
                             "name": "main",
-                            "source": """
-def execute_script_handler(client, context, sql_query):        
-    if client is None:
-        raise Exception('is none')    
-    with client.cursor() as cursor:        
-        cursor.execute(sql_query)
-        return {'rows': cursor.fetchmany(10)}
-""",
+                            "source": read_script_source("script_fetch_rows"),
                         }
                     ],
                     "kwargs": {
@@ -47,7 +46,34 @@ def execute_script_handler(client, context, sql_query):
         expected_result = {"rows": cursor.fetchmany()}
         self.assertEqual(expected_result, result)
 
-    def test_use_import_fails_for_unexisting_module(self):
+    def test_builtins_valid(self):
+        # provide a path name to allow debugging & better error stack
+        entry_module = (
+            f"{path.dirname(__file__)}/sample_scripts/script_builtins_valid.py"
+        )
+        result = Agent(LoggingUtils())._execute_script(
+            self._client,
+            "test",
+            AgentScript.from_dict(
+                {
+                    "operation_name": "test",
+                    "trace_id": "1",
+                    "entry_module": entry_module,
+                    "modules": [
+                        {
+                            "name": entry_module,
+                            "source": read_script_source("script_builtins_valid"),
+                        }
+                    ],
+                    "kwargs": {
+                        "sql_query": self._query,
+                    },
+                }
+            ),
+        )
+        self.assertEqual(result, "all is good")
+
+    def test_imports_forbidden(self):
         result = Agent(LoggingUtils())._execute_script(
             self._client,
             "test",
@@ -59,11 +85,7 @@ def execute_script_handler(client, context, sql_query):
                     "modules": [
                         {
                             "name": "main",
-                            "source": """
-import os
-def execute_script_handler(client, context, sql_query):                
-    return os.getcwd()
-    """,
+                            "source": read_script_source("script_imports_forbidden"),
                         }
                     ],
                     "kwargs": {},
@@ -75,7 +97,7 @@ def execute_script_handler(client, context, sql_query):
             "Module 'os' not found in script nor in built-in modules",
         )
 
-    def test_use_import_fails_for_existing_module(self):
+    def test_imports_valid(self):
         result = Agent(LoggingUtils())._execute_script(
             self._client,
             "test",
@@ -87,29 +109,15 @@ def execute_script_handler(client, context, sql_query):
                     "modules": [
                         {
                             "name": "helpers_foo",
-                            "source": """
-import helpers_bar                
-def foobar():                
-    return 'foo' + helpers_bar.bar()
-""",
+                            "source": read_script_source("helpers_foo"),
                         },
                         {
                             "name": "helpers_bar",
-                            "source": """                
-def bar():                
-    return "bar"
-""",
+                            "source": read_script_source("helpers_bar"),
                         },
                         {
                             "name": "main",
-                            "source": """
-import helpers_foo
-from helpers_foo import foobar as foobar2   
-def bar():
-    return "bar"
-def execute_script_handler(client, context, sql_query):                    
-    return f'{bar()}_{helpers_foo.foobar()}_{foobar2()}'
-        """,
+                            "source": read_script_source("script_imports_valid"),
                         },
                     ],
                     "kwargs": {
@@ -120,7 +128,7 @@ def execute_script_handler(client, context, sql_query):
         )
         self.assertEqual(result, "bar_foobar_foobar")
 
-    def test_use_exec_fails(self):
+    def test_builtins_forbidden(self):
         result = Agent(LoggingUtils())._execute_script(
             self._client,
             "test",
@@ -132,9 +140,7 @@ def execute_script_handler(client, context, sql_query):
                     "modules": [
                         {
                             "name": "main",
-                            "source": """
-exec("return 1")
-            """,
+                            "source": read_script_source("script_builtins_forbidden"),
                         }
                     ],
                     "kwargs": {},
@@ -142,7 +148,7 @@ exec("return 1")
             ),
         )
         self.assertEqual(
-            result[ATTRIBUTE_NAME_ERROR], "('Line 2: Exec calls are not allowed.',)"
+            result[ATTRIBUTE_NAME_ERROR], "('Line 1: Exec calls are not allowed.',)"
         )
 
     def test_no_execute_script_handler(self):
@@ -157,14 +163,9 @@ exec("return 1")
                     "modules": [
                         {
                             "name": "main",
-                            "source": """
-def some_func(client, context, sql_query):        
-    if client is None:
-        raise Exception('is none')    
-    with client.cursor() as cursor:        
-        cursor.execute(sql_query)
-        return {'rows': cursor.fetchmany(10)}
-""",
+                            "source": read_script_source(
+                                "script_no_execute_script_handler"
+                            ),
                         }
                     ],
                     "kwargs": {
@@ -176,4 +177,86 @@ def some_func(client, context, sql_query):
         self.assertEqual(
             result[ATTRIBUTE_NAME_ERROR],
             "'execute_script_handler' function not found in agent script",
+        )
+
+    def test_underscore_forbidden(self):
+        result = Agent(LoggingUtils())._execute_script(
+            self._client,
+            "test",
+            AgentScript.from_dict(
+                {
+                    "operation_name": "test",
+                    "trace_id": "1",
+                    "entry_module": "main",
+                    "modules": [
+                        {
+                            "name": "main",
+                            "source": read_script_source("script_underscore_forbidden"),
+                        }
+                    ],
+                    "kwargs": {
+                        "sql_query": self._query,
+                    },
+                }
+            ),
+        )
+        self.assertEqual(
+            result[ATTRIBUTE_NAME_ERROR],
+            '(\'Line 3: "_a" is an invalid variable name because it starts with "_"\',)',
+        )
+
+    def test_inplace_var_forbidden(self):
+        result = Agent(LoggingUtils())._execute_script(
+            self._client,
+            "test",
+            AgentScript.from_dict(
+                {
+                    "operation_name": "test",
+                    "trace_id": "1",
+                    "entry_module": "main",
+                    "modules": [
+                        {
+                            "name": "main",
+                            "source": read_script_source(
+                                "script_inplace_var_forbidden"
+                            ),
+                        }
+                    ],
+                    "kwargs": {
+                        "sql_query": self._query,
+                    },
+                }
+            ),
+        )
+        self.assertEqual(
+            result[ATTRIBUTE_NAME_ERROR],
+            "name '_inplacevar_' is not defined",
+        )
+
+    def test_ann_assignment_forbidden(self):
+        result = Agent(LoggingUtils())._execute_script(
+            self._client,
+            "test",
+            AgentScript.from_dict(
+                {
+                    "operation_name": "test",
+                    "trace_id": "1",
+                    "entry_module": "main",
+                    "modules": [
+                        {
+                            "name": "main",
+                            "source": read_script_source(
+                                "script_ann_assignment_forbidden"
+                            ),
+                        }
+                    ],
+                    "kwargs": {
+                        "sql_query": self._query,
+                    },
+                }
+            ),
+        )
+        self.assertEqual(
+            result[ATTRIBUTE_NAME_ERROR],
+            "('Line 4: AnnAssign statements are not allowed.',)",
         )

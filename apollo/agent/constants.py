@@ -79,15 +79,31 @@ AGENT_SCRIPT_ENTRYPOINT = "execute_script_handler"
 
 # List of modules available for agent scripts
 AGENT_SCRIPT_BUILTIN_MODULES = [
-    "typing",
-    "json",
-    "re",
-    "dataclasses",
-    "time",
+    "abc",
+    "base64",
+    "binascii",
+    "collections",
+    "copy",
     "datetime",
     "decimal",
-    "uuid",
+    "enum",
+    "functools",
+    "gzip",
+    "hashlib",
     "ipaddress",
+    "itertools",
+    "json",
+    "math",
+    "operator",
+    "random",
+    "re",
+    "string",
+    "struct",
+    "time",
+    "types",
+    "typing",
+    "uuid",
+    "zlib",
 ]
 
 # Header used to return the trace if received in the request when the result is binary
