@@ -52,10 +52,9 @@ class AgentCommand(DataClassJsonMixin):
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class AgentOperation(DataClassJsonMixin):
     trace_id: str
-    commands: List[AgentCommand]
     response_size_limit_bytes: int = 0
     compress_response_threshold_bytes: int = 0  # configures the threshold to send compressed responses inline, disabled by default
     response_type: str = RESPONSE_TYPE_JSON
@@ -98,6 +97,24 @@ class AgentOperation(DataClassJsonMixin):
         return (
             0 < self.compress_response_threshold_bytes < size
         ) and self.response_type == RESPONSE_TYPE_JSON
+
+
+@dataclass(kw_only=True)
+class AgentCommands(AgentOperation):
+    commands: List[AgentCommand]
+
+
+@dataclass(kw_only=True)
+class AgentScriptModule:
+    source: str
+    name: str
+
+
+@dataclass(kw_only=True)
+class AgentScript(AgentOperation):
+    entry_module: str
+    modules: List[AgentScriptModule]
+    kwargs: Dict
 
 
 @dataclass

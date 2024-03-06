@@ -3,7 +3,7 @@ from unittest.mock import patch, call
 
 from apollo.agent.agent import Agent
 from apollo.agent.logging_utils import LoggingUtils
-from apollo.agent.models import AgentOperation
+from apollo.agent.models import AgentCommands
 from apollo.agent.proxy_client_factory import ProxyClientFactory
 from apollo.interfaces.agent_response import AgentResponse
 from apollo.interfaces.azure.azure_platform import AzurePlatformProvider
@@ -21,7 +21,7 @@ class ProxyClientFactoryTests(TestCase):
         agent = Agent(LoggingUtils())
         agent.platform_provider = AwsPlatformProvider()
         # AWS and GCP support caching, so it will be used by default
-        operation = AgentOperation(
+        operation = AgentCommands(
             trace_id="123",
             commands=[],
         )
@@ -49,7 +49,7 @@ class ProxyClientFactoryTests(TestCase):
         agent = Agent(LoggingUtils())
         agent.platform_provider = AwsPlatformProvider()
         # skipping cache even if supported by platform
-        operation = AgentOperation(
+        operation = AgentCommands(
             trace_id="123",
             commands=[],
             skip_cache=True,

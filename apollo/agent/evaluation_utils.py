@@ -1,20 +1,20 @@
-import base64
 import logging
-from typing import Any, Callable, Optional, Dict, List, Iterable, cast
+from typing import Any, Callable, Optional, Dict, List, cast
 
+from apollo.agent.annotate_logger import annotate_logger
 from apollo.agent.logging_utils import LoggingUtils
 from apollo.agent.models import (
     AgentError,
     AgentCommand,
+    AgentScript,
 )
 from apollo.agent.constants import (
     ATTRIBUTE_NAME_REFERENCE,
     ATTRIBUTE_NAME_TYPE,
     ATTRIBUTE_VALUE_TYPE_CALL,
     CONTEXT_VAR_CLIENT,
-    ATTRIBUTE_VALUE_TYPE_BYTES,
-    ATTRIBUTE_NAME_DATA,
 )
+from apollo.agent.scripts import AgentScriptContext, execute_script
 from apollo.agent.serde import decode_dict_value
 from apollo.agent.utils import AgentUtils
 from apollo.integrations.base_proxy_client import BaseProxyClient
@@ -53,6 +53,53 @@ class AgentEvaluationUtils:
             last_result: Optional[Any] = None
             for command in commands:
                 last_result = cls._execute_command(command, context)
+            return client.process_result(last_result)
+        except Exception as ex:
+            should_log = client.should_log_exception(ex)
+            log_method = logger.exception if should_log else logger.info
+            message = "Exception occurred executing operation"
+            if not should_log:
+                message += f": {ex}"
+            log_method(
+                message,
+                extra=logging_utils.build_extra(
+                    trace_id=trace_id,
+                    operation_name=operation_name,
+                ),
+            )
+            return AgentUtils.response_for_last_exception(client=client)
+
+    @classmethod
+    def execute_script(
+        cls,
+        context: Dict,
+        logging_utils: LoggingUtils,
+        operation_name: str,
+        script: AgentScript,
+        trace_id: str,
+    ) -> Optional[Any]:
+        """
+        Executes a script by getting a proxy client from the context.
+        :param context: the context containing variables to use as targets.
+        :param logging_utils: helper class to create the log payload.
+        :param operation_name: name of the operation being executed, for logging purposes only.
+        :param script: the script to execute
+        :param trace_id: trace id of the operation being executed, for logging purposes only.
+        :return: the result of the script execution.
+        """
+        client: BaseProxyClient = cast(BaseProxyClient, context.get(CONTEXT_VAR_CLIENT))
+        try:
+            client = cls._resolve_context_variable(context, CONTEXT_VAR_CLIENT)
+            script_context = AgentScriptContext(
+                logger=annotate_logger(
+                    logger,
+                    logging_utils.build_extra(
+                        trace_id=trace_id,
+                        operation_name=operation_name,
+                    ),
+                )
+            )
+            last_result = execute_script(script, client, script_context)
             return client.process_result(last_result)
         except Exception as ex:
             should_log = client.should_log_exception(ex)
