@@ -1,3 +1,0 @@
-{
-  "Do not alert on git clone URL": "regex:https://.*:{self._token}@.*"
-}
