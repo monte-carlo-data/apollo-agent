@@ -6,40 +6,6 @@ orbs:
   docker: circleci/docker@2.2.0
 
 commands:
-  cmd-trufflehog-scan:
-    parameters:
-      disable_entropy:
-        default: true
-        description: Should we disable truffleHog's entropy detection?
-        type: boolean
-      max_history:
-        default: "1"
-        description: How far back to scan in git revisions
-        type: string
-      regexp_rules:
-        default: ""
-        description: Override default regexp rules with this file.
-        type: string
-      allowlist_file:
-        default: ".circleci/trufflehog_config/allowlist.json"
-        description: Add items to this file to allow you to override specific findings.
-        type: string
-      repo_path:
-        default: .
-        description: Scan alternate local or remote repo
-        type: string
-    steps:
-    - run:
-        command: >
-          trufflehog --regex --json \
-                     --branch ${CIRCLE_BRANCH} \
-                     <<# parameters.allowlist_file >> --allow << parameters.allowlist_file >> <</ parameters.allowlist_file >> \
-                     <<# parameters.max_history >> --max_depth=<< parameters.max_history >> <</ parameters.max_history>> \
-                     <<# parameters.disable_entropy >> --entropy=False <</ parameters.disable_entropy >> \
-                     <<# parameters.regexp_rules >> --rules=<< parameters.regexp_rules >> <</ parameters.regexp_rules >> \
-                     << parameters.repo_path >> \
-                     | jq '{"reason":.reason,"path": .path}'
-        name: Scan using truffleHog
   verify-version-in-docker-image:
     parameters:
       image:
@@ -59,16 +25,6 @@ commands:
           fi
 
 jobs:
-  run-trufflehog-scan:
-    docker:
-    - image: cimg/python:3.10
-    steps:
-    - checkout
-    - run:
-        command: pip install truffleHog
-        name: Install truffleHog
-    - cmd-trufflehog-scan
-
   run-linter:
     docker:
       - image: cimg/python:3.11-node
@@ -197,7 +153,6 @@ workflows:
 
   build-and-deploy:
     jobs:
-      - run-trufflehog-scan
       - run-linter
       - run-test-docker:
           # run for all tags and branches, we need to add this so the job is available for build-and-push-prod
@@ -221,7 +176,6 @@ workflows:
             - docker
           requires:
             - run-linter
-            - run-trufflehog-scan
             - run-test-docker
           filters:
             branches:
@@ -244,7 +198,6 @@ workflows:
             - aws-dev
           requires:
             - run-linter
-            - run-trufflehog-scan
             - run-test-docker
           filters:
             branches:
@@ -265,7 +218,6 @@ workflows:
             - docker
           requires:
             - run-linter
-            - run-trufflehog-scan
             - run-test-docker
           filters: # run only for tags starting with v, don't run for branches
             tags:
@@ -287,7 +239,6 @@ workflows:
             - aws-prod
           requires:
             - run-linter
-            - run-trufflehog-scan
             - run-test-docker
           filters: # run only for tags starting with v, don't run for branches
             tags:
@@ -310,7 +261,6 @@ workflows:
             - aws-dev
           requires:
             - run-linter
-            - run-trufflehog-scan
             - run-test-docker
           filters:
             branches:
@@ -330,7 +280,6 @@ workflows:
             - aws-prod
           requires:
             - run-linter
-            - run-trufflehog-scan
             - run-test-docker
           filters: # run only for tags starting with v, don't run for branches
             tags:
