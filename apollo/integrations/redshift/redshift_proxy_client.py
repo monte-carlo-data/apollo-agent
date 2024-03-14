@@ -28,7 +28,7 @@ class RedshiftProxyClient(PostgresProxyClient):
         Used when Redshift tables have mixed or unusual encodings. The effect is that string
         columns are returned as bytes, so decoding needs to happen in custom code instead of psycopg2.
         """
-        logger.info("redshift_driver_decoding disabled")
+        logger.info("redshift_driver_decoding_disabled")
 
         register_type(BYTES, self._connection)
         register_type(BYTESARRAY, self._connection)
