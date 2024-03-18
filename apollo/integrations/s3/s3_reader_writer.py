@@ -31,8 +31,18 @@ class S3ReaderWriter(S3BaseReaderWriter):
         return boto3.client("s3")
 
     @cached_property
+    def s3_regional_client(self):
+        """
+        Creates a new S3 client initialized with the regional endpoint and
+        using credentials from the environment, required for pre-signed urls,
+        see: https://github.com/boto/boto3/issues/3015
+        """
+        return boto3.client("s3", endpoint_url=self.s3_client.meta.endpoint_url)
+
+    @cached_property
     def s3_resource(self):
         """
-        Creates a new S3 resource with the default settings and using credentials from the environment
+        Creates a new S3 resource with the default settings and using credentials
+        from the environment.
         """
         return boto3.resource("s3")
