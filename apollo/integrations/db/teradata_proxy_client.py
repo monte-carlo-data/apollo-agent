@@ -26,6 +26,11 @@ class TeradataProxyClient(BaseDbProxyClient):
             )
         self._connection = teradatasql.connect(**credentials[_ATTR_CONNECT_ARGS])  # type: ignore
 
+    # On delete make sure we close the connection and don't leave an idle session on Teradata
+    def __del__(self) -> None:
+        if self._connection:
+            self._connection.close()
+
     @property
     def wrapped_client(self):
         return self._connection
