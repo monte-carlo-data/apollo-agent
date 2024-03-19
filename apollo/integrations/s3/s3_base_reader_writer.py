@@ -105,6 +105,16 @@ class S3BaseReaderWriter(BaseStorageClient):
 
     @property
     @abstractmethod
+    def s3_regional_client(self):
+        """
+        Needs to be implemented by subclasses to provide a client for S3 initialized with
+        the regional endpoint, required for pre-signed urls, see:
+        https://github.com/boto/boto3/issues/3015
+        """
+        raise NotImplementedError()
+
+    @property
+    @abstractmethod
     def s3_resource(self):
         """
         Needs to be implemented by subclasses to provide a client for S3, for example: `boto3.resource("s3")`
@@ -277,7 +287,7 @@ class S3BaseReaderWriter(BaseStorageClient):
         :param expiration: time for the generated link to expire, expressed as a timedelta object.
         :return: a pre-signed url to access the specified file.
         """
-        return self.s3_client.generate_presigned_url(
+        return self.s3_regional_client.generate_presigned_url(
             "get_object",
             Params={
                 "Bucket": self._bucket_name,
