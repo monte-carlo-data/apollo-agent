@@ -18,12 +18,6 @@ logger = logging.getLogger(__name__)
 
 
 class BaseDbProxyClient(BaseProxyClient, ABC):
-    # On delete make sure we close the connection. Some clients can work without this
-    # but others can end up leave an idle session open
-    def __del__(self) -> None:
-        if self._connection:
-            self._connection.close()
-
     def process_result(self, value: Any) -> Any:
         """
         Converts "Column" objects in the description into a list of objects that can be serialized to JSON.
