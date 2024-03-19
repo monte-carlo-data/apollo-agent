@@ -18,7 +18,6 @@ logger = logging.getLogger(__name__)
 
 
 class BaseDbProxyClient(BaseProxyClient, ABC):
-
     # On delete make sure we close the connection. Some clients can work without this
     # but others can end up leave an idle session open
     def __del__(self) -> None:
