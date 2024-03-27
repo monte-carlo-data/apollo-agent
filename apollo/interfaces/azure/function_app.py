@@ -99,15 +99,15 @@ async def get_async_operation_status(
     instance_id = req.route_params.get("instance_id", "")
     status = await client.get_status(instance_id=instance_id)
     response_payload = {
-        "__mcd_status__": status.runtime_status.name
-        if status.runtime_status
-        else "unknown",
-        "__mcd_created__": status.created_time.isoformat()
-        if status.created_time
-        else None,
-        "__mcd_last_updated__": status.last_updated_time.isoformat()
-        if status.last_updated_time
-        else None,
+        "__mcd_status__": (
+            status.runtime_status.name if status.runtime_status else "unknown"
+        ),
+        "__mcd_created__": (
+            status.created_time.isoformat() if status.created_time else None
+        ),
+        "__mcd_last_updated__": (
+            status.last_updated_time.isoformat() if status.last_updated_time else None
+        ),
     }
     if status.runtime_status == OrchestrationRuntimeStatus.Completed and status.output:
         if isinstance(status.output, Dict):

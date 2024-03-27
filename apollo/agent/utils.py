@@ -117,9 +117,11 @@ class AgentUtils:
     def redact_attributes(cls, value: Any, attributes: List[str]) -> Any:
         if isinstance(value, Dict):
             return {
-                k: ATTRIBUTE_VALUE_REDACTED
-                if k in attributes
-                else cls.redact_attributes(v, attributes)
+                k: (
+                    ATTRIBUTE_VALUE_REDACTED
+                    if k in attributes
+                    else cls.redact_attributes(v, attributes)
+                )
                 for k, v in value.items()
             }
         elif isinstance(value, List):

@@ -30,9 +30,9 @@ class OracleProxyClient(BaseDbProxyClient):
 
         connect_args = credentials[_ATTR_CONNECT_ARGS]
         if "expire_time" not in connect_args:
-            connect_args[
-                "expire_time"
-            ] = 1  # enable keep-alive and send packets every minute
+            connect_args["expire_time"] = (
+                1  # enable keep-alive and send packets every minute
+            )
 
         self._connection = oracledb.connect(**connect_args)  # type: ignore
 

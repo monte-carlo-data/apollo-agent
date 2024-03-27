@@ -66,9 +66,9 @@ class LookerProxyClient(BaseProxyClient):
         self._client.login(
             client_id=self._client_id,
             client_secret=self._client_secret,
-            transport_options=TransportOptions(**transport_options)
-            if transport_options
-            else None,
+            transport_options=(
+                TransportOptions(**transport_options) if transport_options else None
+            ),
         )
 
     @staticmethod

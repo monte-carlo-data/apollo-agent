@@ -32,8 +32,7 @@ class AgentScriptEntrypoint(Protocol):
 
     def __call__(
         self, client: Any, script_context: AgentScriptContext, **kwargs: Any
-    ) -> Any:
-        ...
+    ) -> Any: ...
 
 
 def execute_script(
