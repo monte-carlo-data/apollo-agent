@@ -29,15 +29,15 @@ class PostgresProxyClient(BaseDbProxyClient):
         # https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-KEEPALIVES
         if "keepalives" not in connect_args:
             connect_args["keepalives"] = 1  # enables tcp keep alive messages.
-            connect_args[
-                "keepalives_idle"
-            ] = 30  # start sending keep-alive packets after 30 seconds of inactivity.
-            connect_args[
-                "keepalives_interval"
-            ] = 10  # re-send keep-alive messages not acknowledged after 10 secs.
-            connect_args[
-                "keepalives_count"
-            ] = 5  # 5 keep-alive messages lost before considering connection lost.
+            connect_args["keepalives_idle"] = (
+                30  # start sending keep-alive packets after 30 seconds of inactivity.
+            )
+            connect_args["keepalives_interval"] = (
+                10  # re-send keep-alive messages not acknowledged after 10 secs.
+            )
+            connect_args["keepalives_count"] = (
+                5  # 5 keep-alive messages lost before considering connection lost.
+            )
 
         self._connection = psycopg2.connect(**connect_args)
 

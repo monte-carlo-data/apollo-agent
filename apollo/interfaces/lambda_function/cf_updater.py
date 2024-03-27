@@ -248,9 +248,9 @@ class LambdaCFUpdater(AgentUpdater):
     @staticmethod
     def _build_response_event(event: Dict) -> Dict:
         return {
-            "timestamp": event["Timestamp"].isoformat()
-            if "Timestamp" in event
-            else None,
+            "timestamp": (
+                event["Timestamp"].isoformat() if "Timestamp" in event else None
+            ),
             "logical_resource_id": event.get("LogicalResourceId"),
             "resource_type": event.get("ResourceType"),
             "resource_status": event.get("ResourceStatus"),

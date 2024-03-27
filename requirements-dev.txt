@@ -4,7 +4,7 @@
 #
 #    pip-compile requirements-dev.in
 #
-black==23.9.1
+black==24.3.0
     # via -r requirements-dev.in
 blinker==1.7.0
     # via

@@ -1,5 +1,5 @@
 -c requirements.txt
-black==23.9.1
+black==24.3.0
 flask-swagger==0.2.14
 pre-commit==3.5.0
 pyright==1.1.337
