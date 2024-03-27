@@ -18,7 +18,8 @@ for handler in root_logger.handlers[:]:
 is_debug = os.getenv(DEBUG_ENV_VAR, "false").lower() == "true"
 root_logger.setLevel(logging.DEBUG if is_debug else logging.INFO)
 
-# configure the Azure Log Monitor, it gets the Instrumentation Key from APPINSIGHTS_INSTRUMENTATIONKEY env var
+# configure the Azure Log Monitor, it gets the Instrumentation Key
+# from APPINSIGHTS_INSTRUMENTATIONKEY env var
 configure_azure_monitor()
 
 # configure the log context to include the agent context in all log messages
@@ -152,7 +153,6 @@ def agent_api(req: func.HttpRequest, context: func.Context):
     return wsgi_middleware.handle(req, context)
 
 
-@app.function_name(name="cleanup_df_data")
 @app.schedule(
     schedule="0 0 3,15 * * *", arg_name="timer", run_on_startup=False
 )  # run every day at 3 AM/PM
