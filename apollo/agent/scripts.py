@@ -93,6 +93,7 @@ def execute_script(
         "_iter_unpack_sequence_": guarded_iter_unpack_sequence,
         "_unpack_sequence_": guarded_unpack_sequence,
         "_write_": lambda o: o,
+        "_apply_": lambda f, *a, **args: f(*a, **args),
     }
 
     # additional helpers
