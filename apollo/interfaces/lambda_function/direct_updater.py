@@ -10,9 +10,7 @@ from botocore.exceptions import WaiterError
 from apollo.agent.env_vars import AWS_LAMBDA_FUNCTION_NAME_ENV_VAR
 from apollo.agent.models import AgentConfigurationError
 from apollo.agent.updater import AgentUpdater
-from apollo.interfaces.lambda_function.aws_utils import (
-    get_retrieve_current_image_boto_config,
-)
+from apollo.interfaces.lambda_function.aws_utils import get_boto_config
 
 logger = logging.getLogger(__name__)
 
@@ -128,11 +126,11 @@ class LambdaDirectUpdater(AgentUpdater):
         """
         Returns the current value for `ImageUri` in the function.
         """
-        # in practice, the connect_timeout specified for lambda clients is multiplied by 16
+        # in practice, the connect_timeout setting specified for lambda clients is multiplied by 16
         # it's not clear why, it could be related to data type conversion when calling
         # sock.settimeout, so we're setting 1 here to have a 16 seconds timeout.
         client = self._get_lambda_client(
-            config=get_retrieve_current_image_boto_config(connection_timeout=1)
+            config=get_boto_config(connect_timeout=1, max_attempts=1)
         )
         function = client.get_function(FunctionName=self._get_function_name())
         return function.get("Code", {}).get("ImageUri")

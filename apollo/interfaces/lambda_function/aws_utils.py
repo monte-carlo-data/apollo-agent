@@ -1,7 +1,7 @@
 from botocore.config import Config
 
 
-def get_retrieve_current_image_boto_config(connection_timeout: int) -> Config:
+def get_boto_config(connect_timeout: int, max_attempts: int = 3) -> Config:
     """
     Returns a boto3 client configuration with the specified connection timeout and a single
     retry in standard mode.
@@ -10,9 +10,9 @@ def get_retrieve_current_image_boto_config(connection_timeout: int) -> Config:
     with no external network access and no VPC endpoints).
     """
     return Config(
-        connect_timeout=connection_timeout,
+        connect_timeout=connect_timeout,
         retries=dict(
             mode="standard",
-            max_attempts=1,
+            max_attempts=max_attempts,
         ),
     )
