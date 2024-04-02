@@ -3,9 +3,11 @@ from botocore.config import Config
 
 def get_retrieve_current_image_boto_config(connection_timeout: int) -> Config:
     """
-    Configured the boto3 client (lambda or cloudformation) used to retrieve the current image
-    with 10 seconds timeout and a single retry, so it would take 20 seconds to fail instead
-    of 5 minutes (with the default settings).
+    Returns a boto3 client configuration with the specified connection timeout and a single
+    retry in standard mode.
+    By default, connect_timeout is 60 seconds and legacy retry mode uses 4 attempts, so it takes
+    around 5 minutes to fail if connectivity is not allowed (for example Lambda function configured
+    with no external network access and no VPC endpoints).
     """
     return Config(
         connect_timeout=connection_timeout,
