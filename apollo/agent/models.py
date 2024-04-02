@@ -134,6 +134,9 @@ class AgentHealthInformation(DataClassJsonMixin):
     extra: Optional[Dict] = field(
         metadata=config(exclude=exclude_none_values), default=None
     )
+    warnings: Optional[List[str]] = field(
+        metadata=config(exclude=exclude_none_values), default=None
+    )
 
 
 @dataclass

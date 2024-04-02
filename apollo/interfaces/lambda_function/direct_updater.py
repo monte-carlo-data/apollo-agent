@@ -128,9 +128,9 @@ class LambdaDirectUpdater(AgentUpdater):
         """
         Returns the current value for `ImageUri` in the function.
         """
-        client = self._get_lambda_client()
-        #     config=get_retrieve_current_image_boto_config()
-        # )
+        client = self._get_lambda_client(
+            config=get_retrieve_current_image_boto_config()
+        )
         function = client.get_function(FunctionName=self._get_function_name())
         return function.get("Code", {}).get("ImageUri")
 
