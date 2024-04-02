@@ -37,8 +37,9 @@ class LambdaCFUpdater(AgentUpdater):
         """
         Returns the current value for the "ImageUri" template parameter.
         """
-        client = CloudFormationUtils.get_cloudformation_client()
-        return self._get_image_uri_parameter(client=client)
+        return None
+        # client = CloudFormationUtils.get_cloudformation_client()
+        # return self._get_image_uri_parameter(client=client)
 
     def get_update_logs(self, start_time: datetime, limit: int) -> List[Dict]:
         """
