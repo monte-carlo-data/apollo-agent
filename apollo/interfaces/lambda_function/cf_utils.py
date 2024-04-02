@@ -15,8 +15,8 @@ class CloudFormationUtils:
     """
 
     @staticmethod
-    def get_cloudformation_client() -> BaseClient:
-        return cast(BaseClient, boto3.client("cloudformation"))
+    def get_cloudformation_client(**kwargs) -> BaseClient:  # type: ignore
+        return cast(BaseClient, boto3.client("cloudformation", **kwargs))
 
     @staticmethod
     def get_stack_id() -> str:
