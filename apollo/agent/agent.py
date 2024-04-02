@@ -125,6 +125,7 @@ class Agent:
                         self.updater.get_current_image()
                     )
                 except Exception as exc:
+                    logger.warning(f"Failed to retrieve current image: {exc}")
                     platform_info[PLATFORM_INFO_KEY_IMAGE] = None
                     warnings.append(f"Failed to retrieve current image: {exc}")
         return AgentHealthInformation(
