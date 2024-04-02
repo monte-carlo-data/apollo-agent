@@ -119,9 +119,9 @@ class Agent:
             )
             platform_info = {**(self.platform_info or {})}
             if self.updater:
-                platform_info[
-                    PLATFORM_INFO_KEY_IMAGE
-                ] = self.updater.get_current_image()
+                platform_info[PLATFORM_INFO_KEY_IMAGE] = (
+                    self.updater.get_current_image()
+                )
 
         return AgentHealthInformation(
             version=VERSION,

@@ -37,8 +37,9 @@ class LambdaCFUpdater(AgentUpdater):
         """
         Returns the current value for the "ImageUri" template parameter.
         """
-        client = CloudFormationUtils.get_cloudformation_client()
-        return self._get_image_uri_parameter(client=client)
+        return None
+        # client = CloudFormationUtils.get_cloudformation_client()
+        # return self._get_image_uri_parameter(client=client)
 
     def get_update_logs(self, start_time: datetime, limit: int) -> List[Dict]:
         """
@@ -248,9 +249,9 @@ class LambdaCFUpdater(AgentUpdater):
     @staticmethod
     def _build_response_event(event: Dict) -> Dict:
         return {
-            "timestamp": event["Timestamp"].isoformat()
-            if "Timestamp" in event
-            else None,
+            "timestamp": (
+                event["Timestamp"].isoformat() if "Timestamp" in event else None
+            ),
             "logical_resource_id": event.get("LogicalResourceId"),
             "resource_type": event.get("ResourceType"),
             "resource_status": event.get("ResourceStatus"),

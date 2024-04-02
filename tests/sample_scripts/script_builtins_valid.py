@@ -196,3 +196,14 @@ str.format_map("Hello {foo.__dict__}", {"foo": str})
 
 def execute_script_handler(*args, **kwargs):
     return "all is good"
+
+
+# ensure we have a replacement for _apply_
+f = {"b": "b_v"}
+
+
+def foo(a, b=None):
+    return a + b
+
+
+assert foo("1", **f) == "1b_v"

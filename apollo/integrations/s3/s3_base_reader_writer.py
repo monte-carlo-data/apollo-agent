@@ -273,9 +273,11 @@ class S3BaseReaderWriter(BaseStorageClient):
         # specifying a delimiter results in a common prefix collection rather than any
         # contents but, can be utilized to roll up "sub-folders"
         return (
-            self._remove_prefix_from_prefixes(objects_dict.get("CommonPrefixes"))
-            if delimiter
-            else self._remove_prefix_from_entries(objects_dict.get("Contents")),
+            (
+                self._remove_prefix_from_prefixes(objects_dict.get("CommonPrefixes"))
+                if delimiter
+                else self._remove_prefix_from_entries(objects_dict.get("Contents"))
+            ),
             objects_dict.get("NextContinuationToken"),
         )
 

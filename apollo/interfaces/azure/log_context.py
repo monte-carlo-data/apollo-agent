@@ -22,11 +22,15 @@ class AzureLogContext(BaseLogContext):
         # open telemetry supports only: str, float, int and bool
         # we're converting list and dictionaries to json and anything else to str.
         return {
-            key: value
-            if isinstance(value, (str, float, int, bool))
-            else json.dumps(value)
-            if isinstance(value, (list, dict, tuple))
-            else str(value)
+            key: (
+                value
+                if isinstance(value, (str, float, int, bool))
+                else (
+                    json.dumps(value)
+                    if isinstance(value, (list, dict, tuple))
+                    else str(value)
+                )
+            )
             for key, value in context.items()
             if value is not None
         }
