@@ -5,7 +5,7 @@ import sys
 import time
 from contextlib import contextmanager
 from datetime import datetime
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional, List
 
 from apollo.agent.env_vars import (
     HEALTH_ENV_VARS,
@@ -117,12 +117,16 @@ class Agent:
                     operation_name="health_information",
                 ),
             )
+            warnings: List[str] = []
             platform_info = {**(self.platform_info or {})}
             if self.updater:
-                platform_info[PLATFORM_INFO_KEY_IMAGE] = (
-                    self.updater.get_current_image()
-                )
-
+                try:
+                    platform_info[PLATFORM_INFO_KEY_IMAGE] = (
+                        self.updater.get_current_image()
+                    )
+                except Exception as exc:
+                    platform_info[PLATFORM_INFO_KEY_IMAGE] = None
+                    warnings.append(f"Failed to retrieve current image: {exc}")
         return AgentHealthInformation(
             version=VERSION,
             build=BUILD_NUMBER,
@@ -131,6 +135,7 @@ class Agent:
             platform_info=platform_info,
             trace_id=trace_id,
             extra=self._extra_health_information() if full else None,
+            warnings=warnings if warnings else None,
         )
 
     @staticmethod
