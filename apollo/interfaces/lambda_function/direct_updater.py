@@ -128,8 +128,11 @@ class LambdaDirectUpdater(AgentUpdater):
         """
         Returns the current value for `ImageUri` in the function.
         """
+        # in practice, the connect_timeout specified for lambda clients is multiplied by 16
+        # it's not clear why, it could be related to data type conversion when calling
+        # sock.settimeout, so we're setting 1 here to have a 16 seconds timeout.
         client = self._get_lambda_client(
-            config=get_retrieve_current_image_boto_config()
+            config=get_retrieve_current_image_boto_config(connection_timeout=1)
         )
         function = client.get_function(FunctionName=self._get_function_name())
         return function.get("Code", {}).get("ImageUri")
