@@ -41,7 +41,7 @@ class LambdaCFUpdater(AgentUpdater):
         Returns the current value for the "ImageUri" template parameter.
         """
         client = CloudFormationUtils.get_cloudformation_client(
-            config=get_retrieve_current_image_boto_config()
+            config=get_retrieve_current_image_boto_config(connection_timeout=10)
         )
         return self._get_image_uri_parameter(client=client)
 
