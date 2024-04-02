@@ -5,9 +5,7 @@ from botocore.client import BaseClient
 from botocore.exceptions import WaiterError
 
 from apollo.agent.updater import AgentUpdater
-from apollo.interfaces.lambda_function.aws_utils import (
-    get_retrieve_current_image_boto_config,
-)
+from apollo.interfaces.lambda_function.aws_utils import get_boto_config
 from apollo.interfaces.lambda_function.cf_utils import CloudFormationUtils
 from apollo.interfaces.lambda_function.direct_updater import LambdaDirectUpdater
 
@@ -41,7 +39,7 @@ class LambdaCFUpdater(AgentUpdater):
         Returns the current value for the "ImageUri" template parameter.
         """
         client = CloudFormationUtils.get_cloudformation_client(
-            config=get_retrieve_current_image_boto_config(connection_timeout=10)
+            config=get_boto_config(connect_timeout=10, max_attempts=1)
         )
         return self._get_image_uri_parameter(client=client)
 
