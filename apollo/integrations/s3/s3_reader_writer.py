@@ -3,6 +3,7 @@ from functools import cached_property
 from typing import Optional
 
 import boto3
+from botocore.config import Config
 
 from apollo.agent.env_vars import STORAGE_BUCKET_NAME_ENV_VAR
 from apollo.agent.models import AgentConfigurationError
@@ -46,3 +47,6 @@ class S3ReaderWriter(S3BaseReaderWriter):
         from the environment.
         """
         return boto3.resource("s3")
+
+    def _get_s3_client_with_config(self, config: Config):
+        return boto3.client("s3", config=config)

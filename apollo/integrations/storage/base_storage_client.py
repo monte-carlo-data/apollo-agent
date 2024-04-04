@@ -162,6 +162,13 @@ class BaseStorageClient(ABC):
         """
         raise NotImplementedError()
 
+    def check_storage_access(self):
+        """
+        Checks if we have access to the storage account, called from the DC as part of the
+        storage access validation.
+        """
+        pass
+
     def _is_gzip(self, content: bytes) -> bool:
         return content[:2] == self._GZIP_MAGIC_NUMBER
 
