@@ -1,4 +1,5 @@
 import gzip
+import logging
 from abc import abstractmethod
 from dataclasses import (
     dataclass,
@@ -27,6 +28,8 @@ _ACL_GRANTEE_URI_AUTH_USERS = (
     "http://acs.amazonaws.com/groups/global/AuthenticatedUsers"
 )
 _ACL_GRANTEE_PUBLIC_GROUPS = [_ACL_GRANTEE_URI_ALL_USERS, _ACL_GRANTEE_URI_AUTH_USERS]
+
+logger = logging.getLogger(__name__)
 
 
 def convert_s3_errors(func: Callable):
@@ -317,9 +320,11 @@ class S3BaseReaderWriter(BaseStorageClient):
         # this method performs a head_bucket operation in the configured bucket
         # (with 10 seconds connection timeout) just to confirm we're able to access
         # S3 endpoints
+        logger.info("Checking storage access")
         self._get_s3_client_with_config(
             config=get_boto_config(connect_timeout=10, max_attempts=1)
         ).head_bucket(BucketName=self._bucket_name)
+        logger.info("Storage access checked")
 
     def is_bucket_private(self) -> bool:
         """
