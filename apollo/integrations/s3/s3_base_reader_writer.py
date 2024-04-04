@@ -318,12 +318,16 @@ class S3BaseReaderWriter(BaseStorageClient):
         # when the agent is configured in a VPC with no external access (and without
         # the required VPC endpoints) it takes minutes to time out
         # this method performs a head_bucket operation in the configured bucket
-        # (with 10 seconds connection timeout) just to confirm we're able to access
+        # (with a few seconds connection timeout) just to confirm we're able to access
         # S3 endpoints
+        # In practice, the connect_timeout setting specified for s3 clients is
+        # multiplied by 16, it's not clear why, it could be related to data type
+        # conversion when calling sock.settimeout.
+        # So, we're setting 1 here to have a 16 seconds timeout.
         logger.info("Checking storage access")
         self._get_s3_client_with_config(
             config=get_boto_config(connect_timeout=1, max_attempts=1)
-        ).head_bucket(BucketName=self._bucket_name)
+        ).head_bucket(Bucket=self._bucket_name)
         logger.info("Storage access checked")
 
     def is_bucket_private(self) -> bool:
