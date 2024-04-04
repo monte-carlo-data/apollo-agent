@@ -1,4 +1,5 @@
 import gzip
+import logging
 from abc import abstractmethod
 from dataclasses import (
     dataclass,
@@ -8,6 +9,8 @@ from datetime import timedelta
 from functools import wraps
 from typing import List, Dict, Optional, Union, Tuple, Any, Callable
 
+from botocore.client import BaseClient
+from botocore.config import Config
 from botocore.exceptions import ClientError
 from dataclasses_json import (
     DataClassJsonMixin,
@@ -17,6 +20,7 @@ from dataclasses_json import (
 )
 
 from apollo.integrations.storage.base_storage_client import BaseStorageClient
+from apollo.interfaces.lambda_function.aws_utils import get_boto_config
 
 _ACL_GRANTEE_TYPE_GROUP = "Group"
 _ACL_GRANTEE_URI_ALL_USERS = "http://acs.amazonaws.com/groups/global/AllUsers"
@@ -24,6 +28,8 @@ _ACL_GRANTEE_URI_AUTH_USERS = (
     "http://acs.amazonaws.com/groups/global/AuthenticatedUsers"
 )
 _ACL_GRANTEE_PUBLIC_GROUPS = [_ACL_GRANTEE_URI_ALL_USERS, _ACL_GRANTEE_URI_AUTH_USERS]
+
+logger = logging.getLogger(__name__)
 
 
 def convert_s3_errors(func: Callable):
@@ -118,6 +124,14 @@ class S3BaseReaderWriter(BaseStorageClient):
     def s3_resource(self):
         """
         Needs to be implemented by subclasses to provide a client for S3, for example: `boto3.resource("s3")`
+        """
+        raise NotImplementedError()
+
+    def _get_s3_client_with_config(self, config: Config) -> BaseClient:
+        """
+        Returns a client for S3 with the provided configuration, used to create clients
+        with a different connect_timeout and max_attempts when testing connectivity to
+        S3 endpoints.
         """
         raise NotImplementedError()
 
@@ -298,6 +312,24 @@ class S3BaseReaderWriter(BaseStorageClient):
             ExpiresIn=int(expiration.total_seconds()),
         )
 
+    @convert_s3_errors
+    def check_storage_access(self):
+        # this method is intended to check connectivity with S3 endpoints
+        # when the agent is configured in a VPC with no external access (and without
+        # the required VPC endpoints) it takes minutes to time out
+        # this method performs a head_bucket operation in the configured bucket
+        # (with a few seconds connection timeout) just to confirm we're able to access
+        # S3 endpoints
+        # In practice, the connect_timeout setting specified for s3 clients is
+        # multiplied by 16, it's not clear why, it could be related to data type
+        # conversion when calling sock.settimeout.
+        # So, we're setting 1 here to have a 16 seconds timeout.
+        logger.info("Checking storage access")
+        self._get_s3_client_with_config(
+            config=get_boto_config(connect_timeout=1, max_attempts=1)
+        ).head_bucket(Bucket=self._bucket_name)
+        logger.info("Storage access checked")
+
     def is_bucket_private(self) -> bool:
         """
         Read about the "meaning of public" here:
@@ -325,6 +357,12 @@ class S3BaseReaderWriter(BaseStorageClient):
         See: https://docs.aws.amazon.com/cli/latest/reference/s3api/get-public-access-block.html
         :return: True if public access is disabled for the bucket and False if the bucket is publicly available.
         """
+
+        # as is_bucket_private is the first operation called when validating
+        # storage access from the DC, we're calling check_storage_access
+        # here to check connectivity to S3 endpoints without having to
+        # migrate DCs
+        self.check_storage_access()
 
         public_access_block = self._get_public_access_block()
         if not public_access_block:
