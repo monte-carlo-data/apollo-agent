@@ -322,7 +322,7 @@ class S3BaseReaderWriter(BaseStorageClient):
         # S3 endpoints
         logger.info("Checking storage access")
         self._get_s3_client_with_config(
-            config=get_boto_config(connect_timeout=10, max_attempts=1)
+            config=get_boto_config(connect_timeout=1, max_attempts=1)
         ).head_bucket(BucketName=self._bucket_name)
         logger.info("Storage access checked")
 
