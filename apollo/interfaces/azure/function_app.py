@@ -130,6 +130,13 @@ async def get_async_operation_status(
 async def cleanup_durable_functions_instances(
     req: func.HttpRequest, client: DurableOrchestrationClient
 ):
+    """
+    Endpoint to manually cleanup Durable Functions data, use a POST sending a JSON body with:
+    - created_time_from: the oldest instance to purge, default is 10 years ago
+    - created_time_to: the newest instance to purge, default is 10 minutes ago
+    - include_pending: whether to purge pending instances that were not executed yet,
+        defaults to False
+    """
     body = req.get_json()
     created_time_from_str = body.get("created_time_from")
     created_time_to_str = body.get("created_time_to")
