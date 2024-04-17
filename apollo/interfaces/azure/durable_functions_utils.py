@@ -1,19 +1,36 @@
 import logging
+from dataclasses import dataclass
 from datetime import datetime, timezone, timedelta
-from typing import Dict, Tuple, cast
+from typing import Dict, Tuple, cast, Optional
 
 from azure.durable_functions.models import (
     DurableOrchestrationClient,
     OrchestrationRuntimeStatus,
 )
+from dataclasses_json import dataclass_json, DataClassJsonMixin
 
 from apollo.interfaces.generic.utils import AgentPlatformUtils
+
+
+@dataclass_json
+@dataclass
+class AzureDurableFunctionsRequest(DataClassJsonMixin):
+    created_time_from: Optional[str] = None
+    created_time_to: Optional[str] = None
+
+
+@dataclass_json
+@dataclass
+class AzureDurableFunctionsCleanupRequest(AzureDurableFunctionsRequest):
+    include_pending: Optional[bool] = False
 
 
 class AzureDurableFunctionsUtils:
     @classmethod
     async def cleanup_durable_functions_instances(
-        cls, body: Dict, client: DurableOrchestrationClient
+        cls,
+        request: AzureDurableFunctionsCleanupRequest,
+        client: DurableOrchestrationClient,
     ) -> int:
         """
         Cleanup Durable Functions data, body supports the following attributes:
@@ -23,9 +40,11 @@ class AzureDurableFunctionsUtils:
             yet, defaults to False.
         Returns the number of deleted instances.
         """
-        include_pending = body.get("include_pending", False)
+        include_pending = (
+            request.include_pending if request.include_pending is not None else False
+        )
         created_time_from, created_time_to = cls._parse_created_times(
-            body,
+            request,
             default_created_from=datetime.now(timezone.utc) - timedelta(days=365 * 10),
             default_created_to=datetime.now(timezone.utc) - timedelta(minutes=10),
         )
@@ -48,11 +67,11 @@ class AzureDurableFunctionsUtils:
     @classmethod
     async def get_durable_functions_info(
         cls,
-        body: Dict,
+        request: AzureDurableFunctionsRequest,
         client: DurableOrchestrationClient,
     ) -> Tuple[int, int]:
         created_time_from, created_time_to = cls._parse_created_times(
-            body,
+            request,
             default_created_from=datetime.now(timezone.utc) - timedelta(days=1),
             default_created_to=datetime.now(timezone.utc),
         )
@@ -138,12 +157,12 @@ class AzureDurableFunctionsUtils:
 
     @staticmethod
     def _parse_created_times(
-        body: Dict,
+        request: AzureDurableFunctionsRequest,
         default_created_from: datetime,
         default_created_to: datetime,
     ) -> Tuple[datetime, datetime]:
-        created_time_from_str = body.get("created_time_from")
-        created_time_to_str = body.get("created_time_to")
+        created_time_from_str = request.created_time_from
+        created_time_to_str = request.created_time_to
 
         created_time_from = cast(
             datetime,

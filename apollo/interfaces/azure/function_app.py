@@ -7,7 +7,11 @@ from typing import Dict
 from azure.monitor.opentelemetry import configure_azure_monitor
 
 from apollo.agent.env_vars import DEBUG_ENV_VAR
-from apollo.interfaces.azure.durable_functions_utils import AzureDurableFunctionsUtils
+from apollo.interfaces.azure.durable_functions_utils import (
+    AzureDurableFunctionsUtils,
+    AzureDurableFunctionsRequest,
+    AzureDurableFunctionsCleanupRequest,
+)
 from apollo.interfaces.azure.log_context import AzureLogContext
 
 # remove default handlers to prevent duplicate log messages
@@ -137,10 +141,9 @@ async def cleanup_durable_functions_instances(
     - include_pending: whether to purge pending instances that were not executed yet,
         defaults to False
     """
-    body = req.get_json()
     deleted_instances = (
         await AzureDurableFunctionsUtils.cleanup_durable_functions_instances(
-            body=body,
+            request=AzureDurableFunctionsCleanupRequest.from_dict(req.get_json()),
             client=client,
         )
     )
@@ -168,10 +171,9 @@ async def get_durable_functions_info(
     - created_time_from: the oldest instance to purge, default is 10 years ago
     - created_time_to: the newest instance to purge, default is 10 minutes ago
     """
-    body = req.get_json()
     pending_instances, completed_instances = (
         await AzureDurableFunctionsUtils.get_durable_functions_info(
-            body=body,
+            request=AzureDurableFunctionsRequest.from_dict(req.get_json()),
             client=client,
         )
     )
