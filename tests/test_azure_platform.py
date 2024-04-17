@@ -14,7 +14,11 @@ from apollo.agent.env_vars import IS_REMOTE_UPGRADABLE_ENV_VAR
 from apollo.agent.logging_utils import LoggingUtils
 from apollo.interfaces.azure.azure_platform import AzurePlatformProvider
 from apollo.interfaces.azure.azure_updater import AzureUpdater
-from apollo.interfaces.azure.durable_functions_utils import AzureDurableFunctionsUtils
+from apollo.interfaces.azure.durable_functions_utils import (
+    AzureDurableFunctionsUtils,
+    AzureDurableFunctionsRequest,
+    AzureDurableFunctionsCleanupRequest,
+)
 
 
 class TestAzurePlatform(TestCase):
@@ -475,7 +479,7 @@ class TestAzurePlatform(TestCase):
         mock_client.get_status_by.side_effect = get_status_by
         pending, completed = asyncio.run(
             AzureDurableFunctionsUtils.get_durable_functions_info(
-                {},
+                AzureDurableFunctionsRequest.from_dict({}),
                 mock_client,
             )
         )
@@ -493,10 +497,12 @@ class TestAzurePlatform(TestCase):
         mock_client.get_status_by.reset_mock()
         asyncio.run(
             AzureDurableFunctionsUtils.get_durable_functions_info(
-                {
-                    "created_time_from": "2022-01-01T00:00:00Z",
-                    "created_time_to": "2022-01-02T00:00:00Z",
-                },
+                AzureDurableFunctionsRequest.from_dict(
+                    {
+                        "created_time_from": "2022-01-01T00:00:00Z",
+                        "created_time_to": "2022-01-02T00:00:00Z",
+                    }
+                ),
                 mock_client,
             )
         )
@@ -518,7 +524,7 @@ class TestAzurePlatform(TestCase):
         mock_client.purge_instance_history_by.side_effect = purge_instance_history_by
         deleted_instances = asyncio.run(
             AzureDurableFunctionsUtils.cleanup_durable_functions_instances(
-                {},
+                AzureDurableFunctionsCleanupRequest.from_dict({}),
                 mock_client,
             )
         )
@@ -534,14 +540,46 @@ class TestAzurePlatform(TestCase):
         )
         self.assertEqual(11, deleted_instances)
 
+        async def get_status_by(*args, **kwargs):
+            return [
+                Box(
+                    {
+                        "instance_id": "1",
+                        "runtime_status": OrchestrationRuntimeStatus.Pending,
+                    }
+                ),
+                Box(
+                    {
+                        "instance_id": "3",
+                        "runtime_status": OrchestrationRuntimeStatus.Pending,
+                    }
+                ),
+            ]
+
+        mock_client.get_status_by.side_effect = get_status_by
         mock_client.purge_instance_history_by.reset_mock()
         asyncio.run(
             AzureDurableFunctionsUtils.cleanup_durable_functions_instances(
-                {
-                    "include_pending": True,
-                },
+                AzureDurableFunctionsCleanupRequest.from_dict(
+                    {
+                        "include_pending": True,
+                    }
+                ),
                 mock_client,
             )
+        )
+        mock_client.get_status_by.assert_called_once_with(
+            created_time_from=ANY,
+            created_time_to=ANY,
+            runtime_status=[
+                OrchestrationRuntimeStatus.Pending,
+            ],
+        )
+        mock_client.terminate.assert_has_calls(
+            [
+                call("1", reason="Agent Cleanup"),
+                call("3", reason="Agent Cleanup"),
+            ]
         )
         mock_client.purge_instance_history_by.assert_called_once_with(
             created_time_from=ANY,
