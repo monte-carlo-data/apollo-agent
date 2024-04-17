@@ -104,10 +104,7 @@ class AzureDurableFunctionsUtils:
         pending_instances = await client.get_status_by(
             created_time_from=created_time_from,
             created_time_to=created_time_to,
-            runtime_status=[
-                OrchestrationRuntimeStatus.Pending,
-                OrchestrationRuntimeStatus.Completed,
-            ],
+            runtime_status=[OrchestrationRuntimeStatus.Pending],
         )
         terminated_instances = 0
         for instance in pending_instances:
