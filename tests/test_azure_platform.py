@@ -1,9 +1,11 @@
+import asyncio
 import json
 import os
 from datetime import datetime, timezone, timedelta
 from unittest import TestCase
-from unittest.mock import patch, Mock, call
+from unittest.mock import patch, Mock, call, ANY
 
+from azure.durable_functions.models import OrchestrationRuntimeStatus
 from box import Box
 
 from apollo.agent.agent import Agent
@@ -12,6 +14,7 @@ from apollo.agent.env_vars import IS_REMOTE_UPGRADABLE_ENV_VAR
 from apollo.agent.logging_utils import LoggingUtils
 from apollo.interfaces.azure.azure_platform import AzurePlatformProvider
 from apollo.interfaces.azure.azure_updater import AzureUpdater
+from apollo.interfaces.azure.durable_functions_utils import AzureDurableFunctionsUtils
 
 
 class TestAzurePlatform(TestCase):
@@ -445,4 +448,109 @@ class TestAzurePlatform(TestCase):
         }
         self.assertEqual(
             expected_result, update_result.result.get(ATTRIBUTE_NAME_RESULT)
+        )
+
+    def test_durable_functions_info(self):
+        mock_client = Mock()
+
+        async def get_status_by(*args, **kwargs):
+            return [
+                Box(
+                    {
+                        "runtime_status": OrchestrationRuntimeStatus.Pending,
+                    }
+                ),
+                Box(
+                    {
+                        "runtime_status": OrchestrationRuntimeStatus.Completed,
+                    }
+                ),
+                Box(
+                    {
+                        "runtime_status": OrchestrationRuntimeStatus.Completed,
+                    }
+                ),
+            ]
+
+        mock_client.get_status_by.side_effect = get_status_by
+        pending, completed = asyncio.run(
+            AzureDurableFunctionsUtils.get_durable_functions_info(
+                {},
+                mock_client,
+            )
+        )
+        mock_client.get_status_by.assert_called_once_with(
+            created_time_from=ANY,
+            created_time_to=ANY,
+            runtime_status=[
+                OrchestrationRuntimeStatus.Completed,
+                OrchestrationRuntimeStatus.Pending,
+            ],
+        )
+        self.assertEqual(1, pending)
+        self.assertEqual(2, completed)
+
+        mock_client.get_status_by.reset_mock()
+        asyncio.run(
+            AzureDurableFunctionsUtils.get_durable_functions_info(
+                {
+                    "created_time_from": "2022-01-01T00:00:00Z",
+                    "created_time_to": "2022-01-02T00:00:00Z",
+                },
+                mock_client,
+            )
+        )
+        mock_client.get_status_by.assert_called_once_with(
+            created_time_from=datetime.fromisoformat("2022-01-01T00:00:00Z"),
+            created_time_to=datetime.fromisoformat("2022-01-02T00:00:00Z"),
+            runtime_status=[
+                OrchestrationRuntimeStatus.Completed,
+                OrchestrationRuntimeStatus.Pending,
+            ],
+        )
+
+    def test_durable_functions_cleanup(self):
+        mock_client = Mock()
+
+        async def purge_instance_history_by(*args, **kwargs):
+            return Box(dict(instances_deleted=11))
+
+        mock_client.purge_instance_history_by.side_effect = purge_instance_history_by
+        deleted_instances = asyncio.run(
+            AzureDurableFunctionsUtils.cleanup_durable_functions_instances(
+                {},
+                mock_client,
+            )
+        )
+        mock_client.purge_instance_history_by.assert_called_once_with(
+            created_time_from=ANY,
+            created_time_to=ANY,
+            runtime_status=[
+                OrchestrationRuntimeStatus.Canceled,
+                OrchestrationRuntimeStatus.Completed,
+                OrchestrationRuntimeStatus.Failed,
+                OrchestrationRuntimeStatus.Terminated,
+            ],
+        )
+        self.assertEqual(11, deleted_instances)
+
+        mock_client.purge_instance_history_by.reset_mock()
+        asyncio.run(
+            AzureDurableFunctionsUtils.cleanup_durable_functions_instances(
+                {
+                    "include_pending": True,
+                },
+                mock_client,
+            )
+        )
+        mock_client.purge_instance_history_by.assert_called_once_with(
+            created_time_from=ANY,
+            created_time_to=ANY,
+            runtime_status=[
+                OrchestrationRuntimeStatus.Canceled,
+                OrchestrationRuntimeStatus.Completed,
+                OrchestrationRuntimeStatus.Failed,
+                OrchestrationRuntimeStatus.Terminated,
+                OrchestrationRuntimeStatus.Pending,
+            ],
         )
