@@ -574,6 +574,7 @@ class TestAzurePlatform(TestCase):
             created_time_to=ANY,
             runtime_status=[
                 OrchestrationRuntimeStatus.Pending,
+                OrchestrationRuntimeStatus.Completed,
             ],
         )
         mock_client.terminate.assert_has_calls(
