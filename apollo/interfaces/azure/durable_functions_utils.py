@@ -19,8 +19,8 @@ class AzureDurableFunctionsUtils:
         Cleanup Durable Functions data, body supports the following attributes:
         - created_time_from: the oldest instance to purge, default is 10 years ago
         - created_time_to: the newest instance to purge, default is 10 minutes ago
-        - include_pending: whether to purge pending instances that were not executed yet,
-            defaults to False
+        - include_pending: whether to terminate and purge pending instances that were not executed
+            yet, defaults to False.
         Returns the number of deleted instances.
         """
         include_pending = body.get("include_pending", False)
@@ -29,12 +29,21 @@ class AzureDurableFunctionsUtils:
             default_created_from=datetime.now(timezone.utc) - timedelta(days=365 * 10),
             default_created_to=datetime.now(timezone.utc) - timedelta(minutes=10),
         )
-        return await cls.purge_instances(
+        if include_pending:
+            terminated_instances = await cls._terminate_pending_instances(
+                client=client,
+                created_time_from=created_time_from,
+                created_time_to=created_time_to,
+            )
+        else:
+            terminated_instances = 0
+        purged_instances = await cls.purge_instances(
             client=client,
             created_time_from=created_time_from,
             created_time_to=created_time_to,
             include_pending=include_pending,
         )
+        return terminated_instances + purged_instances
 
     @classmethod
     async def get_durable_functions_info(
@@ -66,6 +75,31 @@ class AzureDurableFunctionsUtils:
             if i.runtime_status == OrchestrationRuntimeStatus.Completed
         ]
         return len(pending_instances), len(completed_instances)
+
+    @staticmethod
+    async def _terminate_pending_instances(
+        client: DurableOrchestrationClient,
+        created_time_from: datetime,
+        created_time_to: datetime,
+    ) -> int:
+        pending_instances = await client.get_status_by(
+            created_time_from=created_time_from,
+            created_time_to=created_time_to,
+            runtime_status=[OrchestrationRuntimeStatus.Pending],
+        )
+        terminated_instances = 0
+        for instance in pending_instances:
+            if not instance.instance_id:
+                logging.warning("instance_id not found, skipping termination")
+                continue
+            try:
+                await client.terminate(instance.instance_id, reason="Agent Cleanup")
+                terminated_instances += 1
+            except Exception as ex:
+                logging.error(
+                    f"Failed to terminate instance: {instance.instance_id}: {ex}"
+                )
+        return terminated_instances
 
     @staticmethod
     async def purge_instances(

@@ -534,6 +534,23 @@ class TestAzurePlatform(TestCase):
         )
         self.assertEqual(11, deleted_instances)
 
+        async def get_status_by(*args, **kwargs):
+            return [
+                Box(
+                    {
+                        "instance_id": "1",
+                        "runtime_status": OrchestrationRuntimeStatus.Pending,
+                    }
+                ),
+                Box(
+                    {
+                        "instance_id": "3",
+                        "runtime_status": OrchestrationRuntimeStatus.Pending,
+                    }
+                ),
+            ]
+
+        mock_client.get_status_by.side_effect = get_status_by
         mock_client.purge_instance_history_by.reset_mock()
         asyncio.run(
             AzureDurableFunctionsUtils.cleanup_durable_functions_instances(
@@ -542,6 +559,19 @@ class TestAzurePlatform(TestCase):
                 },
                 mock_client,
             )
+        )
+        mock_client.get_status_by.assert_called_once_with(
+            created_time_from=ANY,
+            created_time_to=ANY,
+            runtime_status=[
+                OrchestrationRuntimeStatus.Pending,
+            ],
+        )
+        mock_client.terminate.assert_has_calls(
+            [
+                call("1", reason="Agent Cleanup"),
+                call("3", reason="Agent Cleanup"),
+            ]
         )
         mock_client.purge_instance_history_by.assert_called_once_with(
             created_time_from=ANY,
