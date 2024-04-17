@@ -117,7 +117,7 @@ googleapis-common-protos==1.62.0
     # via google-api-core
 greenlet==3.0.3
     # via sqlalchemy
-gunicorn==21.2.0
+gunicorn==22.0.0
     # via -r requirements.in
 hdbcli==2.18.27
     # via -r requirements.in
