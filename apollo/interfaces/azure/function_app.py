@@ -2,12 +2,13 @@ import json
 import logging
 import os
 from datetime import datetime, timedelta, timezone
-from typing import Dict
+from typing import Dict, cast, Tuple
 
 from azure.monitor.opentelemetry import configure_azure_monitor
 
 from apollo.agent.env_vars import DEBUG_ENV_VAR
 from apollo.interfaces.azure.log_context import AzureLogContext
+from apollo.interfaces.generic.utils import AgentPlatformUtils
 
 # remove default handlers to prevent duplicate log messages
 # https://learn.microsoft.com/en-us/python/api/overview/azure/monitor-opentelemetry-readme?view=azure-python#logging-issues
@@ -124,6 +125,89 @@ async def get_async_operation_status(
     )
 
 
+@app.route(route="async/api/v1/cleanup")
+@app.durable_client_input(client_name="client")
+async def cleanup_durable_functions_instances(
+    req: func.HttpRequest, client: DurableOrchestrationClient
+):
+    """
+    Endpoint to manually cleanup Durable Functions data, use a POST sending a JSON body with:
+    - created_time_from: the oldest instance to purge, default is 10 years ago
+    - created_time_to: the newest instance to purge, default is 10 minutes ago
+    - include_pending: whether to purge pending instances that were not executed yet,
+        defaults to False
+    """
+    body = req.get_json()
+    include_pending = body.get("include_pending", False)
+    created_time_from, created_time_to = _parse_created_times(
+        body,
+        default_created_from=datetime.now(timezone.utc) - timedelta(days=365 * 10),
+        default_created_to=datetime.now(timezone.utc) - timedelta(minutes=10),
+    )
+    deleted_instances = await _purge_instances(
+        client=client,
+        created_time_from=created_time_from,
+        created_time_to=created_time_to,
+        include_pending=include_pending,
+    )
+    return func.HttpResponse(
+        status_code=200,
+        body=json.dumps(
+            {
+                "deleted_instances": deleted_instances,
+            }
+        ),
+        headers={
+            "Content-Type": "application/json",
+        },
+    )
+
+
+@app.route(route="async/api/v1/queue/info")
+@app.durable_client_input(client_name="client")
+async def get_durable_functions_info(
+    req: func.HttpRequest, client: DurableOrchestrationClient
+):
+    """
+    Endpoint that returns information about the instances completed and pending during
+     the specified period, use a POST sending a JSON body with:
+    - created_time_from: the oldest instance to purge, default is 10 years ago
+    - created_time_to: the newest instance to purge, default is 10 minutes ago
+    """
+    body = req.get_json()
+    created_time_from, created_time_to = _parse_created_times(
+        body,
+        default_created_from=datetime.now(timezone.utc) - timedelta(days=1),
+        default_created_to=datetime.now(timezone.utc),
+    )
+    instances = await client.get_status_by(
+        created_time_from=created_time_from,
+        created_time_to=created_time_to,
+        runtime_status=[
+            OrchestrationRuntimeStatus.Completed,
+            OrchestrationRuntimeStatus.Pending,
+        ],
+    )
+    pending_instances = [
+        i for i in instances if i.runtime_status == OrchestrationRuntimeStatus.Pending
+    ]
+    completed_instances = [
+        i for i in instances if i.runtime_status == OrchestrationRuntimeStatus.Completed
+    ]
+    return func.HttpResponse(
+        status_code=200,
+        body=json.dumps(
+            {
+                "pending_instances": len(pending_instances),
+                "completed_instances": len(completed_instances),
+            }
+        ),
+        headers={
+            "Content-Type": "application/json",
+        },
+    )
+
+
 @app.orchestration_trigger(context_name="context")
 def agent_operation_orchestrator(context: DurableOrchestrationContext):
     client_input = context.get_input()
@@ -164,16 +248,29 @@ async def cleanup_durable_functions_data(
         days=365 * 10
     )  # datetime.min or None not supported
     created_time_to = datetime.now(timezone.utc) - timedelta(days=1)
+    await _purge_instances(
+        client, created_time_from, created_time_to, include_pending=False
+    )
+
+
+async def _purge_instances(
+    client: DurableOrchestrationClient,
+    created_time_from: datetime,
+    created_time_to: datetime,
+    include_pending: bool,
+) -> int:
     runtime_statuses = [
         OrchestrationRuntimeStatus.Canceled,
         OrchestrationRuntimeStatus.Completed,
         OrchestrationRuntimeStatus.Failed,
         OrchestrationRuntimeStatus.Terminated,
     ]
+    if include_pending:
+        runtime_statuses.append(OrchestrationRuntimeStatus.Pending)
 
     logging.info(
-        f"cleanup_durable_functions_data triggered, purging instances older than "
-        f'{created_time_to.isoformat(timespec="seconds")}'
+        f'Purging instances older than {created_time_to.isoformat(timespec="seconds")}'
+        f", including pending: {include_pending}"
     )
 
     try:
@@ -183,5 +280,26 @@ async def cleanup_durable_functions_data(
             runtime_status=runtime_statuses,
         )
         logging.info(f"Purge completed, deleted instances: {result.instances_deleted}")
+        return result.instances_deleted
     except Exception as ex:
         logging.error(f"Failed to purge Durable Functions data: {ex}")
+        return -1
+
+
+def _parse_created_times(
+    body: Dict,
+    default_created_from: datetime,
+    default_created_to: datetime,
+) -> Tuple[datetime, datetime]:
+    created_time_from_str = body.get("created_time_from")
+    created_time_to_str = body.get("created_time_to")
+
+    created_time_from = cast(
+        datetime,
+        AgentPlatformUtils.parse_datetime(created_time_from_str, default_created_from),
+    )
+    created_time_to = cast(
+        datetime,
+        AgentPlatformUtils.parse_datetime(created_time_to_str, default_created_to),
+    )
+    return created_time_from, created_time_to
