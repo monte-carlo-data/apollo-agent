@@ -538,6 +538,7 @@ class TestAzurePlatform(TestCase):
                 OrchestrationRuntimeStatus.Terminated,
             ],
         )
+        mock_client.terminate.assert_not_called()
         self.assertEqual(11, deleted_instances)
 
         async def get_status_by(*args, **kwargs):
