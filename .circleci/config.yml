@@ -122,6 +122,7 @@ jobs:
           name: Tag lambda image
           command: |
             docker tag montecarlodata/<< parameters.docker_hub_repository >>:<< parameters.code_version >>-lambda ${AWS_ECR_ACCOUNT_URL}/<< parameters.aws_ecr_repository >>:<< parameters.code_version >>
+            docker tag montecarlodata/<< parameters.docker_hub_repository >>:latest-lambda ${AWS_ECR_ACCOUNT_URL}/<< parameters.aws_ecr_repository >>:latest
       - verify-version-in-docker-image:
           image: ${AWS_ECR_ACCOUNT_URL}/<< parameters.aws_ecr_repository >>:<< parameters.code_version >>
           version: << parameters.code_version >>,<< pipeline.number >>
