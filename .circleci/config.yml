@@ -131,10 +131,7 @@ jobs:
       - aws-ecr/ecr_login
       - aws-ecr/push_image:
           repo: << parameters.aws_ecr_repository >>
-          tag: << parameters.code_version >>
-      - aws-ecr/tag_image:
-          repo: << parameters.aws_ecr_repository >>
-          source_tag: << parameters.code_version >>
+          tag: latest,<< parameters.code_version >>
 
   build-and-push-docs:
     docker:
