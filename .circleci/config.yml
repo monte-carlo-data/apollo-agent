@@ -128,7 +128,7 @@ jobs:
       - docker/push:
           image: montecarlodata/<< parameters.docker_hub_repository >>
           tag: latest-lambda,<< parameters.code_version >>-lambda
-      - aws-ecr/login
+      - aws-ecr/ecr_login
       - aws-ecr/push_image:
           repo: << parameters.aws_ecr_repository >>
           tag: << parameters.code_version >>
