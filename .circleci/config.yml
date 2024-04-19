@@ -110,6 +110,8 @@ jobs:
         type: string
     steps:
       - checkout
+      - docker/check:
+          use-docker-credentials-store: true
       - docker/build:
           step-name: Build lambda image
           use-buildkit: true # to build only the required stages
