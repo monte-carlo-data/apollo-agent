@@ -205,7 +205,6 @@ workflows:
           requires:
             - run-linter
             - run-test-docker
-            - build-and-push-dev
           filters:
             branches:
               only:
@@ -249,7 +248,6 @@ workflows:
           requires:
             - run-linter
             - run-test-docker
-            - build-and-push-prod
           filters: # run only for tags starting with v, don't run for branches
             tags:
               only: /^v.*/
