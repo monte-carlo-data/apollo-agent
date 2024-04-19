@@ -80,12 +80,6 @@ jobs:
           image: montecarlodata/<< parameters.docker_hub_repository >>
           tag: latest-cloudrun,<< parameters.code_version >>-cloudrun
       - docker/build:
-          step-name: Build lambda image
-          use-buildkit: true # to build only the required stages
-          extra_build_args: --target lambda --build-arg code_version=<< parameters.code_version >> --build-arg build_number=<< pipeline.number >>
-          image: montecarlodata/<< parameters.docker_hub_repository >>
-          tag: latest-lambda,<< parameters.code_version >>-lambda
-      - docker/build:
           step-name: Build azure image
           use-buildkit: true # to build only the required stages
           extra_build_args: --target azure --build-arg code_version=<< parameters.code_version >> --build-arg build_number=<< pipeline.number >>
@@ -98,14 +92,11 @@ jobs:
           image: montecarlodata/<< parameters.docker_hub_repository >>:latest-cloudrun
           version: << parameters.code_version >>,<< pipeline.number >>
       - verify-version-in-docker-image:
-          image: montecarlodata/<< parameters.docker_hub_repository >>:latest-lambda
-          version: << parameters.code_version >>,<< pipeline.number >>
-      - verify-version-in-docker-image:
           image: montecarlodata/<< parameters.docker_hub_repository >>:latest-azure
           version: << parameters.code_version >>,<< pipeline.number >>
       - docker/push:
           image: montecarlodata/<< parameters.docker_hub_repository >>
-          tag: latest-generic,<< parameters.code_version >>-generic,latest-cloudrun,<< parameters.code_version >>-cloudrun,latest-lambda,<< parameters.code_version >>-lambda,latest-azure,<< parameters.code_version >>-azure
+          tag: latest-generic,<< parameters.code_version >>-generic,latest-cloudrun,<< parameters.code_version >>-cloudrun,latest-azure,<< parameters.code_version >>-azure
 
   build-and-push-lambda:
     machine:
@@ -119,6 +110,12 @@ jobs:
         type: string
     steps:
       - checkout
+      - docker/build:
+          step-name: Build lambda image
+          use-buildkit: true # to build only the required stages
+          extra_build_args: --target lambda --build-arg code_version=<< parameters.code_version >> --build-arg build_number=<< pipeline.number >>
+          image: montecarlodata/<< parameters.docker_hub_repository >>
+          tag: latest-lambda,<< parameters.code_version >>-lambda
       - run:
           name: Tag lambda image
           command: |
@@ -126,6 +123,12 @@ jobs:
       - verify-version-in-docker-image:
           image: ${AWS_ECR_ACCOUNT_URL}/<< parameters.aws_ecr_repository >>:<< parameters.code_version >>
           version: << parameters.code_version >>,<< pipeline.number >>
+      - docker/push:
+          image: montecarlodata/<< parameters.docker_hub_repository >>
+          tag: latest-lambda,<< parameters.code_version >>-lambda
+      - aws-ecr/push-image:
+          repo: << parameters.aws_ecr_repository >>
+          source-tag: << parameters.code_version >>
       - aws-ecr/tag-image:
           repo: << parameters.aws_ecr_repository >>
           source-tag: << parameters.code_version >>
@@ -198,6 +201,7 @@ workflows:
                   source $BASH_ENV
           context:
             - aws-dev
+            - docker
           requires:
             - run-linter
             - run-test-docker
@@ -241,6 +245,7 @@ workflows:
                   source $BASH_ENV
           context:
             - aws-prod
+            - docker
           requires:
             - run-linter
             - run-test-docker
