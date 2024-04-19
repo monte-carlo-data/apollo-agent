@@ -128,10 +128,10 @@ jobs:
           tag: latest-lambda,<< parameters.code_version >>-lambda
       - aws-ecr/push_image:
           repo: << parameters.aws_ecr_repository >>
-          source-tag: << parameters.code_version >>
+          tag: << parameters.code_version >>
       - aws-ecr/tag_image:
           repo: << parameters.aws_ecr_repository >>
-          source-tag: << parameters.code_version >>
+          source_tag: << parameters.code_version >>
 
   build-and-push-docs:
     docker:
