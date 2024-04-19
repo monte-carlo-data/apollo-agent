@@ -148,8 +148,7 @@ jobs:
     steps:
       - checkout
       - docker/pull:
-          image: montecarlodata/<< parameters.docker_hub_repository >>
-          tag: latest-lambda,<< parameters.code_version >>-lambda
+          images: montecarlodata/<< parameters.docker_hub_repository >>:latest-lambda,montecarlodata/<< parameters.docker_hub_repository >>:<< parameters.code_version >>-lambda
       - run:
           name: Tag lambda image
           command: |
