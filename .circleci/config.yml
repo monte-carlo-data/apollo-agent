@@ -111,17 +111,18 @@ jobs:
     machine:
       image: ubuntu-2004:202201-02
     parameters:
+      docker_hub_repository:
+        type: string
       aws_ecr_repository:
         type: string
       code_version:
         type: string
     steps:
       - checkout
-      - aws-ecr/build-and-push-image:
-          checkout: false
-          repo: << parameters.aws_ecr_repository >>
-          tag: << parameters.code_version >>
-          extra-build-args: --target lambda --build-arg code_version=<< parameters.code_version >> --build-arg build_number=<< pipeline.number >>
+      - run:
+          name: Tag lambda image
+          command: |
+            docker tag montecarlodata/<< parameters.docker_hub_repository >>:<< parameters.code_version >>-lambda ${AWS_ECR_ACCOUNT_URL}/<< parameters.aws_ecr_repository >>:<< parameters.code_version >>
       - verify-version-in-docker-image:
           image: ${AWS_ECR_ACCOUNT_URL}/<< parameters.aws_ecr_repository >>:<< parameters.code_version >>
           version: << parameters.code_version >>,<< pipeline.number >>
@@ -183,6 +184,7 @@ workflows:
                 - dev
       - build-and-push-lambda:
           name: build-and-push-lambda-dev
+          docker_hub_repository: pre-release-agent
           aws_ecr_repository: mcd-pre-release-agent
           code_version: ${NEXT_VERSION}
           pre-steps:
@@ -199,6 +201,7 @@ workflows:
           requires:
             - run-linter
             - run-test-docker
+            - build-and-push-dev
           filters:
             branches:
               only:
@@ -226,6 +229,7 @@ workflows:
               ignore: /.*/
       - build-and-push-lambda:
           name: build-and-push-lambda-prod
+          docker_hub_repository: agent
           aws_ecr_repository: mcd-agent
           code_version: ${VERSION_TAG}
           pre-steps:
@@ -240,6 +244,7 @@ workflows:
           requires:
             - run-linter
             - run-test-docker
+            - build-and-push-prod
           filters: # run only for tags starting with v, don't run for branches
             tags:
               only: /^v.*/
