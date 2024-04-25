@@ -1,8 +1,8 @@
 version: 2.1
 
 orbs:
-  aws-cli: circleci/aws-cli@4.0.0
-  aws-ecr: circleci/aws-ecr@8.1.3
+  aws-cli: circleci/aws-cli@4.1.3
+  aws-ecr: circleci/aws-ecr@9.0.4
   docker: circleci/docker@2.2.0
 
 commands:
@@ -47,7 +47,7 @@ jobs:
 
   run-test-docker:
     machine:
-      image: ubuntu-2004:202201-02
+      image: ubuntu-2204:current
     steps:
       - checkout
       - docker/build:
@@ -57,7 +57,7 @@ jobs:
 
   build-and-push:
     machine:
-      image: ubuntu-2004:202201-02
+      image: ubuntu-2204:current
     parameters:
       docker_hub_repository:
         type: string
@@ -80,12 +80,6 @@ jobs:
           image: montecarlodata/<< parameters.docker_hub_repository >>
           tag: latest-cloudrun,<< parameters.code_version >>-cloudrun
       - docker/build:
-          step-name: Build lambda image
-          use-buildkit: true # to build only the required stages
-          extra_build_args: --target lambda --build-arg code_version=<< parameters.code_version >> --build-arg build_number=<< pipeline.number >>
-          image: montecarlodata/<< parameters.docker_hub_repository >>
-          tag: latest-lambda,<< parameters.code_version >>-lambda
-      - docker/build:
           step-name: Build azure image
           use-buildkit: true # to build only the required stages
           extra_build_args: --target azure --build-arg code_version=<< parameters.code_version >> --build-arg build_number=<< pipeline.number >>
@@ -98,36 +92,72 @@ jobs:
           image: montecarlodata/<< parameters.docker_hub_repository >>:latest-cloudrun
           version: << parameters.code_version >>,<< pipeline.number >>
       - verify-version-in-docker-image:
-          image: montecarlodata/<< parameters.docker_hub_repository >>:latest-lambda
-          version: << parameters.code_version >>,<< pipeline.number >>
-      - verify-version-in-docker-image:
           image: montecarlodata/<< parameters.docker_hub_repository >>:latest-azure
           version: << parameters.code_version >>,<< pipeline.number >>
       - docker/push:
           image: montecarlodata/<< parameters.docker_hub_repository >>
-          tag: latest-generic,<< parameters.code_version >>-generic,latest-cloudrun,<< parameters.code_version >>-cloudrun,latest-lambda,<< parameters.code_version >>-lambda,latest-azure,<< parameters.code_version >>-azure
+          tag: latest-generic,<< parameters.code_version >>-generic,latest-cloudrun,<< parameters.code_version >>-cloudrun,latest-azure,<< parameters.code_version >>-azure
 
   build-and-push-lambda:
     machine:
-      image: ubuntu-2004:202201-02
+      image: ubuntu-2204:current
     parameters:
+      docker_hub_repository:
+        type: string
       aws_ecr_repository:
         type: string
       code_version:
         type: string
     steps:
       - checkout
-      - aws-ecr/build-and-push-image:
-          checkout: false
-          repo: << parameters.aws_ecr_repository >>
-          tag: << parameters.code_version >>
-          extra-build-args: --target lambda --build-arg code_version=<< parameters.code_version >> --build-arg build_number=<< pipeline.number >>
+      - docker/check:
+          use-docker-credentials-store: true
+      - docker/build:
+          step-name: Build lambda image
+          use-buildkit: true # to build only the required stages
+          extra_build_args: --target lambda --build-arg code_version=<< parameters.code_version >> --build-arg build_number=<< pipeline.number >>
+          image: montecarlodata/<< parameters.docker_hub_repository >>
+          tag: latest-lambda,<< parameters.code_version >>-lambda
+      - run:
+          name: Tag lambda image
+          command: |
+            docker tag montecarlodata/<< parameters.docker_hub_repository >>:<< parameters.code_version >>-lambda ${AWS_ECR_ACCOUNT_URL}/<< parameters.aws_ecr_repository >>:<< parameters.code_version >>
+            docker tag montecarlodata/<< parameters.docker_hub_repository >>:latest-lambda ${AWS_ECR_ACCOUNT_URL}/<< parameters.aws_ecr_repository >>:latest
       - verify-version-in-docker-image:
           image: ${AWS_ECR_ACCOUNT_URL}/<< parameters.aws_ecr_repository >>:<< parameters.code_version >>
           version: << parameters.code_version >>,<< pipeline.number >>
-      - aws-ecr/tag-image:
+      - docker/push:
+          image: montecarlodata/<< parameters.docker_hub_repository >>
+          tag: latest-lambda,<< parameters.code_version >>-lambda
+      - aws-cli/setup:
+          role_arn: "${AWS_ROLE_ARN}"
+      - aws-ecr/ecr_login
+      - aws-ecr/push_image:
           repo: << parameters.aws_ecr_repository >>
-          source-tag: << parameters.code_version >>
+          tag: latest,<< parameters.code_version >>
+  push-lambda-legacy-repo:
+    machine:
+      image: ubuntu-2204:current
+    parameters:
+      docker_hub_repository:
+        type: string
+      aws_ecr_repository:
+        type: string
+      code_version:
+        type: string
+    steps:
+      - checkout
+      - docker/pull:
+          images: montecarlodata/<< parameters.docker_hub_repository >>:latest-lambda,montecarlodata/<< parameters.docker_hub_repository >>:<< parameters.code_version >>-lambda
+      - run:
+          name: Tag lambda image
+          command: |
+            docker tag montecarlodata/<< parameters.docker_hub_repository >>:<< parameters.code_version >>-lambda ${AWS_ECR_ACCOUNT_URL}/<< parameters.aws_ecr_repository >>:<< parameters.code_version >>
+            docker tag montecarlodata/<< parameters.docker_hub_repository >>:latest-lambda ${AWS_ECR_ACCOUNT_URL}/<< parameters.aws_ecr_repository >>:latest
+      - aws-ecr/ecr_login
+      - aws-ecr/push_image:
+          repo: << parameters.aws_ecr_repository >>
+          tag: latest,<< parameters.code_version >>
 
   build-and-push-docs:
     docker:
@@ -183,6 +213,31 @@ workflows:
                 - dev
       - build-and-push-lambda:
           name: build-and-push-lambda-dev
+          docker_hub_repository: pre-release-agent
+          aws_ecr_repository: mcd-pre-release-agent
+          code_version: ${NEXT_VERSION}
+          pre-steps:
+            - checkout
+            - run:
+                command: |
+                  PIPELINE_NUMBER=<< pipeline.number >>
+                  if git describe --tags --abbrev=0; then TAG=$(git describe --tags --abbrev=0); else exit 1; fi
+                  VERSION=${TAG#v}
+                  echo "NEXT_VERSION=$(echo "$VERSION" | awk 'BEGIN{FS=OFS="."} {$3+=1} 1')rc${PIPELINE_NUMBER}" >> $BASH_ENV
+                  source $BASH_ENV
+          context:
+            - aether-dev
+            - docker
+          requires:
+            - run-linter
+            - run-test-docker
+          filters:
+            branches:
+              only:
+                - dev
+      - push-lambda-legacy-repo:
+          name: push-lambda-aws-dev
+          docker_hub_repository: pre-release-agent
           aws_ecr_repository: mcd-pre-release-agent
           code_version: ${NEXT_VERSION}
           pre-steps:
@@ -196,9 +251,9 @@ workflows:
                   source $BASH_ENV
           context:
             - aws-dev
+            - docker
           requires:
-            - run-linter
-            - run-test-docker
+            - build-and-push-lambda-dev
           filters:
             branches:
               only:
@@ -226,6 +281,30 @@ workflows:
               ignore: /.*/
       - build-and-push-lambda:
           name: build-and-push-lambda-prod
+          docker_hub_repository: agent
+          aws_ecr_repository: mcd-agent
+          code_version: ${VERSION_TAG}
+          pre-steps:
+            - checkout
+            - run:
+                command: |
+                  if git describe --tags --abbrev=0; then TAG=$(git describe --tags --abbrev=0); else exit 1; fi
+                  echo "VERSION_TAG=${TAG#v}" >> $BASH_ENV
+                  source $BASH_ENV
+          context:
+            - aether-prod
+            - docker
+          requires:
+            - run-linter
+            - run-test-docker
+          filters: # run only for tags starting with v, don't run for branches
+            tags:
+              only: /^v.*/
+            branches:
+              ignore: /.*/
+      - push-lambda-legacy-repo:
+          name: push-lambda-aws-prod
+          docker_hub_repository: agent
           aws_ecr_repository: mcd-agent
           code_version: ${VERSION_TAG}
           pre-steps:
@@ -237,9 +316,9 @@ workflows:
                   source $BASH_ENV
           context:
             - aws-prod
+            - docker
           requires:
-            - run-linter
-            - run-test-docker
+            - build-and-push-lambda-prod
           filters: # run only for tags starting with v, don't run for branches
             tags:
               only: /^v.*/
