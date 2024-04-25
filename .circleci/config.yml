@@ -47,7 +47,7 @@ jobs:
 
   run-test-docker:
     machine:
-      image: ubuntu-2004:202201-02
+      image: ubuntu-2204:current
     steps:
       - checkout
       - docker/build:
@@ -57,7 +57,7 @@ jobs:
 
   build-and-push:
     machine:
-      image: ubuntu-2004:202201-02
+      image: ubuntu-2204:current
     parameters:
       docker_hub_repository:
         type: string
@@ -100,7 +100,7 @@ jobs:
 
   build-and-push-lambda:
     machine:
-      image: ubuntu-2004:202201-02
+      image: ubuntu-2204:current
     parameters:
       docker_hub_repository:
         type: string
@@ -137,7 +137,7 @@ jobs:
           tag: latest,<< parameters.code_version >>
   push-lambda-legacy-repo:
     machine:
-      image: ubuntu-2004:202201-02
+      image: ubuntu-2204:current
     parameters:
       docker_hub_repository:
         type: string
