@@ -77,6 +77,8 @@ decorator==5.1.1
     # via retry2
 defusedxml==0.7.1
     # via tableauserverclient
+duckdb==0.9.2
+    # via -r requirements.in
 et-xmlfile==1.1.0
     # via openpyxl
 filelock==3.13.1
