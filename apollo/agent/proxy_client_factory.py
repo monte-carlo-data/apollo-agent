@@ -31,6 +31,7 @@ from apollo.agent.constants import (
     CONNECTION_TYPE_HIVE,
     CONNECTION_TYPE_MSK_CONNECT,
     CONNECTION_TYPE_MSK_KAFKA,
+    CONNECTION_TYPE_MOTHERDUCK,
 )
 from apollo.agent.env_vars import CLIENT_CACHE_EXPIRATION_SECONDS_ENV_VAR
 from apollo.agent.models import AgentError
@@ -175,6 +176,16 @@ def _get_proxy_client_sap_hana(
     return SAPHanaProxyClient(credentials=credentials, platform=platform)
 
 
+def _get_proxy_client_motherduck(
+    credentials: Optional[Dict], platform: str, **kwargs  # type: ignore
+) -> BaseProxyClient:
+    from apollo.integrations.db.motherduck_proxy_client import (
+        MotherDuckProxyClient,
+    )
+
+    return MotherDuckProxyClient(credentials=credentials, platform=platform)
+
+
 def _get_proxy_client_tableau(
     credentials: Optional[Dict], platform: str, **kwargs  # type: ignore
 ) -> BaseProxyClient:
@@ -282,6 +293,7 @@ _CLIENT_FACTORY_MAPPING = {
     CONNECTION_TYPE_HIVE: _get_proxy_client_hive,
     CONNECTION_TYPE_MSK_CONNECT: _get_proxy_client_msk_connect,
     CONNECTION_TYPE_MSK_KAFKA: _get_proxy_client_msk_kafka,
+    CONNECTION_TYPE_MOTHERDUCK: _get_proxy_client_motherduck,
 }
 
 
