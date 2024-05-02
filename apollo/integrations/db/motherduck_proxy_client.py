@@ -1,4 +1,5 @@
 import os
+import duckdb
 from typing import (
     Any,
     Dict,
