@@ -1,11 +1,9 @@
+import os
 from typing import (
     Any,
     Dict,
-    List,
     Optional,
 )
-
-import duckdb
 
 from apollo.integrations.db.base_db_proxy_client import BaseDbProxyClient
 
@@ -24,6 +22,17 @@ class MotherDuckProxyClient(BaseDbProxyClient):
             raise ValueError(
                 f"Motherduck agent client requires {_ATTR_CONNECT_ARGS} in credentials"
             )
+
+        # Duckdb can be used in-memory or to connect to Motherduck, a serverless duckdb.
+        # Duckdb isn't smart enough for us to specify we only care about connecting to
+        # the cloud. It looks for the env var 'HOME' to know where to set up local files
+        # in case you use it in-memory. Lambda functions don't have a HOME env var so we
+        # must tell Duckdb where to create the local files. This also means that function
+        # memory likely needs to be increased to >1050mb
+        # https://github.com/duckdb/duckdb/issues/3855
+        path = "/tmp"
+        os.environ["HOME"] = path
+        os.makedirs(path, exist_ok=True)
         self._connection = duckdb.connect(credentials[_ATTR_CONNECT_ARGS])  # type: ignore
 
     @property
