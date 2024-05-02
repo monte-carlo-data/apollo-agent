@@ -5,6 +5,7 @@ boto3==1.28.21
 cryptography>=42.0.4
 databricks-sql-connector==2.8.0
 dataclasses-json==0.6.0
+duckdb==0.9.2
 flask==2.3.3
 flask-compress==1.14
 google-api-python-client==2.98.0

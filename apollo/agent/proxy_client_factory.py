@@ -149,6 +149,16 @@ def _get_proxy_client_sap_hana(
     return SAPHanaProxyClient(credentials=credentials, platform=platform)
 
 
+def _get_proxy_client_motherduck(
+    credentials: Optional[Dict], platform: str, **kwargs  # type: ignore
+) -> BaseProxyClient:
+    from apollo.integrations.db.motherduck_proxy_client import (
+        MotherDuckProxyClient,
+    )
+
+    return MotherDuckProxyClient(credentials=credentials, platform=platform)
+
+
 def _get_proxy_client_tableau(
     credentials: Optional[Dict], platform: str, **kwargs  # type: ignore
 ) -> BaseProxyClient:
@@ -249,6 +259,7 @@ _CLIENT_FACTORY_MAPPING = {
     "azure-sql-database": _get_proxy_client_azure_database,
     "tableau": _get_proxy_client_tableau,
     "sap-hana": _get_proxy_client_sap_hana,
+    "motherduck": _get_proxy_client_motherduck,
     "power-bi": _get_proxy_client_power_bi,
     "glue": _get_proxy_client_glue,
     "athena": _get_proxy_client_athena,
