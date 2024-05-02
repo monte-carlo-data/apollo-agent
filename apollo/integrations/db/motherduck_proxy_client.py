@@ -31,9 +31,10 @@ class MotherDuckProxyClient(BaseDbProxyClient):
         # must tell Duckdb where to create the local files. This also means that function
         # memory likely needs to be increased to >1050mb
         # https://github.com/duckdb/duckdb/issues/3855
-        path = "/tmp"
-        os.environ["HOME"] = path
-        os.makedirs(path, exist_ok=True)
+        if not os.environ.get("HOME"):
+            path = "/tmp"
+            os.environ["HOME"] = path
+            os.makedirs(path, exist_ok=True)
         self._connection = duckdb.connect(credentials[_ATTR_CONNECT_ARGS])  # type: ignore
 
     @property
