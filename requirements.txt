@@ -117,8 +117,6 @@ google-resumable-media==2.7.0
     # via google-cloud-storage
 googleapis-common-protos==1.62.0
     # via google-api-core
-greenlet==3.0.3
-    # via sqlalchemy
 gunicorn==22.0.0
     # via -r requirements.in
 hdbcli==2.18.27
@@ -127,8 +125,9 @@ httplib2==0.22.0
     # via
     #   google-api-python-client
     #   google-auth-httplib2
-idna==3.6
+idna==3.7
     # via
+    #   -r requirements.in
     #   requests
     #   snowflake-connector-python
 isodate==0.6.1
