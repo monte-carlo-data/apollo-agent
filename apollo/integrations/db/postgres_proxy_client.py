@@ -44,10 +44,6 @@ class PostgresProxyClient(BaseDbProxyClient):
         self._client_type = client_type
         logger.info(f"Opened connection to {client_type}")
 
-    def close(self):
-        super().close()
-        logger.info(f"Closed connection to {self._client_type}")
-
     @property
     def wrapped_client(self):
         return self._connection
