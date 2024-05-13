@@ -19,6 +19,7 @@ class PrestoProxyClient(BaseDbProxyClient):
     """
 
     def __init__(self, credentials: Optional[Dict], platform: str, **kwargs: Any):
+        super().__init__(connection_type="presto")
         self._platform = platform
         if not credentials or _ATTR_CONNECT_ARGS not in credentials:
             raise ValueError(

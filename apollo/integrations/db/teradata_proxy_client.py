@@ -20,6 +20,7 @@ class TeradataProxyClient(BaseDbProxyClient):
     """
 
     def __init__(self, credentials: Optional[Dict], **kwargs: Any):
+        super().__init__(connection_type="teradata")
         if not credentials or _ATTR_CONNECT_ARGS not in credentials:
             raise ValueError(
                 f"Teradata agent client requires {_ATTR_CONNECT_ARGS} in credentials"

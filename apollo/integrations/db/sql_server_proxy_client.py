@@ -27,6 +27,7 @@ class SqlServerProxyClient(BaseDbProxyClient):
     _DEFAULT_QUERY_TIMEOUT_IN_SECONDS = 60 * 14  # 14 minutes
 
     def __init__(self, credentials: Optional[Dict], **kwargs: Any):
+        super().__init__(connection_type="sql-server")
         if not credentials or _ATTR_CONNECT_ARGS not in credentials:
             raise ValueError(
                 f"SQL Server agent client requires {_ATTR_CONNECT_ARGS} in credentials"
