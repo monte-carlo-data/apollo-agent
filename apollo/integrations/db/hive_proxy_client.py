@@ -61,6 +61,7 @@ class HiveProxyClient(BaseDbProxyClient):
     _MODE_BINARY = "binary"
 
     def __init__(self, credentials: Optional[Dict], **kwargs: Any):  # noqa
+        super().__init__(connection_type="hive")
         if not credentials or _ATTR_CONNECT_ARGS not in credentials:
             raise ValueError(
                 f"Hive agent client requires {_ATTR_CONNECT_ARGS} in credentials"

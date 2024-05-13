@@ -17,7 +17,7 @@ class PostgresProxyClient(BaseDbProxyClient):
     """
 
     def __init__(self, credentials: Optional[Dict], client_type: str = "postgres", **kwargs):  # type: ignore
-        super().__init__()
+        super().__init__(connection_type=client_type)
         if not credentials or _ATTR_CONNECT_ARGS not in credentials:
             raise ValueError(
                 f"{client_type.capitalize()} agent client requires {_ATTR_CONNECT_ARGS} in credentials"

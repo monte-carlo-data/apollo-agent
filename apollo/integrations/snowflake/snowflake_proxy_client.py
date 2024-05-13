@@ -17,6 +17,7 @@ class SnowflakeProxyClient(BaseDbProxyClient):
     """
 
     def __init__(self, credentials: Optional[Dict], **kwargs):  # type: ignore
+        super().__init__(connection_type="snowflake")
         if not credentials or _ATTR_CONNECT_ARGS not in credentials:
             raise ValueError(
                 f"Snowflake agent client requires {_ATTR_CONNECT_ARGS} in credentials"
