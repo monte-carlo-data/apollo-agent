@@ -23,8 +23,14 @@ class BaseDbProxyClient(BaseProxyClient, ABC):
 
     # On delete make sure we close the connection
     def __del__(self) -> None:
+        logger.info("Closing DB proxy client on __del__")
+        self.close()
+
+    def close(self):
         if self._connection:
+            logger.info("Closing DB Proxy connection")
             self._connection.close()
+            self._connection = None
 
     def process_result(self, value: Any) -> Any:
         """

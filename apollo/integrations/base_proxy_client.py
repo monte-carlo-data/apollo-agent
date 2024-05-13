@@ -10,6 +10,12 @@ class BaseProxyClient(ABC):
     def wrapped_client(self):
         pass
 
+    def close(self):
+        """
+        Closes the underlying client if needed.
+        """
+        pass
+
     def get_error_type(self, error: Exception) -> Optional[str]:
         """
         Returns the error type to send to the client based on the given exception, this is optional but

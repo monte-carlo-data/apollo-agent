@@ -4,7 +4,7 @@ import psycopg2
 from psycopg2 import DatabaseError
 from psycopg2.errors import QueryCanceled, InsufficientPrivilege  # noqa
 
-from apollo.integrations.db.base_db_proxy_client import BaseDbProxyClient
+from apollo.integrations.db.base_db_proxy_client import BaseDbProxyClient, logger
 
 _ATTR_CONNECT_ARGS = "connect_args"
 
@@ -17,6 +17,7 @@ class PostgresProxyClient(BaseDbProxyClient):
     """
 
     def __init__(self, credentials: Optional[Dict], client_type: str = "postgres", **kwargs):  # type: ignore
+        super().__init__()
         if not credentials or _ATTR_CONNECT_ARGS not in credentials:
             raise ValueError(
                 f"{client_type.capitalize()} agent client requires {_ATTR_CONNECT_ARGS} in credentials"
@@ -40,6 +41,12 @@ class PostgresProxyClient(BaseDbProxyClient):
             )
 
         self._connection = psycopg2.connect(**connect_args)
+        self._client_type = client_type
+        logger.info(f"Opened connection to {client_type}")
+
+    def close(self):
+        super().close()
+        logger.info(f"Closed connection to {self._client_type}")
 
     @property
     def wrapped_client(self):

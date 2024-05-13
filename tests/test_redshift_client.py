@@ -171,6 +171,8 @@ class RedshiftClientTests(TestCase):
         self.assertTrue("rowcount" in result)
         self.assertEqual(expected_rows, result["rowcount"])
 
+        self._mock_connection.close.assert_called()
+
     @classmethod
     def _serialized_data(cls, data: List) -> List:
         return [cls._serialized_row(v) for v in data]
