@@ -375,9 +375,15 @@ class ProxyClientFactory:
             not entry
             or (datetime.now() - entry.created_time).seconds > _CACHE_EXPIRATION_SECONDS
         ):
+            # dispose client and connection, so we don't have two connections open at the same time
+            if entry:
+                cls._dispose_cached_client(key)
             return None
         return entry.client
 
     @classmethod
     def _dispose_cached_client(cls, key: str):
-        cls._clients_cache.pop(key, None)
+        entry = cls._clients_cache.pop(key, None)
+        if entry:
+            logger.info("Closing cached client")
+            entry.client.close()

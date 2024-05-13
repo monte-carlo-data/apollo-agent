@@ -18,13 +18,19 @@ logger = logging.getLogger(__name__)
 
 
 class BaseDbProxyClient(BaseProxyClient, ABC):
-    def __init__(self):
+    def __init__(self, connection_type: str):
         self._connection = None
+        self._connection_type = connection_type
 
     # On delete make sure we close the connection
     def __del__(self) -> None:
+        self.close()
+
+    def close(self):
         if self._connection:
+            logger.info(f"Closing connection to {self._connection_type}")
             self._connection.close()
+            self._connection = None
 
     def process_result(self, value: Any) -> Any:
         """

@@ -480,11 +480,15 @@ class Agent:
             except Exception:  # noqa
                 return AgentUtils.agent_response_for_last_exception(client=client)
             finally:
-                # discard clients that raised exceptions, clients like Redshift keep failing after an error
                 if (response is None or response.is_error) and not operation.skip_cache:
+                    # discard clients that raised exceptions, clients like Redshift keep failing
+                    # after an error
                     ProxyClientFactory.dispose_proxy_client(
                         connection_type, credentials, operation.skip_cache
                     )
+                elif client and operation.skip_cache:
+                    # make sure non-cached clients are closed
+                    client.close()
 
     def _execute_client_operation(
         self,
@@ -569,13 +573,16 @@ class Agent:
         }
         context[CONTEXT_VAR_UTILS] = OperationUtils(context)
 
-        return AgentEvaluationUtils.execute(
+        result = AgentEvaluationUtils.execute(
             context,
             self._logging_utils,
             operation_name,
             commands.commands,
             commands.trace_id,
         )
+        # clear cyclic reference involving the client, which delays the release of memory
+        context.clear()
+        return result
 
     def _execute_script(
         self,

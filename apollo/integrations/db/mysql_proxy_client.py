@@ -25,6 +25,7 @@ class MysqlProxyClient(BaseDbProxyClient):
     """
 
     def __init__(self, credentials: Optional[Dict], platform: str, **kwargs: Any):
+        super().__init__(connection_type="mysql")
         if not credentials or _ATTR_CONNECT_ARGS not in credentials:
             raise ValueError(
                 f"Mysql agent client requires {_ATTR_CONNECT_ARGS} in credentials"

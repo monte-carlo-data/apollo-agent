@@ -15,6 +15,7 @@ class DatabricksSqlWarehouseProxyClient(BaseDbProxyClient):
     """
 
     def __init__(self, credentials: Optional[Dict], **kwargs: Dict):
+        super().__init__(connection_type="databricks-sql-warehouse")
         if not credentials or _ATTR_CONNECT_ARGS not in credentials:
             raise ValueError(
                 f"Databricks agent client requires {_ATTR_CONNECT_ARGS} in credentials"
