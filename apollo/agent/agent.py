@@ -491,7 +491,6 @@ class Agent:
                     )
                 elif client and operation.skip_cache:
                     # make sure non-cached clients are closed
-                    logger.info(f"Closing non-cached client: {connection_type}")
                     client.close()
 
     def _execute_client_operation(
@@ -577,13 +576,16 @@ class Agent:
         }
         context[CONTEXT_VAR_UTILS] = OperationUtils(context)
 
-        return AgentEvaluationUtils.execute(
+        result = AgentEvaluationUtils.execute(
             context,
             self._logging_utils,
             operation_name,
             commands.commands,
             commands.trace_id,
         )
+        # clear cyclic reference involving the client, which delays the release of memory
+        context.clear()
+        return result
 
     def _execute_script(
         self,
