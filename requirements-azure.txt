@@ -4,7 +4,7 @@
 #
 #    pip-compile requirements-azure.in
 #
-aiohttp==3.9.4
+aiohttp==3.9.5
     # via
     #   -r requirements-azure.in
     #   azure-functions-durable
