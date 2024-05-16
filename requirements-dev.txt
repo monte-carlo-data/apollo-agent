@@ -85,7 +85,6 @@ virtualenv==20.25.0
 werkzeug==3.0.3
     # via
     #   -c requirements.txt
-    #   -r requirements-dev.in
     #   flask
 
 # The following packages are considered to be unsafe in a requirements file:
