@@ -82,7 +82,7 @@ pyyaml==6.0.1
     #   pre-commit
 virtualenv==20.25.0
     # via pre-commit
-werkzeug==3.0.1
+werkzeug==3.0.3
     # via
     #   -c requirements.txt
     #   flask
