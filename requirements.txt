@@ -117,6 +117,8 @@ google-resumable-media==2.7.0
     # via google-cloud-storage
 googleapis-common-protos==1.62.0
     # via google-api-core
+greenlet==3.0.3
+    # via sqlalchemy
 gunicorn==22.0.0
     # via -r requirements.in
 hdbcli==2.18.27
@@ -229,7 +231,7 @@ pyjwt[crypto]==2.8.0
     #   -r requirements.in
     #   msal
     #   snowflake-connector-python
-pymysql==1.1.0
+pymysql==1.1.1
     # via -r requirements.in
 pyodbc==5.0.1
     # via -r requirements.in
