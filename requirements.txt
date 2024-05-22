@@ -229,7 +229,7 @@ pyjwt[crypto]==2.8.0
     #   -r requirements.in
     #   msal
     #   snowflake-connector-python
-pymysql==1.1.0
+pymysql==1.1.1
     # via -r requirements.in
 pyodbc==5.0.1
     # via -r requirements.in

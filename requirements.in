@@ -22,7 +22,7 @@ psycopg2-binary==2.9.7
 pyarrow==14.0.1  # CVE-2023-47248
 pycryptodome>=3.19.1
 pyjwt>=2.8.0
-PyMySQL>=1.1.0
+PyMySQL>=1.1.1
 pyodbc==5.0.1
 pyOpenSSL>=24.0.0
 RestrictedPython==7.0
