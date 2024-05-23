@@ -127,7 +127,6 @@ httplib2==0.22.0
     #   google-auth-httplib2
 idna==3.7
     # via
-    #   -r requirements.in
     #   requests
     #   snowflake-connector-python
 isodate==0.6.1
@@ -229,7 +228,7 @@ pyjwt[crypto]==2.8.0
     #   -r requirements.in
     #   msal
     #   snowflake-connector-python
-pymysql==1.1.0
+pymysql==1.1.1
     # via -r requirements.in
 pyodbc==5.0.1
     # via -r requirements.in
@@ -248,8 +247,9 @@ pytz==2023.3.post1
     # via
     #   pandas
     #   snowflake-connector-python
-requests==2.31.0
+requests==2.32.2
     # via
+    #   -r requirements.in
     #   azure-core
     #   databricks-sql-connector
     #   google-api-core
