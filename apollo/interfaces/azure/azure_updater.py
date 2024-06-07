@@ -1,11 +1,12 @@
 import json
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Dict, Optional
 
 from azure.mgmt.resource import ResourceManagementClient
 
+from apollo.agent.env_vars import LAST_UPDATE_TS_ENV_VAR
 from apollo.agent.models import AgentError
 from apollo.agent.updater import AgentUpdater
 from apollo.integrations.azure_blob.utils import AzureUtils
@@ -17,6 +18,7 @@ _PARAMETERS_ENV_VARS = {
     "WorkerProcessCount": "FUNCTIONS_WORKER_PROCESS_COUNT",
     "ThreadCount": "PYTHON_THREADPOOL_THREAD_COUNT",
     "MaxConcurrentActivities": "AzureFunctionsJobHost__extensions__durableTask__maxConcurrentActivityFunctions",
+    "MaxConcurrentOrchestratorFunctions": "AzureFunctionsJobHost__extensions__durableTask__maxConcurrentOrchestratorFunctions",
 }
 
 # any other parameter prefixed with "env." will be mapped to an env var, for example
@@ -61,19 +63,18 @@ class AzureUpdater(AgentUpdater):
                 **self._get_function_resource_args(),
                 parameters=serialized_parameters,  # type: ignore
             )
-        if parameters:
-            update_appsettings_parameters = {
-                "properties": self._get_update_env_vars(parameters)
-            }
-            serialized_parameters = json.dumps(update_appsettings_parameters).encode(
-                "utf-8"
-            )
+        update_appsettings_parameters = {
+            "properties": self._get_update_env_vars(parameters or {})
+        }
+        serialized_parameters = json.dumps(update_appsettings_parameters).encode(
+            "utf-8"
+        )
 
-            # to update env vars we need to update <function_name>/config/appsettings
-            client.resources.begin_update(
-                **self._get_function_resource_args("/config/appsettings"),
-                parameters=serialized_parameters,  # type: ignore
-            )
+        # to update env vars we need to update <function_name>/config/appsettings
+        client.resources.begin_update(
+            **self._get_function_resource_args("/config/appsettings"),
+            parameters=serialized_parameters,  # type: ignore
+        )
 
         logger.info("Update triggered", extra=update_args)
         update_args_list = [
@@ -143,5 +144,6 @@ class AzureUpdater(AgentUpdater):
                 if key.startswith(_ENV_PREFIX)
             }
         )
+        env_vars[LAST_UPDATE_TS_ENV_VAR] = datetime.now(timezone.utc).isoformat()
         logger.info(f"Updating env vars: {env_vars}")
         return env_vars
