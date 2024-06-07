@@ -266,6 +266,11 @@ def agent_api(req: func.HttpRequest, context: func.Context):
     """
     Endpoint to execute sync operations.
     """
+    from apollo.interfaces.azure.log_context import AzureLogContext
+
+    log_context = AzureLogContext()
+    log_context.install()
+
     return wsgi_middleware.handle(req, context)
 
 
