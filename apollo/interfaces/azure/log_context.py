@@ -43,10 +43,7 @@ class AzureLogContext(BaseLogContext):
         Updates the log record with the agent context, OpenTelemetry doesn't support an "extra" attribute, we
         set the attributes as individual attributes in `record` making sure they are prefixed with "mcd_".
         """
-        try:
-            context = _context.value
-        except AttributeError:
-            context = None
+        context = _context.value
         if not context:
             return record
 
