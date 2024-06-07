@@ -224,10 +224,10 @@ def agent_operation_orchestrator(context: DurableOrchestrationContext):
     else:
         log_extra = {}
     log_extra["instance_id"] = context.instance_id
+    log_extra["timeout"] = _ACTIVITY_TIMEOUT_SECONDS
 
     root_logger.info(
-        f"Starting orchestrator activity with timeout={_ACTIVITY_TIMEOUT_SECONDS}",
-        extra=log_extra,
+        f"Starting activity for operation: {context.instance_id}", extra=log_extra
     )
     deadline = context.current_utc_datetime + timedelta(
         seconds=_ACTIVITY_TIMEOUT_SECONDS
@@ -240,7 +240,9 @@ def agent_operation_orchestrator(context: DurableOrchestrationContext):
         timeout_task.cancel()
         return activity_task.result
 
-    root_logger.info("Orchestrator activity timed out", extra=log_extra)
+    root_logger.info(
+        f"Orchestrator activity: {context.instance_id} timed out", extra=log_extra
+    )
     return {
         ATTRIBUTE_NAME_ERROR: f"Activity timed out after {_ACTIVITY_TIMEOUT_SECONDS} seconds."
     }

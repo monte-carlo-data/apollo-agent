@@ -2,6 +2,8 @@ import asyncio
 import json
 import os
 from datetime import datetime, timezone, timedelta
+from threading import Thread
+from typing import Dict
 from unittest import TestCase
 from unittest.mock import patch, Mock, call, ANY
 
@@ -19,6 +21,7 @@ from apollo.interfaces.azure.durable_functions_utils import (
     AzureDurableFunctionsRequest,
     AzureDurableFunctionsCleanupRequest,
 )
+from apollo.interfaces.azure.log_context import AzureLogContext
 
 
 class TestAzurePlatform(TestCase):
@@ -630,3 +633,28 @@ class TestAzurePlatform(TestCase):
                 OrchestrationRuntimeStatus.Pending,
             ],
         )
+
+    def test_log_context(self):
+        log_context = AzureLogContext()
+
+        def _thread_function(thread_context: Dict):
+            log_context.set_agent_context(thread_context)
+            box = Box()
+            log_context._filter(box)
+            thread_context["result"] = box
+
+        c1 = {
+            "name": "c1",
+        }
+        t1 = Thread(target=_thread_function, args=(c1,))
+        c2 = {
+            "name": "c2",
+        }
+        t2 = Thread(target=_thread_function, args=(c2,))
+
+        t1.start()
+        t2.start()
+        t1.join()
+        t2.join()
+        self.assertEqual("c1", c1.get("result").mcd_name)
+        self.assertEqual("c2", c2.get("result").mcd_name)
