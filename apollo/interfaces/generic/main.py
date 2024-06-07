@@ -2,6 +2,7 @@ import io
 import logging
 import os
 from datetime import datetime, timezone, timedelta
+from time import sleep
 from typing import Dict, Tuple, Callable, Optional, Union, Any, BinaryIO
 
 from flask import Flask, request, Response, send_file, jsonify, render_template
@@ -322,6 +323,16 @@ def execute_agent_script(connection_type: str, json_request: Dict) -> AgentRespo
     credentials = json_request.get("credentials", {})
 
     return agent.execute_script(connection_type, script, credentials)
+
+
+@app.route("/api/v1/test/sleep", methods=["GET"])
+def test_sleep() -> Tuple[Dict, int]:
+    request_dict: Dict = request.args  # type: ignore
+    seconds = int(request_dict.get("seconds", 10))
+    logger.info(f"Waiting for {seconds} seconds")
+    sleep(seconds)
+    logger.info(f"Wait for {seconds} seconds finished")
+    return {"message": f"{seconds} seconds"}, 200
 
 
 @app.route("/api/v1/test/health", methods=["GET"])
