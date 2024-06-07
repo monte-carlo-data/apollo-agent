@@ -6,7 +6,11 @@ from typing import List, Dict, Optional
 
 from azure.mgmt.resource import ResourceManagementClient
 
-from apollo.agent.env_vars import LAST_UPDATE_TS_ENV_VAR
+from apollo.agent.env_vars import (
+    LAST_UPDATE_TS_ENV_VAR,
+    AZURE_MAX_ACTIVITY_FUNCTIONS_ENV_VAR,
+    AZURE_MAX_ORCHESTRATOR_FUNCTIONS_ENV_VAR,
+)
 from apollo.agent.models import AgentError
 from apollo.agent.updater import AgentUpdater
 from apollo.integrations.azure_blob.utils import AzureUtils
@@ -17,8 +21,8 @@ logger = logging.getLogger(__name__)
 _PARAMETERS_ENV_VARS = {
     "WorkerProcessCount": "FUNCTIONS_WORKER_PROCESS_COUNT",
     "ThreadCount": "PYTHON_THREADPOOL_THREAD_COUNT",
-    "MaxConcurrentActivities": "AzureFunctionsJobHost__extensions__durableTask__maxConcurrentActivityFunctions",
-    "MaxConcurrentOrchestratorFunctions": "AzureFunctionsJobHost__extensions__durableTask__maxConcurrentOrchestratorFunctions",
+    "MaxConcurrentActivities": AZURE_MAX_ACTIVITY_FUNCTIONS_ENV_VAR,
+    "MaxConcurrentOrchestratorFunctions": AZURE_MAX_ORCHESTRATOR_FUNCTIONS_ENV_VAR,
 }
 
 # any other parameter prefixed with "env." will be mapped to an env var, for example
