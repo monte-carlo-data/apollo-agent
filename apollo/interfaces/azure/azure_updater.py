@@ -48,13 +48,12 @@ class AzureUpdater(AgentUpdater):
         parameters: Optional[Dict] = None,
         **kwargs,  # type: ignore
     ) -> Dict:
+        parameters = parameters or {}
         update_args = {
             "image": image,
             "parameters": parameters,
         }
         logger.info("Update requested", extra=update_args)
-        if not image and not parameters:
-            raise AgentError("Either image or parameters must be provided")
 
         client = self._get_resource_management_client()
         if image:
@@ -68,7 +67,7 @@ class AzureUpdater(AgentUpdater):
                 parameters=serialized_parameters,  # type: ignore
             )
         update_appsettings_parameters = {
-            "properties": self._get_update_env_vars(parameters or {})
+            "properties": self._get_update_env_vars(parameters)
         }
         serialized_parameters = json.dumps(update_appsettings_parameters).encode(
             "utf-8"
@@ -84,6 +83,7 @@ class AzureUpdater(AgentUpdater):
         update_args_list = [
             f"{key}: {value}" for key, value in update_args.items() if value
         ]
+        update_args_list.append("function_restart")
         return {"message": f"Update in progress, {', '.join(update_args_list)}"}
 
     def get_current_image(self) -> Optional[str]:
