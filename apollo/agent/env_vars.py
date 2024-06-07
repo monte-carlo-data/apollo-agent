@@ -63,10 +63,10 @@ ORCHESTRATION_ACTIVITY_TIMEOUT_DEFAULT_VALUE = 60 * 14 + 45  # 14:45 minutes
 LAST_UPDATE_TS_ENV_VAR = "MCD_LAST_UPDATE_TS"
 
 AZURE_MAX_ACTIVITY_FUNCTIONS_ENV_VAR = (
-    "AzureFunctionsJobHost__extensions__durableTask__maxConcurrentActivityFunctions",
+    "AzureFunctionsJobHost__extensions__durableTask__maxConcurrentActivityFunctions"
 )
 AZURE_MAX_ORCHESTRATOR_FUNCTIONS_ENV_VAR = (
-    "AzureFunctionsJobHost__extensions__durableTask__maxConcurrentOrchestratorFunctions",
+    "AzureFunctionsJobHost__extensions__durableTask__maxConcurrentOrchestratorFunctions"
 )
 
 HEALTH_ENV_VARS = [
