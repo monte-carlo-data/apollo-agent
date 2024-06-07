@@ -54,6 +54,14 @@ DEFAULT_TEMP_PATH = "/tmp"
 CHECK_OUTBOUND_IP_ADDRESS_URL_ENV_VAR = "MCD_CHECK_OUTBOUND_IP_URL"
 CHECK_OUTBOUND_IP_ADDRESS_URL_DEFAULT_VALUE = "https://checkip.amazonaws.com"
 
+# Orchestration activity timeout in seconds, should be less than 15 minutes to timeout
+# before the function times out
+ORCHESTRATION_ACTIVITY_TIMEOUT_ENV_VAR = "MCD_ORCHESTRATION_ACTIVITY_TIMEOUT"
+ORCHESTRATION_ACTIVITY_TIMEOUT_DEFAULT_VALUE = 60 * 14 + 45  # 14:45 minutes
+
+# used to mark last time the agent was updated, used to restart without updating the image
+LAST_UPDATE_TS_ENV_VAR = "MCD_LAST_UPDATE_TS"
+
 HEALTH_ENV_VARS = [
     "PYTHON_VERSION",
     "SERVER_SOFTWARE",
@@ -74,4 +82,5 @@ HEALTH_ENV_VARS = [
     "FUNCTIONS_WORKER_PROCESS_COUNT",
     "PYTHON_THREADPOOL_THREAD_COUNT",
     "AzureFunctionsJobHost__extensions__durableTask__maxConcurrentActivityFunctions",
+    "AzureFunctionsJobHost__extensions__durableTask__maxConcurrentOrchestratorFunctions",
 ]

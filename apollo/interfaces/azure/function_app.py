@@ -2,11 +2,17 @@ import json
 import logging
 import os
 from datetime import datetime, timedelta, timezone
-from typing import Dict
+from typing import Dict, cast
 
+from azure.durable_functions.models.Task import TimerTask
 from azure.monitor.opentelemetry import configure_azure_monitor
 
-from apollo.agent.env_vars import DEBUG_ENV_VAR
+from apollo.agent.constants import ATTRIBUTE_NAME_ERROR
+from apollo.agent.env_vars import (
+    DEBUG_ENV_VAR,
+    ORCHESTRATION_ACTIVITY_TIMEOUT_ENV_VAR,
+    ORCHESTRATION_ACTIVITY_TIMEOUT_DEFAULT_VALUE,
+)
 from apollo.interfaces.azure.durable_functions_utils import (
     AzureDurableFunctionsUtils,
     AzureDurableFunctionsRequest,
@@ -52,6 +58,12 @@ from azure.functions import WsgiMiddleware
 from apollo.interfaces.azure.azure_platform import AzurePlatformProvider
 from apollo.interfaces.azure import main
 
+_ACTIVITY_TIMEOUT_SECONDS = int(
+    os.getenv(
+        ORCHESTRATION_ACTIVITY_TIMEOUT_ENV_VAR,
+        ORCHESTRATION_ACTIVITY_TIMEOUT_DEFAULT_VALUE,
+    )
+)
 main.agent.platform_provider = AzurePlatformProvider()
 main.agent.log_context = log_context
 wsgi_middleware = WsgiMiddleware(main.app.wsgi_app)
@@ -71,14 +83,21 @@ async def execute_async_operation(
     """
     connection_type = req.route_params.get("connection_type")
     operation_name = req.route_params.get("operation_name")
+    payload = req.get_json()
     client_input = {
         "connection_type": connection_type,
         "operation_name": operation_name,
-        "payload": req.get_json(),
+        "payload": payload,
     }
     instance_id = await client.start_new(
         "agent_operation_orchestrator", client_input=client_input
     )
+    trace_id = payload.get("operation", {}).get("trace_id")
+    root_logger.info(
+        f"Started async operation: {instance_id}",
+        extra={"instance_id": instance_id, "mcd_trace_id": trace_id},
+    )
+
     response_payload = {
         "__mcd_request_id__": instance_id,
     }
@@ -194,8 +213,37 @@ async def get_durable_functions_info(
 @app.orchestration_trigger(context_name="context")
 def agent_operation_orchestrator(context: DurableOrchestrationContext):
     client_input = context.get_input()
-    result = yield context.call_activity("agent_operation", client_input)
-    return result
+    if isinstance(client_input, Dict):
+        log_extra = {
+            "mcd_trace_id": client_input.get("payload", {})
+            .get("operation", {})
+            .get("trace_id"),
+            "operation_name": client_input.get("operation_name"),
+            "connection_type": client_input.get("connection_type"),
+        }
+    else:
+        log_extra = {}
+    log_extra["instance_id"] = context.instance_id
+
+    root_logger.info(
+        f"Starting orchestrator activity with timeout={_ACTIVITY_TIMEOUT_SECONDS}",
+        extra=log_extra,
+    )
+    deadline = context.current_utc_datetime + timedelta(
+        seconds=_ACTIVITY_TIMEOUT_SECONDS
+    )
+    activity_task = context.call_activity("agent_operation", client_input)
+    timeout_task: TimerTask = cast(TimerTask, context.create_timer(deadline))
+
+    winner = yield context.task_any([activity_task, timeout_task])
+    if winner == activity_task:
+        timeout_task.cancel()
+        return activity_task.result
+
+    root_logger.info("Orchestrator activity timed out", extra=log_extra)
+    return {
+        ATTRIBUTE_NAME_ERROR: f"Activity timed out after {_ACTIVITY_TIMEOUT_SECONDS} seconds."
+    }
 
 
 @app.activity_trigger(input_name="body")
