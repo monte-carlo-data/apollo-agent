@@ -335,7 +335,9 @@ class TestAzurePlatform(TestCase):
             ]
         )
 
-        expected_result = {"message": f"Update in progress, image: {new_image}"}
+        expected_result = {
+            "message": f"Update in progress, image: {new_image}, function_restart"
+        }
         self.assertEqual(
             expected_result, update_result.result.get(ATTRIBUTE_NAME_RESULT)
         )
@@ -372,7 +374,9 @@ class TestAzurePlatform(TestCase):
             parameters,
         )
 
-        expected_result = {"message": f"Update in progress, parameters: {new_env_vars}"}
+        expected_result = {
+            "message": f"Update in progress, parameters: {new_env_vars}, function_restart"
+        }
         self.assertEqual(
             expected_result, update_result.result.get(ATTRIBUTE_NAME_RESULT)
         )
@@ -405,7 +409,8 @@ class TestAzurePlatform(TestCase):
             ]
         )
         expected_result = {
-            "message": f"Update in progress, image: {new_image}, parameters: {new_env_vars}"
+            "message": f"Update in progress, image: {new_image}, parameters: {new_env_vars}, "
+            "function_restart"
         }
         self.assertEqual(
             expected_result, update_result.result.get(ATTRIBUTE_NAME_RESULT)
@@ -447,7 +452,7 @@ class TestAzurePlatform(TestCase):
             parameters=ANY,
         )
         expected_result = {
-            "message": f"Update in progress, parameters: {new_parameters}"
+            "message": f"Update in progress, parameters: {new_parameters}, function_restart"
         }
         self.assertEqual(
             expected_result, update_result.result.get(ATTRIBUTE_NAME_RESULT)
@@ -489,7 +494,7 @@ class TestAzurePlatform(TestCase):
         parameters = json.loads(call_kwargs["parameters"])
         self.assertEqual(update_env_properties, parameters)
         expected_result = {
-            "message": f"Update in progress, parameters: {new_parameters}"
+            "message": f"Update in progress, parameters: {new_parameters}, function_restart"
         }
         self.assertEqual(
             expected_result, update_result.result.get(ATTRIBUTE_NAME_RESULT)
