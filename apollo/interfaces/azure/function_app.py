@@ -227,7 +227,7 @@ def agent_operation_orchestrator(context: DurableOrchestrationContext):
     log_extra["timeout"] = _ACTIVITY_TIMEOUT_SECONDS
 
     root_logger.info(
-        f"Starting activity for operation: {context.instance_id}", extra=log_extra
+        f"Running orchestrator for operation: {context.instance_id}", extra=log_extra
     )
     deadline = context.current_utc_datetime + timedelta(
         seconds=_ACTIVITY_TIMEOUT_SECONDS
