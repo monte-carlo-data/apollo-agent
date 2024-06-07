@@ -18,7 +18,8 @@ from apollo.interfaces.azure.durable_functions_utils import (
     AzureDurableFunctionsRequest,
     AzureDurableFunctionsCleanupRequest,
 )
-from apollo.interfaces.azure.log_context import AzureLogContext
+
+# from apollo.interfaces.azure.log_context import AzureLogContext
 
 # remove default handlers to prevent duplicate log messages
 # https://learn.microsoft.com/en-us/python/api/overview/azure/monitor-opentelemetry-readme?view=azure-python#logging-issues
@@ -34,8 +35,8 @@ root_logger.setLevel(logging.DEBUG if is_debug else logging.INFO)
 configure_azure_monitor()
 
 # configure the log context to include the agent context in all log messages
-log_context = AzureLogContext()
-log_context.install()
+# log_context = AzureLogContext()
+# log_context.install()
 
 # disable annoying logs every time OT logs are sent
 disable_loggers = [
@@ -65,7 +66,7 @@ _ACTIVITY_TIMEOUT_SECONDS = int(
     )
 )
 main.agent.platform_provider = AzurePlatformProvider()
-main.agent.log_context = log_context
+# main.agent.log_context = log_context
 wsgi_middleware = WsgiMiddleware(main.app.wsgi_app)
 
 app = df.DFApp(http_auth_level=func.AuthLevel.FUNCTION)
