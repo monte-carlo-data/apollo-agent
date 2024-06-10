@@ -50,8 +50,8 @@ class AzureUpdater(AgentUpdater):
     ) -> Dict:
         parameters = parameters or {}
         update_args = {
-            "image": image,
-            "parameters": parameters,
+            "image": image or "",  # open telemetry shows a warning when logging None
+            "parameters": parameters or {},
         }
         logger.info("Update requested", extra=update_args)
 
