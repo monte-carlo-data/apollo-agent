@@ -235,6 +235,9 @@ def agent_operation_orchestrator(context: DurableOrchestrationContext):
     activity_task = context.call_activity("agent_operation", client_input)
     timeout_task: TimerTask = cast(TimerTask, context.create_timer(deadline))
 
+    # "Abandon" feature, the activity is abandoned after 14:45 minutes so it is not retried
+    # by the Durable Functions framework. Based on Azure docs:
+    # https://learn.microsoft.com/en-us/azure/azure-functions/durable/durable-functions-error-handling?tabs=python#function-timeouts
     winner = yield context.task_any([activity_task, timeout_task])
     if winner == activity_task:
         timeout_task.cancel()
