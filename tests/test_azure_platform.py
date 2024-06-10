@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import time
 from datetime import datetime, timezone, timedelta
 from threading import Thread
 from typing import Dict
@@ -656,6 +657,39 @@ class TestAzurePlatform(TestCase):
             "name": "c2",
         }
         t2 = Thread(target=_thread_function, args=(c2,))
+
+        t1.start()
+        t2.start()
+        t1.join()
+        t2.join()
+        self.assertEqual("c1", c1.get("result").mcd_name)
+        self.assertEqual("c2", c2.get("result").mcd_name)
+
+    def test_log_context_concurrency(self):
+        log_context = AzureLogContext()
+
+        def _thread_function_1(thread_context: Dict):
+            log_context.set_agent_context(thread_context)
+            time.sleep(1)
+            box = Box()
+            log_context._filter(box)
+            thread_context["result"] = box
+
+        def _thread_function_2(thread_context: Dict):
+            time.sleep(0.5)
+            log_context.set_agent_context(thread_context)
+            box = Box()
+            log_context._filter(box)
+            thread_context["result"] = box
+
+        c1 = {
+            "name": "c1",
+        }
+        t1 = Thread(target=_thread_function_1, args=(c1,))
+        c2 = {
+            "name": "c2",
+        }
+        t2 = Thread(target=_thread_function_2, args=(c2,))
 
         t1.start()
         t2.start()
