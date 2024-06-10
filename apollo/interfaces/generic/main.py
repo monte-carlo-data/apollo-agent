@@ -325,16 +325,6 @@ def execute_agent_script(connection_type: str, json_request: Dict) -> AgentRespo
     return agent.execute_script(connection_type, script, credentials)
 
 
-@app.route("/api/v1/test/sleep", methods=["GET"])
-def test_sleep() -> Tuple[Dict, int]:
-    request_dict: Dict = request.args  # type: ignore
-    seconds = int(request_dict.get("seconds", 10))
-    logger.info(f"Waiting for {seconds} seconds")
-    sleep(seconds)
-    logger.info(f"Wait for {seconds} seconds finished")
-    return {"message": f"{seconds} seconds"}, 200
-
-
 @app.route("/api/v1/test/health", methods=["GET"])
 def test_health_get() -> Tuple[Dict, int]:
     """
