@@ -148,6 +148,8 @@ class AzureUpdater(AgentUpdater):
                 if key.startswith(_ENV_PREFIX)
             }
         )
+        # we're always updating at least this env var, this forces the function to be restarted
+        # and also keeps track of the last update time, so we can confirm it was restarted
         env_vars[LAST_UPDATE_TS_ENV_VAR] = datetime.now(timezone.utc).isoformat()
         logger.info(f"Updating env vars: {env_vars}")
         return env_vars
