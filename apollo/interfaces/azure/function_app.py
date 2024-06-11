@@ -275,8 +275,8 @@ def _test_cpu(request_dict: Dict):
     data = []
     for i in range(n):
         a = i * i
-        # if i % 100000 == 0:
-        #     data.append(bytearray(1000000))
+        if i % 100000 == 0:
+            data.append(bytearray(1000000))
         if i % 1000000 == 0:
             root_logger.info(f"progress: {i}")
         if i % nn == 0:
