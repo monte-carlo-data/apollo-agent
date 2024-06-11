@@ -1,7 +1,8 @@
 import logging
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timezone, timedelta
-from typing import Dict, Tuple, cast, Optional
+from typing import Dict, Tuple, cast, Optional, List
 
 from azure.durable_functions.models import (
     DurableOrchestrationClient,
@@ -23,6 +24,7 @@ class AzureDurableFunctionsRequest(DataClassJsonMixin):
 @dataclass
 class AzureDurableFunctionsCleanupRequest(AzureDurableFunctionsRequest):
     include_pending: Optional[bool] = False
+    include_running: Optional[bool] = False
 
 
 class AzureDurableFunctionsUtils:
@@ -40,19 +42,22 @@ class AzureDurableFunctionsUtils:
             yet, defaults to False.
         Returns the number of deleted instances.
         """
-        include_pending = (
-            request.include_pending if request.include_pending is not None else False
-        )
         created_time_from, created_time_to = cls._parse_created_times(
             request,
             default_created_from=datetime.now(timezone.utc) - timedelta(days=365 * 10),
             default_created_to=datetime.now(timezone.utc) - timedelta(minutes=10),
         )
-        if include_pending:
-            terminated_instances = await cls._terminate_pending_instances(
+        status_list: List[OrchestrationRuntimeStatus] = []
+        if request.include_pending is not None and request.include_pending:
+            status_list.append(OrchestrationRuntimeStatus.Pending)
+        if request.include_running is not None and request.include_running:
+            status_list.append(OrchestrationRuntimeStatus.Running)
+        if status_list:
+            terminated_instances = await cls._terminate_instances(
                 client=client,
                 created_time_from=created_time_from,
                 created_time_to=created_time_to,
+                status_list=status_list,
             )
         else:
             terminated_instances = 0
@@ -60,7 +65,7 @@ class AzureDurableFunctionsUtils:
             client=client,
             created_time_from=created_time_from,
             created_time_to=created_time_to,
-            include_pending=include_pending,
+            status_list=status_list,
         )
         return terminated_instances + purged_instances
 
@@ -69,7 +74,7 @@ class AzureDurableFunctionsUtils:
         cls,
         request: AzureDurableFunctionsRequest,
         client: DurableOrchestrationClient,
-    ) -> Tuple[int, int]:
+    ) -> Tuple[int, int, int]:
         created_time_from, created_time_to = cls._parse_created_times(
             request,
             default_created_from=datetime.now(timezone.utc) - timedelta(days=1),
@@ -81,33 +86,32 @@ class AzureDurableFunctionsUtils:
             runtime_status=[
                 OrchestrationRuntimeStatus.Completed,
                 OrchestrationRuntimeStatus.Pending,
+                OrchestrationRuntimeStatus.Running,
             ],
         )
-        pending_instances = [
-            i
-            for i in instances
-            if i.runtime_status == OrchestrationRuntimeStatus.Pending
-        ]
-        completed_instances = [
-            i
-            for i in instances
-            if i.runtime_status == OrchestrationRuntimeStatus.Completed
-        ]
-        return len(pending_instances), len(completed_instances)
+        status_count: Dict[OrchestrationRuntimeStatus, int] = defaultdict(lambda: 0)
+        for i in instances:
+            status_count[i.runtime_status] = status_count[i.runtime_status] + 1  # type: ignore
+        return (
+            status_count[OrchestrationRuntimeStatus.Pending],
+            status_count[OrchestrationRuntimeStatus.Completed],
+            status_count[OrchestrationRuntimeStatus.Running],
+        )
 
     @staticmethod
-    async def _terminate_pending_instances(
+    async def _terminate_instances(
         client: DurableOrchestrationClient,
         created_time_from: datetime,
         created_time_to: datetime,
+        status_list: List[OrchestrationRuntimeStatus],
     ) -> int:
-        pending_instances = await client.get_status_by(
+        instances = await client.get_status_by(
             created_time_from=created_time_from,
             created_time_to=created_time_to,
-            runtime_status=[OrchestrationRuntimeStatus.Pending],
+            runtime_status=status_list,
         )
         terminated_instances = 0
-        for instance in pending_instances:
+        for instance in instances:
             if not instance.instance_id:
                 logging.warning("instance_id not found, skipping termination")
                 continue
@@ -125,7 +129,7 @@ class AzureDurableFunctionsUtils:
         client: DurableOrchestrationClient,
         created_time_from: datetime,
         created_time_to: datetime,
-        include_pending: bool,
+        status_list: List[OrchestrationRuntimeStatus],
     ) -> int:
         runtime_statuses = [
             OrchestrationRuntimeStatus.Canceled,
@@ -133,12 +137,11 @@ class AzureDurableFunctionsUtils:
             OrchestrationRuntimeStatus.Failed,
             OrchestrationRuntimeStatus.Terminated,
         ]
-        if include_pending:
-            runtime_statuses.append(OrchestrationRuntimeStatus.Pending)
+        runtime_statuses.extend(status_list)
 
         logging.info(
             f'Purging instances older than {created_time_to.isoformat(timespec="seconds")}'
-            f", including pending: {include_pending}"
+            f", including: {status_list}"
         )
 
         try:

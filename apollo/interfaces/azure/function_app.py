@@ -191,7 +191,7 @@ async def get_durable_functions_info(
     - created_time_from: the oldest instance to purge, default is 10 years ago
     - created_time_to: the newest instance to purge, default is 10 minutes ago
     """
-    pending_instances, completed_instances = (
+    pending_instances, completed_instances, running_instances = (
         await AzureDurableFunctionsUtils.get_durable_functions_info(
             request=AzureDurableFunctionsRequest.from_dict(req.get_json()),
             client=client,
@@ -203,6 +203,7 @@ async def get_durable_functions_info(
             {
                 "pending_instances": pending_instances,
                 "completed_instances": completed_instances,
+                "running_instances": running_instances,
             }
         ),
         headers={
@@ -306,5 +307,5 @@ async def cleanup_durable_functions_data(
     )  # datetime.min or None not supported
     created_time_to = datetime.now(timezone.utc) - timedelta(days=1)
     await AzureDurableFunctionsUtils.purge_instances(
-        client, created_time_from, created_time_to, include_pending=False
+        client, created_time_from, created_time_to, status_list=[]
     )
