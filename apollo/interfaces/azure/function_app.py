@@ -191,21 +191,13 @@ async def get_durable_functions_info(
     - created_time_from: the oldest instance to purge, default is 10 years ago
     - created_time_to: the newest instance to purge, default is 10 minutes ago
     """
-    pending_instances, completed_instances, running_instances = (
-        await AzureDurableFunctionsUtils.get_durable_functions_info(
-            request=AzureDurableFunctionsRequest.from_dict(req.get_json()),
-            client=client,
-        )
+    instances = await AzureDurableFunctionsUtils.get_durable_functions_info(
+        request=AzureDurableFunctionsRequest.from_dict(req.get_json()),
+        client=client,
     )
     return func.HttpResponse(
         status_code=200,
-        body=json.dumps(
-            {
-                "pending_instances": pending_instances,
-                "completed_instances": completed_instances,
-                "running_instances": running_instances,
-            }
-        ),
+        body=json.dumps(instances),
         headers={
             "Content-Type": "application/json",
         },
@@ -274,14 +266,14 @@ def _test_cpu(request_dict: Dict):
     start = datetime.now()
     root_logger.info(f"started, n={n}")
     data = []
-    for i in range(n):
-        a = i * i
-        if i % 100000 == 0:
-            data.append(bytearray(1000000))
-        if i % 1000000 == 0:
-            root_logger.info(f"progress: {i}")
-        if i % nn == 0:
-            time.sleep(0.1)
+    # for i in range(n):
+    #     a = i * i
+    #     if i % 100000 == 0:
+    #         data.append(bytearray(1000000))
+    #     if i % 1000000 == 0:
+    #         root_logger.info(f"progress: {i}")
+    #     if i % nn == 0:
+    #         time.sleep(0.1)
     root_logger.info(f"completed {datetime.now() - start}, data={len(data)}")
     return {"n": n, "len": len(data)}, 200
 

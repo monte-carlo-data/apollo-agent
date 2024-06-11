@@ -74,7 +74,7 @@ class AzureDurableFunctionsUtils:
         cls,
         request: AzureDurableFunctionsRequest,
         client: DurableOrchestrationClient,
-    ) -> Tuple[int, int, int]:
+    ) -> Dict[str, int]:
         created_time_from, created_time_to = cls._parse_created_times(
             request,
             default_created_from=datetime.now(timezone.utc) - timedelta(days=1),
@@ -89,14 +89,10 @@ class AzureDurableFunctionsUtils:
                 OrchestrationRuntimeStatus.Running,
             ],
         )
-        status_count: Dict[OrchestrationRuntimeStatus, int] = defaultdict(lambda: 0)
+        status_count: Dict[str, int] = defaultdict(lambda: 0)
         for i in instances:
-            status_count[i.runtime_status] = status_count[i.runtime_status] + 1  # type: ignore
-        return (
-            status_count[OrchestrationRuntimeStatus.Pending],
-            status_count[OrchestrationRuntimeStatus.Completed],
-            status_count[OrchestrationRuntimeStatus.Running],
-        )
+            status_count[i.runtime_status.value] = status_count[i.runtime_status.value] + 1  # type: ignore
+        return status_count
 
     @staticmethod
     async def _terminate_instances(
