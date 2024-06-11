@@ -2,7 +2,6 @@ import io
 import logging
 import os
 from datetime import datetime, timezone, timedelta
-from time import sleep
 from typing import Dict, Tuple, Callable, Optional, Union, Any, BinaryIO
 
 from flask import Flask, request, Response, send_file, jsonify, render_template
