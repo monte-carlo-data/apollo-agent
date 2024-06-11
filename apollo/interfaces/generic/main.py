@@ -438,14 +438,19 @@ def _test_health() -> Tuple[Dict, int]:
 @app.route("/api/v1/test/cpu", methods=["GET"])
 def test_cpu() -> Tuple[Dict, int]:
     request_dict: Dict = request.args  # type: ignore
+    start = datetime.now()
     n = int(request_dict.get("n", 1000000))
+    logger.info(f"started, n={n}")
     data = []
     for i in range(n):
         a = i * i
         if i % 1000 == 0:
+            if i % 10000 == 0:
+                print(i)
             time.sleep(0.1)
             data.append(bytearray(1000000))
-    return {"n": n}, 200
+    logger.info(f"completed {datetime.now() - start}, data={len(data)}")
+    return {"n": n, "len": len(data)}, 200
 
 
 @app.route("/api/v1/test/network/open", methods=["GET"])
