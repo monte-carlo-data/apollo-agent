@@ -1,11 +1,16 @@
 import json
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Dict, Optional
 
 from azure.mgmt.resource import ResourceManagementClient
 
+from apollo.agent.env_vars import (
+    LAST_UPDATE_TS_ENV_VAR,
+    AZURE_MAX_ACTIVITY_FUNCTIONS_ENV_VAR,
+    AZURE_MAX_ORCHESTRATOR_FUNCTIONS_ENV_VAR,
+)
 from apollo.agent.models import AgentError
 from apollo.agent.updater import AgentUpdater
 from apollo.integrations.azure_blob.utils import AzureUtils
@@ -16,7 +21,8 @@ logger = logging.getLogger(__name__)
 _PARAMETERS_ENV_VARS = {
     "WorkerProcessCount": "FUNCTIONS_WORKER_PROCESS_COUNT",
     "ThreadCount": "PYTHON_THREADPOOL_THREAD_COUNT",
-    "MaxConcurrentActivities": "AzureFunctionsJobHost__extensions__durableTask__maxConcurrentActivityFunctions",
+    "MaxConcurrentActivities": AZURE_MAX_ACTIVITY_FUNCTIONS_ENV_VAR,
+    "MaxConcurrentOrchestratorFunctions": AZURE_MAX_ORCHESTRATOR_FUNCTIONS_ENV_VAR,
 }
 
 # any other parameter prefixed with "env." will be mapped to an env var, for example
@@ -42,13 +48,12 @@ class AzureUpdater(AgentUpdater):
         parameters: Optional[Dict] = None,
         **kwargs,  # type: ignore
     ) -> Dict:
+        parameters = parameters or {}
         update_args = {
-            "image": image,
-            "parameters": parameters,
+            "image": image or "",  # open telemetry shows a warning when logging None
+            "parameters": parameters or {},
         }
         logger.info("Update requested", extra=update_args)
-        if not image and not parameters:
-            raise AgentError("Either image or parameters must be provided")
 
         client = self._get_resource_management_client()
         if image:
@@ -61,24 +66,24 @@ class AzureUpdater(AgentUpdater):
                 **self._get_function_resource_args(),
                 parameters=serialized_parameters,  # type: ignore
             )
-        if parameters:
-            update_appsettings_parameters = {
-                "properties": self._get_update_env_vars(parameters)
-            }
-            serialized_parameters = json.dumps(update_appsettings_parameters).encode(
-                "utf-8"
-            )
+        update_appsettings_parameters = {
+            "properties": self._get_update_env_vars(parameters)
+        }
+        serialized_parameters = json.dumps(update_appsettings_parameters).encode(
+            "utf-8"
+        )
 
-            # to update env vars we need to update <function_name>/config/appsettings
-            client.resources.begin_update(
-                **self._get_function_resource_args("/config/appsettings"),
-                parameters=serialized_parameters,  # type: ignore
-            )
+        # to update env vars we need to update <function_name>/config/appsettings
+        client.resources.begin_update(
+            **self._get_function_resource_args("/config/appsettings"),
+            parameters=serialized_parameters,  # type: ignore
+        )
 
         logger.info("Update triggered", extra=update_args)
         update_args_list = [
             f"{key}: {value}" for key, value in update_args.items() if value
         ]
+        update_args_list.append("function_restart")
         return {"message": f"Update in progress, {', '.join(update_args_list)}"}
 
     def get_current_image(self) -> Optional[str]:
@@ -143,5 +148,8 @@ class AzureUpdater(AgentUpdater):
                 if key.startswith(_ENV_PREFIX)
             }
         )
+        # we're always updating at least this env var, this forces the function to be restarted
+        # and also keeps track of the last update time, so we can confirm it was restarted
+        env_vars[LAST_UPDATE_TS_ENV_VAR] = datetime.now(timezone.utc).isoformat()
         logger.info(f"Updating env vars: {env_vars}")
         return env_vars

@@ -1,7 +1,10 @@
 import json
+from threading import local
 from typing import Dict, cast, Any
 
 from apollo.interfaces.generic.log_context import BaseLogContext
+
+_context = local()
 
 
 class AzureLogContext(BaseLogContext):
@@ -15,7 +18,7 @@ class AzureLogContext(BaseLogContext):
     """
 
     def set_agent_context(self, context: Dict):
-        self._context = self.filter_log_context(context)
+        _context.value = self.filter_log_context(context)
 
     @staticmethod
     def filter_log_context(context: Dict) -> Dict:
@@ -40,9 +43,13 @@ class AzureLogContext(BaseLogContext):
         Updates the log record with the agent context, OpenTelemetry doesn't support an "extra" attribute, we
         set the attributes as individual attributes in `record` making sure they are prefixed with "mcd_".
         """
-        if not self._context:
+        try:
+            context = _context.value
+        except AttributeError:
+            context = None
+        if not context:
             return record
 
-        for key, value in cast(Dict[str, Any], self._context).items():
+        for key, value in cast(Dict[str, Any], context).items():
             setattr(record, key if key.startswith("mcd_") else f"mcd_{key}", value)
         return record
