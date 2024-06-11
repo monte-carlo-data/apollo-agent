@@ -1,4 +1,3 @@
-import asyncio
 import json
 import logging
 import os
@@ -90,6 +89,7 @@ async def execute_async_operation(
         "connection_type": connection_type,
         "operation_name": operation_name,
         "payload": payload,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     }
     instance_id = await client.start_new(
         "agent_operation_orchestrator", client_input=client_input
@@ -206,11 +206,7 @@ async def get_durable_functions_info(
 
 
 @app.orchestration_trigger(context_name="context")
-@app.durable_client_input(client_name="client")
-def agent_operation_orchestrator(
-    context: DurableOrchestrationContext,
-    client: DurableOrchestrationClient,
-):
+def agent_operation_orchestrator(context: DurableOrchestrationContext):
     client_input = context.get_input()
     if isinstance(client_input, Dict):
         log_extra = {
@@ -242,7 +238,6 @@ def agent_operation_orchestrator(
         timeout_task.cancel()
         return activity_task.result
 
-    asyncio.run(client.terminate(context.instance_id, "timed out"))
     root_logger.info(
         f"Orchestrator activity: {context.instance_id} timed out", extra=log_extra
     )
@@ -256,6 +251,20 @@ def agent_operation(body: Dict):
     """
     Called by the Azure Durable Functions runtime to perform the operation.
     """
+    # first check how long the activity has been waiting to be executed
+    # it doesn't make sense to start running a task when nobody is waiting for its result
+    timestamp_str = body.get("timestamp")
+    if timestamp_str:
+        timestamp = datetime.fromisoformat(timestamp_str)
+        seconds_since_triggered = (
+            datetime.now(timezone.utc) - timestamp
+        ).total_seconds()
+        if seconds_since_triggered > _ACTIVITY_TIMEOUT_SECONDS:
+            return {
+                ATTRIBUTE_NAME_ERROR: f"Activity expired after {seconds_since_triggered} seconds."
+            }
+    else:
+        root_logger.warning("No timestamp in orchestrator request")
     # agent_response = main.execute_agent_operation(
     #     connection_type=body["connection_type"],
     #     operation_name=body["operation_name"],
