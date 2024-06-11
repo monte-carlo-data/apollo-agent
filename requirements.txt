@@ -21,7 +21,7 @@ azure-core==1.29.5
     #   azure-identity
     #   azure-mgmt-core
     #   azure-storage-blob
-azure-identity==1.14.0
+azure-identity==1.16.1
     # via -r requirements.in
 azure-mgmt-core==1.4.0
     # via azure-mgmt-storage
@@ -117,6 +117,8 @@ google-resumable-media==2.7.0
     # via google-cloud-storage
 googleapis-common-protos==1.62.0
     # via google-api-core
+greenlet==3.0.3
+    # via sqlalchemy
 gunicorn==22.0.0
     # via -r requirements.in
 hdbcli==2.18.27
