@@ -267,20 +267,20 @@ def agent_operation(body: Dict):
 
 
 def _test_cpu(request_dict: Dict):
-    n = int(request_dict.get("n", 1000000000))
-    nn = int(request_dict.get("nn", 10000000))
+    n = int(request_dict.get("n", 100000000))
+    nn = int(request_dict.get("nn", 1000000))
 
     start = datetime.now()
     root_logger.info(f"started, n={n}")
     data = []
-    # for i in range(n):
-    #     a = i * i
-    #     if i % 100000 == 0:
-    #         data.append(bytearray(1000000))
-    #     if i % 1000000 == 0:
-    #         print(i)
-    #     if i % nn == 0:
-    #         time.sleep(0.1)
+    for i in range(n):
+        a = i * i
+        if i % 100000 == 0:
+            data.append(bytearray(1000000))
+        if i % 1000000 == 0:
+            print(i)
+        if i % nn == 0:
+            time.sleep(0.1)
     root_logger.info(f"completed {datetime.now() - start}, data={len(data)}")
     return {"n": n, "len": len(data)}, 200
 
