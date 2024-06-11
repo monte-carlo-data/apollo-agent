@@ -442,7 +442,7 @@ def test_cpu() -> Tuple[Dict, int]:
     data = []
     for i in range(n):
         a = i * i
-        if a % 1000 == 0:
+        if i % 1000 == 0:
             time.sleep(0.1)
             data.append(bytearray(1000000))
     return {"n": n}, 200
