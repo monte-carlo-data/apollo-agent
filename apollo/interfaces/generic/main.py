@@ -439,18 +439,16 @@ def _test_health() -> Tuple[Dict, int]:
 def test_cpu() -> Tuple[Dict, int]:
     request_dict: Dict = request.args  # type: ignore
     start = datetime.now()
-    n = int(request_dict.get("n", 1000000000))
-    nn = int(request_dict.get("nn", 10000000))
+    n = int(request_dict.get("n", 1000000))
     logger.info(f"started, n={n}")
     data = []
     for i in range(n):
         a = i * i
-        if i % 100000 == 0:
-            data.append(bytearray(1000000))
-        if i % 1000000 == 0:
-            print(i)
-        if i % nn == 0:
+        if i % 1000 == 0:
+            if i % 10000 == 0:
+                print(i)
             time.sleep(0.1)
+            data.append(bytearray(1000000))
     logger.info(f"completed {datetime.now() - start}, data={len(data)}")
     return {"n": n, "len": len(data)}, 200
 
