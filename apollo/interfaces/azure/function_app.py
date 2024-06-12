@@ -13,11 +13,6 @@ from apollo.agent.env_vars import (
     ORCHESTRATION_ACTIVITY_TIMEOUT_ENV_VAR,
     ORCHESTRATION_ACTIVITY_TIMEOUT_DEFAULT_VALUE,
 )
-from apollo.interfaces.azure.durable_functions_utils import (
-    AzureDurableFunctionsUtils,
-    AzureDurableFunctionsRequest,
-    AzureDurableFunctionsCleanupRequest,
-)
 from apollo.interfaces.azure.log_context import AzureLogContext
 
 # remove default handlers to prevent duplicate log messages
@@ -53,9 +48,15 @@ from azure.durable_functions import (
     DurableOrchestrationClient,
     OrchestrationRuntimeStatus,
 )
+
 from azure.functions import WsgiMiddleware
 
 from apollo.interfaces.azure.azure_platform import AzurePlatformProvider
+from apollo.interfaces.azure.durable_functions_utils import (
+    AzureDurableFunctionsUtils,
+    AzureDurableFunctionsRequest,
+    AzureDurableFunctionsCleanupRequest,
+)
 from apollo.interfaces.azure import main
 
 _ACTIVITY_TIMEOUT_SECONDS = int(
@@ -88,6 +89,7 @@ async def execute_async_operation(
         "connection_type": connection_type,
         "operation_name": operation_name,
         "payload": payload,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     }
     instance_id = await client.start_new(
         "agent_operation_orchestrator", client_input=client_input
@@ -256,6 +258,15 @@ def agent_operation(body: Dict):
     """
     Called by the Azure Durable Functions runtime to perform the operation.
     """
+    # first check how long the activity has been waiting to be executed,
+    # the client won't be waiting for more than _ACTIVITY_TIMEOUT_SECONDS
+    expired, seconds_since_triggered = AzureDurableFunctionsUtils.check_expired_task(
+        body, _ACTIVITY_TIMEOUT_SECONDS
+    )
+    if expired:
+        return {
+            ATTRIBUTE_NAME_ERROR: f"Activity expired after {seconds_since_triggered} seconds."
+        }
     agent_response = main.execute_agent_operation(
         connection_type=body["connection_type"],
         operation_name=body["operation_name"],
