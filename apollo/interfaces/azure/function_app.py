@@ -13,11 +13,6 @@ from apollo.agent.env_vars import (
     ORCHESTRATION_ACTIVITY_TIMEOUT_ENV_VAR,
     ORCHESTRATION_ACTIVITY_TIMEOUT_DEFAULT_VALUE,
 )
-from apollo.interfaces.azure.durable_functions_utils import (
-    AzureDurableFunctionsUtils,
-    AzureDurableFunctionsRequest,
-    AzureDurableFunctionsCleanupRequest,
-)
 from apollo.interfaces.azure.log_context import AzureLogContext
 
 # remove default handlers to prevent duplicate log messages
@@ -53,9 +48,15 @@ from azure.durable_functions import (
     DurableOrchestrationClient,
     OrchestrationRuntimeStatus,
 )
+
 from azure.functions import WsgiMiddleware
 
 from apollo.interfaces.azure.azure_platform import AzurePlatformProvider
+from apollo.interfaces.azure.durable_functions_utils import (
+    AzureDurableFunctionsUtils,
+    AzureDurableFunctionsRequest,
+    AzureDurableFunctionsCleanupRequest,
+)
 from apollo.interfaces.azure import main
 
 _ACTIVITY_TIMEOUT_SECONDS = int(
@@ -257,30 +258,15 @@ def agent_operation(body: Dict):
     """
     Called by the Azure Durable Functions runtime to perform the operation.
     """
-    # first check how long the activity has been waiting to be executed
-    # it doesn't make sense to start running a task when nobody is waiting for its result
-    log_extra = {
-        "mcd_trace_id": body.get("payload", {}).get("operation", {}).get("trace_id"),
-        "operation_name": body.get("operation_name"),
-        "connection_type": body.get("connection_type"),
-    }
-    timestamp_str = body.get("timestamp")
-    if timestamp_str:
-        timestamp = datetime.fromisoformat(timestamp_str)
-        seconds_since_triggered = (
-            datetime.now(timezone.utc) - timestamp
-        ).total_seconds()
-        if seconds_since_triggered > _ACTIVITY_TIMEOUT_SECONDS:
-            root_logger.warning(
-                f"Activity expired after {seconds_since_triggered} seconds.",
-                extra=log_extra,
-            )
-            return {
-                ATTRIBUTE_NAME_ERROR: f"Activity expired after {seconds_since_triggered} seconds."
-            }
-    else:
-        root_logger.warning("No timestamp in orchestrator request", extra=log_extra)
-
+    # first check how long the activity has been waiting to be executed,
+    # the client won't be waiting for more than _ACTIVITY_TIMEOUT_SECONDS
+    expired, seconds_since_triggered = AzureDurableFunctionsUtils.check_expired_task(
+        body, _ACTIVITY_TIMEOUT_SECONDS
+    )
+    if expired:
+        return {
+            ATTRIBUTE_NAME_ERROR: f"Activity expired after {seconds_since_triggered} seconds."
+        }
     agent_response = main.execute_agent_operation(
         connection_type=body["connection_type"],
         operation_name=body["operation_name"],
