@@ -439,12 +439,10 @@ def _test_health() -> Tuple[Dict, int]:
 def test_cpu() -> Tuple[Dict, int]:
     request_dict: Dict = request.args  # type: ignore
     n = int(request_dict.get("n", 1000000))
-    data = []
     for i in range(n):
         a = i * i
         if a % 1000 == 0:
             time.sleep(0.1)
-            data.append(bytearray(1000000))
     return {"n": n}, 200
 
 
