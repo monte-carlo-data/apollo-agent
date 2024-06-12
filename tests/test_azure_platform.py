@@ -529,7 +529,7 @@ class TestAzurePlatform(TestCase):
             ]
 
         mock_client.get_status_by.side_effect = get_status_by
-        status_count = asyncio.run(
+        pending, completed, running = asyncio.run(
             AzureDurableFunctionsUtils.get_durable_functions_info(
                 AzureDurableFunctionsRequest.from_dict({}),
                 mock_client,
@@ -544,9 +544,9 @@ class TestAzurePlatform(TestCase):
                 OrchestrationRuntimeStatus.Running,
             ],
         )
-        self.assertEqual(1, status_count.get("Pending"))
-        self.assertEqual(2, status_count.get("Completed"))
-        self.assertEqual(1, status_count.get("Running"))
+        self.assertEqual(1, pending)
+        self.assertEqual(2, completed)
+        self.assertEqual(1, running)
 
         mock_client.get_status_by.reset_mock()
         asyncio.run(
