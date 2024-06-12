@@ -1,4 +1,3 @@
-import asyncio
 import json
 import logging
 import os
@@ -206,11 +205,7 @@ async def get_durable_functions_info(
 
 
 @app.orchestration_trigger(context_name="context")
-@app.durable_client_input(client_name="client")
-def agent_operation_orchestrator(
-    context: DurableOrchestrationContext,
-    client: DurableOrchestrationClient,
-):
+def agent_operation_orchestrator(context: DurableOrchestrationContext):
     client_input = context.get_input()
     if isinstance(client_input, Dict):
         log_extra = {
@@ -242,7 +237,6 @@ def agent_operation_orchestrator(
         timeout_task.cancel()
         return activity_task.result
 
-    asyncio.run(client.terminate(context.instance_id, "timed out"))
     root_logger.info(
         f"Orchestrator activity: {context.instance_id} timed out", extra=log_extra
     )
