@@ -11,6 +11,8 @@ from dataclasses_json import dataclass_json, DataClassJsonMixin
 
 from apollo.interfaces.generic.utils import AgentPlatformUtils
 
+logger = logging.getLogger(__name__)
+
 
 @dataclass_json
 @dataclass
@@ -154,6 +156,32 @@ class AzureDurableFunctionsUtils:
         except Exception as ex:
             logging.error(f"Failed to purge Durable Functions data: {ex}")
             return -1
+
+    @staticmethod
+    def check_expired_task(body: Dict, timeout: int) -> Tuple[bool, float]:
+        log_extra = {
+            "mcd_trace_id": body.get("payload", {})
+            .get("operation", {})
+            .get("trace_id"),
+            "operation_name": body.get("operation_name"),
+            "connection_type": body.get("connection_type"),
+        }
+        timestamp_str = body.get("timestamp")
+        if timestamp_str:
+            timestamp = datetime.fromisoformat(timestamp_str)
+            seconds_since_triggered = (
+                datetime.now(timezone.utc) - timestamp
+            ).total_seconds()
+            expired = seconds_since_triggered > timeout
+            if expired:
+                logger.warning(
+                    f"Activity expired after {seconds_since_triggered} seconds.",
+                    extra=log_extra,
+                )
+            return expired, seconds_since_triggered
+        else:
+            logger.warning("No timestamp in orchestrator request", extra=log_extra)
+            return False, 0
 
     @staticmethod
     def _parse_created_times(

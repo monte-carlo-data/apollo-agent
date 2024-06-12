@@ -697,3 +697,22 @@ class TestAzurePlatform(TestCase):
         t2.join()
         self.assertEqual("c1", c1.get("result").mcd_name)
         self.assertEqual("c2", c2.get("result").mcd_name)
+
+    def test_task_expiration(self):
+        body = {
+            "timestamp": (
+                datetime.now(timezone.utc) - timedelta(minutes=20)
+            ).isoformat(),
+        }
+        expired, seconds = AzureDurableFunctionsUtils.check_expired_task(body, 15 * 60)
+        self.assertTrue(expired)
+        self.assertTrue(seconds > 15 * 60)
+
+        body = {
+            "timestamp": (
+                datetime.now(timezone.utc) - timedelta(minutes=14)
+            ).isoformat(),
+        }
+        expired, seconds = AzureDurableFunctionsUtils.check_expired_task(body, 15 * 60)
+        self.assertFalse(expired)
+        self.assertTrue(seconds < 15 * 60)
