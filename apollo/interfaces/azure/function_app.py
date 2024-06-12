@@ -1,7 +1,6 @@
 import json
 import logging
 import os
-import time
 from datetime import datetime, timedelta, timezone
 from typing import Dict, cast
 
@@ -257,32 +256,12 @@ def agent_operation(body: Dict):
     """
     Called by the Azure Durable Functions runtime to perform the operation.
     """
-    # agent_response = main.execute_agent_operation(
-    #     connection_type=body["connection_type"],
-    #     operation_name=body["operation_name"],
-    #     json_request=body["payload"],
-    # )
-    # return agent_response.result
-    return _test_cpu(body["payload"])
-
-
-def _test_cpu(request_dict: Dict):
-    n = int(request_dict.get("n", 1000000000))
-    nn = int(request_dict.get("nn", 10000000))
-
-    start = datetime.now()
-    root_logger.info(f"started, n={n}")
-    data = []
-    for i in range(n):
-        a = i * i
-        if i % 100000 == 0:
-            data.append(bytearray(1000000))
-        if i % 1000000 == 0:
-            print(i)
-        if i % nn == 0:
-            time.sleep(0.1)
-    root_logger.info(f"completed {datetime.now() - start}, data={len(data)}")
-    return {"n": n, "len": len(data)}, 200
+    agent_response = main.execute_agent_operation(
+        connection_type=body["connection_type"],
+        operation_name=body["operation_name"],
+        json_request=body["payload"],
+    )
+    return agent_response.result
 
 
 @app.http_type(http_type="wsgi")
