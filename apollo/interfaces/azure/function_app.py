@@ -253,6 +253,11 @@ def agent_operation(body: Dict):
     """
     # first check how long the activity has been waiting to be executed
     # it doesn't make sense to start running a task when nobody is waiting for its result
+    log_extra = {
+        "mcd_trace_id": body.get("payload", {}).get("operation", {}).get("trace_id"),
+        "operation_name": body.get("operation_name"),
+        "connection_type": body.get("connection_type"),
+    }
     timestamp_str = body.get("timestamp")
     if timestamp_str:
         timestamp = datetime.fromisoformat(timestamp_str)
@@ -260,11 +265,15 @@ def agent_operation(body: Dict):
             datetime.now(timezone.utc) - timestamp
         ).total_seconds()
         if seconds_since_triggered > _ACTIVITY_TIMEOUT_SECONDS:
+            root_logger.warning(
+                f"Activity expired after {seconds_since_triggered} seconds.",
+                extra=log_extra,
+            )
             return {
                 ATTRIBUTE_NAME_ERROR: f"Activity expired after {seconds_since_triggered} seconds."
             }
     else:
-        root_logger.warning("No timestamp in orchestrator request")
+        root_logger.warning("No timestamp in orchestrator request", extra=log_extra)
     # agent_response = main.execute_agent_operation(
     #     connection_type=body["connection_type"],
     #     operation_name=body["operation_name"],
