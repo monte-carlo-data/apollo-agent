@@ -209,6 +209,34 @@ class Agent:
                 host, port_str, timeout_str, trace_id
             )
 
+    def perform_dns_lookup(
+        self,
+        host: Optional[str],
+        port_str: Optional[str],
+        trace_id: Optional[str] = None,
+    ) -> AgentResponse:
+        """
+        Performs a DNS lookup for the given host name.
+        :param host: Host to check, will raise `BadRequestError` if None.
+        :param port_str: Optional port to pass to `getaddrinfo` API, both int and
+            string are supported.
+        :param trace_id: Optional trace ID received from the client that will be included in
+            the response, if present.
+        """
+        with self._inject_log_context("perform_dns_lookup", trace_id):
+            logger.info(
+                "DNS lookup request received",
+                extra=self._logging_utils.build_extra(
+                    trace_id=trace_id,
+                    operation_name="perform_dns_lookup",
+                    extra=dict(
+                        host=host,
+                        port=port_str,
+                    ),
+                ),
+            )
+            return ValidateNetwork.perform_dns_lookup(host, port_str, trace_id)
+
     def get_outbound_ip_address(
         self,
         trace_id: Optional[str] = None,
