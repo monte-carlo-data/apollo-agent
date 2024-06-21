@@ -146,3 +146,16 @@ class HealthNetworkTests(TestCase):
             "Telnet connection for localhost:123 is unusable.",
             response.result.get(ATTRIBUTE_NAME_ERROR),
         )
+
+    @patch("apollo.validators.validate_network.socket.getaddrinfo")
+    def test_dns_lookup(self, getaddrinfo_mock):
+        getaddrinfo_mock.return_value = [
+            (0, 0, 0, "", ("1.2.3.4", 0)),
+            (0, 0, 0, "", ("1.2.3.4", 0)),
+            (0, 0, 0, "", ("5.6.7.8", 0)),
+        ]
+        response = self._agent.perform_dns_lookup("localhost", None, None)
+        self.assertEqual(
+            "Host localhost resolves to: 1.2.3.4, 5.6.7.8",
+            response.result.get(ATTRIBUTE_NAME_RESULT).get("message"),
+        )

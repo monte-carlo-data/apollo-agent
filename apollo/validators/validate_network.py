@@ -185,7 +185,7 @@ class ValidateNetwork:
 
         try:
             lookup_result = socket.getaddrinfo(host, port_str)
-            addresses = set([addr[4][0] for addr in lookup_result])
+            addresses = sorted(set([addr[4][0] for addr in lookup_result]))
             return {"message": f"Host {host} resolves to: {', '.join(addresses)}"}
         except Exception as err:
             raise ConnectionFailedError(
