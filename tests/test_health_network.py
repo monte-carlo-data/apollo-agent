@@ -2,7 +2,6 @@ import os
 import socket
 import sys
 from telnetlib import Telnet
-from typing import Dict, Optional
 from unittest import TestCase
 from unittest.mock import patch, create_autospec
 
@@ -13,8 +12,6 @@ from apollo.agent.constants import (
     ATTRIBUTE_NAME_RESULT,
 )
 from apollo.agent.logging_utils import LoggingUtils
-from apollo.agent.platform import AgentPlatformProvider
-from apollo.agent.updater import AgentUpdater
 from apollo.agent.utils import AgentUtils
 from apollo.validators.validate_network import _DEFAULT_TIMEOUT_SECS
 from tests.platform_provider import TestPlatformProvider
@@ -141,4 +138,17 @@ class HealthNetworkTests(TestCase):
         self.assertEqual(
             "Telnet connection for localhost:123 is unusable.",
             response.result.get(ATTRIBUTE_NAME_ERROR),
+        )
+
+    @patch("apollo.validators.validate_network.socket.getaddrinfo")
+    def test_dns_lookup(self, getaddrinfo_mock):
+        getaddrinfo_mock.return_value = [
+            (0, 0, 0, "", ("1.2.3.4", 0)),
+            (0, 0, 0, "", ("1.2.3.4", 0)),
+            (0, 0, 0, "", ("5.6.7.8", 0)),
+        ]
+        response = self._agent.perform_dns_lookup("localhost", None, None)
+        self.assertEqual(
+            "Host localhost resolves to: 1.2.3.4, 5.6.7.8",
+            response.result.get(ATTRIBUTE_NAME_RESULT).get("message"),
         )
