@@ -646,6 +646,102 @@ def test_network_telnet_post() -> Tuple[Dict, int]:
     return _execute_network_validation(agent.validate_telnet_connection)
 
 
+@app.route("/api/v1/test/network/dns", methods=["GET"])
+def perform_dns_lookup_get() -> Tuple[Dict, int]:
+    """
+    Performs a DNS lookup for the specified host name.
+    ---
+    tags:
+        - Troubleshooting
+    produces:
+        - application/json
+    parameters:
+        - in: query
+          name: host
+          description: The host name to lookup for
+          required: true
+          schema:
+              type: string
+              example: getmontecarlo.com
+        - in: query
+          name: port
+          description: The port number to use
+          required: false
+          schema:
+              type: integer
+              example: 80
+        - in: query
+          name: trace_id
+          description: An optional trace_id
+          schema:
+              type: string
+              example: 324986b4-b185-4187-b4af-b0c2cd60f7a0
+    definitions:
+        - schema:
+            id: DnsLookupResponse
+            properties:
+                __mcd_result__:
+                    type: object
+                    properties:
+                        message:
+                            type: string
+                            description: A message including the response of the lookup operation.
+                __mcd_trace_id__:
+                    type: string
+                    description: The trace_id passed as an input parameter.
+            example:
+                __mcd_result__:
+                    message: Host getmontecarlo.com resolves to 1.2.3.4
+                __mcd_trace_id__: 324986b4-b185-4187-b4af-b0c2cd60f7a0
+    responses:
+        200:
+            description: Returns a message including the response of the lookup operation.
+            schema:
+                $ref: "#/definitions/DnsLookupResponse"
+    :return: a message including the response of the lookup operation
+    """
+    return _execute_network_validation(agent.perform_dns_lookup, include_timeout=False)
+
+
+@app.route("/api/v1/test/network/dns", methods=["POST"])
+def perform_dns_lookup_post() -> Tuple[Dict, int]:
+    """
+    Tests network connectivity to the given host in the specified port using a Telnet connection.
+    ---
+    tags:
+        - Troubleshooting
+    produces:
+        - application/json
+    parameters:
+        - in: body
+          name: body
+          schema:
+            id: DnsLookupRequest
+            properties:
+                host:
+                  type: string
+                  description: The host name to lookup for
+                  required: true
+                  example: getmontecarlo.com
+                port:
+                  type: integer
+                  description: The port number to use
+                  required: false
+                  example: 80
+                trace_id:
+                  type: string
+                  description: An optional trace_id
+                  example: 324986b4-b185-4187-b4af-b0c2cd60f7a0
+    responses:
+        200:
+            description: Returns a message including the response of the lookup operation.
+            schema:
+                $ref: "#/definitions/DnsLookupResponse"
+    :return: a message including the response of the lookup operation
+    """
+    return _execute_network_validation(agent.perform_dns_lookup, include_timeout=False)
+
+
 @app.route("/api/v1/upgrade", methods=["POST"])
 def upgrade_agent() -> Tuple[Dict, int]:
     """
@@ -993,15 +1089,18 @@ def swagger_index():
     return render_template("swagger.html")
 
 
-def _execute_network_validation(method: Callable) -> Tuple[Dict, int]:
+def _execute_network_validation(
+    method: Callable, include_timeout: bool = True
+) -> Tuple[Dict, int]:
     request_dict: Dict = request.json if request.method == "POST" else request.args  # type: ignore
-
-    response = method(
+    args = dict(
         host=request_dict.get("host"),
         port_str=request_dict.get("port"),
-        timeout_str=request_dict.get("timeout"),
         trace_id=request_dict.get("trace_id"),
     )
+    if include_timeout:
+        args["timeout_str"] = request_dict.get("timeout")
+    response = method(**args)
     return response.result, response.status_code
 
 

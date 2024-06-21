@@ -71,6 +71,28 @@ class ValidateNetwork:
             trace_id=trace_id,
         )
 
+    @classmethod
+    def perform_dns_lookup(
+        cls,
+        host: Optional[str],
+        port_str: Optional[str],
+        trace_id: Optional[str] = None,
+    ):
+        """
+        Performs a DNS lookup for the specified host name.
+        :param host: Host to check, will raise `BadRequestError` if None.
+        :param port_str: Optional port to pass to `getaddrinfo` API, both int and
+        string are supported.
+        :param trace_id: Optional trace ID received from the client that will be included in
+        the response, if present.
+        """
+        return cls._call_validation_method(
+            cls._internal_perform_dns_lookup,
+            host=host,
+            port_str=port_str,
+            trace_id=trace_id,
+        )
+
     @staticmethod
     def _call_validation_method(
         method: Callable, trace_id: Optional[str], **kwargs  # type: ignore
@@ -148,6 +170,26 @@ class ValidateNetwork:
         except socket.gaierror as err:
             raise ConnectionFailedError(
                 f"Invalid hostname {host} ({err}). Connection unusable."
+            ) from err
+
+    @classmethod
+    def _internal_perform_dns_lookup(
+        cls, host: Optional[str], port_str: Optional[str]
+    ) -> Dict:
+        """
+        Implementation for the DNS lookup operation, first validates the parameters and then
+        uses getaddrinfo to resolve the name.
+        """
+        if not host:
+            raise BadRequestError("host is a required parameter")
+
+        try:
+            lookup_result = socket.getaddrinfo(host, port_str)
+            addresses = set([addr[4][0] for addr in lookup_result])
+            return {"message": f"Host {host} resolves to: {', '.join(addresses)}"}
+        except Exception as err:
+            raise ConnectionFailedError(
+                f"DNS lookup failed for {host}: {err}."
             ) from err
 
     @staticmethod
