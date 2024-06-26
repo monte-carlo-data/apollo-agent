@@ -1,6 +1,6 @@
 import socket
 from telnetlib import Telnet
-from typing import Optional, Callable, Dict, Tuple
+from typing import Optional, Callable, Dict, Tuple, Union
 
 from apollo.agent.utils import AgentUtils
 from apollo.interfaces.agent_response import AgentResponse
@@ -75,13 +75,13 @@ class ValidateNetwork:
     def perform_dns_lookup(
         cls,
         host: Optional[str],
-        port_str: Optional[str],
+        port: Optional[Union[int, str]],
         trace_id: Optional[str] = None,
     ):
         """
         Performs a DNS lookup for the specified host name.
         :param host: Host to check, will raise `BadRequestError` if None.
-        :param port_str: Optional port to pass to `getaddrinfo` API, both int and
+        :param port: Optional port to pass to `getaddrinfo` API, both int and
         string are supported.
         :param trace_id: Optional trace ID received from the client that will be included in
         the response, if present.
@@ -89,7 +89,7 @@ class ValidateNetwork:
         return cls._call_validation_method(
             cls._internal_perform_dns_lookup,
             host=host,
-            port_str=port_str,
+            port=port,
             trace_id=trace_id,
         )
 
@@ -174,7 +174,7 @@ class ValidateNetwork:
 
     @classmethod
     def _internal_perform_dns_lookup(
-        cls, host: Optional[str], port_str: Optional[str]
+        cls, host: Optional[str], port: Optional[Union[int, str]]
     ) -> Dict:
         """
         Implementation for the DNS lookup operation, first validates the parameters and then
@@ -184,7 +184,7 @@ class ValidateNetwork:
             raise BadRequestError("host is a required parameter")
 
         try:
-            lookup_result = socket.getaddrinfo(host, port_str)
+            lookup_result = socket.getaddrinfo(host, port)
             addresses = sorted(set([addr[4][0] for addr in lookup_result]))
             return {"message": f"Host {host} resolves to: {', '.join(addresses)}"}
         except Exception as err:
