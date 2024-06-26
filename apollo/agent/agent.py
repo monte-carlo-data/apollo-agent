@@ -5,7 +5,7 @@ import sys
 import time
 from contextlib import contextmanager
 from datetime import datetime
-from typing import Any, Callable, Dict, Optional, List
+from typing import Any, Callable, Dict, Optional, List, Union
 
 from apollo.agent.env_vars import (
     HEALTH_ENV_VARS,
@@ -215,14 +215,14 @@ class Agent:
     def perform_dns_lookup(
         self,
         host: Optional[str],
-        port_str: Optional[str],
+        port_str: Optional[Union[int, str]],
         trace_id: Optional[str] = None,
     ) -> AgentResponse:
         """
         Performs a DNS lookup for the given host name.
         :param host: Host to check, will raise `BadRequestError` if None.
         :param port_str: Optional port to pass to `getaddrinfo` API, both int and
-            string are supported.
+            string are supported. Using `port_str` to be consistent with the other methods.
         :param trace_id: Optional trace ID received from the client that will be included in
             the response, if present.
         """
