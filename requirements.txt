@@ -4,46 +4,46 @@
 #
 #    pip-compile requirements.in
 #
-alembic==1.13.0
+alembic==1.13.2
     # via databricks-sql-connector
 asn1crypto==1.5.1
     # via
     #   oscrypto
     #   snowflake-connector-python
-attrs==23.1.0
+attrs==23.2.0
     # via
     #   cattrs
     #   looker-sdk
 azure-common==1.1.28
     # via azure-mgmt-storage
-azure-core==1.29.5
+azure-core==1.30.2
     # via
     #   azure-identity
     #   azure-mgmt-core
     #   azure-storage-blob
-azure-identity==1.14.0
+azure-identity==1.17.1
     # via -r requirements.in
 azure-mgmt-core==1.4.0
     # via azure-mgmt-storage
-azure-mgmt-storage==21.1.0
+azure-mgmt-storage==21.2.1
     # via -r requirements.in
-azure-storage-blob==12.18.3
+azure-storage-blob==12.20.0
     # via -r requirements.in
-blinker==1.7.0
+blinker==1.8.2
     # via flask
-boto3==1.28.21
+boto3==1.34.135
     # via -r requirements.in
-botocore==1.31.85
+botocore==1.34.135
     # via
     #   boto3
     #   s3transfer
 brotli==1.1.0
     # via flask-compress
-cachetools==5.3.2
+cachetools==5.3.3
     # via google-auth
 cattrs==23.2.3
     # via looker-sdk
-certifi==2023.11.17
+certifi==2024.6.2
     # via
     #   requests
     #   snowflake-connector-python
@@ -59,7 +59,7 @@ click==8.1.7
     # via
     #   flask
     #   presto-python-client
-cryptography==42.0.5
+cryptography==42.0.8
     # via
     #   -r requirements.in
     #   azure-identity
@@ -81,7 +81,7 @@ duckdb==0.9.2
     # via -r requirements.in
 et-xmlfile==1.1.0
     # via openpyxl
-filelock==3.13.1
+filelock==3.15.4
     # via snowflake-connector-python
 flask==2.3.3
     # via
@@ -89,16 +89,16 @@ flask==2.3.3
     #   flask-compress
 flask-compress==1.14
     # via -r requirements.in
-future==0.18.3
+future==1.0.0
     # via pyhive
-google-api-core==2.15.0
+google-api-core==2.19.1
     # via
     #   google-api-python-client
     #   google-cloud-core
     #   google-cloud-storage
 google-api-python-client==2.98.0
     # via -r requirements.in
-google-auth==2.25.2
+google-auth==2.30.0
     # via
     #   google-api-core
     #   google-api-python-client
@@ -113,9 +113,9 @@ google-cloud-storage==2.10.0
     # via -r requirements.in
 google-crc32c==1.5.0
     # via google-resumable-media
-google-resumable-media==2.7.0
+google-resumable-media==2.7.1
     # via google-cloud-storage
-googleapis-common-protos==1.62.0
+googleapis-common-protos==1.63.2
     # via google-api-core
 gunicorn==22.0.0
     # via -r requirements.in
@@ -133,7 +133,7 @@ isodate==0.6.1
     # via
     #   azure-mgmt-storage
     #   azure-storage-blob
-itsdangerous==2.1.2
+itsdangerous==2.2.0
     # via flask
 jinja2==3.1.4
     # via
@@ -147,16 +147,16 @@ lambda-git==0.1.1
     # via -r requirements.in
 looker-sdk==24.2.0
     # via -r requirements.in
-lz4==4.3.2
+lz4==4.3.3
     # via databricks-sql-connector
-mako==1.3.0
+mako==1.3.5
     # via alembic
-markupsafe==2.1.3
+markupsafe==2.1.5
     # via
     #   jinja2
     #   mako
     #   werkzeug
-marshmallow==3.20.1
+marshmallow==3.21.3
     # via dataclasses-json
 msal==1.24.1
     # via
@@ -167,38 +167,42 @@ msal-extensions==1.1.0
     # via azure-identity
 mypy-extensions==1.0.0
     # via typing-inspect
-numpy==1.24.4
+numpy==2.0.0
     # via
     #   databricks-sql-connector
     #   pandas
     #   pyarrow
 oauthlib==3.2.2
     # via databricks-sql-connector
-openpyxl==3.1.2
+openpyxl==3.1.5
     # via databricks-sql-connector
-oracledb==1.4.2
+oracledb==2.2.1
     # via -r requirements.in
 oscrypto @ git+https://github.com/wbond/oscrypto@master
     # via -r requirements.in
-packaging==23.2
+packaging==24.1
     # via
     #   gunicorn
     #   marshmallow
     #   msal-extensions
     #   snowflake-connector-python
     #   tableauserverclient
-pandas==2.0.3
+pandas==2.2.2
     # via databricks-sql-connector
-platformdirs==3.11.0
+platformdirs==4.2.2
     # via snowflake-connector-python
-portalocker==2.8.2
+portalocker==2.10.0
     # via msal-extensions
 presto-python-client==0.8.3
     # via -r requirements.in
-protobuf==4.25.1
+proto-plus==1.24.0
+    # via google-api-core
+protobuf==4.25.3
     # via
+    #   -r requirements.in
     #   google-api-core
     #   googleapis-common-protos
+    #   proto-plus
 psycopg2-binary==2.9.7
     # via -r requirements.in
 pure-sasl==0.6.2
@@ -209,20 +213,22 @@ pyarrow==14.0.1
     # via
     #   -r requirements.in
     #   databricks-sql-connector
-pyasn1==0.5.1
+pyasn1==0.6.0
     # via
     #   pyasn1-modules
     #   rsa
-pyasn1-modules==0.3.0
+pyasn1-modules==0.4.0
     # via google-auth
-pycparser==2.21
+pycparser==2.22
     # via cffi
-pycryptodome==3.19.1
+pycryptodome==3.20.0
     # via
     #   -r requirements.in
     #   teradatasql
 pyhive[hive-pure-sasl]==0.7.0 ; python_version >= "3.11"
-    # via -r requirements.in
+    # via
+    #   -r requirements.in
+    #   pyhive
 pyjwt[crypto]==2.8.0
     # via
     #   -r requirements.in
@@ -232,22 +238,22 @@ pymysql==1.1.1
     # via -r requirements.in
 pyodbc==5.0.1
     # via -r requirements.in
-pyopenssl==24.0.0
+pyopenssl==24.1.0
     # via
     #   -r requirements.in
     #   snowflake-connector-python
-pyparsing==3.1.1
+pyparsing==3.1.2
     # via httplib2
-python-dateutil==2.8.2
+python-dateutil==2.9.0.post0
     # via
     #   botocore
     #   pandas
     #   pyhive
-pytz==2023.3.post1
+pytz==2024.1
     # via
     #   pandas
     #   snowflake-connector-python
-requests==2.32.2
+requests==2.32.3
     # via
     #   -r requirements.in
     #   azure-core
@@ -265,7 +271,7 @@ retry2==0.9.5
     # via -r requirements.in
 rsa==4.9
     # via google-auth
-s3transfer==0.6.2
+s3transfer==0.10.2
     # via boto3
 six==1.16.0
     # via
@@ -275,17 +281,17 @@ six==1.16.0
     #   python-dateutil
     #   thrift
     #   thrift-sasl
-snowflake-connector-python==3.7.1
+snowflake-connector-python==3.11.0
     # via -r requirements.in
 sortedcontainers==2.4.0
     # via snowflake-connector-python
-sqlalchemy==1.4.50
+sqlalchemy==1.4.52
     # via
     #   alembic
     #   databricks-sql-connector
-tableauserverclient==0.30 ; python_version >= "3.10"
+tableauserverclient @ git+https://github.com/tableau/server-client-python.git@master ; python_version >= "3.10"
     # via -r requirements.in
-teradatasql==20.0.0.2
+teradatasql==20.0.0.13
     # via -r requirements.in
 thrift==0.16.0
     # via
@@ -294,23 +300,25 @@ thrift==0.16.0
     #   thrift-sasl
 thrift-sasl==0.4.3
     # via pyhive
-tomlkit==0.12.3
+tomlkit==0.12.5
     # via snowflake-connector-python
-typing-extensions==4.9.0
+typing-extensions==4.12.2
     # via
     #   alembic
     #   azure-core
+    #   azure-identity
     #   azure-storage-blob
     #   looker-sdk
     #   snowflake-connector-python
+    #   tableauserverclient
     #   typing-inspect
 typing-inspect==0.9.0
     # via dataclasses-json
-tzdata==2023.3
+tzdata==2024.1
     # via pandas
 uritemplate==4.1.1
     # via google-api-python-client
-urllib3==2.0.7
+urllib3==2.2.2
     # via
     #   botocore
     #   requests

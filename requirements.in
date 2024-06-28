@@ -1,7 +1,7 @@
-azure-identity==1.14.0
-azure-mgmt-storage==21.1.0
-azure-storage-blob==12.18.3
-boto3==1.28.21
+azure-identity==1.17.1
+azure-mgmt-storage==21.2.1
+azure-storage-blob==12.20.0
+boto3==1.34.135
 cryptography>=42.0.4
 databricks-sql-connector==2.8.0
 dataclasses-json==0.6.0
@@ -18,6 +18,7 @@ looker-sdk==24.2.0
 msal==1.24.1
 oracledb>=1.3.1
 presto-python-client==0.8.3
+protobuf<5.0.0dev  # from google-cloud-logging in requirements-cloudrun
 psycopg2-binary==2.9.7
 pyarrow==14.0.1  # CVE-2023-47248
 pycryptodome>=3.19.1
@@ -31,7 +32,8 @@ retry2==0.9.5
 snowflake-connector-python>=3.7.1
 # python_version conditions below to resolve urllib3 compatibility issues with snowflake-connector-python
 tableauserverclient==0.25 ; python_version < "3.10"
-tableauserverclient>=0.29 ; python_version >= "3.10"
+# using master branch to get urllib3 dependency updated to ==2.2.2, switch to v0.32 when released
+tableauserverclient @ git+https://github.com/tableau/server-client-python.git@master; python_version >= "3.10"
 
 teradatasql>=17.20.0.31
 oscrypto @ git+https://github.com/wbond/oscrypto@master
@@ -41,4 +43,5 @@ oscrypto @ git+https://github.com/wbond/oscrypto@master
 # pure-sasl via additional extras 'pyhive[hive_pure_sasl]' which support Python 3.11.
 pyhive[hive_pure_sasl]==0.7.0 ; python_version >= "3.11"
 pyhive[hive]==0.6.5 ; python_version < "3.11"
+#urllib3>=2.2.2
 werkzeug==3.0.3
