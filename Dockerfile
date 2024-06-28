@@ -79,8 +79,11 @@ RUN pip install --no-cache-dir --target "${LAMBDA_TASK_ROOT}" -r requirements.tx
 
 FROM public.ecr.aws/lambda/python:3.11 AS lambda
 
-# VULN-29: Base ECR image has setuptools-56.0.0 which is vulnerable (CVE-2022-40897)
+# VULN-29: Base ECR image includes setuptools-56.0.0 which is vulnerable (CVE-2022-40897)
 RUN pip install --no-cache-dir setuptools==68.0.0
+# VULN-369: Base ECR image includes urllib3-1.26.18 which is vulnerable (CVE-2024-37891)
+RUN pip install --no-cache-dir --upgrade urllib3==1.26.19
+RUN rm -rf /var/lang/lib/python3.11/site-packages/urllib3-1.26.18.dist-info
 
 # VULN-230 CWE-77
 RUN pip install --no-cache-dir --upgrade pip
