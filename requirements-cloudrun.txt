@@ -19,6 +19,7 @@ charset-normalizer==3.3.2
 google-api-core[grpc]==2.15.0
     # via
     #   -c requirements.txt
+    #   google-api-core
     #   google-cloud-appengine-logging
     #   google-cloud-core
     #   google-cloud-logging
