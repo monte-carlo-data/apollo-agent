@@ -176,7 +176,7 @@ class TableauTests(TestCase):
                     {
                         "method": "api_request",
                         "kwargs": {
-                            "path": "https://example.com/sites/sample_site_id/views?includeUsageStatistics=true",
+                            "path": "/sites/sample_site_id/views?includeUsageStatistics=true",
                             "request_method": "GET",
                             "content_type": "application/xml",
                             "params": {"pageNumber": 1, "pageSize": 10},
