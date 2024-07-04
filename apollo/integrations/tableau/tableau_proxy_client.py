@@ -138,7 +138,10 @@ class TableauProxyClient(BaseProxyClient):
             "X-Tableau-Auth": self._server.auth_token,
             "Content-Type": content_type,
         }
-        url = f"{self._server.baseurl}/sites/{self._server.site_id}/{path}"
+        if path.startswith("/"):
+            url = f"{self._server.baseurl}{path}"
+        else:
+            url = f"{self._server.baseurl}/sites/{self._server.site_id}/{path}"
         response = requests.request(
             method=request_method, url=url, data=data, headers=headers, params=params
         )
