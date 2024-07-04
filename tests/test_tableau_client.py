@@ -146,7 +146,7 @@ class TableauTests(TestCase):
     @patch("apollo.integrations.tableau.tableau_proxy_client.generate_jwt")
     @patch("requests.request")
     def test_api_request_with_url(
-            self, mock_request, mock_jwt_gen, mock_server_init, mock_creds_init
+        self, mock_request, mock_jwt_gen, mock_server_init, mock_creds_init
     ):
         mock_response = create_autospec(Response)
         mock_request.return_value = mock_response
@@ -176,7 +176,7 @@ class TableauTests(TestCase):
                     {
                         "method": "api_request",
                         "kwargs": {
-                            "path": "https://example.comsites/sample_site_id/views?includeUsageStatistics=true",
+                            "path": "https://example.com/sites/sample_site_id/views?includeUsageStatistics=true",
                             "request_method": "GET",
                             "content_type": "application/xml",
                             "params": {"pageNumber": 1, "pageSize": 10},
