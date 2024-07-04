@@ -162,7 +162,7 @@ class TableauTests(TestCase):
         mock_jwt_gen.return_value = "fake_jwt"
         mock_server_init.return_value = self._mock_client
         mock_creds_init.return_value = self._mock_creds
-        self._mock_client.baseurl = "/sites/sample_site_id/views?includeUsageStatistics=true"
+        self._mock_client.baseurl = "https://example.com"
         self._mock_client.site_id = "sample_site_id"
         self._mock_client.auth_token = "fizz|buzz|sample_site_id"
 
@@ -176,7 +176,7 @@ class TableauTests(TestCase):
                     {
                         "method": "api_request",
                         "kwargs": {
-                            "path": "https://example.com/sites/sample_site_id/views?includeUsageStatistics=true",
+                            "path": "/sites/sample_site_id/views?includeUsageStatistics=true",
                             "request_method": "GET",
                             "content_type": "application/xml",
                             "params": {"pageNumber": 1, "pageSize": 10},
