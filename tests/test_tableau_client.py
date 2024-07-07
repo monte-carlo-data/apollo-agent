@@ -176,10 +176,10 @@ class TableauTests(TestCase):
                     {
                         "method": "api_request",
                         "kwargs": {
-                            "path": "/sites/sample_site_id/views?includeUsageStatistics=true",
-                            "request_method": "GET",
+                            "path": "/api/-/content/usage-stats",
+                            "request_method": "POST",
                             "content_type": "application/xml",
-                            "params": {"pageNumber": 1, "pageSize": 10},
+                            "params": None,
                         },
                     }
                 ],
@@ -192,12 +192,12 @@ class TableauTests(TestCase):
         self.assertEqual((expected_result, 200), response)
         self._mock_client.auth.sign_in.assert_called_once_with(self._mock_creds)
         mock_request.assert_called_once_with(
-            method="GET",
-            url="https://example.com/sites/sample_site_id/views?includeUsageStatistics=true",
+            method="POST",
+            url="https://example.com/api/-/content/usage-stats",
             data=None,
             headers={
                 "X-Tableau-Auth": "fizz|buzz|sample_site_id",
                 "Content-Type": "application/xml",
             },
-            params={"pageNumber": 1, "pageSize": 10},
+            params=None,
         )

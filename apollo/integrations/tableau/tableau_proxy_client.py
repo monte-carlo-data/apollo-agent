@@ -139,7 +139,8 @@ class TableauProxyClient(BaseProxyClient):
             "Content-Type": content_type,
         }
         if path.startswith("/"):
-            url = f"{self._server.baseurl}{path}"
+            # Only https://example.com (without /api/version)
+            url = f"{self._server.server_address}{path}"
         else:
             url = f"{self._server.baseurl}/sites/{self._server.site_id}/{path}"
         response = requests.request(
