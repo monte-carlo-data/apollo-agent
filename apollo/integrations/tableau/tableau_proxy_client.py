@@ -143,6 +143,7 @@ class TableauProxyClient(BaseProxyClient):
             url = f"{self._server.server_address}{path}"
         else:
             url = f"{self._server.baseurl}/sites/{self._server.site_id}/{path}"
+        logger.info(f"Tableau url: {url}")
         response = requests.request(
             method=request_method, url=url, data=data, headers=headers, params=params
         )
