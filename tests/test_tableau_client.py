@@ -161,7 +161,7 @@ class TableauTests(TestCase):
 
         mock_jwt_gen.return_value = "fake_jwt"
         mock_creds_init.return_value = self._mock_creds
-        self._mock_client.baseurl = "https://example.com"
+        self._mock_client.server_address = "https://example.com"
         mock_server_init.return_value = "https://example.com"
 
         self._mock_client.auth_token = "fizz|buzz|sample_site_id"
