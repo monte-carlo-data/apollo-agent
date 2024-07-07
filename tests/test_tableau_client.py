@@ -160,11 +160,11 @@ class TableauTests(TestCase):
         mock_response.text = expected_result
 
         mock_jwt_gen.return_value = "fake_jwt"
-        mock_creds_init.return_value = self._mock_creds
         mock_server_init.return_value = self._mock_client
+        mock_creds_init.return_value = self._mock_creds
+        self._mock_client.baseurl = "https://example.com"
         self._mock_client.server_address = "https://example.com"
-        mock_server_init.return_value = "https://example.com"
-
+        self._mock_client.site_id = "sample_site_id"
         self._mock_client.auth_token = "fizz|buzz|sample_site_id"
 
         result = self._agent.execute_operation(
@@ -177,10 +177,10 @@ class TableauTests(TestCase):
                     {
                         "method": "api_request",
                         "kwargs": {
-                            "path": "/api/-/content/usage-stats",
-                            "request_method": "POST",
+                            "path": "/sites/sample_site_id/views?includeUsageStatistics=true",
+                            "request_method": "GET",
                             "content_type": "application/xml",
-                            "params": None,
+                            "params": {"pageNumber": 1, "pageSize": 10},
                         },
                     }
                 ],
@@ -193,12 +193,12 @@ class TableauTests(TestCase):
         self.assertEqual((expected_result, 200), response)
         self._mock_client.auth.sign_in.assert_called_once_with(self._mock_creds)
         mock_request.assert_called_once_with(
-            method="POST",
-            url="https://example.com/api/-/content/usage-stats",
+            method="GET",
+            url="https://example.com/sites/sample_site_id/views?includeUsageStatistics=true",
             data=None,
             headers={
                 "X-Tableau-Auth": "fizz|buzz|sample_site_id",
                 "Content-Type": "application/xml",
             },
-            params=None,
+            params={"pageNumber": 1, "pageSize": 10},
         )
