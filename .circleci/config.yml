@@ -276,7 +276,7 @@ workflows:
               only:
                 - dev
       - update-and-validate-golden-agent:
-          name: update-and-validate-golden-agent-gcp-dev
+          name: gcp-dev-update-and-validate-golden-agent
           agent_uuid: ${MCD_AGENT_UUID_WITH_GCP_AGENT}
           agent_version: ${NEXT_VERSION}
           image_repo: pre-release-agent
@@ -284,7 +284,6 @@ workflows:
             - checkout
             - generate-version-number-dev
           context:
-            - docker
             - mc-dev
           requires:
             - build-and-push-dev
@@ -306,6 +305,18 @@ workflows:
             branches:
               only:
                 - dev
+      - update-and-validate-golden-agent:
+          name: aws-dev-update-and-validate-golden-agent
+          agent_uuid: ${MCD_AGENT_UUID_WITH_AWS_AGENT}
+          agent_version: ${NEXT_VERSION}
+          image_repo: pre-release-agent
+          pre-steps:
+            - checkout
+            - generate-version-number-dev
+          context:
+            - mc-dev
+          requires:
+            - build-and-push-lambda-dev
       - push-lambda-legacy-repo:
           name: push-lambda-aws-dev
           docker_hub_repository: pre-release-agent
