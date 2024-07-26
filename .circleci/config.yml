@@ -47,7 +47,6 @@ jobs:
   run-linter:
     docker:
       - image: cimg/python:3.11-node
-
     steps:
       - checkout
       - run:
@@ -198,6 +197,7 @@ jobs:
           command: make VERSION=<< parameters.code_version >> publish-docs
 
   update-and-validate-golden-agent:
+    executor: aws-cli/default
     parameters:
       agent_uuid:
         description: UUID of the Agent
@@ -210,38 +210,38 @@ jobs:
         type: string
         default: "0"
     steps:
-    - jq/install
-    - run:
-        name: Install dependencies
-        command: |
-          curl https://bootstrap.pypa.io/get-pip.py > get-pip.py
-          python get-pip.py
-          pip install --no-cache-dir --upgrade pip
-          pip install --no-cache-dir montecarlodata
-    - run:
-        name: Update agent
-        command: |
-          export MCD_DEFAULT_API_ID=${MCD_SMOKE_TESTS_API_ID}
-          export MCD_DEFAULT_API_TOKEN=${MCD_SMOKE_TESTS_API_TOKEN}
-          montecarlo agents upgrade --agent-id << parameters.agent_uuid >>
-    - run:
-        name: Run Agent Health
-        command: |
-          sleep << parameters.sleep_seconds >>
-          export MCD_DEFAULT_API_ID=${MCD_SMOKE_TESTS_API_ID}
-          export MCD_DEFAULT_API_TOKEN=${MCD_SMOKE_TESTS_API_TOKEN}
-          AGENT_VERSION=`montecarlo agents health --agent-id << parameters.agent_uuid >> | grep -v "Agent health check" | jq -r '.version'`
-          echo "Agent Version: $AGENT_VERSION"
-          if [ $AGENT_VERSION = "<< parameters.agent_version >>" ]
-              then exit 0
-              else echo "Failed to find expected version, found: $AGENT_VERSION"; exit 1
-          fi
-    - run:
-        name: Run validations
-        command: |
-          export MCD_DEFAULT_API_ID=${MCD_SMOKE_TESTS_API_ID}
-          export MCD_DEFAULT_API_TOKEN=${MCD_SMOKE_TESTS_API_TOKEN}
-          montecarlo collectors run-validations --all-validations --agent-id << parameters.agent_uuid >>
+      - jq/install
+      - run:
+          name: Install dependencies
+          command: |
+            curl https://bootstrap.pypa.io/get-pip.py > get-pip.py
+            python get-pip.py
+            pip install --no-cache-dir --upgrade pip
+            pip install --no-cache-dir montecarlodata
+      - run:
+          name: Update agent
+          command: |
+            export MCD_DEFAULT_API_ID=${MCD_SMOKE_TESTS_API_ID}
+            export MCD_DEFAULT_API_TOKEN=${MCD_SMOKE_TESTS_API_TOKEN}
+            montecarlo agents upgrade --agent-id << parameters.agent_uuid >>
+      - run:
+          name: Run Agent Health
+          command: |
+            sleep << parameters.sleep_seconds >>
+            export MCD_DEFAULT_API_ID=${MCD_SMOKE_TESTS_API_ID}
+            export MCD_DEFAULT_API_TOKEN=${MCD_SMOKE_TESTS_API_TOKEN}
+            AGENT_VERSION=`montecarlo agents health --agent-id << parameters.agent_uuid >> | grep -v "Agent health check" | jq -r '.version'`
+            echo "Agent Version: $AGENT_VERSION"
+            if [ $AGENT_VERSION = "<< parameters.agent_version >>" ]
+                then exit 0
+                else echo "Failed to find expected version, found: $AGENT_VERSION"; exit 1
+            fi
+      - run:
+          name: Run validations
+          command: |
+            export MCD_DEFAULT_API_ID=${MCD_SMOKE_TESTS_API_ID}
+            export MCD_DEFAULT_API_TOKEN=${MCD_SMOKE_TESTS_API_TOKEN}
+            montecarlo collectors run-validations --all-validations --agent-id << parameters.agent_uuid >>
 
 workflows:
   version: 2
