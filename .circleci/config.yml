@@ -227,6 +227,7 @@ jobs:
           command: |
             export MCD_DEFAULT_API_ID=${MCD_SMOKE_TESTS_API_ID}
             export MCD_DEFAULT_API_TOKEN=${MCD_SMOKE_TESTS_API_TOKEN}
+            export MCD_AGENT_IMAGE_REPO=<< parameters.image_repo >>
             montecarlo agents upgrade --agent-id << parameters.agent_uuid >>
       - run:
           name: Run Agent Health
@@ -234,7 +235,6 @@ jobs:
             sleep << parameters.sleep_seconds >>
             export MCD_DEFAULT_API_ID=${MCD_SMOKE_TESTS_API_ID}
             export MCD_DEFAULT_API_TOKEN=${MCD_SMOKE_TESTS_API_TOKEN}
-            export MCD_AGENT_IMAGE_REPO=<< parameters.image_repo >>
             AGENT_VERSION=`montecarlo agents health --agent-id << parameters.agent_uuid >> | grep -v "Agent health check" | jq -r '.version'`
             echo "Agent Version: $AGENT_VERSION"
             if [ $AGENT_VERSION = "<< parameters.agent_version >>" ]
