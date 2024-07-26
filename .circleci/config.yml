@@ -209,6 +209,10 @@ jobs:
         description: Seconds to wait after triggering the agent update and before checking for the new version
         type: string
         default: "0"
+      image_repo:
+        description: The image repository to use for the agent, pre-release-agent or agent
+        type: string
+        default: "agent"
     steps:
       - jq/install
       - run:
@@ -230,11 +234,12 @@ jobs:
             sleep << parameters.sleep_seconds >>
             export MCD_DEFAULT_API_ID=${MCD_SMOKE_TESTS_API_ID}
             export MCD_DEFAULT_API_TOKEN=${MCD_SMOKE_TESTS_API_TOKEN}
+            export MCD_AGENT_IMAGE_REPO=<< parameters.image_repo >>
             AGENT_VERSION=`montecarlo agents health --agent-id << parameters.agent_uuid >> | grep -v "Agent health check" | jq -r '.version'`
             echo "Agent Version: $AGENT_VERSION"
             if [ $AGENT_VERSION = "<< parameters.agent_version >>" ]
                 then exit 0
-                else echo "Failed to find expected version, found: $AGENT_VERSION"; exit 1
+                else echo "Failed to find expected version (<< parameters.agent_version >>), found: $AGENT_VERSION"; exit 1
             fi
       - run:
           name: Run validations
@@ -274,6 +279,7 @@ workflows:
           name: update-and-validate-golden-agent-gcp-dev
           agent_uuid: ${MCD_AGENT_UUID_WITH_GCP_AGENT}
           agent_version: ${NEXT_VERSION}
+          image_repo: pre-release-agent
           pre-steps:
             - checkout
             - generate-version-number-dev
