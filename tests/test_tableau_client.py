@@ -163,7 +163,6 @@ class TableauTests(TestCase):
         mock_server_init.return_value = self._mock_client
         mock_creds_init.return_value = self._mock_creds
         self._mock_client.baseurl = "https://example.com"
-        self._mock_client.server_address = "https://example.com"
         self._mock_client.site_id = "sample_site_id"
         self._mock_client.auth_token = "fizz|buzz|sample_site_id"
 
