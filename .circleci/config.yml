@@ -291,7 +291,7 @@ workflows:
           name: az-dev-update-and-validate-golden-agent
           agent_uuid: ${MCD_AGENT_UUID_WITH_AZ_AGENT}
           agent_version: ${NEXT_VERSION}
-          sleep_seconds: 120
+          sleep_seconds: "120"
           image_repo: pre-release-agent
           pre-steps:
             - checkout
