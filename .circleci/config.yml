@@ -325,6 +325,22 @@ workflows:
             branches:
               only:
                 - /.*\/pr-.*/
+      - update-and-validate-golden-agent:
+          name: az-prod-update-and-validate-golden-agent
+          agent_uuid: ${MCD_AGENT_UUID_WITH_AZ_AGENT}
+          agent_version: ${NEXT_VERSION}
+          image_repo: pre-release-agent
+          pre-steps:
+            - checkout
+            - generate-version-number-dev
+          context:
+            - mc-prod
+          requires:
+            - build-and-push-dev
+          filters:
+            branches:
+              only:
+                - /.*\/pr-.*/
       - build-and-push-lambda:
           name: build-and-push-lambda-dev
           docker_hub_repository: pre-release-agent
