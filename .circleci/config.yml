@@ -341,7 +341,7 @@ workflows:
               only:
                 - dev
       - update-and-validate-golden-agent:
-          name: gcp-prod-update-and-validate-golden-agent
+          name: gcp-prod-update-and-validate-golden-agent-merge-queue
           agent_uuid: ${MCD_AGENT_UUID_WITH_GCP_AGENT}
           agent_version: ${NEXT_VERSION}
           image_repo: pre-release-agent
@@ -357,7 +357,7 @@ workflows:
               only:
                 - /.*\/pr-.*/
       - update-and-validate-golden-agent:
-          name: az-prod-update-and-validate-golden-agent
+          name: az-prod-update-and-validate-golden-agent-merge-queue
           agent_uuid: ${MCD_AGENT_UUID_WITH_AZ_AGENT}
           agent_version: ${NEXT_VERSION}
           sleep_seconds: "120"
@@ -409,7 +409,7 @@ workflows:
               only:
                 - dev
       - update-and-validate-golden-agent:
-          name: aws-prod-update-and-validate-golden-agent
+          name: aws-prod-update-and-validate-golden-agent-merge-queue
           use_aws_cli: true
           agent_uuid: ${MCD_AGENT_UUID_WITH_AWS_AGENT}
           agent_version: ${NEXT_VERSION}
@@ -460,6 +460,29 @@ workflows:
               only: /^v.*/
             branches:
               ignore: /.*/
+      - update-and-validate-golden-agent:
+          name: gcp-prod-update-and-validate-golden-agent
+          agent_uuid: ${MCD_AGENT_UUID_WITH_GCP_AGENT}
+          agent_version: ${VERSION_TAG}
+          pre-steps:
+            - checkout
+            - generate-version-number-prod
+          context:
+            - mc-prod
+          requires:
+            - build-and-push-prod
+      - update-and-validate-golden-agent:
+          name: az-prod-update-and-validate-golden-agent
+          agent_uuid: ${MCD_AGENT_UUID_WITH_AZ_AGENT}
+          agent_version: ${VERSION_TAG}
+          sleep_seconds: "120"
+          pre-steps:
+            - checkout
+            - generate-version-number-prod
+          context:
+            - mc-prod
+          requires:
+            - build-and-push-prod
       - build-and-push-lambda:
           name: build-and-push-lambda-prod
           docker_hub_repository: agent
@@ -479,6 +502,18 @@ workflows:
               only: /^v.*/
             branches:
               ignore: /.*/
+      - update-and-validate-golden-agent:
+          name: aws-prod-update-and-validate-golden-agent
+          use_aws_cli: true
+          agent_uuid: ${MCD_AGENT_UUID_WITH_AWS_AGENT}
+          agent_version: ${VERSION_TAG}
+          pre-steps:
+            - checkout
+            - generate-version-number-prod
+          context:
+            - mc-prod
+          requires:
+            - build-and-push-lambda-prod
       - push-lambda-legacy-repo:
           name: push-lambda-aws-prod
           docker_hub_repository: agent
