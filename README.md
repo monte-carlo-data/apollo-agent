@@ -1,6 +1,6 @@
 # Monte Carlo Data Collector - Apollo Agent
 
-Monte Carlo's [containerized agent](https://hub.docker.com/r/montecarlodata/agent) (Beta).
+Monte Carlo's [containerized agent](https://hub.docker.com/r/montecarlodata/agent).
 See [here](https://docs.getmontecarlo.com/docs/platform-architecture) for architecture details and alternative
 deployment options.
 
