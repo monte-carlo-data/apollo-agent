@@ -242,15 +242,19 @@ jobs:
                 role_arn: "${AWS_AGENT_ACCOUNT_ROLE_ARN}"
                 profile_name: mcd
             - run:
-                name: Update agent
+                name: Trigger AWS agent stack update
                 command: |
                   aws cloudformation update-stack --profile mcd --stack-name "${AWS_AGENT_STACK_NAME}" --use-previous-template --parameters "ParameterKey=ImageUri,ParameterValue=<< parameters.ecr_repo_account >>.dkr.ecr.*.amazonaws.com/<< parameters.ecr_repo_name >>:<< parameters.agent_version >>" --region ${AWS_AGENT_REGION} --capabilities CAPABILITY_IAM
+            - run:
+                name: Wait for update to complete
+                command: |
+                  aws cloudformation wait stack-update-complete --profile mcd --stack-name "${AWS_AGENT_STACK_NAME}" --region ${AWS_AGENT_REGION}
       - when:
           condition:
             not: << parameters.use_aws_cli >>
           steps:
             - run:
-                name: Update AWS agent
+                name: Update agent
                 command: |
                   export MCD_DEFAULT_API_ID=${MCD_SMOKE_TESTS_API_ID}
                   export MCD_DEFAULT_API_TOKEN=${MCD_SMOKE_TESTS_API_TOKEN}
