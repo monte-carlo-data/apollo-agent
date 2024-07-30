@@ -369,24 +369,6 @@ workflows:
             branches:
               only:
                 - /.*\/pr-.*/
-      - update-and-validate-golden-agent:
-          name: aws-prod-update-and-validate-golden-agent
-          use_aws_cli: true
-          agent_uuid: ${MCD_AGENT_UUID_WITH_AWS_AGENT}
-          agent_version: ${NEXT_VERSION}
-          ecr_repo_name: "mcd-pre-release-agent"
-          ecr_repo_account: "637423407294"
-          pre-steps:
-            - checkout
-            - generate-version-number-dev
-          context:
-            - mc-prod
-          requires:
-            - build-and-push-dev
-          filters:
-            branches:
-              only:
-                - /.*\/pr-.*/
       - build-and-push-lambda:
           name: build-and-push-lambda-dev
           docker_hub_repository: pre-release-agent
@@ -405,6 +387,7 @@ workflows:
             branches:
               only:
                 - dev
+                - /.*\/pr-.*/
       - update-and-validate-golden-agent:
           name: aws-dev-update-and-validate-golden-agent
           agent_uuid: ${MCD_AGENT_UUID_WITH_AWS_AGENT}
@@ -417,6 +400,28 @@ workflows:
             - mc-dev
           requires:
             - build-and-push-lambda-dev
+          filters:
+            branches:
+              only:
+                - dev
+      - update-and-validate-golden-agent:
+          name: aws-prod-update-and-validate-golden-agent
+          use_aws_cli: true
+          agent_uuid: ${MCD_AGENT_UUID_WITH_AWS_AGENT}
+          agent_version: ${NEXT_VERSION}
+          ecr_repo_name: "mcd-pre-release-agent"
+          ecr_repo_account: "637423407294"
+          pre-steps:
+            - checkout
+            - generate-version-number-dev
+          context:
+            - mc-prod
+          requires:
+            - build-and-push-lambda-dev
+          filters:
+            branches:
+              only:
+                - /.*\/pr-.*/
       - push-lambda-legacy-repo:
           name: push-lambda-aws-dev
           docker_hub_repository: pre-release-agent
