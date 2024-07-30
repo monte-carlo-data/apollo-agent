@@ -220,11 +220,11 @@ jobs:
       ecr_repo_name:
         description: The ECR repository to use for the AWS CLI update
         type: string
-        default: "mcd-agent"
+        default: "${AWS_AGENT_ECR_REPO_PROD}"
       ecr_repo_account:
         description: The AWS account to use for the ECR repo update
         type: string
-        default: "590183797493"
+        default: "${AWS_AGENT_ECR_ACCOUNT_PROD}"
     steps:
       - jq/install
       - run:
@@ -413,8 +413,8 @@ workflows:
           use_aws_cli: true
           agent_uuid: ${MCD_AGENT_UUID_WITH_AWS_AGENT}
           agent_version: ${NEXT_VERSION}
-          ecr_repo_name: "mcd-pre-release-agent"
-          ecr_repo_account: "637423407294"
+          ecr_repo_name: "${AWS_AGENT_ECR_REPO_DEV}"
+          ecr_repo_account: "${AWS_AGENT_ECR_ACCOUNT_DEV}"
           pre-steps:
             - checkout
             - generate-version-number-dev
