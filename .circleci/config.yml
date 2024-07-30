@@ -199,6 +199,10 @@ jobs:
   update-and-validate-golden-agent:
     executor: aws-cli/default
     parameters:
+      use_aws_cli:
+        description: Use the AWS CLI to perform the update
+        type: boolean
+        default: false
       agent_uuid:
         description: UUID of the Agent
         type: string
@@ -213,6 +217,14 @@ jobs:
         description: The image repository to use for the agent, pre-release-agent or agent
         type: string
         default: "agent"
+      ecr_repo_name:
+        description: The ECR repository to use for the AWS CLI update
+        type: string
+        default: "mcd-agent"
+      ecr_repo_account:
+        description: The AWS account to use for the ECR repo update
+        type: string
+        default: "590183797493"
     steps:
       - jq/install
       - run:
@@ -222,13 +234,28 @@ jobs:
             python get-pip.py
             pip install --no-cache-dir --upgrade pip
             pip install --no-cache-dir montecarlodata
-      - run:
-          name: Update agent
-          command: |
-            export MCD_DEFAULT_API_ID=${MCD_SMOKE_TESTS_API_ID}
-            export MCD_DEFAULT_API_TOKEN=${MCD_SMOKE_TESTS_API_TOKEN}
-            export MCD_AGENT_IMAGE_REPO=<< parameters.image_repo >>
-            montecarlo agents upgrade --agent-id << parameters.agent_uuid >>
+      - when:
+          condition:
+            equal: [ true, << parameters.use_aws_cli >> ]
+          steps:
+            - aws-cli/setup:
+                role_arn: "${AWS_AGENT_ACCOUNT_ROLE_ARN}"
+                profile_name: mcd
+            - run:
+                name: Update agent
+                command: |
+                  aws cloudformation update-stack --profile mcd --stack-name "${AWS_AGENT_STACK_NAME}" --use-previous-template --parameters "ParameterKey=ImageUri,ParameterValue=<< parameters.ecr_repo_account >>.dkr.ecr.*.amazonaws.com/<< parameters.ecr_repo_name >>:<< parameters.agent_version >>" --region ${AWS_AGENT_REGION} --capabilities CAPABILITY_IAM
+      - when:
+          condition:
+            not: << parameters.use_aws_cli >>
+          steps:
+            - run:
+                name: Update AWS agent
+                command: |
+                  export MCD_DEFAULT_API_ID=${MCD_SMOKE_TESTS_API_ID}
+                  export MCD_DEFAULT_API_TOKEN=${MCD_SMOKE_TESTS_API_TOKEN}
+                  export MCD_AGENT_IMAGE_REPO=<< parameters.image_repo >>
+                  montecarlo agents upgrade --agent-id << parameters.agent_uuid >>
       - run:
           name: Run Agent Health
           command: |
@@ -331,6 +358,24 @@ workflows:
           agent_version: ${NEXT_VERSION}
           sleep_seconds: "120"
           image_repo: pre-release-agent
+          pre-steps:
+            - checkout
+            - generate-version-number-dev
+          context:
+            - mc-prod
+          requires:
+            - build-and-push-dev
+          filters:
+            branches:
+              only:
+                - /.*\/pr-.*/
+      - update-and-validate-golden-agent:
+          name: aws-prod-update-and-validate-golden-agent
+          use_aws_cli: true
+          agent_uuid: ${MCD_AGENT_UUID_WITH_AWS_AGENT}
+          agent_version: ${NEXT_VERSION}
+          ecr_repo_name: "mcd-pre-release-agent"
+          ecr_repo_account: "637423407294"
           pre-steps:
             - checkout
             - generate-version-number-dev
