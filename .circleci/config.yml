@@ -4,6 +4,7 @@ orbs:
   aws-cli: circleci/aws-cli@4.1.3
   aws-ecr: circleci/aws-ecr@9.0.4
   docker: circleci/docker@2.2.0
+  jq: circleci/jq@3.0.0
 
 commands:
   verify-version-in-docker-image:
@@ -23,12 +24,29 @@ commands:
             then exit 0
             else echo "Failed to find expected version, found: $image_version"; exit 1
           fi
+  generate-version-number-dev:
+    steps:
+    - run:
+        command: |
+          PIPELINE_NUMBER=<< pipeline.number >>
+          if git describe --tags --abbrev=0; then TAG=$(git describe --tags --abbrev=0); else exit 1; fi
+          VERSION=${TAG#v}
+          echo "NEXT_VERSION=$(echo "$VERSION" | awk 'BEGIN{FS=OFS="."} {$3+=1} 1')rc${PIPELINE_NUMBER}" >> $BASH_ENV
+          source $BASH_ENV
+        name: Generate dev version number
+  generate-version-number-prod:
+    steps:
+    - run:
+        command: |
+          if git describe --tags --abbrev=0; then TAG=$(git describe --tags --abbrev=0); else exit 1; fi
+          echo "VERSION_TAG=${TAG#v}" >> $BASH_ENV
+          source $BASH_ENV
+        name: Generate prod version number
 
 jobs:
   run-linter:
     docker:
       - image: cimg/python:3.11-node
-
     steps:
       - checkout
       - run:
@@ -178,6 +196,89 @@ jobs:
           name: Publish docs and invalidate the cloudfront cache
           command: make VERSION=<< parameters.code_version >> publish-docs
 
+  update-and-validate-golden-agent:
+    executor: aws-cli/default
+    parameters:
+      use_aws_cli:
+        description: Use the AWS CLI to perform the update
+        type: boolean
+        default: false
+      agent_uuid:
+        description: UUID of the Agent
+        type: string
+      agent_version:
+        description: The agent version installed, to check after the upgrade is complete
+        type: string
+      sleep_seconds:
+        description: Seconds to wait after triggering the agent update and before checking for the new version
+        type: string
+        default: "0"
+      image_repo:
+        description: The image repository to use for the agent, pre-release-agent or agent
+        type: string
+        default: "agent"
+      ecr_repo_name:
+        description: The ECR repository to use for the AWS CLI update
+        type: string
+        default: "${AWS_AGENT_ECR_REPO_PROD}"
+      ecr_repo_account:
+        description: The AWS account to use for the ECR repo update
+        type: string
+        default: "${AWS_AGENT_ECR_ACCOUNT_PROD}"
+    steps:
+      - jq/install
+      - run:
+          name: Install dependencies
+          command: |
+            curl https://bootstrap.pypa.io/get-pip.py > get-pip.py
+            python get-pip.py
+            pip install --no-cache-dir --upgrade pip
+            pip install --no-cache-dir montecarlodata
+      - when:
+          condition:
+            equal: [ true, << parameters.use_aws_cli >> ]
+          steps:
+            - aws-cli/setup:
+                role_arn: "${AWS_AGENT_ACCOUNT_ROLE_ARN}"
+                profile_name: mcd
+            - run:
+                name: Trigger AWS agent stack update
+                command: |
+                  aws cloudformation update-stack --profile mcd --stack-name "${AWS_AGENT_STACK_NAME}" --use-previous-template --parameters "ParameterKey=ImageUri,ParameterValue=<< parameters.ecr_repo_account >>.dkr.ecr.*.amazonaws.com/<< parameters.ecr_repo_name >>:<< parameters.agent_version >>" --region ${AWS_AGENT_REGION} --capabilities CAPABILITY_IAM
+            - run:
+                name: Wait for update to complete
+                command: |
+                  aws cloudformation wait stack-update-complete --profile mcd --stack-name "${AWS_AGENT_STACK_NAME}" --region ${AWS_AGENT_REGION}
+      - when:
+          condition:
+            not: << parameters.use_aws_cli >>
+          steps:
+            - run:
+                name: Update agent
+                command: |
+                  export MCD_DEFAULT_API_ID=${MCD_SMOKE_TESTS_API_ID}
+                  export MCD_DEFAULT_API_TOKEN=${MCD_SMOKE_TESTS_API_TOKEN}
+                  export MCD_AGENT_IMAGE_REPO=<< parameters.image_repo >>
+                  montecarlo agents upgrade --agent-id << parameters.agent_uuid >>
+      - run:
+          name: Run Agent Health
+          command: |
+            sleep << parameters.sleep_seconds >>
+            export MCD_DEFAULT_API_ID=${MCD_SMOKE_TESTS_API_ID}
+            export MCD_DEFAULT_API_TOKEN=${MCD_SMOKE_TESTS_API_TOKEN}
+            AGENT_VERSION=`montecarlo agents health --agent-id << parameters.agent_uuid >> | grep -v "Agent health check" | jq -r '.version'`
+            echo "Agent Version: $AGENT_VERSION"
+            if [ $AGENT_VERSION = "<< parameters.agent_version >>" ]
+                then exit 0
+                else echo "Failed to find expected version (<< parameters.agent_version >>), found: $AGENT_VERSION"; exit 1
+            fi
+      - run:
+          name: Run validations
+          command: |
+            export MCD_DEFAULT_API_ID=${MCD_SMOKE_TESTS_API_ID}
+            export MCD_DEFAULT_API_TOKEN=${MCD_SMOKE_TESTS_API_TOKEN}
+            montecarlo collectors run-validations --all-validations --agent-id << parameters.agent_uuid >>
+
 workflows:
   version: 2
 
@@ -195,13 +296,7 @@ workflows:
           code_version: ${NEXT_VERSION}
           pre-steps:
             - checkout
-            - run:
-                command: |
-                  PIPELINE_NUMBER=<< pipeline.number >>
-                  if git describe --tags --abbrev=0; then TAG=$(git describe --tags --abbrev=0); else exit 1; fi
-                  VERSION=${TAG#v}
-                  echo "NEXT_VERSION=$(echo "$VERSION" | awk 'BEGIN{FS=OFS="."} {$3+=1} 1')rc${PIPELINE_NUMBER}" >> $BASH_ENV
-                  source $BASH_ENV
+            - generate-version-number-dev
           context:
             - docker
           requires:
@@ -211,6 +306,73 @@ workflows:
             branches:
               only:
                 - dev
+                - /.*\/pr-.*/
+      - update-and-validate-golden-agent:
+          name: gcp-dev-update-and-validate-golden-agent
+          agent_uuid: ${MCD_AGENT_UUID_WITH_GCP_AGENT}
+          agent_version: ${NEXT_VERSION}
+          image_repo: pre-release-agent
+          pre-steps:
+            - checkout
+            - generate-version-number-dev
+          context:
+            - mc-dev
+          requires:
+            - build-and-push-dev
+          filters:
+            branches:
+              only:
+                - dev
+      - update-and-validate-golden-agent:
+          name: az-dev-update-and-validate-golden-agent
+          agent_uuid: ${MCD_AGENT_UUID_WITH_AZ_AGENT}
+          agent_version: ${NEXT_VERSION}
+          sleep_seconds: "120"
+          image_repo: pre-release-agent
+          pre-steps:
+            - checkout
+            - generate-version-number-dev
+          context:
+            - mc-dev
+          requires:
+            - build-and-push-dev
+          filters:
+            branches:
+              only:
+                - dev
+      - update-and-validate-golden-agent:
+          name: gcp-prod-update-and-validate-golden-agent-merge-queue
+          agent_uuid: ${MCD_AGENT_UUID_WITH_GCP_AGENT}
+          agent_version: ${NEXT_VERSION}
+          image_repo: pre-release-agent
+          pre-steps:
+            - checkout
+            - generate-version-number-dev
+          context:
+            - mc-prod
+          requires:
+            - build-and-push-dev
+          filters:
+            branches:
+              only:
+                - /.*\/pr-.*/
+      - update-and-validate-golden-agent:
+          name: az-prod-update-and-validate-golden-agent-merge-queue
+          agent_uuid: ${MCD_AGENT_UUID_WITH_AZ_AGENT}
+          agent_version: ${NEXT_VERSION}
+          sleep_seconds: "120"
+          image_repo: pre-release-agent
+          pre-steps:
+            - checkout
+            - generate-version-number-dev
+          context:
+            - mc-prod
+          requires:
+            - build-and-push-dev
+          filters:
+            branches:
+              only:
+                - /.*\/pr-.*/
       - build-and-push-lambda:
           name: build-and-push-lambda-dev
           docker_hub_repository: pre-release-agent
@@ -218,13 +380,7 @@ workflows:
           code_version: ${NEXT_VERSION}
           pre-steps:
             - checkout
-            - run:
-                command: |
-                  PIPELINE_NUMBER=<< pipeline.number >>
-                  if git describe --tags --abbrev=0; then TAG=$(git describe --tags --abbrev=0); else exit 1; fi
-                  VERSION=${TAG#v}
-                  echo "NEXT_VERSION=$(echo "$VERSION" | awk 'BEGIN{FS=OFS="."} {$3+=1} 1')rc${PIPELINE_NUMBER}" >> $BASH_ENV
-                  source $BASH_ENV
+            - generate-version-number-dev
           context:
             - aether-dev
             - docker
@@ -235,6 +391,41 @@ workflows:
             branches:
               only:
                 - dev
+                - /.*\/pr-.*/
+      - update-and-validate-golden-agent:
+          name: aws-dev-update-and-validate-golden-agent
+          agent_uuid: ${MCD_AGENT_UUID_WITH_AWS_AGENT}
+          agent_version: ${NEXT_VERSION}
+          image_repo: pre-release-agent
+          pre-steps:
+            - checkout
+            - generate-version-number-dev
+          context:
+            - mc-dev
+          requires:
+            - build-and-push-lambda-dev
+          filters:
+            branches:
+              only:
+                - dev
+      - update-and-validate-golden-agent:
+          name: aws-prod-update-and-validate-golden-agent-merge-queue
+          use_aws_cli: true
+          agent_uuid: ${MCD_AGENT_UUID_WITH_AWS_AGENT}
+          agent_version: ${NEXT_VERSION}
+          ecr_repo_name: "${AWS_AGENT_ECR_REPO_DEV}"
+          ecr_repo_account: "${AWS_AGENT_ECR_ACCOUNT_DEV}"
+          pre-steps:
+            - checkout
+            - generate-version-number-dev
+          context:
+            - mc-prod
+          requires:
+            - build-and-push-lambda-dev
+          filters:
+            branches:
+              only:
+                - /.*\/pr-.*/
       - push-lambda-legacy-repo:
           name: push-lambda-aws-dev
           docker_hub_repository: pre-release-agent
@@ -242,13 +433,7 @@ workflows:
           code_version: ${NEXT_VERSION}
           pre-steps:
             - checkout
-            - run:
-                command: |
-                  PIPELINE_NUMBER=<< pipeline.number >>
-                  if git describe --tags --abbrev=0; then TAG=$(git describe --tags --abbrev=0); else exit 1; fi
-                  VERSION=${TAG#v}
-                  echo "NEXT_VERSION=$(echo "$VERSION" | awk 'BEGIN{FS=OFS="."} {$3+=1} 1')rc${PIPELINE_NUMBER}" >> $BASH_ENV
-                  source $BASH_ENV
+            - generate-version-number-dev
           context:
             - aws-dev
             - docker
@@ -264,11 +449,7 @@ workflows:
           code_version: ${VERSION_TAG}
           pre-steps:
             - checkout
-            - run:
-                command: |
-                  if git describe --tags --abbrev=0; then TAG=$(git describe --tags --abbrev=0); else exit 1; fi
-                  echo "VERSION_TAG=${TAG#v}" >> $BASH_ENV
-                  source $BASH_ENV
+            - generate-version-number-prod
           context:
             - docker
           requires:
@@ -279,6 +460,29 @@ workflows:
               only: /^v.*/
             branches:
               ignore: /.*/
+      - update-and-validate-golden-agent:
+          name: gcp-prod-update-and-validate-golden-agent
+          agent_uuid: ${MCD_AGENT_UUID_WITH_GCP_AGENT}
+          agent_version: ${VERSION_TAG}
+          pre-steps:
+            - checkout
+            - generate-version-number-prod
+          context:
+            - mc-prod
+          requires:
+            - build-and-push-prod
+      - update-and-validate-golden-agent:
+          name: az-prod-update-and-validate-golden-agent
+          agent_uuid: ${MCD_AGENT_UUID_WITH_AZ_AGENT}
+          agent_version: ${VERSION_TAG}
+          sleep_seconds: "120"
+          pre-steps:
+            - checkout
+            - generate-version-number-prod
+          context:
+            - mc-prod
+          requires:
+            - build-and-push-prod
       - build-and-push-lambda:
           name: build-and-push-lambda-prod
           docker_hub_repository: agent
@@ -286,11 +490,7 @@ workflows:
           code_version: ${VERSION_TAG}
           pre-steps:
             - checkout
-            - run:
-                command: |
-                  if git describe --tags --abbrev=0; then TAG=$(git describe --tags --abbrev=0); else exit 1; fi
-                  echo "VERSION_TAG=${TAG#v}" >> $BASH_ENV
-                  source $BASH_ENV
+            - generate-version-number-prod
           context:
             - aether-prod
             - docker
@@ -302,6 +502,18 @@ workflows:
               only: /^v.*/
             branches:
               ignore: /.*/
+      - update-and-validate-golden-agent:
+          name: aws-prod-update-and-validate-golden-agent
+          use_aws_cli: true
+          agent_uuid: ${MCD_AGENT_UUID_WITH_AWS_AGENT}
+          agent_version: ${VERSION_TAG}
+          pre-steps:
+            - checkout
+            - generate-version-number-prod
+          context:
+            - mc-prod
+          requires:
+            - build-and-push-lambda-prod
       - push-lambda-legacy-repo:
           name: push-lambda-aws-prod
           docker_hub_repository: agent
@@ -309,11 +521,7 @@ workflows:
           code_version: ${VERSION_TAG}
           pre-steps:
             - checkout
-            - run:
-                command: |
-                  if git describe --tags --abbrev=0; then TAG=$(git describe --tags --abbrev=0); else exit 1; fi
-                  echo "VERSION_TAG=${TAG#v}" >> $BASH_ENV
-                  source $BASH_ENV
+            - generate-version-number-prod
           context:
             - aws-prod
             - docker
@@ -329,13 +537,7 @@ workflows:
           code_version: ${NEXT_VERSION}
           pre-steps:
             - checkout
-            - run:
-                command: |
-                  PIPELINE_NUMBER=<< pipeline.number >>
-                  if git describe --tags --abbrev=0; then TAG=$(git describe --tags --abbrev=0); else exit 1; fi
-                  VERSION=${TAG#v}
-                  echo "NEXT_VERSION=$(echo "$VERSION" | awk 'BEGIN{FS=OFS="."} {$3+=1} 1')rc${PIPELINE_NUMBER}" >> $BASH_ENV
-                  source $BASH_ENV
+            - generate-version-number-dev
           context:
             - aws-dev
           requires:
@@ -350,11 +552,7 @@ workflows:
           code_version: ${VERSION_TAG}
           pre-steps:
             - checkout
-            - run:
-                command: |
-                  if git describe --tags --abbrev=0; then TAG=$(git describe --tags --abbrev=0); else exit 1; fi
-                  echo "VERSION_TAG=${TAG#v}" >> $BASH_ENV
-                  source $BASH_ENV
+            - generate-version-number-prod
           context:
             - aws-prod
           requires:
