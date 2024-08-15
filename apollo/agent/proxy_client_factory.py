@@ -32,6 +32,7 @@ from apollo.agent.constants import (
     CONNECTION_TYPE_MSK_CONNECT,
     CONNECTION_TYPE_MSK_KAFKA,
     CONNECTION_TYPE_MOTHERDUCK,
+    CONNECTION_TYPE_DREMIO,
 )
 from apollo.agent.env_vars import CLIENT_CACHE_EXPIRATION_SECONDS_ENV_VAR
 from apollo.agent.models import AgentError
@@ -262,6 +263,16 @@ def _get_proxy_client_msk_kafka(
     return MskKafkaProxyClient(credentials=credentials, platform=platform)
 
 
+def _get_proxy_client_dremio(
+    credentials: Optional[Dict], platform: str, **kwargs  # type: ignore
+) -> BaseProxyClient:
+    from apollo.integrations.db.dremio_proxy_client import (
+        DremioProxyClient,
+    )
+
+    return DremioProxyClient(credentials=credentials, platform=platform)
+
+
 @dataclass
 class ProxyClientCacheEntry:
     created_time: datetime
@@ -294,6 +305,7 @@ _CLIENT_FACTORY_MAPPING = {
     CONNECTION_TYPE_MSK_CONNECT: _get_proxy_client_msk_connect,
     CONNECTION_TYPE_MSK_KAFKA: _get_proxy_client_msk_kafka,
     CONNECTION_TYPE_MOTHERDUCK: _get_proxy_client_motherduck,
+    CONNECTION_TYPE_DREMIO: _get_proxy_client_dremio,
 }
 
 
