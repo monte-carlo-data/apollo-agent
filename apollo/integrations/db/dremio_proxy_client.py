@@ -1,4 +1,4 @@
-from typing import Optional, Dict, Any, List, Union
+from typing import Optional, Dict, Any, List, Union, Tuple
 
 from pyarrow.flight import FlightDescriptor, FlightCallOptions
 
@@ -22,11 +22,11 @@ class DremioProxyClient(BaseDbProxyClient):
             raise ValueError(
                 f"Dremio agent client requires {_ATTR_CONNECT_ARGS} in credentials"
             )
-        self._connection = flight.connect(location=credentials[_ATTR_CONNECT_ARGS]["host"])  # type: ignore
+        self._connection = flight.connect(**credentials[_ATTR_CONNECT_ARGS])  # type: ignore
         self._headers = [
             (
                 b"authorization",
-                f"bearer {credentials[_ATTR_CONNECT_ARGS]['token']}".encode("utf-8"),
+                f"bearer {credentials.get('token')}".encode("utf-8"),
             )
         ]
 
@@ -58,11 +58,11 @@ class DremioProxyClient(BaseDbProxyClient):
 
         return {
             "records": records,
-            "description": self._set_description(reader.schema),
+            "description": self._get_dbapi_description(reader.schema),
             "rowcount": len(records),
         }
 
-    def _set_description(self, schema: Schema) -> List[List[Any]]:
+    def _get_dbapi_description(self, schema: Schema) -> List[Tuple]:
         """
         Create a DB API compliant description object from the FlightStreamReader schema
         """
@@ -78,7 +78,7 @@ class DremioProxyClient(BaseDbProxyClient):
             return "unknown"
 
         return [
-            [
+            (
                 field.name,
                 arrow_type_to_cursor_type(field.type),
                 None,
@@ -86,6 +86,6 @@ class DremioProxyClient(BaseDbProxyClient):
                 None,
                 None,
                 None,
-            ]
+            )
             for field in schema
         ]

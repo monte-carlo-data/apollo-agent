@@ -9,7 +9,8 @@ import pyarrow
 class DremioClientTests(TestCase):
     def setUp(self):
         self.credentials = {
-            "connect_args": {"host": "localhost", "token": "dummy_token"}
+            "connect_args": {"location": "localhost"},
+            "token": "dummy_token",
         }
         self.query = "SELECT * FROM test_table"
 
@@ -60,22 +61,22 @@ class DremioClientTests(TestCase):
         self.assertEqual(
             result["description"],
             [
-                ["col1", 2, None, None, None, None, None],
-                ["col2", 1, None, None, None, None, None],
+                ("col1", 2, None, None, None, None, None),
+                ("col2", 1, None, None, None, None, None),
             ],
         )
 
     @patch("apollo.integrations.db.dremio_proxy_client.flight.connect")
-    def test_set_description(self, mock_connect):
+    def test_get_description(self, mock_connect):
         schema = pyarrow.schema([("col1", pyarrow.int32()), ("col2", pyarrow.string())])
 
         client = DremioProxyClient(credentials=self.credentials)
-        description = client._set_description(schema)
+        description = client._get_dbapi_description(schema)
 
         self.assertEqual(
             description,
             [
-                ["col1", 2, None, None, None, None, None],
-                ["col2", 1, None, None, None, None, None],
+                ("col1", 2, None, None, None, None, None),
+                ("col2", 1, None, None, None, None, None),
             ],
         )
