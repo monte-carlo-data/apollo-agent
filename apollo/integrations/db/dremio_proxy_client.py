@@ -1,4 +1,4 @@
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Union
 
 from pyarrow.flight import FlightDescriptor, FlightCallOptions
 
@@ -67,7 +67,7 @@ class DremioProxyClient(BaseDbProxyClient):
         Create a DB API compliant description object from the FlightStreamReader schema
         """
 
-        def arrow_type_to_cursor_type(arrow_type):
+        def arrow_type_to_cursor_type(arrow_type: Any) -> Union[int, str]:
             if pyarrow_types.is_string(arrow_type):
                 return 1
             elif pyarrow_types.is_int32(arrow_type):
