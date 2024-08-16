@@ -26,8 +26,12 @@ class DremioClientTests(TestCase):
         mock_connect.assert_called_once_with(location="localhost")
 
     def test_init_missing_connect_args(self):
+        # Should raise ValueError if 'connect_args' is missing
         with self.assertRaises(ValueError):
-            DremioProxyClient(credentials={})
+            DremioProxyClient(credentials={"token": "1234"})
+        # Should raise ValueError if 'token' is missing
+        with self.assertRaises(ValueError):
+            DremioProxyClient(credentials={"connect_args": {"a": "b"}})
 
     @patch("apollo.integrations.db.dremio_proxy_client.flight.connect")
     @patch("apollo.integrations.db.dremio_proxy_client.FlightCallOptions")
