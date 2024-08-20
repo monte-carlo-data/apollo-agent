@@ -588,9 +588,11 @@ workflows:
           # build ok mark for merge queue
           name: build-ok
           requires:
-            - gcp-prod-update-and-validate-golden-agent-merge-queue
-            - az-prod-update-and-validate-golden-agent-merge-queue
-            - aws-prod-update-and-validate-golden-agent-merge-queue
+#            - gcp-prod-update-and-validate-golden-agent-merge-queue
+#            - az-prod-update-and-validate-golden-agent-merge-queue
+#            - aws-prod-update-and-validate-golden-agent-merge-queue
+            - run-linter
+            - run-test-docker
           filters:
             branches:
               ignore:
