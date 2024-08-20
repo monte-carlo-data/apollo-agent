@@ -579,3 +579,8 @@ workflows:
             - gcp-prod-update-and-validate-golden-agent-merge-queue
             - az-prod-update-and-validate-golden-agent-merge-queue
             - aws-prod-update-and-validate-golden-agent-merge-queue
+          filters:
+            branches:
+              ignore:
+                - dev
+                - main
