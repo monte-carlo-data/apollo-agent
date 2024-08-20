@@ -270,7 +270,7 @@ jobs:
                   export MCD_AGENT_IMAGE_REPO=<< parameters.image_repo >>
                   montecarlo agents upgrade --agent-id << parameters.agent_uuid >>
       - run:
-          name: Run Agent Health
+          name: Run Agent Health - Validate version
           command: |
             sleep << parameters.sleep_seconds >>
             export MCD_DEFAULT_API_ID=${MCD_SMOKE_TESTS_API_ID}
