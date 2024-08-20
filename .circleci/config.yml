@@ -574,6 +574,7 @@ workflows:
               ignore: /.*/
       - build-ok:
           # build ok mark for PRs
+          name: build-ok
           requires:
             - run-linter
             - run-test-docker
@@ -585,6 +586,7 @@ workflows:
                 - /.*\/pr-.*/
       - build-ok:
           # build ok mark for merge queue
+          name: build-ok
           requires:
             - gcp-prod-update-and-validate-golden-agent-merge-queue
             - az-prod-update-and-validate-golden-agent-merge-queue
