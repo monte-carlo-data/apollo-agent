@@ -573,27 +573,9 @@ workflows:
             branches:
               ignore: /.*/
       - build-ok:
-          # build ok mark for PRs
-          name: build-ok
           requires:
             - run-linter
             - run-test-docker
-          filters:
-            branches:
-              only:
-                - main
-                - dev
-                - /.*\/pr-.*/
-      - build-ok:
-          # build ok mark for merge queue
-          name: build-ok
-          requires:
-#            - gcp-prod-update-and-validate-golden-agent-merge-queue
-#            - az-prod-update-and-validate-golden-agent-merge-queue
-#            - aws-prod-update-and-validate-golden-agent-merge-queue
-            - run-linter
-            - run-test-docker
-          filters:
-            branches:
-              ignore:
-                - /.*\/pr-.*/
+            - gcp-prod-update-and-validate-golden-agent-merge-queue
+            - az-prod-update-and-validate-golden-agent-merge-queue
+            - aws-prod-update-and-validate-golden-agent-merge-queue
