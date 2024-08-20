@@ -580,7 +580,7 @@ workflows:
             - run-test-docker
           filters:
             branches:
-              ignore:
+              only:
                 - main
                 - dev
                 - /.*\/pr-.*/
@@ -593,5 +593,5 @@ workflows:
             - aws-prod-update-and-validate-golden-agent-merge-queue
           filters:
             branches:
-              only:
+              ignore:
                 - /.*\/pr-.*/
