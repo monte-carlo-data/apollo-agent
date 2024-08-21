@@ -44,6 +44,15 @@ commands:
         name: Generate prod version number
 
 jobs:
+  build-ok:
+    machine:
+      image: ubuntu-2204:current
+    steps:
+      - run:
+          name: Message
+          command: |
+            echo "OK"
+
   run-linter:
     docker:
       - image: cimg/python:3.11-node
@@ -261,7 +270,7 @@ jobs:
                   export MCD_AGENT_IMAGE_REPO=<< parameters.image_repo >>
                   montecarlo agents upgrade --agent-id << parameters.agent_uuid >>
       - run:
-          name: Run Agent Health
+          name: Run Agent Health - Validate version
           command: |
             sleep << parameters.sleep_seconds >>
             export MCD_DEFAULT_API_ID=${MCD_SMOKE_TESTS_API_ID}
@@ -563,3 +572,15 @@ workflows:
               only: /^v.*/
             branches:
               ignore: /.*/
+      - build-ok:
+          requires:
+            - run-linter
+            - run-test-docker
+            - gcp-prod-update-and-validate-golden-agent-merge-queue
+            - az-prod-update-and-validate-golden-agent-merge-queue
+            - aws-prod-update-and-validate-golden-agent-merge-queue
+          filters:
+            branches:
+              ignore:
+                - dev
+                - main
