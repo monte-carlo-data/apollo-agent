@@ -16,18 +16,18 @@ attrs==23.2.0
     #   looker-sdk
 azure-common==1.1.28
     # via azure-mgmt-storage
-azure-core==1.30.2
+azure-core==1.31.0
     # via
     #   azure-identity
     #   azure-mgmt-core
     #   azure-storage-blob
-azure-identity==1.17.1
+azure-identity==1.18.0
     # via -r requirements.in
 azure-mgmt-core==1.4.0
     # via azure-mgmt-storage
 azure-mgmt-storage==21.2.1
     # via -r requirements.in
-azure-storage-blob==12.20.0
+azure-storage-blob==12.23.0
     # via -r requirements.in
 blinker==1.8.2
     # via flask
@@ -59,7 +59,7 @@ click==8.1.7
     # via
     #   flask
     #   presto-python-client
-cryptography==42.0.8
+cryptography==43.0.1
     # via
     #   -r requirements.in
     #   azure-identity
@@ -158,12 +158,12 @@ markupsafe==2.1.5
     #   werkzeug
 marshmallow==3.21.3
     # via dataclasses-json
-msal==1.24.1
+msal==1.31.0
     # via
     #   -r requirements.in
     #   azure-identity
     #   msal-extensions
-msal-extensions==1.1.0
+msal-extensions==1.2.0
     # via azure-identity
 mypy-extensions==1.0.0
     # via typing-inspect
@@ -177,7 +177,7 @@ oauthlib==3.2.2
     # via databricks-sql-connector
 openpyxl==3.1.5
     # via databricks-sql-connector
-oracledb==2.2.1
+oracledb==2.4.1
     # via -r requirements.in
 oscrypto @ git+https://github.com/wbond/oscrypto@master
     # via -r requirements.in
@@ -185,7 +185,6 @@ packaging==24.1
     # via
     #   gunicorn
     #   marshmallow
-    #   msal-extensions
     #   snowflake-connector-python
     #   tableauserverclient
 pandas==2.1.1
@@ -226,7 +225,7 @@ pycryptodome==3.20.0
     # via
     #   -r requirements.in
     #   teradatasql
-pyhive[hive-pure-sasl]==0.7.0 ; python_version >= "3.11"
+pyhive[hive_pure_sasl]==0.7.0 ; python_version >= "3.11"
     # via -r requirements.in
 pyjwt[crypto]==2.8.0
     # via
@@ -237,7 +236,7 @@ pymysql==1.1.1
     # via -r requirements.in
 pyodbc==5.0.1
     # via -r requirements.in
-pyopenssl==24.1.0
+pyopenssl==24.2.1
     # via
     #   -r requirements.in
     #   snowflake-connector-python
@@ -280,7 +279,7 @@ six==1.16.0
     #   python-dateutil
     #   thrift
     #   thrift-sasl
-snowflake-connector-python==3.11.0
+snowflake-connector-python==3.12.2
     # via -r requirements.in
 sortedcontainers==2.4.0
     # via snowflake-connector-python
