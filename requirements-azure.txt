@@ -20,7 +20,7 @@ azure-common==1.1.28
     # via
     #   -c requirements.txt
     #   azure-mgmt-resource
-azure-core==1.30.2
+azure-core==1.31.0
     # via
     #   -c requirements.txt
     #   azure-core-tracing-opentelemetry
