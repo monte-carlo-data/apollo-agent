@@ -131,8 +131,9 @@ RUN apt install git -y
 # for SQL Server' Microsoft's python 3.11 base image comes with msodbcsql18 but we are expecting to
 # use the msodbcsql17 driver so need to install specific versions of some libraries and allow Docker
 # to downgrade some pre-installed packages.
+# Updating libgnutls30 to resolve CVE-2024-28835 and CVE-2024-28834.
 RUN apt-get update \
-    && apt-get install -y gnupg gnupg2 gnupg1 curl apt-transport-https \
+    && apt-get install -y gnupg gnupg2 gnupg1 curl apt-transport-https libgnutls30 \
     && curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add - \
     && curl https://packages.microsoft.com/config/debian/10/prod.list \
     > /etc/apt/sources.list.d/mssql-release.list \
