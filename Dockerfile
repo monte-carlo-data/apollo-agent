@@ -1,4 +1,4 @@
-FROM python:3.11-slim AS base
+FROM python:3.12-slim AS base
 
 # Allow statements and log messages to immediately appear in the logs
 ENV PYTHONUNBUFFERED True
@@ -17,8 +17,8 @@ RUN apt-get install -y git
 RUN python -m venv $VENV_DIR
 RUN . $VENV_DIR/bin/activate && pip install --no-cache-dir -r requirements.txt
 
-# CVE-2022-40897
-RUN . $VENV_DIR/bin/activate && pip install setuptools==65.5.1
+# VULN-423: setuptools 68.0.0 contains (CVE-2024-6345)
+RUN . $VENV_DIR/bin/activate && pip install setuptools==75.1.0
 
 # Azure database clients uses pyodbc which requires unixODBC and 'ODBC Driver 17 for SQL Server'
 RUN apt-get update \
@@ -69,7 +69,7 @@ RUN apt install git -y
 CMD . $VENV_DIR/bin/activate && \
     gunicorn --timeout 930 --bind :$PORT apollo.interfaces.cloudrun.main:app
 
-FROM public.ecr.aws/lambda/python:3.11 AS lambda-builder
+FROM public.ecr.aws/lambda/python:3.12 AS lambda-builder
 
 RUN yum update -y
 # install git as we need it for the direct oscrypto dependency
@@ -87,10 +87,10 @@ RUN pip install --no-cache-dir --target "${LAMBDA_TASK_ROOT}" \
     -r requirements.txt \
     -r requirements-lambda.txt
 
-FROM public.ecr.aws/lambda/python:3.11 AS lambda
+FROM public.ecr.aws/lambda/python:3.12 AS lambda
 
-# VULN-29: Base ECR image includes setuptools-56.0.0 which is vulnerable (CVE-2022-40897)
-RUN pip install --no-cache-dir setuptools==68.0.0
+# VULN-423: setuptools 68.0.0 contains (CVE-2024-6345)
+RUN pip install --no-cache-dir setuptools==75.1.0
 # VULN-369: Base ECR image includes urllib3-1.26.18 which is vulnerable (CVE-2024-37891)
 RUN pip install --no-cache-dir --upgrade urllib3==1.26.19
 RUN rm -rf /var/lang/lib/python3.11/site-packages/urllib3-1.26.18.dist-info
