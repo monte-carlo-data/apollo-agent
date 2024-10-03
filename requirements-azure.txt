@@ -4,7 +4,9 @@
 #
 #    pip-compile requirements-azure.in
 #
-aiohttp==3.9.5
+aiohappyeyeballs==2.4.3
+    # via aiohttp
+aiohttp==3.10.2
     # via
     #   -r requirements-azure.in
     #   azure-functions-durable
