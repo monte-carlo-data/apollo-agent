@@ -23,8 +23,8 @@ class CloudRunPlatformProvider(AgentPlatformProvider):
     CloudRun platform provider for the agent, returns platform information, the updater and logs.
     """
 
-    def __init__(self):
-        self._platform_info = {
+    def __init__(self, platform_info: Optional[Dict] = None):
+        self._platform_info = platform_info or {
             GCP_PLATFORM_INFO_KEY_SERVICE_NAME: os.getenv(GCP_ENV_NAME_SERVICE_NAME),
             GCP_PLATFORM_INFO_KEY_PROJECT_ID: GcpMetadataService.get_project_id(),
             GCP_PLATFORM_INFO_KEY_REGION: GcpMetadataService.get_instance_region(),

@@ -310,7 +310,7 @@ class StorageAzureTests(TestCase):
             container=_TEST_BUCKET_NAME, blob=file_key
         )
         self._mock_blob_client.download_blob.assert_called_once_with()
-        self.assertTrue(mock_temp_file_path.called_once())
+        mock_temp_file_path.assert_called_once()
 
     @patch.dict(
         os.environ,
@@ -349,4 +349,4 @@ class StorageAzureTests(TestCase):
             container=_TEST_BUCKET_NAME, blob=f"{expected_prefix}{file_key}"
         )
         self._mock_blob_client.download_blob.assert_called_once_with()
-        self.assertTrue(mock_temp_file_path.called_once())
+        mock_temp_file_path.assert_called_once()
