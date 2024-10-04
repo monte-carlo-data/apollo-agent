@@ -93,7 +93,7 @@ FROM public.ecr.aws/lambda/python:3.12 AS lambda
 RUN pip install --no-cache-dir setuptools==75.1.0
 # VULN-369: Base ECR image includes urllib3-1.26.18 which is vulnerable (CVE-2024-37891)
 RUN pip install --no-cache-dir --upgrade urllib3==1.26.19
-RUN rm -rf /var/lang/lib/python3.11/site-packages/urllib3-1.26.18.dist-info
+RUN rm -rf /var/lang/lib/python3.12/site-packages/urllib3-1.26.19.dist-info
 
 # VULN-230 CWE-77
 RUN pip install --no-cache-dir --upgrade pip
