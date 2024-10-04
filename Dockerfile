@@ -134,16 +134,7 @@ RUN apt install git -y
 # Updating libgnutls30 to resolve CVE-2024-28835 and CVE-2024-28834.
 RUN apt-get update \
     && apt-get install -y gnupg gnupg2 gnupg1 curl apt-transport-https libgnutls30 \
-    && curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add - \
-    && curl https://packages.microsoft.com/config/debian/10/prod.list \
-    > /etc/apt/sources.list.d/mssql-release.list \
-    && apt-get update \
-    && ACCEPT_EULA=Y apt-get install -y --allow-downgrades \
-    msodbcsql17 \
-    odbcinst=2.3.11-1 \
-    odbcinst1debian2=2.3.11-1 \
-    unixodbc-dev=2.3.11-1 \
-    unixodbc=2.3.11-1
+    && apt-get install -y msodbcsql17 odbcinst odbcinst1debian2 unixodbc-dev unixodbc
 
 COPY requirements.txt /
 COPY requirements-azure.txt /
