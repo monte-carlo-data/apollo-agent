@@ -6,7 +6,7 @@ deployment options.
 
 ## Local development environment
 ### Pre-requisites
-- Python 3.11 or later
+- Python 3.12 or later
 
 ### Prepare your local environment
 - Create a virtual env, for example: `python -m venv .venv` and activate it: `. .venv/bin/activate`

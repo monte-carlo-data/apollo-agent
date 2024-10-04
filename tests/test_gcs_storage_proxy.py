@@ -19,6 +19,11 @@ from apollo.agent.env_vars import (
 )
 from apollo.agent.logging_utils import LoggingUtils
 from apollo.agent.utils import AgentUtils
+from apollo.interfaces.cloudrun.metadata_service import (
+    GCP_PLATFORM_INFO_KEY_SERVICE_NAME,
+    GCP_PLATFORM_INFO_KEY_PROJECT_ID,
+    GCP_PLATFORM_INFO_KEY_REGION,
+)
 from apollo.interfaces.cloudrun.platform import CloudRunPlatformProvider
 
 _TEST_BUCKET_NAME = "test_bucket"
@@ -27,7 +32,13 @@ _TEST_BUCKET_NAME = "test_bucket"
 class StorageGcsTests(TestCase):
     def setUp(self) -> None:
         self._agent = Agent(LoggingUtils())
-        self._agent.platform_provider = CloudRunPlatformProvider()
+        self._agent.platform_provider = CloudRunPlatformProvider(
+            platform_info={
+                GCP_PLATFORM_INFO_KEY_SERVICE_NAME: "test-service",
+                GCP_PLATFORM_INFO_KEY_PROJECT_ID: "test-project",
+                GCP_PLATFORM_INFO_KEY_REGION: "test-region",
+            }
+        )
 
         self._mock_client = create_autospec(Client)
         self._mock_bucket = create_autospec(Bucket)
@@ -273,7 +284,7 @@ class StorageGcsTests(TestCase):
 
         self._mock_bucket.blob.assert_called_with(file_key)
         self._mock_blob.download_to_filename.assert_called_with(tmp_path)
-        self.assertTrue(mock_temp_file_path.called_once())
+        mock_temp_file_path.assert_called_once()
 
     @patch.dict(
         os.environ,
@@ -306,4 +317,4 @@ class StorageGcsTests(TestCase):
 
         self._mock_bucket.blob.assert_called_with(f"{expected_prefix}{file_key}")
         self._mock_blob.download_to_filename.assert_called_with(tmp_path)
-        self.assertTrue(mock_temp_file_path.called_once())
+        mock_temp_file_path.assert_called_once()
