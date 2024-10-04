@@ -71,7 +71,7 @@ CMD . $VENV_DIR/bin/activate && \
 
 FROM public.ecr.aws/lambda/python:3.12 AS lambda-builder
 
-RUN yum update -y
+RUN dnf update -y
 # install git as we need it for the direct oscrypto dependency
 # this is a temporary workaround and it should be removed once we update oscrypto to 1.3.1+
 # see: https://community.snowflake.com/s/article/Python-Connector-fails-to-connect-with-LibraryNotFoundError-Error-detecting-the-version-of-libcrypto
@@ -79,7 +79,7 @@ RUN yum update -y
 # not present in the lambda environment. we don't use this image for the final lambda as installing
 # git this way breaks the looker-git connector, we need to use in runtime the git version installed
 # by lambda-git package
-RUN yum install git -y
+RUN dnf install git -y
 
 COPY requirements.txt ./
 COPY requirements-lambda.txt ./
@@ -101,13 +101,13 @@ RUN pip install --no-cache-dir --upgrade pip
 COPY --from=lambda-builder "${LAMBDA_TASK_ROOT}" "${LAMBDA_TASK_ROOT}"
 
 # install unixodbc and 'ODBC Driver 17 for SQL Server', needed for Azure Dedicated SQL Pools
-RUN yum -y update \
-    && yum -y install unixODBC \
-    && yum clean all \
+RUN dnf -y update \
+    && dnf -y install unixODBC \
+    && dnf clean all \
     && rm -rf /var/cache/yum
 RUN curl https://packages.microsoft.com/config/rhel/7/prod.repo \
     | tee /etc/yum.repos.d/mssql-release.repo
-RUN ACCEPT_EULA=Y yum install -y msodbcsql17
+RUN ACCEPT_EULA=Y dnf install -y msodbcsql17
 
 COPY apollo "${LAMBDA_TASK_ROOT}/apollo"
 ARG code_version="local"
