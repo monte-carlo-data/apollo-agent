@@ -225,7 +225,7 @@ pycryptodome==3.20.0
     # via
     #   -r requirements.in
     #   teradatasql
-pyhive[hive_pure_sasl]==0.7.0 ; python_version >= "3.11"
+pyhive[hive-pure-sasl]==0.7.0 ; python_version >= "3.11"
     # via -r requirements.in
 pyjwt[crypto]==2.8.0
     # via
