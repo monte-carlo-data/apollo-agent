@@ -39,11 +39,11 @@ az functionapp plan create --resource-group <RESOURCE_GROUP> --name <PLAN_NAME> 
 Create function:
 - If using dockerhub:
   ```shell
-  az functionapp create --name <FUNCTION_NAME> --storage-account <STORAGE_NAME> --resource-group <RESOURCE_GROUP> --image "docker.io/montecarlodata/pre-release-agent:latest-azure" --functions-version 4 --runtime python --runtime-version 3.11 --plan <PLAN_NAME> --os-type linux
+  az functionapp create --name <FUNCTION_NAME> --storage-account <STORAGE_NAME> --resource-group <RESOURCE_GROUP> --image "docker.io/montecarlodata/pre-release-agent:latest-azure" --functions-version 4 --runtime python --runtime-version 3.12 --plan <PLAN_NAME> --os-type linux
   ```
 - If using Azure Registry:
   ```shell
-  az functionapp create --name <FUNCTION_NAME> --storage-account <STORAGE_NAME> --resource-group <RESOURCE_GROUP> --image "<REGISTRY>.azurecr.io/mcd-agent/agent:latest" --registry-password <REGISTRY_PWD> --registry-username <REGISTRY> --functions-version 4 --runtime python --runtime-version 3.11 --plan <PLAN_NAME> --os-type linux
+  az functionapp create --name <FUNCTION_NAME> --storage-account <STORAGE_NAME> --resource-group <RESOURCE_GROUP> --image "<REGISTRY>.azurecr.io/mcd-agent/agent:latest" --registry-password <REGISTRY_PWD> --registry-username <REGISTRY> --functions-version 4 --runtime python --runtime-version 3.12 --plan <PLAN_NAME> --os-type linux
   ```
 
 Get key to access function:
