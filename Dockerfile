@@ -134,7 +134,7 @@ RUN apt install git -y
 # Updating libgnutls30 to resolve CVE-2024-28835 and CVE-2024-28834.
 RUN apt-get update \
     && apt-get install -y gnupg gnupg2 gnupg1 curl apt-transport-https libgnutls30 \
-    && apt-get install -y msodbcsql17 odbcinst odbcinst1debian2 unixodbc-dev unixodbc
+    && ACCEPT_EULA=Y apt-get install -y msodbcsql17 odbcinst=2.3.11-2+deb12u1 odbcinst1debian2=2.3.11-2+deb12u1 unixodbc-dev=2.3.11-2+deb12u1 unixodbc=2.3.11-2+deb12u1
 
 COPY requirements.txt /
 COPY requirements-azure.txt /
