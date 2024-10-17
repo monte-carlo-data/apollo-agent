@@ -273,6 +273,16 @@ def _get_proxy_client_dremio(
     return DremioProxyClient(credentials=credentials, platform=platform)
 
 
+def _get_proxy_client_load_test(
+    credentials: Optional[Dict], platform: str, **kwargs  # type: ignore
+) -> BaseProxyClient:
+    from apollo.integrations.test.load_test_client import (
+        LoadTestProxyClient,
+    )
+
+    return LoadTestProxyClient(credentials=credentials, platform=platform)
+
+
 @dataclass
 class ProxyClientCacheEntry:
     created_time: datetime
@@ -306,6 +316,7 @@ _CLIENT_FACTORY_MAPPING = {
     CONNECTION_TYPE_MSK_KAFKA: _get_proxy_client_msk_kafka,
     CONNECTION_TYPE_MOTHERDUCK: _get_proxy_client_motherduck,
     CONNECTION_TYPE_DREMIO: _get_proxy_client_dremio,
+    "load_test": _get_proxy_client_load_test,
 }
 
 
