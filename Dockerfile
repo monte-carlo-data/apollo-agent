@@ -138,6 +138,7 @@ RUN apt-get update \
 
 COPY requirements.txt /
 COPY requirements-azure.txt /
+RUN pip install --no-cache-dir setuptools==75.1.0
 RUN pip install --no-cache-dir -r /requirements.txt -r /requirements-azure.txt
 
 COPY apollo /home/site/wwwroot/apollo
