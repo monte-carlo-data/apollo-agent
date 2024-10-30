@@ -43,7 +43,7 @@ cachetools==5.3.3
     # via google-auth
 cattrs==23.2.3
     # via looker-sdk
-certifi==2024.6.2
+certifi==2024.8.30
     # via
     #   requests
     #   snowflake-connector-python
@@ -225,7 +225,7 @@ pycryptodome==3.20.0
     # via
     #   -r requirements.in
     #   teradatasql
-pyhive[hive-pure-sasl]==0.7.0 ; python_version >= "3.11"
+pyhive[hive_pure_sasl]==0.7.0 ; python_version >= "3.11"
     # via -r requirements.in
 pyjwt[crypto]==2.8.0
     # via
