@@ -2,10 +2,13 @@ import socket
 from telnetlib import Telnet
 from typing import Optional, Callable, Dict, Tuple, Union
 
+import requests
+
 from apollo.agent.utils import AgentUtils
 from apollo.interfaces.agent_response import AgentResponse
 
 _DEFAULT_TIMEOUT_SECS = 5
+_DEFAULT_HTTP_TIMEOUT_SECS = 10
 
 
 class ConnectionFailedError(Exception):
@@ -90,6 +93,31 @@ class ValidateNetwork:
             cls._internal_perform_dns_lookup,
             host=host,
             port=port,
+            trace_id=trace_id,
+        )
+
+    @classmethod
+    def validate_http_connection(
+        cls,
+        url: Optional[str],
+        include_response_str: Optional[Union[bool, str]],
+        timeout_str: Optional[Union[int, str]],
+        trace_id: Optional[str] = None,
+    ):
+        """
+        Performs a GET request to test connectivity with the provided URL.
+        :param url: The URL to test, will raise `BadRequestError` if None.
+        :param include_response_str: Optional boolean indicating if the response should be sent back.
+        :param timeout_str: Timeout in seconds as a string containing the numeric value,
+            will raise `BadRequestError` if non-numeric. Defaults to 10 seconds.
+        :param trace_id: Optional trace ID received from the client that will be included in
+            the response, if present.
+        """
+        return cls._call_validation_method(
+            cls._internal_validate_http_connection,
+            url=url,
+            include_response_str=include_response_str,
+            timeout_str=timeout_str,
             trace_id=trace_id,
         )
 
@@ -190,6 +218,38 @@ class ValidateNetwork:
         except Exception as err:
             raise ConnectionFailedError(
                 f"DNS lookup failed for {host}: {err}."
+            ) from err
+
+    @classmethod
+    def _internal_validate_http_connection(
+        cls,
+        url: Optional[str],
+        include_response_str: Optional[Union[bool, str]],
+        timeout_str: Optional[Union[int, str]],
+    ) -> Dict:
+        """
+        Implementation for the HTTP connection validation, first validates the parameters and then
+        uses requests.get to connect to the URL.
+        """
+        if not url:
+            raise BadRequestError("url is a required parameter")
+        include_response = (
+            include_response_str == "true" or include_response_str is True
+        )
+        timeout_in_seconds = (
+            int(timeout_str) if timeout_str else _DEFAULT_HTTP_TIMEOUT_SECS
+        )
+
+        try:
+            response = requests.get(url, timeout=timeout_in_seconds)
+            message = f"URL {url} responded with status code: {response.status_code}"
+            if include_response:
+                content_str = response.content.decode("utf-8")
+                message += f" and content: {content_str}"
+            return {"message": message}
+        except Exception as err:
+            raise ConnectionFailedError(
+                f"HTTP request failed for {url}: {err}."
             ) from err
 
     @staticmethod

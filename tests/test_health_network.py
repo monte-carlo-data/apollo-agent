@@ -3,7 +3,7 @@ import socket
 import sys
 from telnetlib import Telnet
 from unittest import TestCase
-from unittest.mock import patch, create_autospec
+from unittest.mock import patch, create_autospec, Mock
 
 from apollo.agent.agent import Agent
 from apollo.agent.constants import (
@@ -150,5 +150,27 @@ class HealthNetworkTests(TestCase):
         response = self._agent.perform_dns_lookup("localhost", None, None)
         self.assertEqual(
             "Host localhost resolves to: 1.2.3.4, 5.6.7.8",
+            response.result.get(ATTRIBUTE_NAME_RESULT).get("message"),
+        )
+
+    @patch("requests.get")
+    def test_http_connection(self, get_mock):
+        response_mock = Mock()
+        response_mock.status_code = 200
+        response_mock.content = b"foo"
+        get_mock.return_value = response_mock
+        response = self._agent.validate_http_connection(
+            "https://foo.bar", "true", None, trace_id=None
+        )
+        self.assertEqual(
+            "URL https://foo.bar responded with status code: 200 and content: foo",
+            response.result.get(ATTRIBUTE_NAME_RESULT).get("message"),
+        )
+
+        response = self._agent.validate_http_connection(
+            "https://foo.bar", None, None, trace_id=None
+        )
+        self.assertEqual(
+            "URL https://foo.bar responded with status code: 200",
             response.result.get(ATTRIBUTE_NAME_RESULT).get("message"),
         )
