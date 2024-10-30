@@ -240,6 +240,41 @@ class Agent:
             )
             return ValidateNetwork.perform_dns_lookup(host, port_str, trace_id)
 
+    def validate_http_connection(
+        self,
+        url: Optional[str],
+        include_response_str: Optional[Union[bool, str]],
+        timeout_str: Optional[Union[int, str]],
+        trace_id: Optional[str],
+    ) -> AgentResponse:
+        """
+        Performs a GET request to test the provider URL.
+        :param url: The URL to test, will raise `BadRequestError` if None.
+        :param include_response_str: Optional boolean indicating if the response should be sent back.
+        :param timeout_str: Timeout in seconds as a string containing the numeric value,
+            will raise `BadRequestError` if non-numeric. Defaults to 10 seconds.
+        :param trace_id: Optional trace ID received from the client that will be included in
+            the response, if present.
+        """
+        with self._inject_log_context("perform_dns_lookup", trace_id):
+            logger.info(
+                "HTTP connection test request received",
+                extra=self._logging_utils.build_extra(
+                    trace_id=trace_id,
+                    operation_name="validate_http_connection",
+                    extra=dict(
+                        url=url,
+                        include_response=include_response_str,
+                        timeout=timeout_str,
+                    ),
+                ),
+            )
+            return ValidateNetwork.validate_http_connection(
+                url=url,
+                include_response_str=include_response_str,
+                timeout_str=timeout_str,
+            )
+
     def get_outbound_ip_address(
         self,
         trace_id: Optional[str] = None,
