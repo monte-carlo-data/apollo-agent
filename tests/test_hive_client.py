@@ -8,7 +8,8 @@ from unittest import TestCase
 from unittest.mock import (
     Mock,
     call,
-    patch, MagicMock,
+    patch,
+    MagicMock,
 )
 
 from apollo.agent.agent import Agent
@@ -55,11 +56,14 @@ class HiveClientTests(TestCase):
             ["idx", "integer", None, None, None, None, None],
             ["value", "float", None, None, None, None, None],
         ]
-        self._test_run_query(mock_connect, query, expected_data, expected_description)
+        self._test_run_query(
+            mock_connect, mock_dbapi_connect, query, expected_data, expected_description
+        )
 
     def _test_run_query(
         self,
         mock_connect: Mock,
+        mock_dbapi_connect: Mock,
         query: str,
         data: List,
         description: List,
@@ -123,8 +127,8 @@ class HiveClientTests(TestCase):
         self.assertTrue(ATTRIBUTE_NAME_RESULT in response.result)
         result = response.result.get(ATTRIBUTE_NAME_RESULT)
 
-        mock_connect.assert_called_with(**_HIVE_CREDENTIALS)
-        self._mock_cursor.async_execute.assert_has_calls(
+        mock_dbapi_connect.assert_called_with(**_HIVE_CREDENTIALS)
+        self._mock_cursor.execute.assert_has_calls(
             [
                 call(query, None),
             ]
