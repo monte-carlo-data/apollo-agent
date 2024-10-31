@@ -9,6 +9,7 @@ from unittest.mock import (
     Mock,
     call,
     patch,
+    MagicMock,
 )
 
 from apollo.agent.agent import Agent
@@ -22,9 +23,11 @@ from apollo.agent.logging_utils import LoggingUtils
 _HIVE_CREDENTIALS = {
     "host": "localhost",
     "port": "10000",
-    "username": "foo",
+    "user": "foo",
     "database": "fizz",
-    "auth": None,
+    "auth_mechanism": "PLAIN",
+    "timeout": 870,
+    "use_ssl": False,
 }
 
 
@@ -36,7 +39,8 @@ class HiveClientTests(TestCase):
         self._mock_connection.cursor.return_value = self._mock_cursor
 
     @patch("apollo.integrations.db.hive_proxy_client.HiveProxyConnection")
-    def test_query(self, mock_connect):
+    @patch("apollo.integrations.db.hive_proxy_client.dbapi.connect")
+    def test_query(self, mock_dbapi_connect, mock_connect):
         query = "SELECT idx, value FROM table"  # noqa
         expected_data = [
             [
@@ -52,11 +56,14 @@ class HiveClientTests(TestCase):
             ["idx", "integer", None, None, None, None, None],
             ["value", "float", None, None, None, None, None],
         ]
-        self._test_run_query(mock_connect, query, expected_data, expected_description)
+        self._test_run_query(
+            mock_connect, mock_dbapi_connect, query, expected_data, expected_description
+        )
 
     def _test_run_query(
         self,
         mock_connect: Mock,
+        mock_dbapi_connect: Mock,
         query: str,
         data: List,
         description: List,
@@ -70,7 +77,7 @@ class HiveClientTests(TestCase):
                 {"method": "cursor", "store": "_cursor"},
                 {
                     "target": "_cursor",
-                    "method": "async_execute",
+                    "method": "execute",
                     "args": [
                         query,
                         None,
@@ -104,10 +111,7 @@ class HiveClientTests(TestCase):
             "hive",
             "run_query",
             operation_dict,
-            {
-                "connect_args": _HIVE_CREDENTIALS,
-                "mode": "binary",
-            },
+            {"connect_args": _HIVE_CREDENTIALS},
         )
 
         if raise_exception:
@@ -123,8 +127,8 @@ class HiveClientTests(TestCase):
         self.assertTrue(ATTRIBUTE_NAME_RESULT in response.result)
         result = response.result.get(ATTRIBUTE_NAME_RESULT)
 
-        mock_connect.assert_called_with(**_HIVE_CREDENTIALS)
-        self._mock_cursor.async_execute.assert_has_calls(
+        mock_dbapi_connect.assert_called_with(**_HIVE_CREDENTIALS)
+        self._mock_cursor.execute.assert_has_calls(
             [
                 call(query, None),
             ]
