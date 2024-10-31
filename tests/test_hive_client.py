@@ -8,7 +8,7 @@ from unittest import TestCase
 from unittest.mock import (
     Mock,
     call,
-    patch,
+    patch, MagicMock,
 )
 
 from apollo.agent.agent import Agent
@@ -38,7 +38,8 @@ class HiveClientTests(TestCase):
         self._mock_connection.cursor.return_value = self._mock_cursor
 
     @patch("apollo.integrations.db.hive_proxy_client.HiveProxyConnection")
-    def test_query(self, mock_connect):
+    @patch("apollo.integrations.db.hive_proxy_client.dbapi.connect")
+    def test_query(self, mock_dbapi_connect, mock_connect):
         query = "SELECT idx, value FROM table"  # noqa
         expected_data = [
             [
