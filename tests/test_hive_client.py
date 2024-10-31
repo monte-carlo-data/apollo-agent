@@ -22,9 +22,11 @@ from apollo.agent.logging_utils import LoggingUtils
 _HIVE_CREDENTIALS = {
     "host": "localhost",
     "port": "10000",
-    "username": "foo",
+    "user": "foo",
     "database": "fizz",
-    "auth": None,
+    "auth_mechanism": "PLAIN",
+    "timeout": 870,
+    "use_ssl": False,
 }
 
 
@@ -70,7 +72,7 @@ class HiveClientTests(TestCase):
                 {"method": "cursor", "store": "_cursor"},
                 {
                     "target": "_cursor",
-                    "method": "async_execute",
+                    "method": "execute",
                     "args": [
                         query,
                         None,
@@ -104,10 +106,7 @@ class HiveClientTests(TestCase):
             "hive",
             "run_query",
             operation_dict,
-            {
-                "connect_args": _HIVE_CREDENTIALS,
-                "mode": "binary",
-            },
+            {"connect_args": _HIVE_CREDENTIALS},
         )
 
         if raise_exception:
