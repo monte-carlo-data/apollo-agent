@@ -253,7 +253,7 @@ class Agent:
         :param trace_id: Optional trace ID received from the client that will be included in
             the response, if present.
         """
-        with self._inject_log_context("perform_dns_lookup", trace_id):
+        with self._inject_log_context("validate_http_connection", trace_id):
             logger.info(
                 "HTTP connection test request received",
                 extra=self._logging_utils.build_extra(
