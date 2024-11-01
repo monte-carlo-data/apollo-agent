@@ -242,7 +242,7 @@ class ValidateNetwork:
 
         try:
             response = requests.get(url, timeout=timeout_in_seconds)
-            message = f"URL {url} responded with status code: {response.status_code}"
+            message = f"URL {url} responded with status: {response.status_code} ({response.reason})"
             if include_response:
                 content_str = response.content.decode("utf-8")
                 message += f" and content: {content_str}"

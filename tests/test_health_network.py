@@ -164,13 +164,14 @@ class HealthNetworkTests(TestCase):
     def test_http_connection(self, get_mock):
         response_mock = Mock()
         response_mock.status_code = 200
+        response_mock.reason = "OK"
         response_mock.content = b"foo"
         get_mock.return_value = response_mock
         response = self._agent.validate_http_connection(
             "https://foo.bar", "true", None, trace_id=None
         )
         self.assertEqual(
-            "URL https://foo.bar responded with status code: 200 and content: foo",
+            "URL https://foo.bar responded with status: 200 (OK) and content: foo",
             response.result.get(ATTRIBUTE_NAME_RESULT).get("message"),
         )
 
@@ -178,6 +179,6 @@ class HealthNetworkTests(TestCase):
             "https://foo.bar", None, None, trace_id=None
         )
         self.assertEqual(
-            "URL https://foo.bar responded with status code: 200",
+            "URL https://foo.bar responded with status: 200 (OK)",
             response.result.get(ATTRIBUTE_NAME_RESULT).get("message"),
         )
