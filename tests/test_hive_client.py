@@ -5,12 +5,7 @@ from typing import (
     Optional,
 )
 from unittest import TestCase
-from unittest.mock import (
-    Mock,
-    call,
-    patch,
-    MagicMock,
-)
+from unittest.mock import Mock, call, patch
 
 from apollo.agent.agent import Agent
 from apollo.agent.constants import (
@@ -38,9 +33,8 @@ class HiveClientTests(TestCase):
         self._mock_cursor = Mock()
         self._mock_connection.cursor.return_value = self._mock_cursor
 
-    @patch("apollo.integrations.db.hive_proxy_client.HiveProxyConnection")
     @patch("apollo.integrations.db.hive_proxy_client.dbapi.connect")
-    def test_query(self, mock_dbapi_connect, mock_connect):
+    def test_query(self, mock_connect):
         query = "SELECT idx, value FROM table"  # noqa
         expected_data = [
             [
@@ -56,14 +50,11 @@ class HiveClientTests(TestCase):
             ["idx", "integer", None, None, None, None, None],
             ["value", "float", None, None, None, None, None],
         ]
-        self._test_run_query(
-            mock_connect, mock_dbapi_connect, query, expected_data, expected_description
-        )
+        self._test_run_query(mock_connect, query, expected_data, expected_description)
 
     def _test_run_query(
         self,
         mock_connect: Mock,
-        mock_dbapi_connect: Mock,
         query: str,
         data: List,
         description: List,
@@ -127,7 +118,7 @@ class HiveClientTests(TestCase):
         self.assertTrue(ATTRIBUTE_NAME_RESULT in response.result)
         result = response.result.get(ATTRIBUTE_NAME_RESULT)
 
-        mock_dbapi_connect.assert_called_with(**_HIVE_CREDENTIALS)
+        mock_connect.assert_called_with(**_HIVE_CREDENTIALS)
         self._mock_cursor.execute.assert_has_calls(
             [
                 call(query, None),
