@@ -742,6 +742,112 @@ def perform_dns_lookup_post() -> Tuple[Dict, int]:
     return _execute_network_validation(agent.perform_dns_lookup, include_timeout=False)
 
 
+@app.route("/api/v1/test/network/http", methods=["GET"])
+def test_network_http_connection_get() -> Tuple[Dict, int]:
+    """
+    Performs a GET request to test HTTP connectivity to the provided URL.
+    ---
+    tags:
+        - Troubleshooting
+    produces:
+        - application/json
+    parameters:
+        - in: query
+          name: url
+          description: The URL to test
+          required: true
+          schema:
+              type: string
+              example: https://getmontecarlo.com
+        - in: query
+          name: include_response
+          description: Whether to include the response from the URL or not
+          required: false
+          default: false
+          schema:
+              type: boolean
+              example: false
+        - in: query
+          name: timeout
+          type: integer
+          default: 10
+          description: Optional timeout in seconds, defaults to 10
+        - in: query
+          name: trace_id
+          description: An optional trace_id
+          schema:
+              type: string
+              example: 324986b4-b185-4187-b4af-b0c2cd60f7a0
+    definitions:
+        - schema:
+            id: HttpConnectionTestResponse
+            properties:
+                __mcd_result__:
+                    type: object
+                    properties:
+                        message:
+                            type: string
+                            description: A message including the response of the lookup operation.
+                __mcd_trace_id__:
+                    type: string
+                    description: The trace_id passed as an input parameter.
+            example:
+                __mcd_result__:
+                    message: URL https://getmontecarlo.com responded with status code: 200.
+                __mcd_trace_id__: 324986b4-b185-4187-b4af-b0c2cd60f7a0
+    responses:
+        200:
+            description: Returns a message including the status code from executing a GET request.
+            schema:
+                $ref: "#/definitions/HttpConnectionTestResponse"
+    :return: a message including the status code from executing a GET request.
+    """
+    return _execute_http_connection_test()
+
+
+@app.route("/api/v1/test/network/http", methods=["POST"])
+def test_network_http_connection_post() -> Tuple[Dict, int]:
+    """
+    Performs a GET request to test HTTP connectivity to the provided URL.
+    ---
+    tags:
+        - Troubleshooting
+    produces:
+        - application/json
+    parameters:
+        - in: body
+          name: body
+          schema:
+            id: HttpConnectionTestRequest
+            properties:
+                url:
+                  type: string
+                  description: The URL to test
+                  required: true
+                  example: https://getmontecarlo.com
+                include_response:
+                  type: boolean
+                  description: Whether to include the response from the URL or not
+                  required: false
+                  example: false
+                timeout:
+                  type: integer
+                  description: Optional timeout in seconds, defaults to 10.
+                  example: 10
+                trace_id:
+                  type: string
+                  description: An optional trace_id
+                  example: 324986b4-b185-4187-b4af-b0c2cd60f7a0
+    responses:
+        200:
+            description: Returns a message including the status code from executing a GET request.
+            schema:
+                $ref: "#/definitions/HttpConnectionTestResponse"
+    :return: a message including the status code from executing a GET request.
+    """
+    return _execute_http_connection_test()
+
+
 @app.route("/api/v1/upgrade", methods=["POST"])
 def upgrade_agent() -> Tuple[Dict, int]:
     """
@@ -1101,6 +1207,17 @@ def _execute_network_validation(
     if include_timeout:
         args["timeout_str"] = request_dict.get("timeout")
     response = method(**args)
+    return response.result, response.status_code
+
+
+def _execute_http_connection_test() -> Tuple[Dict, int]:
+    request_dict: Dict = request.json if request.method == "POST" else request.args  # type: ignore
+    response = agent.validate_http_connection(
+        url=request_dict.get("url"),
+        include_response_str=request_dict.get("include_response"),
+        timeout_str=request_dict.get("timeout"),
+        trace_id=request_dict.get("trace_id"),
+    )
     return response.result, response.status_code
 
 
