@@ -45,7 +45,7 @@ cachetools==5.3.3
     # via google-auth
 cattrs==23.2.3
     # via looker-sdk
-certifi==2024.6.2
+certifi==2024.8.30
     # via
     #   requests
     #   snowflake-connector-python
