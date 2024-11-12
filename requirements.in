@@ -28,7 +28,7 @@ PyMySQL>=1.1.1
 pyodbc==5.0.1
 pyOpenSSL>=24.2.1
 requests>=2.32.0
-RestrictedPython==7.0
+RestrictedPython==7.4
 retry2==0.9.5
 snowflake-connector-python>=3.12.2
 # python_version conditions below to resolve urllib3 compatibility issues with snowflake-connector-python
@@ -39,9 +39,7 @@ tableauserverclient @ git+https://github.com/tableau/server-client-python.git@ma
 teradatasql>=20.0.0.15
 oscrypto @ git+https://github.com/wbond/oscrypto@master
 
-# Note: 'pyhive[hive]' extras uses sasl that does not support Python 3.11,
-# See https://github.com/cloudera/python-sasl/issues/30. Hence PyHive also supports
-# pure-sasl via additional extras 'pyhive[hive_pure_sasl]' which support Python 3.11.
-pyhive[hive_pure_sasl]==0.7.0 ; python_version >= "3.11"
-pyhive[hive]==0.6.5 ; python_version < "3.11"
+# Note this is a beta version of impyla that is needed in order to support HTTPS connections on python 3.12.
+# It should be updated to stable version 0.20.0 once that is released.
+impyla==0.20a1
 werkzeug==3.0.3

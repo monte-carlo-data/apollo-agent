@@ -5,11 +5,7 @@ from typing import (
     Optional,
 )
 from unittest import TestCase
-from unittest.mock import (
-    Mock,
-    call,
-    patch,
-)
+from unittest.mock import Mock, call, patch
 
 from apollo.agent.agent import Agent
 from apollo.agent.constants import (
@@ -22,9 +18,11 @@ from apollo.agent.logging_utils import LoggingUtils
 _HIVE_CREDENTIALS = {
     "host": "localhost",
     "port": "10000",
-    "username": "foo",
+    "user": "foo",
     "database": "fizz",
-    "auth": None,
+    "auth_mechanism": "PLAIN",
+    "timeout": 870,
+    "use_ssl": False,
 }
 
 
@@ -35,7 +33,7 @@ class HiveClientTests(TestCase):
         self._mock_cursor = Mock()
         self._mock_connection.cursor.return_value = self._mock_cursor
 
-    @patch("apollo.integrations.db.hive_proxy_client.HiveProxyConnection")
+    @patch("apollo.integrations.db.hive_proxy_client.dbapi.connect")
     def test_query(self, mock_connect):
         query = "SELECT idx, value FROM table"  # noqa
         expected_data = [
@@ -70,7 +68,7 @@ class HiveClientTests(TestCase):
                 {"method": "cursor", "store": "_cursor"},
                 {
                     "target": "_cursor",
-                    "method": "async_execute",
+                    "method": "execute",
                     "args": [
                         query,
                         None,
@@ -104,10 +102,7 @@ class HiveClientTests(TestCase):
             "hive",
             "run_query",
             operation_dict,
-            {
-                "connect_args": _HIVE_CREDENTIALS,
-                "mode": "binary",
-            },
+            {"connect_args": _HIVE_CREDENTIALS},
         )
 
         if raise_exception:
@@ -124,7 +119,7 @@ class HiveClientTests(TestCase):
         result = response.result.get(ATTRIBUTE_NAME_RESULT)
 
         mock_connect.assert_called_with(**_HIVE_CREDENTIALS)
-        self._mock_cursor.async_execute.assert_has_calls(
+        self._mock_cursor.execute.assert_has_calls(
             [
                 call(query, None),
             ]

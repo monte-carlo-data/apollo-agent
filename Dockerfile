@@ -63,7 +63,6 @@ COPY requirements-cloudrun.txt ./
 RUN . $VENV_DIR/bin/activate && pip install --no-cache-dir -r requirements-cloudrun.txt
 
 RUN apt update
-# install git as we need it for the git clone client
 RUN apt install git -y
 
 CMD . $VENV_DIR/bin/activate && \
@@ -73,12 +72,6 @@ FROM public.ecr.aws/lambda/python:3.12.2024.10.16.13 AS lambda-builder
 
 RUN dnf update -y
 # install git as we need it for the direct oscrypto dependency
-# this is a temporary workaround and it should be removed once we update oscrypto to 1.3.1+
-# see: https://community.snowflake.com/s/article/Python-Connector-fails-to-connect-with-LibraryNotFoundError-Error-detecting-the-version-of-libcrypto
-# please note we don't need git for the git connector as lambda-git takes care of installing it if
-# not present in the lambda environment. we don't use this image for the final lambda as installing
-# git this way breaks the looker-git connector, we need to use in runtime the git version installed
-# by lambda-git package
 RUN dnf install git -y
 
 COPY requirements.txt ./
@@ -101,8 +94,10 @@ RUN pip install --no-cache-dir --upgrade pip
 COPY --from=lambda-builder "${LAMBDA_TASK_ROOT}" "${LAMBDA_TASK_ROOT}"
 
 # install unixodbc and 'ODBC Driver 17 for SQL Server', needed for Azure Dedicated SQL Pools
+# install git needed for looker views collection
 RUN dnf -y update \
     && dnf -y install unixODBC \
+    git \
     && dnf clean all \
     && rm -rf /var/cache/yum
 RUN curl https://packages.microsoft.com/config/rhel/7/prod.repo \
@@ -122,9 +117,6 @@ ENV AzureWebJobsScriptRoot=/home/site/wwwroot \
     AzureFunctionsJobHost__Logging__Console__IsEnabled=true
 
 RUN apt update
-# install git as we need it for the direct oscrypto dependency
-# this is a temporary workaround and it should be removed once we update oscrypto to 1.3.1+
-# see: https://community.snowflake.com/s/article/Python-Connector-fails-to-connect-with-LibraryNotFoundError-Error-detecting-the-version-of-libcrypto
 RUN apt install git -y
 
 # Azure database clients and sql-server uses pyodbc which requires unixODBC and 'ODBC Driver 17
@@ -135,6 +127,9 @@ RUN apt install git -y
 RUN apt-get update \
     && apt-get install -y gnupg gnupg2 gnupg1 curl apt-transport-https libgnutls30 \
     && ACCEPT_EULA=Y apt-get install -y msodbcsql17 odbcinst=2.3.11-2+deb12u1 odbcinst1debian2=2.3.11-2+deb12u1 unixodbc-dev=2.3.11-2+deb12u1 unixodbc=2.3.11-2+deb12u1
+
+# delete this file that includes an old golang version (including vulns) and is not used
+RUN rm -rf /opt/startupcmdgen/
 
 COPY requirements.txt /
 COPY requirements-azure.txt /
