@@ -80,6 +80,9 @@ RUN pip install --no-cache-dir --target "${LAMBDA_TASK_ROOT}" \
     -r requirements.txt \
     -r requirements-lambda.txt
 
+# VULN-464: Upgrade package libarchive
+RUN rm -rf /var/lib/rpm/rpmdb.sqlite*
+
 FROM public.ecr.aws/lambda/python:3.12.2024.10.16.13 AS lambda
 
 # VULN-423: setuptools 68.0.0 contains (CVE-2024-6345)
