@@ -104,6 +104,9 @@ RUN curl https://packages.microsoft.com/config/rhel/7/prod.repo \
     | tee /etc/yum.repos.d/mssql-release.repo
 RUN ACCEPT_EULA=Y dnf install -y msodbcsql17
 
+# VULN-464: Upgrade package libarchive
+RUN rm -rf /var/lib/rpm/rpmdb.sqlite*
+
 COPY apollo "${LAMBDA_TASK_ROOT}/apollo"
 ARG code_version="local"
 ARG build_number="0"
