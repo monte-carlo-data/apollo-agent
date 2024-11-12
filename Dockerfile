@@ -80,9 +80,6 @@ RUN pip install --no-cache-dir --target "${LAMBDA_TASK_ROOT}" \
     -r requirements.txt \
     -r requirements-lambda.txt
 
-# VULN-464: Upgrade package libarchive
-RUN rm -rf /var/lib/rpm/rpmdb.sqlite*
-
 FROM public.ecr.aws/lambda/python:3.12.2024.10.16.13 AS lambda
 
 # VULN-423: setuptools 68.0.0 contains (CVE-2024-6345)
@@ -106,6 +103,9 @@ RUN dnf -y update \
 RUN curl https://packages.microsoft.com/config/rhel/7/prod.repo \
     | tee /etc/yum.repos.d/mssql-release.repo
 RUN ACCEPT_EULA=Y dnf install -y msodbcsql17
+
+# VULN-464: Upgrade package libarchive
+RUN rm -rf /var/lib/rpm/rpmdb.sqlite*
 
 COPY apollo "${LAMBDA_TASK_ROOT}/apollo"
 ARG code_version="local"
