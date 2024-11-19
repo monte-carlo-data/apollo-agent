@@ -68,7 +68,7 @@ RUN apt install git -y
 CMD . $VENV_DIR/bin/activate && \
     gunicorn --timeout 930 --bind :$PORT apollo.interfaces.cloudrun.main:app
 
-FROM public.ecr.aws/lambda/python:3.12.2024.10.16.13 AS lambda-builder
+FROM public.ecr.aws/lambda/python:3.12.2024.11.14.18 AS lambda-builder
 
 RUN dnf update -y
 # install git as we need it for the direct oscrypto dependency
@@ -80,7 +80,7 @@ RUN pip install --no-cache-dir --target "${LAMBDA_TASK_ROOT}" \
     -r requirements.txt \
     -r requirements-lambda.txt
 
-FROM public.ecr.aws/lambda/python:3.12.2024.10.16.13 AS lambda
+FROM public.ecr.aws/lambda/python:3.12.2024.11.14.18 AS lambda
 
 # VULN-423: setuptools 68.0.0 contains (CVE-2024-6345)
 RUN pip install --no-cache-dir setuptools==75.1.0
