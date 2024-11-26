@@ -95,6 +95,8 @@ oauthlib==3.2.2
     # via
     #   -c requirements.txt
     #   requests-oauthlib
+objprint==0.3.0
+    # via viztracer
 opentelemetry-api==1.25.0
     # via
     #   azure-core-tracing-opentelemetry
@@ -213,6 +215,8 @@ urllib3==2.2.2
     # via
     #   -c requirements.txt
     #   requests
+viztracer==0.17.1
+    # via -r requirements-azure.in
 wrapt==1.16.0
     # via
     #   deprecated
