@@ -310,7 +310,7 @@ urllib3==2.2.2
     #   databricks-sql-connector
     #   requests
     #   tableauserverclient
-werkzeug==3.0.3
+werkzeug==3.1.0
     # via
     #   -r requirements.in
     #   flask
