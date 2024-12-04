@@ -26,13 +26,15 @@ class DatabricksSqlWarehouseProxyClient(BaseDbProxyClient):
                 f"Databricks agent client requires {_ATTR_CONNECT_ARGS} in credentials"
             )
 
-        if self._credentials_use_oauth(credentials[_ATTR_CONNECT_ARGS])
-            credentials[_ATTR_CONNECT_ARGS][_ATTR_CREDENTIALS_PROVIDER] = self._oauth_credentials_provider(credentials[_ATTR_CONNECT_ARGS])
+        if self._credentials_use_oauth(credentials[_ATTR_CONNECT_ARGS]):
+            credentials[_ATTR_CONNECT_ARGS][_ATTR_CREDENTIALS_PROVIDER] = (
+                self._oauth_credentials_provider(credentials[_ATTR_CONNECT_ARGS])
+            )
 
         self._connection = sql.connect(**credentials[_ATTR_CONNECT_ARGS])
 
     def _credentials_use_oauth(self, connect_args: Dict) -> bool:
-        return (CLIENT_ID_KEY in connect_args and CLIENT_SECRET_KEY in connect_args)
+        return CLIENT_ID_KEY in connect_args and CLIENT_SECRET_KEY in connect_args
 
     def _oauth_credentials_provider(self, connect_args: Dict) -> Callable:
         config = Config(
