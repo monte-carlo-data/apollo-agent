@@ -37,6 +37,7 @@ class DatabricksSqlWarehouseProxyClient(BaseDbProxyClient):
         return CLIENT_ID_KEY in connect_args and CLIENT_SECRET_KEY in connect_args
 
     def _oauth_credentials_provider(self, connect_args: Dict) -> Callable:
+        # create the auth callable here because it can't be serialized
         config = Config(
             host=connect_args.get("server_hostname"),
             # Service Principal UUID
