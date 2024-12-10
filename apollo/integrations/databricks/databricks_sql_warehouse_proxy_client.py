@@ -8,6 +8,7 @@ from apollo.integrations.db.base_db_proxy_client import BaseDbProxyClient
 _ATTR_CONNECT_ARGS = "connect_args"
 _ATTR_CREDENTIALS_PROVIDER = "credentials_provider"
 
+SERVER_HOSTNAME = "server_hostname"
 CLIENT_ID_KEY = "databricks_client_id"
 CLIENT_SECRET_KEY = "databricks_client_secret"
 
@@ -39,7 +40,7 @@ class DatabricksSqlWarehouseProxyClient(BaseDbProxyClient):
     def _oauth_credentials_provider(self, connect_args: Dict) -> Callable:
         # create the auth callable here because it can't be serialized
         config = Config(
-            host=connect_args.get("server_hostname"),
+            host=connect_args.get(SERVER_HOSTNAME),
             # Service Principal UUID
             client_id=connect_args.get(CLIENT_ID_KEY),
             # Service Principal Secret
