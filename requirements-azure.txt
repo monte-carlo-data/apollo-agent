@@ -223,7 +223,7 @@ wrapt==1.16.0
     #   opentelemetry-instrumentation
     #   opentelemetry-instrumentation-dbapi
     #   opentelemetry-instrumentation-urllib3
-yarl==1.9.4
+yarl==1.12.0
     # via aiohttp
 zipp==3.19.2
     # via importlib-metadata
