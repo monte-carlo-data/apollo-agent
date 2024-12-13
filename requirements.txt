@@ -250,6 +250,7 @@ requests==2.32.3
     # via
     #   -r requirements.in
     #   azure-core
+    #   databricks-sdk
     #   databricks-sql-connector
     #   google-api-core
     #   google-cloud-storage
