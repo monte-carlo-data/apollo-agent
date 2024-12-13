@@ -60,6 +60,7 @@ class HttpProxyClient(BaseProxyClient):
         params: Optional[Dict] = None,
         verify_ssl: Optional[bool] = None,
         retry_status_code_ranges: Optional[List[Tuple]] = None,
+        data: Optional[str] = None,
     ) -> Dict:
         """
         Executes a single request with no retry, intended to be used for JSON request/response endpoints.
@@ -83,6 +84,8 @@ class HttpProxyClient(BaseProxyClient):
         request_args = {}
         if payload:
             request_args["json"] = payload
+        if data:
+            request_args["data"] = data
         if timeout:
             request_args["timeout"] = timeout
         if params:
