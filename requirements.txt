@@ -69,6 +69,8 @@ cryptography==43.0.1
     #   pyjwt
     #   pyopenssl
     #   snowflake-connector-python
+databricks-sdk==0.39.0
+    # via -r requirements.in
 databricks-sql-connector==3.5.0
     # via -r requirements.in
 dataclasses-json==0.6.0
@@ -98,6 +100,7 @@ google-api-python-client==2.98.0
     # via -r requirements.in
 google-auth==2.30.0
     # via
+    #   databricks-sdk
     #   google-api-core
     #   google-api-python-client
     #   google-auth-httplib2
