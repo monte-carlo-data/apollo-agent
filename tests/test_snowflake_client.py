@@ -91,6 +91,25 @@ class SnowflakeClientTests(TestCase):
         self._test_run_query(mock_connect, query, expected_data, expected_description)
 
     @patch("snowflake.connector.connect")
+    def test_query_time(self, mock_connect):
+        query = "SELECT name, value FROM table"  # noqa
+        expected_data = [
+            [
+                "name_1",
+                datetime.time.fromisoformat("14:23:10"),
+            ],
+            [
+                "name_2",
+                datetime.time.fromisoformat("14:23:12"),
+            ],
+        ]
+        expected_description = [
+            ["name", "string", None, None, None, None, None],
+            ["value", "time", None, None, None, None, None],
+        ]
+        self._test_run_query(mock_connect, query, expected_data, expected_description)
+
+    @patch("snowflake.connector.connect")
     def test_programming_error(self, mock_connect):
         query = ""
         data = []
@@ -217,6 +236,11 @@ class SnowflakeClientTests(TestCase):
         elif isinstance(value, datetime.date):
             return {
                 "__type__": "date",
+                "__data__": value.isoformat(),
+            }
+        elif isinstance(value, datetime.time):
+            return {
+                "__type__": "time",
                 "__data__": value.isoformat(),
             }
         elif isinstance(value, bytes) or isinstance(value, bytearray):

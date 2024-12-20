@@ -56,6 +56,9 @@ ATTRIBUTE_VALUE_TYPE_DECIMAL = "decimal"
 # the right type
 ATTRIBUTE_VALUE_TYPE_LOOKER_CATEGORY = "looker.category"
 
+# Value for the attribute __type__ to indicate this is a time
+ATTRIBUTE_VALUE_TYPE_TIME = "time"
+
 # Value to use when redacting sensitive data in log messages
 ATTRIBUTE_VALUE_REDACTED = "__redacted__"
 
