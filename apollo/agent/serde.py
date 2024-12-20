@@ -19,6 +19,7 @@ from apollo.agent.constants import (
     ATTRIBUTE_VALUE_TYPE_DATETIME,
     ATTRIBUTE_VALUE_TYPE_DECIMAL,
     ATTRIBUTE_VALUE_TYPE_BYTES,
+    ATTRIBUTE_VALUE_TYPE_TIME,
 )
 
 
@@ -33,6 +34,11 @@ class AgentSerializer(json.JSONEncoder):
         elif isinstance(value, date):
             return {
                 ATTRIBUTE_NAME_TYPE: ATTRIBUTE_VALUE_TYPE_DATE,
+                ATTRIBUTE_NAME_DATA: value.isoformat(),
+            }
+        elif isinstance(value, time):
+            return {
+                ATTRIBUTE_NAME_TYPE: ATTRIBUTE_VALUE_TYPE_TIME,
                 ATTRIBUTE_NAME_DATA: value.isoformat(),
             }
         elif isinstance(value, Decimal):
