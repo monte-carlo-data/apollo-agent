@@ -106,6 +106,9 @@ class SslOptions:
 
     def _set_cert_and_key_to_context(self, ssl_context: ssl.SSLContext) -> None:
         """Check if temp file exists, if not create it from certificate or key data."""
+        if not self.cert_data:
+            return
+
         with tempfile.NamedTemporaryFile(
             delete=True
         ) as cert_file, tempfile.NamedTemporaryFile(delete=True) as key_file:

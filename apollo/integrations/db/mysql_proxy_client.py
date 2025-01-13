@@ -32,7 +32,13 @@ class MysqlProxyClient(BaseDbProxyClient):
             )
 
         connect_args = credentials[_ATTR_CONNECT_ARGS]
-        ssl_options = SslOptions(credentials.get("ssl_options") or {})
+
+        # If there is a CA path (ssl_options.ca), download that cert to the storage bucket
+        # and provide the storage bucket's path as a connection argument.
+        #
+        # If instead there is ssl_options.cert_data, ssl_options.key_data or ssl_options.ca_data,
+        # use the data to create a SSLContext obj and provide that as a connection argument.
+        ssl_options = SslOptions(**(credentials.get("ssl_options") or {}))
         if ssl_options.ca:
             if cert_path := self.get_cert_path(
                 platform=platform,
@@ -42,7 +48,11 @@ class MysqlProxyClient(BaseDbProxyClient):
                 connect_args["ssl"] = {"ca": cert_path}
         elif ssl_context := ssl_options.get_ssl_context():
             connect_args["ssl"] = ssl_context
+
         self._connection = pymysql.connect(**connect_args)
+
+        if self._connection and self._connection.ssl:
+            logger.info("MySQL SSL connection established")
 
         # we were having tcp keep alive issues in Azure, so we're forcing it to 30 secs
         sock: Optional[socket.socket] = (
