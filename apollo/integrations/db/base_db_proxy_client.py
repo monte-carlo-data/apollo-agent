@@ -52,6 +52,7 @@ class SslOptions:
     verify_cert: bool = True
     verify_identity: bool = True
     disabled: bool = False
+    mechanism: str | None = None
 
     def __post_init__(self):
         # Validation for conflicting flags
