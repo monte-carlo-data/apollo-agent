@@ -108,7 +108,6 @@ RUN ACCEPT_EULA=Y dnf install -y msodbcsql17
 RUN rm -rf /var/lib/rpm/rpmdb.sqlite*
 
 COPY apollo "${LAMBDA_TASK_ROOT}/apollo"
-COPY resources/lambda/openssl ${LAMBDA_TASK_ROOT}
 ARG code_version="local"
 ARG build_number="0"
 RUN echo $code_version,$build_number > ./apollo/agent/version
