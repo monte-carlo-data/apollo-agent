@@ -1,6 +1,7 @@
 import io
 import logging
 import os
+import time
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Tuple, Callable, Optional, Union, Any, BinaryIO
 
@@ -431,6 +432,8 @@ def _test_health() -> Tuple[Dict, int]:
     request_dict: Dict = request.json if request.method == "POST" else request.args  # type: ignore
     trace_id = request_dict.get("trace_id")
     full = str(request_dict.get("full", "false")).lower() == "true"
+    if os.getenv("AGENT_PING_SLEEP"):
+        time.sleep(int(os.getenv("AGENT_PING_SLEEP")))  # type: ignore
     return agent.health_information(trace_id, full).to_dict(), 200
 
 
