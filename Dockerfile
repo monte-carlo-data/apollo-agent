@@ -127,10 +127,11 @@ RUN apt install git -y
 # use the msodbcsql17 driver so need to install specific versions of some libraries and allow Docker
 # to downgrade some pre-installed packages.
 # Updating libgnutls30 to resolve CVE-2024-28835 and CVE-2024-28834.
+# Updating libglib to resolve CVE-2024-52533.
 RUN apt-get update \
     && apt-get install -y gnupg gnupg2 gnupg1 curl apt-transport-https libgnutls30 \
     && ACCEPT_EULA=Y apt-get install -y msodbcsql17 odbcinst=2.3.11-2+deb12u1 odbcinst1debian2=2.3.11-2+deb12u1 unixodbc-dev=2.3.11-2+deb12u1 unixodbc=2.3.11-2+deb12u1 \
-    && apt-get install -y sqlite3=3.40.1-2+deb12u1 openssl=3.0.15-1~deb12u1
+    && apt-get install -y sqlite3=3.40.1-2+deb12u1 openssl=3.0.15-1~deb12u1 libglib2.0-0
 
 # delete this file that includes an old golang version (including vulns) and is not used
 RUN rm -rf /opt/startupcmdgen/
