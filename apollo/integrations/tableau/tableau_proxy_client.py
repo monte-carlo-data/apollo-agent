@@ -41,7 +41,13 @@ def generate_jwt(
         "jti": token_id,
         "aud": "tableau",
         "sub": user_name,
-        "scp": ["tableau:content:read", "tableau:users:read", "tableau:labels:*"],
+        "scp": [
+            "tableau:content:read",
+            "tableau:users:read",
+            "tableau:labels:read",
+            "tableau:labels:update",
+            "tableau:labels:create",
+        ],
     }
     return jwt.encode(
         payload=payload, key=secret_value, algorithm="HS256", headers=headers
