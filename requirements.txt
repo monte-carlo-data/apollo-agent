@@ -259,7 +259,7 @@ requests==2.32.3
     #   presto-python-client
     #   snowflake-connector-python
     #   tableauserverclient
-restrictedpython==7.4
+restrictedpython==8.0
     # via -r requirements.in
 retry2==0.9.5
     # via -r requirements.in
