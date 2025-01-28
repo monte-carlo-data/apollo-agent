@@ -29,7 +29,7 @@ PyMySQL>=1.1.1
 pyodbc==5.0.1
 pyOpenSSL>=24.2.1
 requests>=2.32.0
-RestrictedPython==7.4
+RestrictedPython==8.0
 retry2==0.9.5
 snowflake-connector-python>=3.12.3
 # python_version conditions below to resolve urllib3 compatibility issues with snowflake-connector-python
