@@ -153,7 +153,6 @@ class S3BaseReaderWriter(BaseStorageClient):
                 Bucket=self._bucket_name,
                 Key=self._apply_prefix(key),
                 Body=obj_to_write,
-                ServerSideEncryption="AES256",
             )
         except ClientError as e:
             raise self.GenericError(str(e)) from e
