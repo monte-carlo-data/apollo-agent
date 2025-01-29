@@ -38,7 +38,12 @@ class S3ReaderWriter(S3BaseReaderWriter):
         using credentials from the environment, required for pre-signed urls,
         see: https://github.com/boto/boto3/issues/3015
         """
-        return boto3.client("s3", endpoint_url=self.s3_client.meta.endpoint_url)
+        config = Config(signature_version="s3v4")
+        return boto3.client(
+            "s3",
+            endpoint_url=self.s3_client.meta.endpoint_url,
+            config=config,
+        )
 
     @cached_property
     def s3_resource(self):
