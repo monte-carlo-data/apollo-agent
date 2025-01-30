@@ -16,15 +16,15 @@ asgiref==3.8.1
     # via opentelemetry-instrumentation-asgi
 attrs==23.2.0
     # via
-    #   -c requirements.txt
+    #   -c /Users/mrostan/Developer/mc/apollo-agent/requirements.txt
     #   aiohttp
 azure-common==1.1.28
     # via
-    #   -c requirements.txt
+    #   -c /Users/mrostan/Developer/mc/apollo-agent/requirements.txt
     #   azure-mgmt-resource
 azure-core==1.31.0
     # via
-    #   -c requirements.txt
+    #   -c /Users/mrostan/Developer/mc/apollo-agent/requirements.txt
     #   azure-core-tracing-opentelemetry
     #   azure-mgmt-core
     #   azure-monitor-opentelemetry
@@ -41,7 +41,7 @@ azure-functions-durable==1.2.9
     # via -r requirements-azure.in
 azure-mgmt-core==1.4.0
     # via
-    #   -c requirements.txt
+    #   -c /Users/mrostan/Developer/mc/apollo-agent/requirements.txt
     #   azure-mgmt-resource
 azure-mgmt-resource==23.0.1
     # via -r requirements-azure.in
@@ -53,12 +53,12 @@ azure-monitor-query==1.2.1
     # via -r requirements-azure.in
 certifi==2024.8.30
     # via
-    #   -c requirements.txt
+    #   -c /Users/mrostan/Developer/mc/apollo-agent/requirements.txt
     #   msrest
     #   requests
 charset-normalizer==3.3.2
     # via
-    #   -c requirements.txt
+    #   -c /Users/mrostan/Developer/mc/apollo-agent/requirements.txt
     #   requests
 deprecated==1.2.14
     # via opentelemetry-api
@@ -72,7 +72,7 @@ furl==2.1.3
     # via azure-functions-durable
 idna==3.7
     # via
-    #   -c requirements.txt
+    #   -c /Users/mrostan/Developer/mc/apollo-agent/requirements.txt
     #   requests
     #   yarl
 importlib-metadata==7.1.0
@@ -81,7 +81,7 @@ importlib-metadata==7.1.0
     #   opentelemetry-instrumentation-flask
 isodate==0.6.1
     # via
-    #   -c requirements.txt
+    #   -c /Users/mrostan/Developer/mc/apollo-agent/requirements.txt
     #   azure-mgmt-resource
     #   azure-monitor-query
     #   msrest
@@ -93,7 +93,7 @@ multidict==6.0.5
     #   yarl
 oauthlib==3.2.2
     # via
-    #   -c requirements.txt
+    #   -c /Users/mrostan/Developer/mc/apollo-agent/requirements.txt
     #   requests-oauthlib
 objprint==0.3.0
     # via viztracer
@@ -180,17 +180,17 @@ orderedmultidict==1.0.1
     # via furl
 packaging==24.1
     # via
-    #   -c requirements.txt
+    #   -c /Users/mrostan/Developer/mc/apollo-agent/requirements.txt
     #   opentelemetry-instrumentation-flask
 psutil==5.9.8
     # via azure-monitor-opentelemetry-exporter
 python-dateutil==2.9.0.post0
     # via
-    #   -c requirements.txt
+    #   -c /Users/mrostan/Developer/mc/apollo-agent/requirements.txt
     #   azure-functions-durable
 requests==2.32.3
     # via
-    #   -c requirements.txt
+    #   -c /Users/mrostan/Developer/mc/apollo-agent/requirements.txt
     #   azure-core
     #   azure-functions-durable
     #   msrest
@@ -199,7 +199,7 @@ requests-oauthlib==2.0.0
     # via msrest
 six==1.16.0
     # via
-    #   -c requirements.txt
+    #   -c /Users/mrostan/Developer/mc/apollo-agent/requirements.txt
     #   azure-core
     #   furl
     #   isodate
@@ -207,13 +207,13 @@ six==1.16.0
     #   python-dateutil
 typing-extensions==4.12.2
     # via
-    #   -c requirements.txt
+    #   -c /Users/mrostan/Developer/mc/apollo-agent/requirements.txt
     #   azure-core
     #   azure-monitor-query
     #   opentelemetry-sdk
 urllib3==2.2.2
     # via
-    #   -c requirements.txt
+    #   -c /Users/mrostan/Developer/mc/apollo-agent/requirements.txt
     #   requests
 viztracer==0.17.1
     # via -r requirements-azure.in
