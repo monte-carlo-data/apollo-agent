@@ -6,26 +6,26 @@
 #
 cachetools==5.3.3
     # via
-    #   -c /Users/mrostan/Developer/mc/apollo-agent/requirements.txt
+    #   -c requirements.txt
     #   google-auth
 certifi==2024.8.30
     # via
-    #   -c /Users/mrostan/Developer/mc/apollo-agent/requirements.txt
+    #   -c requirements.txt
     #   requests
 charset-normalizer==3.3.2
     # via
-    #   -c /Users/mrostan/Developer/mc/apollo-agent/requirements.txt
+    #   -c requirements.txt
     #   requests
 google-api-core[grpc]==2.19.1
     # via
-    #   -c /Users/mrostan/Developer/mc/apollo-agent/requirements.txt
+    #   -c requirements.txt
     #   google-cloud-appengine-logging
     #   google-cloud-core
     #   google-cloud-logging
     #   google-cloud-run
 google-auth==2.30.0
     # via
-    #   -c /Users/mrostan/Developer/mc/apollo-agent/requirements.txt
+    #   -c requirements.txt
     #   google-api-core
     #   google-cloud-appengine-logging
     #   google-cloud-core
@@ -37,7 +37,7 @@ google-cloud-audit-log==0.3.0
     # via google-cloud-logging
 google-cloud-core==2.4.1
     # via
-    #   -c /Users/mrostan/Developer/mc/apollo-agent/requirements.txt
+    #   -c requirements.txt
     #   google-cloud-logging
 google-cloud-logging==3.10.0
     # via -r requirements-cloudrun.in
@@ -45,7 +45,7 @@ google-cloud-run==0.10.5
     # via -r requirements-cloudrun.in
 googleapis-common-protos[grpc]==1.63.2
     # via
-    #   -c /Users/mrostan/Developer/mc/apollo-agent/requirements.txt
+    #   -c requirements.txt
     #   google-api-core
     #   google-cloud-audit-log
     #   grpc-google-iam-v1
@@ -64,18 +64,18 @@ grpcio-status==1.62.3
     # via google-api-core
 idna==3.7
     # via
-    #   -c /Users/mrostan/Developer/mc/apollo-agent/requirements.txt
+    #   -c requirements.txt
     #   requests
 proto-plus==1.24.0
     # via
-    #   -c /Users/mrostan/Developer/mc/apollo-agent/requirements.txt
+    #   -c requirements.txt
     #   google-api-core
     #   google-cloud-appengine-logging
     #   google-cloud-logging
     #   google-cloud-run
 protobuf==4.25.3
     # via
-    #   -c /Users/mrostan/Developer/mc/apollo-agent/requirements.txt
+    #   -c requirements.txt
     #   google-api-core
     #   google-cloud-appengine-logging
     #   google-cloud-audit-log
@@ -87,22 +87,22 @@ protobuf==4.25.3
     #   proto-plus
 pyasn1==0.6.0
     # via
-    #   -c /Users/mrostan/Developer/mc/apollo-agent/requirements.txt
+    #   -c requirements.txt
     #   pyasn1-modules
     #   rsa
 pyasn1-modules==0.4.0
     # via
-    #   -c /Users/mrostan/Developer/mc/apollo-agent/requirements.txt
+    #   -c requirements.txt
     #   google-auth
 requests==2.32.3
     # via
-    #   -c /Users/mrostan/Developer/mc/apollo-agent/requirements.txt
+    #   -c requirements.txt
     #   google-api-core
 rsa==4.9
     # via
-    #   -c /Users/mrostan/Developer/mc/apollo-agent/requirements.txt
+    #   -c requirements.txt
     #   google-auth
 urllib3==2.2.2
     # via
-    #   -c /Users/mrostan/Developer/mc/apollo-agent/requirements.txt
+    #   -c requirements.txt
     #   requests
