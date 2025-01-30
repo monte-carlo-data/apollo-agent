@@ -71,7 +71,7 @@ cryptography==43.0.1
     #   snowflake-connector-python
 databricks-sdk==0.39.0
     # via -r requirements.in
-databricks-sql-connector==3.5.0
+databricks-sql-connector==4.0.0
     # via -r requirements.in
 dataclasses-json==0.6.0
     # via -r requirements.in
@@ -79,7 +79,7 @@ decorator==5.1.1
     # via retry2
 defusedxml==0.7.1
     # via tableauserverclient
-duckdb==0.10.3
+duckdb==1.1.0
     # via -r requirements.in
 et-xmlfile==1.1.0
     # via openpyxl
@@ -207,10 +207,8 @@ psycopg2-binary==2.9.9
     # via -r requirements.in
 pure-sasl==0.6.2
     # via thrift-sasl
-pyarrow==14.0.1
-    # via
-    #   -r requirements.in
-    #   databricks-sql-connector
+pyarrow==17.0.0
+    # via -r requirements.in
 pyasn1==0.6.0
     # via
     #   pyasn1-modules
@@ -276,7 +274,7 @@ six==1.16.0
     #   python-dateutil
     #   thrift
     #   thrift-sasl
-snowflake-connector-python==3.12.4
+snowflake-connector-python==3.13.2
     # via -r requirements.in
 sortedcontainers==2.4.0
     # via snowflake-connector-python

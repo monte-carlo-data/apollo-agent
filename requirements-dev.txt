@@ -8,24 +8,24 @@ black==24.3.0
     # via -r requirements-dev.in
 blinker==1.8.2
     # via
-    #   -c requirements.txt
+    #   -c /Users/mrostan/Developer/mc/apollo-agent/requirements.txt
     #   flask
 cfgv==3.4.0
     # via pre-commit
 click==8.1.7
     # via
-    #   -c requirements.txt
+    #   -c /Users/mrostan/Developer/mc/apollo-agent/requirements.txt
     #   black
     #   flask
 distlib==0.3.8
     # via virtualenv
 filelock==3.15.4
     # via
-    #   -c requirements.txt
+    #   -c /Users/mrostan/Developer/mc/apollo-agent/requirements.txt
     #   virtualenv
 flask==2.3.3
     # via
-    #   -c requirements.txt
+    #   -c /Users/mrostan/Developer/mc/apollo-agent/requirements.txt
     #   flask-swagger
 flask-swagger==0.2.14
     # via -r requirements-dev.in
@@ -35,20 +35,20 @@ iniconfig==2.0.0
     # via pytest
 itsdangerous==2.2.0
     # via
-    #   -c requirements.txt
+    #   -c /Users/mrostan/Developer/mc/apollo-agent/requirements.txt
     #   flask
 jinja2==3.1.5
     # via
-    #   -c requirements.txt
+    #   -c /Users/mrostan/Developer/mc/apollo-agent/requirements.txt
     #   flask
 markupsafe==2.1.5
     # via
-    #   -c requirements.txt
+    #   -c /Users/mrostan/Developer/mc/apollo-agent/requirements.txt
     #   jinja2
     #   werkzeug
 mypy-extensions==1.0.0
     # via
-    #   -c requirements.txt
+    #   -c /Users/mrostan/Developer/mc/apollo-agent/requirements.txt
     #   black
 nodeenv==1.9.1
     # via
@@ -56,14 +56,14 @@ nodeenv==1.9.1
     #   pyright
 packaging==24.1
     # via
-    #   -c requirements.txt
+    #   -c /Users/mrostan/Developer/mc/apollo-agent/requirements.txt
     #   black
     #   pytest
 pathspec==0.12.1
     # via black
 platformdirs==4.2.2
     # via
-    #   -c requirements.txt
+    #   -c /Users/mrostan/Developer/mc/apollo-agent/requirements.txt
     #   black
     #   virtualenv
 pluggy==1.5.0
@@ -84,5 +84,5 @@ virtualenv==20.26.3
     # via pre-commit
 werkzeug==3.1.0
     # via
-    #   -c requirements.txt
+    #   -c /Users/mrostan/Developer/mc/apollo-agent/requirements.txt
     #   flask
