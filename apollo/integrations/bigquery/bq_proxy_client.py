@@ -2,6 +2,7 @@ import os
 from typing import Optional, Dict
 
 import googleapiclient.discovery
+from googleapiclient.errors import HttpError
 from google.oauth2.service_account import Credentials
 
 from apollo.integrations.base_proxy_client import BaseProxyClient
@@ -39,3 +40,22 @@ class BqProxyClient(BaseProxyClient):
     @property
     def wrapped_client(self):
         return self._client
+
+    def get_error_type(self, error: Exception) -> Optional[str]:
+        """
+        Convert Google API errors to error types that can be converted back to Google API errors client side.
+        """
+        if isinstance(error, HttpError):
+            return "HttpError"
+        return super().get_error_type(error)
+
+    def get_error_extra_attributes(self, error: Exception) -> Optional[Dict]:
+        """
+        Return a dictionary with `resp` and `content` for Google API Errors.
+        """
+        if isinstance(error, HttpError):
+            return {
+                "resp": error.resp,
+                "content": error.content,
+            }
+        return super().get_error_extra_attributes(error)
