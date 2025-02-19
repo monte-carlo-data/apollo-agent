@@ -10,6 +10,7 @@ from apollo.agent.constants import (
     CONNECTION_TYPE_BIGQUERY,
     CONNECTION_TYPE_DATABRICKS,
     CONNECTION_TYPE_HTTP,
+    CONNECTION_TYPE_S3,
     CONNECTION_TYPE_STORAGE,
     CONNECTION_TYPE_LOOKER,
     CONNECTION_TYPE_GIT,
@@ -73,6 +74,16 @@ def _get_proxy_client_http(credentials: Optional[Dict], **kwargs) -> BaseProxyCl
     from apollo.integrations.http.http_proxy_client import HttpProxyClient
 
     return HttpProxyClient(credentials=credentials)
+
+
+def _get_proxy_client_s3(
+    credentials: Optional[Dict], platform: str, **kwargs  # type: ignore
+) -> BaseProxyClient:
+    from apollo.integrations.aws.s3_proxy_client import (
+        S3ProxyClient,
+    )
+
+    return S3ProxyClient(credentials=credentials, platform=platform)
 
 
 def _get_proxy_client_storage(
@@ -293,6 +304,7 @@ _CLIENT_FACTORY_MAPPING = {
     CONNECTION_TYPE_BIGQUERY: _get_proxy_client_bigquery,
     CONNECTION_TYPE_DATABRICKS: _get_proxy_client_databricks,
     CONNECTION_TYPE_HTTP: _get_proxy_client_http,
+    CONNECTION_TYPE_S3: _get_proxy_client_s3,
     CONNECTION_TYPE_STORAGE: _get_proxy_client_storage,
     CONNECTION_TYPE_LOOKER: _get_proxy_client_looker,
     CONNECTION_TYPE_GIT: _get_proxy_client_git,

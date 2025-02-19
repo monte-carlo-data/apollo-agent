@@ -43,6 +43,10 @@ ATTRIBUTE_VALUE_TYPE_CALL = "call"
 # Value for the attribute __type__ to indicate this is a bytes array, data is encoded in base64
 ATTRIBUTE_VALUE_TYPE_BYTES = "bytes"
 
+# Value for the attribute __type__ to indicate this is a boto3 StreamingBody object, data is
+# gzip compressed and encoded in base64
+ATTRIBUTE_VALUE_TYPE_STREAMING_BODY = "StreamingBody;gzip/base64"
+
 # Value for the attribute __type__ to indicate this is a datetime
 ATTRIBUTE_VALUE_TYPE_DATETIME = "datetime"
 
@@ -131,6 +135,7 @@ RESPONSE_TYPE_URL = "url"
 CONNECTION_TYPE_BIGQUERY = "bigquery"
 CONNECTION_TYPE_DATABRICKS = "databricks"
 CONNECTION_TYPE_HTTP = "http"
+CONNECTION_TYPE_S3 = "s3"
 CONNECTION_TYPE_STORAGE = "storage"
 CONNECTION_TYPE_LOOKER = "looker"
 CONNECTION_TYPE_GIT = "git"
@@ -159,6 +164,7 @@ CONNECTION_TYPES = (
     CONNECTION_TYPE_BIGQUERY,
     CONNECTION_TYPE_DATABRICKS,
     CONNECTION_TYPE_HTTP,
+    CONNECTION_TYPE_S3,
     CONNECTION_TYPE_STORAGE,
     CONNECTION_TYPE_LOOKER,
     CONNECTION_TYPE_GIT,
