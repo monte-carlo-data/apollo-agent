@@ -47,6 +47,16 @@ def _get_proxy_client_http(credentials: Optional[Dict], **kwargs) -> BaseProxyCl
     return HttpProxyClient(credentials=credentials)
 
 
+def _get_proxy_client_s3(
+    credentials: Optional[Dict], platform: str, **kwargs  # type: ignore
+) -> BaseProxyClient:
+    from apollo.integrations.aws.s3_proxy_client import (
+        S3ProxyClient,
+    )
+
+    return S3ProxyClient(credentials=credentials, platform=platform)
+
+
 def _get_proxy_client_storage(
     credentials: Optional[Dict], platform: str, **kwargs  # type: ignore
 ) -> BaseProxyClient:
@@ -255,6 +265,7 @@ _CLIENT_FACTORY_MAPPING = {
     "bigquery": _get_proxy_client_bigquery,
     "databricks": _get_proxy_client_databricks,
     "http": _get_proxy_client_http,
+    "s3": _get_proxy_client_s3,
     "storage": _get_proxy_client_storage,
     "looker": _get_proxy_client_looker,
     "git": _get_proxy_client_git,

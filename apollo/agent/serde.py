@@ -1,5 +1,6 @@
 import base64
 import dataclasses
+import gzip
 import ipaddress
 import json
 import uuid
@@ -10,7 +11,10 @@ from datetime import (
     timedelta,
 )
 from decimal import Decimal
+from io import BytesIO
 from typing import Any, Dict, List, Tuple, Union
+
+from botocore.response import StreamingBody
 
 from apollo.agent.constants import (
     ATTRIBUTE_NAME_DATA,
@@ -20,6 +24,7 @@ from apollo.agent.constants import (
     ATTRIBUTE_VALUE_TYPE_DECIMAL,
     ATTRIBUTE_VALUE_TYPE_BYTES,
     ATTRIBUTE_VALUE_TYPE_TIME,
+    ATTRIBUTE_VALUE_TYPE_STREAMING_BODY,
 )
 
 
@@ -50,6 +55,12 @@ class AgentSerializer(json.JSONEncoder):
             return {
                 ATTRIBUTE_NAME_TYPE: ATTRIBUTE_VALUE_TYPE_BYTES,
                 ATTRIBUTE_NAME_DATA: base64.b64encode(value).decode("utf-8"),
+            }
+        elif isinstance(value, StreamingBody):
+            # convert body to base64 in chunks
+            return {
+                ATTRIBUTE_NAME_TYPE: ATTRIBUTE_VALUE_TYPE_STREAMING_BODY,
+                ATTRIBUTE_NAME_DATA: encode_streaming_body_gzip_base64(value),
             }
         elif dataclasses.is_dataclass(value):
             return dataclasses.asdict(value)
@@ -107,3 +118,46 @@ def decode_dictionary(dict_value: Dict) -> Dict:
             return value
 
     return {key: decode_deep(value) for key, value in dict_value.items()}
+
+
+def encode_dictionary(dict_value: Dict) -> Dict:
+    def encode_deep(value: Any) -> Any:
+        if isinstance(value, Dict):
+            return encode_dictionary(value)
+        else:
+            return AgentSerializer.serialize(value)
+
+    return {key: encode_deep(value) for key, value in dict_value.items()}
+
+
+def encode_streaming_body_gzip_base64(
+    streaming_body: StreamingBody, chunk_size: int = 4096
+) -> str:
+    """
+    Compresses a boto3 StreamingBody object using gzip and then encodes the compressed
+    content to base64. Reads the body in chunks to minimize memory usage.
+
+    Args:
+        streaming_body: The boto3 StreamingBody object.
+        chunk_size: The size of the chunks to read from the body (in bytes). Defaults to 4096.
+
+    Returns:
+        A base64 encoded string representing the gzip-compressed content of the streaming body.
+    """
+
+    if not isinstance(streaming_body, StreamingBody):
+        raise TypeError("streaming_body must be a boto3 StreamingBody object")
+    if not isinstance(chunk_size, int) or chunk_size <= 0:
+        raise ValueError("chunk_size must be a positive integer")
+
+    compressed_chunks = BytesIO()
+    with gzip.GzipFile(fileobj=compressed_chunks, mode="wb") as gz:
+        while True:
+            chunk = streaming_body.read(chunk_size)
+            if not chunk:
+                break
+            gz.write(chunk)
+
+    compressed_chunks.seek(0)
+    encoded_data = base64.b64encode(compressed_chunks.read()).decode("ascii")
+    return encoded_data
