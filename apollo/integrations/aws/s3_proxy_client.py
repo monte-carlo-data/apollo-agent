@@ -12,6 +12,6 @@ class S3ProxyClient(BaseAwsProxyClient):
     def process_result(self, value: Any) -> Any:
         """
         Process the result of the methods on this client before being serialized to JSON.
-        Serializes the value to JSON using the AgentSerializer and parses it back from JSON.
+        Ensures all values can be JSON serializable.
         """
         return encode_dictionary(value)
