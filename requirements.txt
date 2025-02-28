@@ -59,7 +59,7 @@ click==8.1.7
     # via
     #   flask
     #   presto-python-client
-cryptography==43.0.1
+cryptography==44.0.1
     # via
     #   -r requirements.in
     #   azure-identity
@@ -83,7 +83,7 @@ duckdb==1.1.0
     # via -r requirements.in
 et-xmlfile==1.1.0
     # via openpyxl
-filelock==3.15.4
+filelock==3.17.0
     # via snowflake-connector-python
 flask==2.3.3
     # via
@@ -177,7 +177,7 @@ oauthlib==3.2.2
     # via databricks-sql-connector
 openpyxl==3.1.5
     # via databricks-sql-connector
-oracledb==2.4.1
+oracledb==2.5.1
     # via -r requirements.in
 oscrypto @ git+https://github.com/wbond/oscrypto@master
     # via -r requirements.in
@@ -189,9 +189,9 @@ packaging==24.1
     #   tableauserverclient
 pandas==2.1.1
     # via databricks-sql-connector
-platformdirs==4.2.2
+platformdirs==4.3.6
     # via snowflake-connector-python
-portalocker==2.10.0
+portalocker==2.10.1
     # via msal-extensions
 presto-python-client==0.8.3
     # via -r requirements.in
@@ -230,7 +230,7 @@ pymysql==1.1.1
     # via -r requirements.in
 pyodbc==5.0.1
     # via -r requirements.in
-pyopenssl==24.2.1
+pyopenssl==24.3.0
     # via
     #   -r requirements.in
     #   snowflake-connector-python
@@ -289,7 +289,7 @@ thrift==0.16.0
     #   thrift-sasl
 thrift-sasl==0.4.3
     # via impyla
-tomlkit==0.12.5
+tomlkit==0.13.2
     # via snowflake-connector-python
 typing-extensions==4.12.2
     # via
