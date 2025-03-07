@@ -452,6 +452,7 @@ workflows:
             branches:
               only:
                 - dev
+                - /.*\/pr-.*/
       - build-and-push:
           name: build-and-push-prod
           docker_hub_repository: agent
