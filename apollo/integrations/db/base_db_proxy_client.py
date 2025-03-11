@@ -1,4 +1,5 @@
 import logging
+import os
 import ssl
 import tempfile
 from abc import ABC
@@ -102,6 +103,20 @@ class SslOptions:
             self._set_cert_and_key_to_context(ssl_context)
 
         return ssl_context
+
+    def write_ca_data_to_temp_file(self, temp_cert_path: str, upsert: bool) -> str:
+        """
+        Some clients require CA data be passed as a path to a file.
+        This method writes the ca_data to the provided path, can optionally
+        upsert what is already there.
+        """
+        if os.path.isfile(temp_cert_path) and not upsert:
+            raise ValueError("File already exists at this path.")
+        if not self.ca_data:
+            raise ValueError("No CA data to write to file.")
+        with open(temp_cert_path, "w") as temp_cert_file:
+            temp_cert_file.write(self.ca_data)
+        return temp_cert_path
 
     def _set_cert_and_key_to_context(self, ssl_context: ssl.SSLContext) -> None:
         """Check if temp file exists, if not create it from certificate or key data."""

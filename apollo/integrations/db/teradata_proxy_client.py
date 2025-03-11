@@ -7,7 +7,7 @@ from typing import (
 
 import teradatasql
 
-from apollo.integrations.db.base_db_proxy_client import BaseDbProxyClient
+from apollo.integrations.db.base_db_proxy_client import BaseDbProxyClient, SslOptions
 
 _ATTR_CONNECT_ARGS = "connect_args"
 
@@ -25,7 +25,25 @@ class TeradataProxyClient(BaseDbProxyClient):
             raise ValueError(
                 f"Teradata agent client requires {_ATTR_CONNECT_ARGS} in credentials"
             )
-        self._connection = teradatasql.connect(**credentials[_ATTR_CONNECT_ARGS])  # type: ignore
+
+        connect_args = credentials[_ATTR_CONNECT_ARGS]
+        ssl_options = SslOptions(**(credentials.get("ssl_options") or {}))
+
+        if ssl_options.ca_data and not ssl_options.disabled:
+            # Purposely a quoted boolean per teradatasql documentation
+            connect_args["encryptdata"] = "true"
+
+            # Path to PEM file that contains Certificate Authority (CA) certificates
+            connect_args["sslca"] = ssl_options.write_ca_data_to_temp_file(
+                "/tmp/teradata_ca.pem", upsert=True
+            )
+
+            # Teradatasql has 2 port connection parameters depending on
+            # https vs http connections. If we are making an encrypted connection,
+            # assume that credentials.port is the HTTPS port, typically 443.
+            connect_args["https_port"] = connect_args.pop("dbs_port")
+
+        self._connection = teradatasql.connect(**connect_args)  # type: ignore
 
     @property
     def wrapped_client(self):
