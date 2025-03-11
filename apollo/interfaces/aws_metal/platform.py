@@ -2,7 +2,6 @@ import os
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Optional, List, cast
 
-import boto3
 import logging
 
 from apollo.agent.constants import PLATFORM_AWS_METAL
@@ -24,7 +23,8 @@ class AwsMetalPlatformProvider(AwsPlatformProvider):
     """
     AWS Metal Platform provider
     """
-    def __init__(self, **kwargs): # type: ignore
+
+    def __init__(self, **kwargs):  # type: ignore
         super().__init__(**kwargs)
 
     _epoch = datetime.utcfromtimestamp(0).astimezone(timezone.utc)
@@ -37,7 +37,6 @@ class AwsMetalPlatformProvider(AwsPlatformProvider):
     @property
     def platform(self) -> str:
         return PLATFORM_AWS_METAL
-
 
     @property
     def updater(self) -> None:
@@ -56,7 +55,9 @@ class AwsMetalPlatformProvider(AwsPlatformProvider):
         limit: int,
     ) -> Dict | None:
         try:
-            return super().filter_log_events(pattern, start_time_str, end_time_str, limit)
+            return super().filter_log_events(
+                pattern, start_time_str, end_time_str, limit
+            )
         except AgentConfigurationError:
             # if env var is not set, log collection is disabled for AWS Metal
             logger.info("Log collection is disabled for this agent")
