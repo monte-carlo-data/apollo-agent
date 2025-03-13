@@ -9,6 +9,7 @@ from apollo.agent.env_vars import (
     GUNICORN_WORKERS_ENV_VAR,
     GUNICORN_THREADS_ENV_VAR,
     GUNICORN_TIMEOUT_ENV_VAR,
+    MCD_AGENT_CLOUD_PLATFORM_ENV_VAR,
 )
 from apollo.agent.models import AgentConfigurationError
 from apollo.interfaces.lambda_function.platform import AwsPlatformProvider
@@ -28,7 +29,9 @@ class AwsMetalPlatformProvider(AwsPlatformProvider):
             GUNICORN_WORKERS_ENV_VAR: os.getenv(GUNICORN_WORKERS_ENV_VAR),
             GUNICORN_THREADS_ENV_VAR: os.getenv(GUNICORN_THREADS_ENV_VAR),
             GUNICORN_TIMEOUT_ENV_VAR: os.getenv(GUNICORN_TIMEOUT_ENV_VAR),
-            "MCD_AGENT_CLOUD_PLATFORM": os.getenv("MCD_AGENT_CLOUD_PLATFORM"),
+            MCD_AGENT_CLOUD_PLATFORM_ENV_VAR: os.getenv(
+                MCD_AGENT_CLOUD_PLATFORM_ENV_VAR
+            ),
         }
 
     @property
