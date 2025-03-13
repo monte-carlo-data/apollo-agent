@@ -116,7 +116,6 @@ class HealthNetworkTests(TestCase):
     @patch("apollo.validators.validate_network.Telnet")
     def test_telnet_success(self, mock_telnet):
         response = self._agent.validate_telnet_connection("localhost", "123", None)
-        print(response)
         self.assertIsNone(response.result.get(ATTRIBUTE_NAME_ERROR))
         self.assertEqual(
             "Telnet connection for localhost:123 is usable.",
