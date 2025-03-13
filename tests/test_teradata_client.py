@@ -1,4 +1,5 @@
 import datetime
+from copy import copy
 from typing import (
     Iterable,
     List,
@@ -15,10 +16,14 @@ from apollo.agent.constants import (
     ATTRIBUTE_NAME_ERROR_TYPE,
 )
 from apollo.agent.logging_utils import LoggingUtils
+from apollo.integrations.db.teradata_proxy_client import (
+    _ATTR_CONNECT_ARGS,
+    TeradataProxyClient,
+)
 
 _TERADATA_CREDENTIALS = {
     "host": "www.example.com",
-    "port": "3306",
+    "dbs_port": "3306",
     "user": "u",
     "password": "p",
 }
@@ -31,6 +36,30 @@ class TeradataClientTests(TestCase):
         self._mock_cursor = Mock()
         self._mock_connection.cursor.return_value = self._mock_cursor
         self.maxDiff = None
+
+    @patch("teradatasql.connect")
+    def test_connect_with_ssl(self, mock_connect):
+        # Create creds with ssl options
+        teradata_creds = copy(_TERADATA_CREDENTIALS)
+        teradata_creds["sslmode"] = "VERIFY-FULL"
+        credentials = {
+            _ATTR_CONNECT_ARGS: teradata_creds,
+            "ssl_options": {"ca_data": "cert-string-here"},
+        }
+        # Use it to create a teradata proxy client
+        TeradataProxyClient(credentials)
+
+        # Validate connection params were passed correctly
+        expected_connection_parameters = {
+            "host": _TERADATA_CREDENTIALS.get("host"),
+            "user": _TERADATA_CREDENTIALS.get("user"),
+            "password": _TERADATA_CREDENTIALS.get("password"),
+            "https_port": _TERADATA_CREDENTIALS.get("dbs_port"),
+            "sslmode": "VERIFY-FULL",
+            "encryptdata": "true",
+            "sslca": "/tmp/teradata_ca.pem",
+        }
+        mock_connect.assert_called_with(**expected_connection_parameters)
 
     @patch("teradatasql.connect")
     def test_query(self, mock_connect):
