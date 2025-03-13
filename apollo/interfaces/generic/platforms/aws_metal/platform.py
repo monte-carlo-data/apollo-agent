@@ -1,20 +1,17 @@
 import os
-from datetime import datetime, timezone, timedelta
-from typing import Dict, Optional, List, cast
+from typing import Dict, Optional
 
 import logging
 
 from apollo.agent.constants import PLATFORM_AWS_METAL
 from apollo.agent.env_vars import (
-    CLOUDWATCH_LOG_GROUP_ID_ENV_VAR,
-    AGENT_WRAPPER_TYPE_ENV_VAR,
-    WRAPPER_TYPE_CLOUDFORMATION,
+    STORAGE_BUCKET_NAME_ENV_VAR,
+    GUNICORN_WORKERS_ENV_VAR,
+    GUNICORN_THREADS_ENV_VAR,
+    GUNICORN_TIMEOUT_ENV_VAR,
 )
 from apollo.agent.models import AgentConfigurationError
-from apollo.agent.platform import AgentPlatformProvider
 from apollo.interfaces.lambda_function.platform import AwsPlatformProvider
-from apollo.agent.updater import AgentUpdater
-from apollo.interfaces.generic.utils import AgentPlatformUtils
 
 logger = logging.getLogger(__name__)
 
@@ -24,15 +21,19 @@ class AwsMetalPlatformProvider(AwsPlatformProvider):
     AWS Metal Platform provider
     """
 
-    def __init__(self, **kwargs):  # type: ignore
+    def __init__(self, platform_info: Optional[Dict] = None, **kwargs):  # type: ignore
         super().__init__(**kwargs)
-
-    _epoch = datetime.utcfromtimestamp(0).astimezone(timezone.utc)
+        self._platform_info = platform_info or {
+            STORAGE_BUCKET_NAME_ENV_VAR: os.getenv(STORAGE_BUCKET_NAME_ENV_VAR),
+            GUNICORN_WORKERS_ENV_VAR: os.getenv(GUNICORN_WORKERS_ENV_VAR),
+            GUNICORN_THREADS_ENV_VAR: os.getenv(GUNICORN_THREADS_ENV_VAR),
+            GUNICORN_TIMEOUT_ENV_VAR: os.getenv(GUNICORN_TIMEOUT_ENV_VAR),
+            "MCD_AGENT_CLOUD_PLATFORM": os.getenv("MCD_AGENT_CLOUD_PLATFORM"),
+        }
 
     @property
     def platform_info(self) -> Dict:
-        # TODO
-        return {}
+        return self._platform_info
 
     @property
     def platform(self) -> str:
@@ -44,7 +45,6 @@ class AwsMetalPlatformProvider(AwsPlatformProvider):
         return None
 
     def get_infra_details(self) -> Dict:
-        # TODO
         return {}
 
     def filter_log_events(
