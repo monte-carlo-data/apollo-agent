@@ -3,7 +3,7 @@ repos:
     hooks:
     - id: black
       name: black
-      entry: ./.venv/bin/black
+      entry: black
       language: python
       types_or: [python, pyi]
 

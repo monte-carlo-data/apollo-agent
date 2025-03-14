@@ -64,7 +64,7 @@ deployment options.
 #### Local execution using Docker
 You can also execute the agent building and running a Docker image:
 ```shell
-docker build -t local_agent --target generic --platform=linux/amd64 .;\
+docker build -t local_agent --target generic --platform=linux/amd64 .
 docker run --rm --name local_agent -p8081:8081 -ePORT=8081 -it local_agent
 ```
 Or running the latest dev image from DockerHub:
