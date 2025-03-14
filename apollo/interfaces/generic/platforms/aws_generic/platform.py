@@ -3,7 +3,7 @@ from typing import Dict, Optional
 
 import logging
 
-from apollo.agent.constants import PLATFORM_AWS_METAL
+from apollo.agent.constants import PLATFORM_AWS_GENERIC
 from apollo.agent.env_vars import (
     STORAGE_BUCKET_NAME_ENV_VAR,
     GUNICORN_WORKERS_ENV_VAR,
@@ -17,9 +17,9 @@ from apollo.interfaces.lambda_function.platform import AwsPlatformProvider
 logger = logging.getLogger(__name__)
 
 
-class AwsMetalPlatformProvider(AwsPlatformProvider):
+class AwsGenericPlatformProvider(AwsPlatformProvider):
     """
-    AWS Metal Platform provider
+    AWS generic platform provider
     """
 
     def __init__(self, platform_info: Optional[Dict] = None, **kwargs):  # type: ignore
@@ -40,11 +40,11 @@ class AwsMetalPlatformProvider(AwsPlatformProvider):
 
     @property
     def platform(self) -> str:
-        return PLATFORM_AWS_METAL
+        return PLATFORM_AWS_GENERIC
 
     @property
     def updater(self) -> None:
-        # automatic updates are not supported for AWS Metal deployments
+        # automatic updates are not supported for AWS generic deployments
         return None
 
     def get_infra_details(self) -> Dict:
@@ -62,7 +62,7 @@ class AwsMetalPlatformProvider(AwsPlatformProvider):
                 pattern, start_time_str, end_time_str, limit
             )
         except AgentConfigurationError:
-            # if env var is not set, log collection is disabled for AWS Metal
+            # if env var is not set, log collection is disabled for AWS generic
             logger.info("Log collection is disabled for this agent")
             return None
 
@@ -80,6 +80,6 @@ class AwsMetalPlatformProvider(AwsPlatformProvider):
         try:
             return super().start_logs_query(query, start_time_str, end_time_str, limit)
         except AgentConfigurationError:
-            # if env var is not set, log collection is disabled for AWS Metal
+            # if env var is not set, log collection is disabled for AWS generic
             logger.info("Log collection is disabled for this agent")
             return None
