@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 logging_utils = LoggingUtils()
 agent = Agent(logging_utils)
 if platform_env := os.getenv(MCD_AGENT_CLOUD_PLATFORM_ENV_VAR):
-    # set the platform provider for bare metal deployments
+    # set the platform provider for generic platform deployments
     agent.platform_provider = get_generic_platform_provider(platform_env)
 _DEFAULT_UPDATE_EVENTS_LIMIT = 100
 

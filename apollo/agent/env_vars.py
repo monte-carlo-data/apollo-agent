@@ -69,7 +69,8 @@ AZURE_MAX_ORCHESTRATOR_FUNCTIONS_ENV_VAR = (
     "AzureFunctionsJobHost__extensions__durableTask__maxConcurrentOrchestratorFunctions"
 )
 
-# used to configure the Gunicorn web server when running the agent image on bare metal
+# used to configure the Gunicorn web server when running the agent image as a generic
+# service instead of a function
 GUNICORN_WORKERS_ENV_VAR = "GUNICORN_WORKERS"
 GUNICORN_THREADS_ENV_VAR = "GUNICORN_THREADS"
 GUNICORN_TIMEOUT_ENV_VAR = "GUNICORN_TIMEOUT"
