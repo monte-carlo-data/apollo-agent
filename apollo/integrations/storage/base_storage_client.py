@@ -2,6 +2,8 @@ import json
 from abc import ABC, abstractmethod
 from datetime import timedelta
 from typing import Optional, Union, Dict, Tuple, List, cast
+import os
+from apollo.agent.env_vars import VALIDATE_PRE_SIGNED_URLS_ENV_VAR
 
 
 class BaseStorageClient(ABC):
@@ -205,3 +207,6 @@ class BaseStorageClient(ABC):
             {**entry, "Key": self._remove_prefix(cast(str, entry.get("Key")))}
             for entry in entries
         ]
+
+    def _is_presigned_url_enabled(self) -> bool:
+        return os.getenv(VALIDATE_PRE_SIGNED_URLS_ENV_VAR, "true").lower() == "true"
