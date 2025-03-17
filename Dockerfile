@@ -1,4 +1,4 @@
-FROM python:3.12.7-slim AS base
+FROM python:3.12.9-slim AS base
 
 # Web server env var configuration
 ENV GUNICORN_WORKERS=1
@@ -131,7 +131,7 @@ ENV AzureWebJobsScriptRoot=/home/site/wwwroot \
     AzureFunctionsJobHost__Logging__Console__IsEnabled=true
 
 RUN apt-get update && apt-get upgrade -y
-RUN apt-get install -y git wget=1.21.3-1+deb12u1  # VULN-543 upgrade wget
+RUN apt-get install -y git wget  # VULN-543 upgrade wget
 
 # Azure database clients and sql-server uses pyodbc which requires unixODBC and 'ODBC Driver 17
 # for SQL Server' Microsoft's python 3.12 base image comes with msodbcsql18 but we are expecting to
