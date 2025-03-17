@@ -1170,7 +1170,9 @@ def get_outbound_ip_address() -> Tuple[Dict, int]:
     return response.result, response.status_code
 
 
+# the root route and '/health' are common defaults for health check endpoints
 @app.route("/")
+@app.route("/health")
 def health() -> dict:
     """
     Basic health check endpoint used by container orchestration platforms to verify the container is running.
