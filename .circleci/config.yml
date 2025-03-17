@@ -101,6 +101,12 @@ jobs:
           image: montecarlodata/<< parameters.docker_hub_repository >>
           tag: latest-generic,<< parameters.code_version >>-generic
       - docker/build:
+          step-name: Build AWS generic image
+          use-buildkit: true  # to build only the required stages
+          extra_build_args: --target aws_generic --build-arg code_version=<< parameters.code_version >> --build-arg build_number=<< pipeline.number >>
+          image: montecarlodata/<< parameters.docker_hub_repository >>
+          tag: latest-aws-generic,<< parameters.code_version >>-aws-generic
+      - docker/build:
           step-name: Build cloudrun image
           use-buildkit: true # to build only the required stages
           extra_build_args: --target cloudrun --build-arg code_version=<< parameters.code_version >> --build-arg build_number=<< pipeline.number >>
