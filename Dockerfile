@@ -1,4 +1,9 @@
-FROM python:3.12.7-slim AS base
+FROM python:3.12.9-slim AS base
+
+# Web server env var configuration
+ENV GUNICORN_WORKERS=1
+ENV GUNICORN_THREADS=8
+ENV GUNICORN_TIMEOUT=0
 
 # Allow statements and log messages to immediately appear in the logs
 ENV PYTHONUNBUFFERED True
@@ -55,7 +60,7 @@ RUN . $VENV_DIR/bin/activate && \
 FROM base AS generic
 
 CMD . $VENV_DIR/bin/activate \
-    && gunicorn --bind :$PORT --workers 1 --threads 8 --timeout 0 apollo.interfaces.generic.main:app
+    && gunicorn --bind :$PORT --workers $GUNICORN_WORKERS --threads $GUNICORN_THREADS --timeout $GUNICORN_TIMEOUT apollo.interfaces.generic.main:app
 
 FROM base AS cloudrun
 
@@ -120,8 +125,8 @@ FROM mcr.microsoft.com/azure-functions/python:4-python3.12 AS azure
 ENV AzureWebJobsScriptRoot=/home/site/wwwroot \
     AzureFunctionsJobHost__Logging__Console__IsEnabled=true
 
-RUN apt update
-RUN apt install git -y
+RUN apt-get update && apt-get upgrade -y
+RUN apt-get install -y git wget  # VULN-543 upgrade wget
 
 # Azure database clients and sql-server uses pyodbc which requires unixODBC and 'ODBC Driver 17
 # for SQL Server' Microsoft's python 3.12 base image comes with msodbcsql18 but we are expecting to
