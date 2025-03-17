@@ -1,4 +1,4 @@
-FROM python:3.12.7-slim AS base
+FROM python:3.12.9-slim AS base
 
 # Web server env var configuration
 ENV GUNICORN_WORKERS=1
