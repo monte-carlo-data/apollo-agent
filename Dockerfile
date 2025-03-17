@@ -1,4 +1,4 @@
-FROM python:3.12.7-slim AS base
+FROM python:3.12.9-slim AS base
 
 # Allow statements and log messages to immediately appear in the logs
 ENV PYTHONUNBUFFERED True
