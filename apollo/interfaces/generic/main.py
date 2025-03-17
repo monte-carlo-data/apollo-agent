@@ -14,16 +14,13 @@ from apollo.agent.env_vars import DEBUG_ENV_VAR, MCD_AGENT_CLOUD_PLATFORM_ENV_VA
 from apollo.agent.logging_utils import LoggingUtils
 from apollo.agent.settings import VERSION
 from apollo.interfaces.agent_response import AgentResponse
-from apollo.interfaces.generic.platforms.factory import get_generic_platform_provider
 
 app = Flask(__name__)
 Compress(app)
 logger = logging.getLogger(__name__)
 logging_utils = LoggingUtils()
 agent = Agent(logging_utils)
-if platform_env := os.getenv(MCD_AGENT_CLOUD_PLATFORM_ENV_VAR):
-    # set the platform provider for generic platform deployments
-    agent.platform_provider = get_generic_platform_provider(platform_env)
+
 _DEFAULT_UPDATE_EVENTS_LIMIT = 100
 
 
