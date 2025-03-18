@@ -10,7 +10,7 @@ logging.setLoggerClass(ExtraLogger)
 
 from apig_wsgi import make_lambda_handler
 
-from apollo.interfaces.aws_generic.main import main
+from apollo.interfaces.aws.main import main
 from apollo.interfaces.lambda_function.platform import AwsPlatformProvider
 
 app = main.app
