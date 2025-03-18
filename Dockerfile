@@ -5,6 +5,11 @@ ENV GUNICORN_WORKERS=1
 ENV GUNICORN_THREADS=8
 ENV GUNICORN_TIMEOUT=0
 
+# Web server env var configuration
+ENV GUNICORN_WORKERS=1
+ENV GUNICORN_THREADS=8
+ENV GUNICORN_TIMEOUT=0
+
 # Allow statements and log messages to immediately appear in the logs
 ENV PYTHONUNBUFFERED True
 
@@ -61,6 +66,11 @@ FROM base AS generic
 
 CMD . $VENV_DIR/bin/activate \
     && gunicorn --bind :$PORT --workers $GUNICORN_WORKERS --threads $GUNICORN_THREADS --timeout $GUNICORN_TIMEOUT apollo.interfaces.generic.main:app
+
+FROM base AS aws_generic
+
+CMD . $VENV_DIR/bin/activate \
+    && gunicorn --bind :$PORT --workers $GUNICORN_WORKERS --threads $GUNICORN_THREADS --timeout $GUNICORN_TIMEOUT apollo.interfaces.aws.main:app
 
 FROM base AS cloudrun
 

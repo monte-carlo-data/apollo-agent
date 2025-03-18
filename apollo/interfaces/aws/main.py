@@ -1,29 +1,65 @@
 import logging
-from typing import Tuple, Dict, Optional, cast, Callable
+import os
+from typing import Tuple, Dict, Optional, cast, Callable, Union
+
 from flask import request
 
-from apollo.agent.constants import PLATFORM_AWS
+from apollo.agent.constants import PLATFORM_AWS, PLATFORM_AWS_GENERIC
 from apollo.agent.utils import AgentUtils
 from apollo.interfaces.agent_response import AgentResponse
 from apollo.interfaces.generic import main
-from apollo.interfaces.lambda_function.platform import AwsPlatformProvider
+from apollo.interfaces.aws.platform import (
+    AwsPlatformProvider,
+    AwsGenericPlatformProvider,
+)
+from apollo.interfaces.lambda_function.json_log_formatter import (
+    JsonLogFormatter,
+    ExtraLogger,
+)
+from apollo.agent.env_vars import (
+    DEBUG_ENV_VAR,
+)
+from apollo.interfaces.generic.log_context import BaseLogContext
+
+# set the logger class before any other apollo code
+logging.setLoggerClass(ExtraLogger)
+
+log_context = BaseLogContext()
+log_context.install()
+
+formatter = JsonLogFormatter()
+root_logger = logging.getLogger()
+for h in root_logger.handlers:
+    h.setFormatter(formatter)
+
+is_debug = os.getenv(DEBUG_ENV_VAR, "false").lower() == "true"
+root_logger.setLevel(logging.DEBUG if is_debug else logging.INFO)
 
 _DEFAULT_LOGS_LIMIT = 1000
 
 app = main.app
 agent = main.agent
+main.agent.log_context = log_context
+# default is AWS generic but it is overridden by the lambda handler when platform is 'AWS'
+agent.platform_provider = AwsGenericPlatformProvider()
 
 logger = logging.getLogger(__name__)
 
 
 def _check_aws_platform(
     trace_id: Optional[str],
-) -> Tuple[Optional[AwsPlatformProvider], Optional[AgentResponse]]:
-    if agent.platform != PLATFORM_AWS:
+) -> Tuple[
+    Optional[Union[AwsPlatformProvider, AwsGenericPlatformProvider]],
+    Optional[AgentResponse],
+]:
+    if agent.platform == PLATFORM_AWS_GENERIC:
+        return cast(AwsGenericPlatformProvider, agent.platform_provider), None
+    elif agent.platform == PLATFORM_AWS:
+        return cast(AwsPlatformProvider, agent.platform_provider), None
+    else:
         return None, AgentUtils.agent_response_for_error(
             "Only supported for AWS platform", trace_id=trace_id
         )
-    return cast(AwsPlatformProvider, agent.platform_provider), None
 
 
 def _perform_aws_operation(
