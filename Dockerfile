@@ -70,7 +70,7 @@ CMD . $VENV_DIR/bin/activate \
 FROM base AS aws_generic
 
 CMD . $VENV_DIR/bin/activate \
-    && gunicorn --bind :$PORT --workers $GUNICORN_WORKERS --threads $GUNICORN_THREADS --timeout $GUNICORN_TIMEOUT apollo.interfaces.aws_generic.main:app
+    && gunicorn --bind :$PORT --workers $GUNICORN_WORKERS --threads $GUNICORN_THREADS --timeout $GUNICORN_TIMEOUT apollo.interfaces.aws.main:app
 
 FROM base AS cloudrun
 

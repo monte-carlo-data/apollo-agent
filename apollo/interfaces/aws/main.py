@@ -8,7 +8,7 @@ from apollo.agent.constants import PLATFORM_AWS, PLATFORM_AWS_GENERIC
 from apollo.agent.utils import AgentUtils
 from apollo.interfaces.agent_response import AgentResponse
 from apollo.interfaces.generic import main
-from apollo.interfaces.aws_generic.platform import (
+from apollo.interfaces.aws.platform import (
     AwsPlatformProvider,
     AwsGenericPlatformProvider,
 )
