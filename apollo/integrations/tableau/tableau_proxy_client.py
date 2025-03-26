@@ -103,9 +103,9 @@ class TableauProxyClient(BaseProxyClient):
             "token_expiration_seconds", _DEFAULT_TOKEN_EXPIRATION_SECONDS
         )
         server_name = credentials["server_name"]
-        verify_ssl = credentials.get("verify_ssl", True)
+        self.verify_ssl = credentials.get("verify_ssl", True)
         self._server = Server(server_name)
-        self._server.add_http_options({"verify": verify_ssl})
+        self._server.add_http_options({"verify": self.verify_ssl})
         self._server.use_server_version()
 
     @property
@@ -149,6 +149,11 @@ class TableauProxyClient(BaseProxyClient):
         else:
             url = f"{self._server.baseurl}/sites/{self._server.site_id}/{path}"
         response = requests.request(
-            method=request_method, url=url, data=data, headers=headers, params=params
+            method=request_method,
+            url=url,
+            data=data,
+            headers=headers,
+            params=params,
+            verify=self.verify_ssl,
         )
         return response.text, response.status_code
