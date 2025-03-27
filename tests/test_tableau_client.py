@@ -139,6 +139,7 @@ class TableauTests(TestCase):
                 "Content-Type": "application/xml",
             },
             params={"pageNumber": 1, "pageSize": 10},
+            verify=True,
         )
 
     @patch("apollo.integrations.tableau.tableau_proxy_client.JwtAuth")
@@ -200,4 +201,5 @@ class TableauTests(TestCase):
                 "Content-Type": "application/xml",
             },
             params={"pageNumber": 1, "pageSize": 10},
+            verify=True,
         )
