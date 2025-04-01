@@ -13,6 +13,7 @@ from apollo.agent.constants import TRACE_ID_HEADER
 from apollo.agent.env_vars import DEBUG_ENV_VAR, MCD_AGENT_CLOUD_PLATFORM_ENV_VAR
 from apollo.agent.logging_utils import LoggingUtils
 from apollo.agent.settings import VERSION
+from apollo.credentials.factory import CredentialsFactory
 from apollo.interfaces.agent_response import AgentResponse
 
 app = Flask(__name__)
@@ -200,7 +201,7 @@ def agent_execute(
 def execute_agent_operation(
     connection_type: str, operation_name: str, json_request: Dict
 ) -> AgentResponse:
-    credentials = json_request.get("credentials", {})
+    credentials = _extract_credentials_in_request(json_request.get("credentials", {}))
     operation = json_request.get("operation")
 
     return agent.execute_operation(
@@ -321,8 +322,7 @@ def agent_execute_script(
 
 def execute_agent_script(connection_type: str, json_request: Dict) -> AgentResponse:
     script = json_request.get("operation")
-    credentials = json_request.get("credentials", {})
-
+    credentials = _extract_credentials_in_request(json_request.get("credentials", {}))
     return agent.execute_script(connection_type, script, credentials)
 
 
@@ -1246,6 +1246,11 @@ def _execute_http_connection_test() -> Tuple[Dict, int]:
         trace_id=request_dict.get("trace_id"),
     )
     return response.result, response.status_code
+
+
+def _extract_credentials_in_request(credentials: Dict) -> Dict:
+    credential_service = CredentialsFactory.get_credentials_service(credentials)
+    return credential_service.get_credentials(credentials)
 
 
 if __name__ == "__main__":
