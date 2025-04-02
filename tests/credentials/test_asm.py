@@ -1,14 +1,9 @@
 from unittest import TestCase
-from unittest.mock import Mock, patch
-
-from botocore.exceptions import ClientError
+from unittest.mock import Mock, patch, MagicMock
 
 from apollo.credentials.asm import (
     AwsSecretsManagerCredentialsService,
     SECRET_NAME,
-    REGION,
-    ROLE_ARN,
-    EXTERNAL_ID,
 )
 
 
@@ -24,43 +19,36 @@ class TestAwsSecretsManagerCredentialsService(TestCase):
             "Missing expected secret name in credentials", str(context.exception)
         )
 
-    @patch("boto3.client")
-    def test_get_credentials_success(self, mock_boto3_client: Mock):
+    @patch("apollo.credentials.asm.SecretsManagerProxyClient")
+    def test_get_credentials_success(self, mock_client_class: Mock):
         # Setup
-        mock_asm = Mock()
-        mock_boto3_client.return_value = mock_asm
-        mock_asm.get_secret_value.return_value = {
-            "SecretString": '{"username": "test", "password": "secret"}'
-        }
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+        mock_client.get_secret_string.return_value = (
+            '{"username": "test", "password": "secret"}'
+        )
 
         credentials = {
             SECRET_NAME: "test-secret",
-            REGION: "us-east-1",
-            ROLE_ARN: "test-role",
-            EXTERNAL_ID: "test-external-id",
+            "aws_region": "us-east-1",
+            "assumable_role": "arn:aws:iam::123456789012:role/test-role",
+            "external_id": "test-external-id",
         }
 
         # Execute
         result = self.service.get_credentials(credentials)
 
         # Verify
-        mock_boto3_client.assert_called_once_with(
-            "secretsmanager",
-            region_name="us-east-1",
-            aws_access_key_id="test-role",
-            aws_secret_access_key="test-external-id",
-        )
-        mock_asm.get_secret_value.assert_called_once_with(SecretId="test-secret")
+        mock_client_class.assert_called_once_with(credentials=credentials)
+        mock_client.get_secret_string.assert_called_once_with("test-secret")
         self.assertEqual({"username": "test", "password": "secret"}, result)
 
-    @patch("boto3.client")
-    def test_get_credentials_optional_params(self, mock_boto3_client: Mock):
+    @patch("apollo.credentials.asm.SecretsManagerProxyClient")
+    def test_get_credentials_optional_params(self, mock_client_class: Mock):
         # Setup
-        mock_asm = Mock()
-        mock_boto3_client.return_value = mock_asm
-        mock_asm.get_secret_value.return_value = {
-            "SecretString": '{"api_key": "12345"}'
-        }
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+        mock_client.get_secret_string.return_value = '{"api_key": "12345"}'
 
         # Only provide secret name, no optional parameters
         credentials = {SECRET_NAME: "test-secret"}
@@ -69,24 +57,16 @@ class TestAwsSecretsManagerCredentialsService(TestCase):
         result = self.service.get_credentials(credentials)
 
         # Verify
-        mock_boto3_client.assert_called_once_with(
-            "secretsmanager",
-            region_name=None,
-            aws_access_key_id=None,
-            aws_secret_access_key=None,
-        )
-        mock_asm.get_secret_value.assert_called_once_with(SecretId="test-secret")
+        mock_client_class.assert_called_once_with(credentials=credentials)
+        mock_client.get_secret_string.assert_called_once_with("test-secret")
         self.assertEqual({"api_key": "12345"}, result)
 
-    @patch("boto3.client")
-    def test_get_credentials_asm_error(self, mock_boto3_client: Mock):
+    @patch("apollo.credentials.asm.SecretsManagerProxyClient")
+    def test_get_credentials_asm_error(self, mock_client_class: Mock):
         # Setup
-        mock_asm = Mock()
-        mock_boto3_client.return_value = mock_asm
-        mock_asm.get_secret_value.side_effect = ClientError(
-            error_response={"Error": {"Message": "Secret not found"}},
-            operation_name="GetSecretValue",
-        )
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+        mock_client.get_secret_string.side_effect = Exception("Secret not found")
 
         credentials = {SECRET_NAME: "test-secret"}
 
@@ -95,16 +75,16 @@ class TestAwsSecretsManagerCredentialsService(TestCase):
             self.service.get_credentials(credentials)
 
         self.assertEqual(
-            "Failed to fetch credentials from AWS Secrets Manager: An error occurred (Unknown) when calling the GetSecretValue operation: Secret not found",
+            "Failed to fetch credentials from AWS Secrets Manager: Secret not found",
             str(context.exception),
         )
 
-    @patch("boto3.client")
-    def test_get_credentials_invalid_json(self, mock_boto3_client: Mock):
+    @patch("apollo.credentials.asm.SecretsManagerProxyClient")
+    def test_get_credentials_invalid_json(self, mock_client_class: Mock):
         # Setup
-        mock_asm = Mock()
-        mock_boto3_client.return_value = mock_asm
-        mock_asm.get_secret_value.return_value = {"SecretString": "invalid json"}
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+        mock_client.get_secret_string.return_value = "invalid json"
 
         credentials = {SECRET_NAME: "test-secret"}
 
@@ -117,12 +97,12 @@ class TestAwsSecretsManagerCredentialsService(TestCase):
             in str(context.exception)
         )
 
-    @patch("boto3.client")
-    def test_get_credentials_missing_secret_string(self, mock_boto3_client: Mock):
+    @patch("apollo.credentials.asm.SecretsManagerProxyClient")
+    def test_get_credentials_missing_secret_string(self, mock_client_class: Mock):
         # Setup
-        mock_asm = Mock()
-        mock_boto3_client.return_value = mock_asm
-        mock_asm.get_secret_value.return_value = {}  # No SecretString in response
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+        mock_client.get_secret_string.return_value = None  # No SecretString in response
 
         credentials = {SECRET_NAME: "test-secret"}
 
@@ -131,6 +111,5 @@ class TestAwsSecretsManagerCredentialsService(TestCase):
             self.service.get_credentials(credentials)
 
         self.assertTrue(
-            "Failed to fetch credentials from AWS Secrets Manager"
-            in str(context.exception)
+            "No secret string found for secret name" in str(context.exception)
         )
