@@ -29,5 +29,5 @@ class EnvVarCredentialsService(BaseCredentialsService):
         )
         try:
             return json.loads(env_var_credentials)
-        except ValueError:
+        except Exception:
             raise ValueError(f"Invalid JSON in environment variable: {env_var_name}")
