@@ -1,4 +1,3 @@
-import json
 from typing import Any, Dict, Optional
 import base64
 
@@ -18,7 +17,7 @@ class KmsProxyClient(BaseAwsProxyClient):
         try:
             decrypted_credentials = self.wrapped_client.decrypt(
                 CiphertextBlob=encrypted_credentials,
-                EncryptionContext=dict(KeyId=kms_key_id),
+                KeyId=kms_key_id,
             )
             return decrypted_credentials["Plaintext"].decode("utf-8")
         except Exception as e:
