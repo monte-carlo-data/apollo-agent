@@ -2,7 +2,11 @@ from unittest import TestCase
 from unittest.mock import Mock, patch, MagicMock
 import base64
 
-from apollo.credentials.decryption.kms import KmsCredentialDecryptionService, KMS_KEY
+from apollo.credentials.decryption.kms import KmsCredentialDecryptionService
+
+KMS_KEY_ID = "test-key-id"
+KMS_KEY_ID_FIELD = "kms_key_id"
+CREDS_WITH_KMS = {KMS_KEY_ID_FIELD: KMS_KEY_ID}
 
 
 class TestKmsCredentialDecryptionService(TestCase):
@@ -18,19 +22,18 @@ class TestKmsCredentialDecryptionService(TestCase):
 
         # Base64 encoded string as it would come from env var
         encrypted_credentials = base64.b64encode(b"encrypted_data").decode("utf-8")
-        kms_key = {"KeyId": "test-key-id"}
 
         # Execute
-        result = self.service.decrypt(encrypted_credentials, {KMS_KEY: kms_key})
+        result = self.service.decrypt(encrypted_credentials, CREDS_WITH_KMS)
 
         # Verify
-        mock_kms_class.assert_called_once_with(credentials={KMS_KEY: kms_key})
+        mock_kms_class.assert_called_once_with(credentials=CREDS_WITH_KMS)
         mock_kms_instance.decrypt.assert_called_once_with(
-            encrypted_credentials, kms_key
+            encrypted_credentials, KMS_KEY_ID
         )
         self.assertEqual("decrypted_value", result)
 
-    def test_decrypt_missing_kms_key(self):
+    def test_decrypt_missing_KMS_KEY_ID(self):
         # Execute & Verify
         with self.assertRaises(ValueError) as context:
             self.service.decrypt("test", {})
@@ -49,11 +52,10 @@ class TestKmsCredentialDecryptionService(TestCase):
         )
 
         encrypted_credentials = base64.b64encode(b"encrypted_data").decode("utf-8")
-        kms_key = {"KeyId": "test-key-id"}
 
         # Execute & Verify
         with self.assertRaises(ValueError) as context:
-            self.service.decrypt(encrypted_credentials, {KMS_KEY: kms_key})
+            self.service.decrypt(encrypted_credentials, CREDS_WITH_KMS)
 
         self.assertEqual(
             "Failed to decrypt credentials using KMS: An error occurred (Unknown) when calling the Decrypt operation: KMS error",
@@ -68,15 +70,14 @@ class TestKmsCredentialDecryptionService(TestCase):
         mock_kms_instance.decrypt.return_value = '{"key": "value"}'
 
         encrypted_credentials = base64.b64encode(b"encrypted_data").decode("utf-8")
-        kms_key = {"KeyId": "test-key-id"}
 
         # Execute
-        result = self.service.decrypt(encrypted_credentials, {KMS_KEY: kms_key})
+        result = self.service.decrypt(encrypted_credentials, CREDS_WITH_KMS)
 
         # Verify
-        mock_kms_class.assert_called_once_with(credentials={KMS_KEY: kms_key})
+        mock_kms_class.assert_called_once_with(credentials=CREDS_WITH_KMS)
         mock_kms_instance.decrypt.assert_called_once_with(
-            encrypted_credentials, kms_key
+            encrypted_credentials, KMS_KEY_ID
         )
         self.assertIsInstance(result, str)
         self.assertEqual('{"key": "value"}', result)
