@@ -10,7 +10,7 @@ class KmsProxyClient(BaseAwsProxyClient):
 
     def decrypt(self, encrypted_credentials: str | bytes, kms_key_id: str) -> str:
         try:
-            if isinstance(encrypted_credentials, bytes):
+            if isinstance(encrypted_credentials, str):
                 encrypted_credentials = base64.b64decode(encrypted_credentials)
         except Exception:
             raise ValueError("Failed to decode base64 encrypted credentials")
