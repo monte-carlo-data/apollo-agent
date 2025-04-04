@@ -19,7 +19,12 @@ RUN apt-get update
 # see: https://community.snowflake.com/s/article/Python-Connector-fails-to-connect-with-LibraryNotFoundError-Error-detecting-the-version-of-libcrypto
 RUN apt-get install -y git
 
+# Upgrade pip globally to fix the vulnerability - VULN-510
+RUN pip install --no-cache-dir -U pip==25.0.0
+
 RUN python -m venv $VENV_DIR
+# Upgrade pip inside the virtual environment - VULN-510
+RUN . $VENV_DIR/bin/activate && pip install --no-cache-dir -U pip==25.0.0
 RUN . $VENV_DIR/bin/activate && pip install --no-cache-dir -r requirements.txt
 
 # VULN-423: setuptools 68.0.0 contains (CVE-2024-6345)
@@ -70,6 +75,7 @@ CMD . $VENV_DIR/bin/activate \
 FROM base AS cloudrun
 
 COPY requirements-cloudrun.txt ./
+RUN . $VENV_DIR/bin/activate && pip install --no-cache-dir -U pip==25.0.0  # VULN-510
 RUN . $VENV_DIR/bin/activate && pip install --no-cache-dir -r requirements-cloudrun.txt
 
 RUN apt update
@@ -86,6 +92,7 @@ RUN dnf install git -y
 
 COPY requirements.txt ./
 COPY requirements-lambda.txt ./
+RUN pip install --no-cache-dir -U pip==25.0.0  # VULN-510
 RUN pip install --no-cache-dir --target "${LAMBDA_TASK_ROOT}" \
     -r requirements.txt \
     -r requirements-lambda.txt
@@ -98,8 +105,8 @@ RUN pip install --no-cache-dir setuptools==75.1.0
 RUN pip install --no-cache-dir --upgrade urllib3==1.26.19
 RUN rm -rf /var/lang/lib/python3.12/site-packages/urllib3-1.26.19.dist-info
 
-# VULN-230 CWE-77
-RUN pip install --no-cache-dir --upgrade pip
+# VULN-230 CWE-77 VULN-510
+RUN pip install --no-cache-dir -U pip==25.0.0
 
 COPY --from=lambda-builder "${LAMBDA_TASK_ROOT}" "${LAMBDA_TASK_ROOT}"
 
@@ -150,6 +157,7 @@ RUN rm -rf /opt/startupcmdgen/
 COPY requirements.txt /
 COPY requirements-azure.txt /
 RUN pip install --no-cache-dir setuptools==75.1.0
+RUN pip install --no-cache-dir -U pip==25.0.0  # VULN-510
 RUN pip install --no-cache-dir -r /requirements.txt -r /requirements-azure.txt
 
 COPY apollo /home/site/wwwroot/apollo
