@@ -14,7 +14,7 @@ class AwsSecretsManagerCredentialsService(BaseCredentialsService):
     def get_credentials(self, credentials: dict) -> dict:
         secret_name = credentials.get(SECRET_NAME)
         if not secret_name:
-            raise ValueError("Missing expected secret name in credentials")
+            raise ValueError("Missing expected secret name 'aws_secret' in credentials")
         try:
             asm_client = SecretsManagerProxyClient(credentials=credentials)
             secret_str = asm_client.get_secret_string(secret_name)

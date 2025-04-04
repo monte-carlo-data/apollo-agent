@@ -16,7 +16,8 @@ class TestAwsSecretsManagerCredentialsService(TestCase):
             self.service.get_credentials({})
 
         self.assertEqual(
-            "Missing expected secret name in credentials", str(context.exception)
+            "Missing expected secret name 'aws_secret' in credentials",
+            str(context.exception),
         )
 
     @patch("apollo.credentials.asm.SecretsManagerProxyClient")
