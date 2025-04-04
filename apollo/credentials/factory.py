@@ -26,4 +26,8 @@ class CredentialsFactory:
             and self_hosted_credentials_type in SELF_HOSTED_CREDENTIALS_TYPES
         ):
             return SELF_HOSTED_CREDENTIALS_TYPES[self_hosted_credentials_type]()
+        elif self_hosted_credentials_type:
+            raise ValueError(
+                f"Invalid self hosted credentials type: {self_hosted_credentials_type}. Supported types: {SELF_HOSTED_CREDENTIALS_TYPES.keys()}"
+            )
         return BaseCredentialsService()

@@ -23,4 +23,8 @@ class CredentialDecryptionFactory:
             and decryption_service_type in DECRYPTION_SERVICE_TYPES
         ):
             return DECRYPTION_SERVICE_TYPES[decryption_service_type]()
+        elif decryption_service_type:
+            raise ValueError(
+                f"Invalid decryption service type: {decryption_service_type}. Supported types: {DECRYPTION_SERVICE_TYPES.keys()}"
+            )
         return BaseCredentialDecryptionService()
