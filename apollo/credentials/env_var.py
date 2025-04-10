@@ -28,6 +28,10 @@ class EnvVarCredentialsService(BaseCredentialsService):
             env_var_credentials, credentials
         )
         try:
-            return json.loads(env_var_credentials)
+            external_credentials = json.loads(env_var_credentials)
+            return self._merge_connect_args(
+                incoming_credentials=credentials,
+                external_credentials=external_credentials,
+            )
         except Exception:
             raise ValueError(f"Invalid JSON in environment variable: {env_var_name}")

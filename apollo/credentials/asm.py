@@ -22,7 +22,11 @@ class AwsSecretsManagerCredentialsService(BaseCredentialsService):
                 raise ValueError(
                     f"Failed to fetch credentials from AWS Secrets Manager: No secret string found for secret name: {secret_name}"
                 )
-            return json.loads(secret_str)
+            external_credentials = json.loads(secret_str)
+            return self._merge_connect_args(
+                incoming_credentials=credentials,
+                external_credentials=external_credentials,
+            )
         except Exception as e:
             raise ValueError(
                 f"Failed to fetch credentials from AWS Secrets Manager: {e}"
