@@ -114,3 +114,19 @@ class TestAwsSecretsManagerCredentialsService(TestCase):
         self.assertTrue(
             "No secret string found for secret name" in str(context.exception)
         )
+
+    @patch("apollo.credentials.asm.SecretsManagerProxyClient")
+    def test_get_credentials_merge_connect_args(self, mock_client_class: Mock):
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+        mock_client.get_secret_string.return_value = (
+            '{"connect_args": {"password": "secret"}}'
+        )
+        credentials = {
+            SECRET_NAME: "test-secret",
+            "connect_args": {"username": "test"},
+        }
+        result = self.service.get_credentials(credentials)
+        self.assertEqual(
+            {"connect_args": {"username": "test", "password": "secret"}}, result
+        )

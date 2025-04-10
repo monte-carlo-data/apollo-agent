@@ -17,8 +17,10 @@ class BaseCredentialsService:
         """
         incoming_connect_args = incoming_credentials.get("connect_args", {})
         external_connect_args = external_credentials.get("connect_args", {})
-        external_credentials["connect_args"] = {
+        merged_connect_args = {
             **incoming_connect_args,
             **external_connect_args,
         }
+        if merged_connect_args:
+            external_credentials["connect_args"] = merged_connect_args
         return external_credentials
