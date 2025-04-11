@@ -72,3 +72,23 @@ class TestEnvVarCredentialsService(TestCase):
                 {"connect_args": {"username": "test", "password": "secret"}},
                 credentials,
             )
+        # test merge credentials when connect_args is a string
+        with patch.dict(
+            os.environ, {"TEST_CREDS": '{"connect_args": "external connect args"}'}
+        ):
+            credentials = self.service.get_credentials(
+                {"env_var_name": "TEST_CREDS", "connect_args": "incoming connect args"}
+            )
+            self.assertEqual(
+                {"connect_args": "external connect args"},
+                credentials,
+            )
+        # test merge credentials when internal connect_args is not provided
+        with patch.dict(
+            os.environ, {"TEST_CREDS": '{"connect_args": {"password": "secret"}}'}
+        ):
+            credentials = self.service.get_credentials({"env_var_name": "TEST_CREDS"})
+            self.assertEqual(
+                {"connect_args": {"password": "secret"}},
+                credentials,
+            )
