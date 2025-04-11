@@ -11,7 +11,7 @@ class AwsSecretsManagerCredentialsService(BaseCredentialsService):
     Credentials service that fetches credentials from AWS Secrets Manager.
     """
 
-    def get_credentials(self, credentials: dict) -> dict:
+    def _load_external_credentials(self, credentials: dict) -> dict:
         secret_name = credentials.get(SECRET_NAME)
         if not secret_name:
             raise ValueError("Missing expected secret name 'aws_secret' in credentials")
@@ -22,11 +22,7 @@ class AwsSecretsManagerCredentialsService(BaseCredentialsService):
                 raise ValueError(
                     f"Failed to fetch credentials from AWS Secrets Manager: No secret string found for secret name: {secret_name}"
                 )
-            external_credentials = json.loads(secret_str)
-            return self._merge_connect_args(
-                incoming_credentials=credentials,
-                external_credentials=external_credentials,
-            )
+            return json.loads(secret_str)
         except Exception as e:
             raise ValueError(
                 f"Failed to fetch credentials from AWS Secrets Manager: {e}"

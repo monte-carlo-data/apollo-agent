@@ -12,7 +12,7 @@ class EnvVarCredentialsService(BaseCredentialsService):
     and decrypts them if necessary.
     """
 
-    def get_credentials(self, credentials: dict) -> dict:
+    def _load_external_credentials(self, credentials: dict) -> dict:
         env_var_name = credentials.get(ENV_VAR_NAME)
         if not env_var_name:
             raise ValueError(
@@ -28,10 +28,6 @@ class EnvVarCredentialsService(BaseCredentialsService):
             env_var_credentials, credentials
         )
         try:
-            external_credentials = json.loads(env_var_credentials)
-            return self._merge_connect_args(
-                incoming_credentials=credentials,
-                external_credentials=external_credentials,
-            )
+            return json.loads(env_var_credentials)
         except Exception:
             raise ValueError(f"Invalid JSON in environment variable: {env_var_name}")
