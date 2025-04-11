@@ -5,6 +5,13 @@ class BaseCredentialsService:
     """
 
     def get_credentials(self, credentials: dict) -> dict:
+        external_credentials = self._load_external_credentials(credentials)
+        return self._merge_connect_args(
+            incoming_credentials=credentials,
+            external_credentials=external_credentials,
+        )
+
+    def _load_external_credentials(self, credentials: dict) -> dict:
         return credentials
 
     def _merge_connect_args(
