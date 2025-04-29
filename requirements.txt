@@ -45,6 +45,7 @@ cattrs==23.2.3
     # via looker-sdk
 certifi==2024.8.30
     # via
+    #   clickhouse-connect
     #   requests
     #   snowflake-connector-python
 cffi==1.16.0
@@ -59,6 +60,8 @@ click==8.1.7
     # via
     #   flask
     #   presto-python-client
+clickhouse-connect==0.8.17
+    # via -r requirements.in
 cryptography==44.0.1
     # via
     #   -r requirements.in
@@ -151,7 +154,9 @@ lambda-git==0.1.1
 looker-sdk==24.2.0
     # via -r requirements.in
 lz4==4.3.3
-    # via databricks-sql-connector
+    # via
+    #   clickhouse-connect
+    #   databricks-sql-connector
 markupsafe==2.1.5
     # via
     #   jinja2
@@ -242,6 +247,7 @@ python-dateutil==2.9.0.post0
     #   pandas
 pytz==2024.1
     # via
+    #   clickhouse-connect
     #   pandas
     #   snowflake-connector-python
 requests==2.32.3
@@ -309,6 +315,7 @@ uritemplate==4.1.1
 urllib3==2.2.2
     # via
     #   botocore
+    #   clickhouse-connect
     #   databricks-sql-connector
     #   requests
     #   tableauserverclient
@@ -316,3 +323,5 @@ werkzeug==3.1.0
     # via
     #   -r requirements.in
     #   flask
+zstandard==0.23.0
+    # via clickhouse-connect
