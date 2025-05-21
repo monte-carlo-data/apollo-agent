@@ -31,13 +31,17 @@ RUN . $VENV_DIR/bin/activate && pip install --no-cache-dir -r requirements.txt
 RUN . $VENV_DIR/bin/activate && pip install setuptools==75.1.0
 
 # Azure database clients uses pyodbc which requires unixODBC and 'ODBC Driver 17 for SQL Server'
+# [VULN-602] update passwd to 1:4.13+dfsg1-1+deb12u1
+# [VULN-606] update krb5 (kerberos) to 1.20.1-2+deb12u3
 RUN apt-get update \
     && apt-get install -y gnupg gnupg2 gnupg1 curl apt-transport-https \
     && curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add - \
     && curl https://packages.microsoft.com/config/debian/10/prod.list \
     > /etc/apt/sources.list.d/mssql-release.list \
     && apt-get update \
-    && ACCEPT_EULA=Y apt-get install -y msodbcsql17 unixodbc unixodbc-dev
+    && ACCEPT_EULA=Y apt-get install -y msodbcsql17 unixodbc unixodbc-dev \
+    && apt-get install -y passwd=1:4.13+dfsg1-1+deb12u1 \
+    && apt-get install -y libgssapi-krb5-2=1.20.1-2+deb12u3 libkrb5-3=1.20.1-2+deb12u3 libkrb5support0=1.20.1-2+deb12u3
 
 # copy sources in the last step so we don't install python libraries due to a change in source code
 COPY apollo/ ./apollo
@@ -79,12 +83,7 @@ RUN . $VENV_DIR/bin/activate && pip install --no-cache-dir -U pip==25.0.0  # VUL
 RUN . $VENV_DIR/bin/activate && pip install --no-cache-dir -r requirements-cloudrun.txt
 
 RUN apt update
-# [VULN-606] update krb5 (kerberos) to 1.20.1-2+deb12u3
-# [VULN-602] update passwd to 1:4.13+dfsg1-1+deb12u1
-RUN apt install git -y && apt install -y --only-upgrade libgssapi-krb5-2=1.20.1-2+deb12u3 \
-    libkrb5-3=1.20.1-2+deb12u3 \
-    libkrb5support0=1.20.1-2+deb12u3 \
-    passwd=1:4.13+dfsg1-1+deb12u1
+RUN apt install git -y
 
 CMD . $VENV_DIR/bin/activate && \
     gunicorn --timeout 930 --bind :$PORT apollo.interfaces.cloudrun.main:app
