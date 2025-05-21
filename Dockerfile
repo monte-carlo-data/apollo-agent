@@ -31,13 +31,17 @@ RUN . $VENV_DIR/bin/activate && pip install --no-cache-dir -r requirements.txt
 RUN . $VENV_DIR/bin/activate && pip install setuptools==75.1.0
 
 # Azure database clients uses pyodbc which requires unixODBC and 'ODBC Driver 17 for SQL Server'
+# [VULN-602] update passwd to 1:4.13+dfsg1-1+deb12u1
+# [VULN-606] update krb5 (kerberos) to 1.20.1-2+deb12u3
 RUN apt-get update \
     && apt-get install -y gnupg gnupg2 gnupg1 curl apt-transport-https \
     && curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add - \
     && curl https://packages.microsoft.com/config/debian/10/prod.list \
     > /etc/apt/sources.list.d/mssql-release.list \
     && apt-get update \
-    && ACCEPT_EULA=Y apt-get install -y msodbcsql17 unixodbc unixodbc-dev
+    && ACCEPT_EULA=Y apt-get install -y msodbcsql17 unixodbc unixodbc-dev \
+    && apt-get install -y passwd=1:4.13+dfsg1-1+deb12u1 \
+    && apt-get install -y libgssapi-krb5-2=1.20.1-2+deb12u3 libkrb5-3=1.20.1-2+deb12u3 libkrb5support0=1.20.1-2+deb12u3
 
 # copy sources in the last step so we don't install python libraries due to a change in source code
 COPY apollo/ ./apollo
@@ -146,10 +150,11 @@ RUN apt-get install -y git wget  # VULN-543 upgrade wget
 # to downgrade some pre-installed packages.
 # Updating libgnutls30 to resolve CVE-2024-28835 and CVE-2024-28834.
 # Updating libglib to resolve CVE-2024-52533.
+# Updating OpenSSL to resolve CVE-2024-13176
 RUN apt-get update \
     && apt-get install -y gnupg gnupg2 gnupg1 curl apt-transport-https libgnutls30 \
     && ACCEPT_EULA=Y apt-get install -y msodbcsql17 odbcinst=2.3.11-2+deb12u1 odbcinst1debian2=2.3.11-2+deb12u1 unixodbc-dev=2.3.11-2+deb12u1 unixodbc=2.3.11-2+deb12u1 \
-    && apt-get install -y sqlite3=3.40.1-2+deb12u1 openssl=3.0.15-1~deb12u1 libglib2.0-0
+    && apt-get install -y sqlite3=3.40.1-2+deb12u1 openssl=3.0.16-1~deb12u1 libglib2.0-0
 
 # delete this file that includes an old golang version (including vulns) and is not used
 RUN rm -rf /opt/startupcmdgen/
