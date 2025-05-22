@@ -17,7 +17,8 @@ RUN apt-get update
 # install git as we need it for the direct oscrypto dependency
 # this is a temporary workaround and it should be removed once we update oscrypto to 1.3.1+
 # see: https://community.snowflake.com/s/article/Python-Connector-fails-to-connect-with-LibraryNotFoundError-Error-detecting-the-version-of-libcrypto
-RUN apt-get install -y git
+RUN apt-get install -y git \
+    && apt-get install -y libcap2=1:2.66-4+deb12u1  # Fix CVE-2025-1390
 
 # Upgrade pip globally to fix the vulnerability - VULN-510
 RUN pip install --no-cache-dir -U pip==25.0.0
@@ -33,6 +34,7 @@ RUN . $VENV_DIR/bin/activate && pip install setuptools==75.1.0
 # Azure database clients uses pyodbc which requires unixODBC and 'ODBC Driver 17 for SQL Server'
 # [VULN-602] update passwd to 1:4.13+dfsg1-1+deb12u1
 # [VULN-606] update krb5 (kerberos) to 1.20.1-2+deb12u3
+# [VULN-607] update libcap2 to 1:2.66-4+deb12u1
 RUN apt-get update \
     && apt-get install -y gnupg gnupg2 gnupg1 curl apt-transport-https \
     && curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add - \
@@ -41,7 +43,8 @@ RUN apt-get update \
     && apt-get update \
     && ACCEPT_EULA=Y apt-get install -y msodbcsql17 unixodbc unixodbc-dev \
     && apt-get install -y passwd=1:4.13+dfsg1-1+deb12u1 \
-    && apt-get install -y libgssapi-krb5-2=1.20.1-2+deb12u3 libkrb5-3=1.20.1-2+deb12u3 libkrb5support0=1.20.1-2+deb12u3
+    && apt-get install -y libgssapi-krb5-2=1.20.1-2+deb12u3 libkrb5-3=1.20.1-2+deb12u3 libkrb5support0=1.20.1-2+deb12u3 \
+    && apt-get install -y libcap2=1:2.66-4+deb12u1  # Fix CVE-2025-1390
 
 # copy sources in the last step so we don't install python libraries due to a change in source code
 COPY apollo/ ./apollo
@@ -84,6 +87,7 @@ RUN . $VENV_DIR/bin/activate && pip install --no-cache-dir -r requirements-cloud
 
 RUN apt update
 RUN apt install git -y
+RUN apt install libcap2=1:2.66-4+deb12u1 -y  # Fix CVE-2025-1390
 
 CMD . $VENV_DIR/bin/activate && \
     gunicorn --timeout 930 --bind :$PORT apollo.interfaces.cloudrun.main:app
@@ -143,6 +147,7 @@ ENV AzureWebJobsScriptRoot=/home/site/wwwroot \
 
 RUN apt-get update && apt-get upgrade -y
 RUN apt-get install -y git wget  # VULN-543 upgrade wget
+RUN apt-get install -y libcap2=1:2.66-4+deb12u1  # Fix CVE-2025-1390
 
 # Azure database clients and sql-server uses pyodbc which requires unixODBC and 'ODBC Driver 17
 # for SQL Server' Microsoft's python 3.12 base image comes with msodbcsql18 but we are expecting to
