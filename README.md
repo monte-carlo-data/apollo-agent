@@ -239,3 +239,44 @@ invoke the health endpoint using:
 ```shell
 aws lambda invoke --profile <aws_profile> --function-name <lambda_arn> --cli-binary-format raw-in-base64-out --payload '{"path": "/api/v1/test/health", "httpMethod": "GET", "queryStringParameters": {"trace_id": "1234", "full": true}}' /dev/stdout | jq '.body | fromjson'
 ```
+
+## Fixing Vulnerabilities and Verifying Library Upgrades
+
+### 1. Updating Vulnerable Dependencies
+If a vulnerability is reported in a dependency (e.g., via Aikido, Snyk, or another scanner), update the affected package in `requirements.in` to the latest secure version. For example, to update `teradatasql`:
+
+```shell
+# Edit requirements.in and set the desired version, e.g.:
+teradatasql==20.0.0.30
+
+# Recompile requirements.txt:
+pip-compile requirements.in
+```
+
+### 2. Rebuilding the Docker Image
+After updating dependencies, rebuild the Docker image to ensure the new versions are installed:
+
+```shell
+docker build -t local_agent --target generic --platform=linux/amd64 .
+```
+
+### 3. Verifying Library Versions in the Image
+To verify that the correct library version is installed in the built image, run:
+
+```shell
+docker run --rm local_agent pip show teradatasql
+```
+Or, for system packages (e.g., libcap2):
+```shell
+docker run --rm local_agent dpkg -l | grep libcap2
+```
+
+This will print the installed version, which you can check against the required secure version.
+
+### 4. Running Tests in Docker
+You can also run the unit tests in Docker to ensure everything works as expected:
+```shell
+docker build -t test_agent --target tests --platform=linux/amd64 --build-arg CACHEBUST="`date`" --progress=plain .
+```
+
+**Note:** Always review the security advisories and package documentation for any additional upgrade steps or breaking changes.

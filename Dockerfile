@@ -33,6 +33,7 @@ RUN . $VENV_DIR/bin/activate && pip install setuptools==75.1.0
 # Azure database clients uses pyodbc which requires unixODBC and 'ODBC Driver 17 for SQL Server'
 # [VULN-602] update passwd to 1:4.13+dfsg1-1+deb12u1
 # [VULN-606] update krb5 (kerberos) to 1.20.1-2+deb12u3
+# [VULN-XXX] update libcap2 to 1:2.66-4+deb12u1
 RUN apt-get update \
     && apt-get install -y gnupg gnupg2 gnupg1 curl apt-transport-https \
     && curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add - \
@@ -41,7 +42,8 @@ RUN apt-get update \
     && apt-get update \
     && ACCEPT_EULA=Y apt-get install -y msodbcsql17 unixodbc unixodbc-dev \
     && apt-get install -y passwd=1:4.13+dfsg1-1+deb12u1 \
-    && apt-get install -y libgssapi-krb5-2=1.20.1-2+deb12u3 libkrb5-3=1.20.1-2+deb12u3 libkrb5support0=1.20.1-2+deb12u3
+    && apt-get install -y libgssapi-krb5-2=1.20.1-2+deb12u3 libkrb5-3=1.20.1-2+deb12u3 libkrb5support0=1.20.1-2+deb12u3 \
+    && apt-get install -y libcap2=1:2.66-4+deb12u1
 
 # copy sources in the last step so we don't install python libraries due to a change in source code
 COPY apollo/ ./apollo
@@ -154,7 +156,8 @@ RUN apt-get install -y git wget  # VULN-543 upgrade wget
 RUN apt-get update \
     && apt-get install -y gnupg gnupg2 gnupg1 curl apt-transport-https libgnutls30 \
     && ACCEPT_EULA=Y apt-get install -y msodbcsql17 odbcinst=2.3.11-2+deb12u1 odbcinst1debian2=2.3.11-2+deb12u1 unixodbc-dev=2.3.11-2+deb12u1 unixodbc=2.3.11-2+deb12u1 \
-    && apt-get install -y sqlite3=3.40.1-2+deb12u1 openssl=3.0.16-1~deb12u1 libglib2.0-0
+    && apt-get install -y sqlite3=3.40.1-2+deb12u1 openssl=3.0.16-1~deb12u1 libglib2.0-0 \
+    && apt-get install -y libcap2=1:2.66-4+deb12u1
 
 # delete this file that includes an old golang version (including vulns) and is not used
 RUN rm -rf /opt/startupcmdgen/
