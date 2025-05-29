@@ -7,11 +7,13 @@ deployment options.
 ## Local development environment
 ### Pre-requisites
 - Python 3.12 or later
+- If you are on a Mac, you'll need to [install a driver manager for ODBC](https://github.com/mkleehammer/pyodbc/wiki/Install#installing-on-macosx): `brew install unixodbc`.
 
 ### Prepare your local environment
 - Create a virtual env, for example: `python -m venv .venv` and activate it: `. .venv/bin/activate`
   - If you don't use the virtual env in `.venv` you must create a symbolic link: `ln -s VENV_DIR .venv` because pyright requires the virtual env to be in `.venv` directory.
-- Install the required libraries: `pip install -r requirements.txt -r requirements-dev.txt -r requirements-cloudrun.txt`
+- Install the required libraries: `pip install -r requirements.txt -r requirements-dev.txt -r requirements-cloudrun.txt -r requirements-azure.txt -r requirements-lambda.txt`
+- If you're on a Mac and the `pyodbc` version is < 5.1.0, [try installing by compiling from source](https://github.com/mkleehammer/pyodbc/wiki/Install#installing-on-macosx): `pip install --no-binary=pyodbc pyodbc`.
 - Install the pre-commit hooks: `pre-commit install`
 
 ### Tests execution
