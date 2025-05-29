@@ -12,6 +12,7 @@ attrs==23.2.0
     # via
     #   cattrs
     #   looker-sdk
+    #   zeep
 azure-common==1.1.28
     # via azure-mgmt-storage
 azure-core==1.31.0
@@ -136,6 +137,7 @@ isodate==0.6.1
     # via
     #   azure-mgmt-storage
     #   azure-storage-blob
+    #   zeep
 itsdangerous==2.2.0
     # via flask
 jinja2==3.1.6
@@ -150,6 +152,8 @@ lambda-git==0.1.1
     # via -r requirements.in
 looker-sdk==24.2.0
     # via -r requirements.in
+lxml==5.4.0
+    # via zeep
 lz4==4.3.3
     # via databricks-sql-connector
 markupsafe==2.1.5
@@ -158,6 +162,8 @@ markupsafe==2.1.5
     #   werkzeug
 marshmallow==3.21.3
     # via dataclasses-json
+more-itertools==10.7.0
+    # via simple-salesforce
 msal==1.31.0
     # via
     #   -r requirements.in
@@ -190,7 +196,9 @@ packaging==24.1
 pandas==2.1.1
     # via databricks-sql-connector
 platformdirs==4.3.6
-    # via snowflake-connector-python
+    # via
+    #   snowflake-connector-python
+    #   zeep
 portalocker==2.10.1
     # via msal-extensions
 presto-python-client==0.8.3
@@ -225,6 +233,7 @@ pyjwt[crypto]==2.8.0
     # via
     #   -r requirements.in
     #   msal
+    #   simple-salesforce
     #   snowflake-connector-python
 pymysql==1.1.1
     # via -r requirements.in
@@ -244,6 +253,7 @@ pytz==2024.1
     # via
     #   pandas
     #   snowflake-connector-python
+    #   zeep
 requests==2.32.3
     # via
     #   -r requirements.in
@@ -255,8 +265,16 @@ requests==2.32.3
     #   looker-sdk
     #   msal
     #   presto-python-client
+    #   requests-file
+    #   requests-toolbelt
+    #   simple-salesforce
     #   snowflake-connector-python
     #   tableauserverclient
+    #   zeep
+requests-file==2.1.0
+    # via zeep
+requests-toolbelt==1.0.0
+    # via zeep
 restrictedpython==8.0
     # via -r requirements.in
 retry2==0.9.5
@@ -265,6 +283,8 @@ rsa==4.9
     # via google-auth
 s3transfer==0.10.2
     # via boto3
+simple-salesforce==1.12.6
+    # via -r requirements.in
 six==1.16.0
     # via
     #   azure-core
@@ -297,6 +317,7 @@ typing-extensions==4.12.2
     #   azure-identity
     #   azure-storage-blob
     #   looker-sdk
+    #   simple-salesforce
     #   snowflake-connector-python
     #   tableauserverclient
     #   typing-inspect
@@ -316,3 +337,5 @@ werkzeug==3.1.0
     # via
     #   -r requirements.in
     #   flask
+zeep==4.3.1
+    # via simple-salesforce
