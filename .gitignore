@@ -169,3 +169,6 @@ cython_debug/
 
 # direnv
 /.envrc
+
+# VS Code
+.vscode/
