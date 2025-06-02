@@ -38,21 +38,25 @@ class SalesforceCRMProxyClient(BaseDbProxyClient):
             records = [[row.get(field) for field in field_names] for row in records_raw]
         description = self._infer_cursor_description(records_raw[0])
 
+        for record in records:
+            for i in range(len(record)):
+                print(description[i][0:2], record[i])
+
         return {"records": records, "rowcount": rowcount, "description": description}
 
-    def describe_global(self):
+    def describe_global(self) -> Dict:
         results = self._connection.describe()
         if results:
             return {"objects": results["sobjects"]}
         else:
             return {"objects": []}
 
-    def describe_object(self, object_name: str):
+    def describe_object(self, object_name: str) -> Dict:
         salesforce_object = getattr(self._connection, object_name)
         results = salesforce_object.describe()
         return {"object_description": results}
 
-    def _infer_cursor_description(self, row: dict):
+    def _infer_cursor_description(self, row: dict) -> List[Tuple]:
         def infer_type(value: Any) -> str:
             if value is None:
                 return "str"
