@@ -15,7 +15,6 @@ class SalesforceCRMProxyClient(BaseDbProxyClient):
                 f"Salesforce CRM agent client requires {_ATTR_CONNECT_ARGS} in credentials"
             )
         self._connection = Salesforce(**credentials[_ATTR_CONNECT_ARGS])  # type: ignore
-        print("Salesforce CRM connection established")
 
     @property
     def wrapped_client(self):
@@ -39,7 +38,6 @@ class SalesforceCRMProxyClient(BaseDbProxyClient):
             records = [[row.get(field) for field in field_names] for row in records_raw]
         description = self._infer_cursor_description(records_raw[0])
 
-        print(f"Query results: {records}")
         return {"records": records, "rowcount": rowcount, "description": description}
 
     def describe_global(self):
