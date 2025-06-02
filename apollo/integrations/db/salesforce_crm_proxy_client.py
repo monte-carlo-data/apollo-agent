@@ -55,10 +55,10 @@ class SalesforceCRMProxyClient(BaseDbProxyClient):
         return {"object_description": results}
 
     def _infer_cursor_description(self, row: dict):
-        def infer_type(value: Any) -> Any:
+        def infer_type(value: Any) -> str:
             if value is None:
-                return str
-            return type(value)
+                return "str"
+            return type(value).__name__
 
         return [
             (
