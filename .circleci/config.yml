@@ -249,9 +249,9 @@ jobs:
           name: Install dependencies
           command: |
             curl https://bootstrap.pypa.io/get-pip.py > get-pip.py
-            python get-pip.py
-            pip install --no-cache-dir --upgrade pip
-            pip install --no-cache-dir montecarlodata
+            python get-pip.py --break-system-packages
+            pip install --no-cache-dir --upgrade pip --break-system-package
+            pip install --no-cache-dir montecarlodata --break-system-package
       - when:
           condition:
             equal: [ true, << parameters.use_aws_cli >> ]
