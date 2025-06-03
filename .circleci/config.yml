@@ -215,7 +215,9 @@ jobs:
           command: make VERSION=<< parameters.code_version >> publish-docs
 
   update-and-validate-golden-agent:
-    executor: aws-cli/default
+    executor:
+      name: aws-cli/default
+      tag: current-22.04
     parameters:
       use_aws_cli:
         description: Use the AWS CLI to perform the update
