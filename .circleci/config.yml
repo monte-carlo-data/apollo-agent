@@ -249,9 +249,9 @@ jobs:
           name: Install dependencies
           command: |
             curl https://bootstrap.pypa.io/get-pip.py > get-pip.py
-            python get-pip.py --break-system-packages
-            pip install --no-cache-dir --upgrade pip --break-system-package
-            pip install --no-cache-dir montecarlodata --break-system-package
+            python get-pip.py
+            pip install --no-cache-dir --upgrade pip
+            pip install --no-cache-dir montecarlodata
       - when:
           condition:
             equal: [ true, << parameters.use_aws_cli >> ]
@@ -327,6 +327,7 @@ workflows:
                 - /.*\/pr-.*/
       - update-and-validate-golden-agent:
           name: gcp-dev-update-and-validate-golden-agent
+          tag: current-22.04
           agent_uuid: ${MCD_AGENT_UUID_WITH_GCP_AGENT}
           agent_version: ${NEXT_VERSION}
           image_repo: pre-release-agent
@@ -343,6 +344,7 @@ workflows:
                 - dev
       - update-and-validate-golden-agent:
           name: az-dev-update-and-validate-golden-agent
+          tag: current-22.04
           agent_uuid: ${MCD_AGENT_UUID_WITH_AZ_AGENT}
           agent_version: ${NEXT_VERSION}
           sleep_seconds: "120"
@@ -360,6 +362,7 @@ workflows:
                 - dev
       - update-and-validate-golden-agent:
           name: gcp-prod-update-and-validate-golden-agent-merge-queue
+          tag: current-22.04
           agent_uuid: ${MCD_AGENT_UUID_WITH_GCP_AGENT}
           agent_version: ${NEXT_VERSION}
           image_repo: pre-release-agent
@@ -376,6 +379,7 @@ workflows:
                 - /.*\/pr-.*/
       - update-and-validate-golden-agent:
           name: az-prod-update-and-validate-golden-agent-merge-queue
+          tag: current-22.04
           agent_uuid: ${MCD_AGENT_UUID_WITH_AZ_AGENT}
           agent_version: ${NEXT_VERSION}
           sleep_seconds: "120"
@@ -412,6 +416,7 @@ workflows:
                 - /.*\/pr-.*/
       - update-and-validate-golden-agent:
           name: aws-dev-update-and-validate-golden-agent
+          tag: current-22.04
           agent_uuid: ${MCD_AGENT_UUID_WITH_AWS_AGENT}
           agent_version: ${NEXT_VERSION}
           image_repo: pre-release-agent
@@ -428,6 +433,7 @@ workflows:
                 - dev
       - update-and-validate-golden-agent:
           name: aws-prod-update-and-validate-golden-agent-merge-queue
+          tag: current-22.04
           use_aws_cli: true
           agent_uuid: ${MCD_AGENT_UUID_WITH_AWS_AGENT}
           agent_version: ${NEXT_VERSION}
@@ -481,6 +487,7 @@ workflows:
               ignore: /.*/
       - update-and-validate-golden-agent:
           name: gcp-prod-update-and-validate-golden-agent
+          tag: current-22.04
           agent_uuid: ${MCD_AGENT_UUID_WITH_GCP_AGENT}
           agent_version: ${VERSION_TAG}
           pre-steps:
@@ -492,6 +499,7 @@ workflows:
             - build-and-push-prod
       - update-and-validate-golden-agent:
           name: az-prod-update-and-validate-golden-agent
+          tag: current-22.04
           agent_uuid: ${MCD_AGENT_UUID_WITH_AZ_AGENT}
           agent_version: ${VERSION_TAG}
           sleep_seconds: "120"
@@ -523,6 +531,7 @@ workflows:
               ignore: /.*/
       - update-and-validate-golden-agent:
           name: aws-prod-update-and-validate-golden-agent
+          tag: current-22.04
           use_aws_cli: true
           agent_uuid: ${MCD_AGENT_UUID_WITH_AWS_AGENT}
           agent_version: ${VERSION_TAG}
