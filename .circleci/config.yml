@@ -215,7 +215,9 @@ jobs:
           command: make VERSION=<< parameters.code_version >> publish-docs
 
   update-and-validate-golden-agent:
-    executor: aws-cli/default
+    executor:
+      name: aws-cli/default
+      tag: current-22.04
     parameters:
       use_aws_cli:
         description: Use the AWS CLI to perform the update
@@ -327,7 +329,6 @@ workflows:
                 - /.*\/pr-.*/
       - update-and-validate-golden-agent:
           name: gcp-dev-update-and-validate-golden-agent
-          tag: current-22.04
           agent_uuid: ${MCD_AGENT_UUID_WITH_GCP_AGENT}
           agent_version: ${NEXT_VERSION}
           image_repo: pre-release-agent
@@ -344,7 +345,6 @@ workflows:
                 - dev
       - update-and-validate-golden-agent:
           name: az-dev-update-and-validate-golden-agent
-          tag: current-22.04
           agent_uuid: ${MCD_AGENT_UUID_WITH_AZ_AGENT}
           agent_version: ${NEXT_VERSION}
           sleep_seconds: "120"
@@ -362,7 +362,6 @@ workflows:
                 - dev
       - update-and-validate-golden-agent:
           name: gcp-prod-update-and-validate-golden-agent-merge-queue
-          tag: current-22.04
           agent_uuid: ${MCD_AGENT_UUID_WITH_GCP_AGENT}
           agent_version: ${NEXT_VERSION}
           image_repo: pre-release-agent
@@ -379,7 +378,6 @@ workflows:
                 - /.*\/pr-.*/
       - update-and-validate-golden-agent:
           name: az-prod-update-and-validate-golden-agent-merge-queue
-          tag: current-22.04
           agent_uuid: ${MCD_AGENT_UUID_WITH_AZ_AGENT}
           agent_version: ${NEXT_VERSION}
           sleep_seconds: "120"
@@ -416,7 +414,6 @@ workflows:
                 - /.*\/pr-.*/
       - update-and-validate-golden-agent:
           name: aws-dev-update-and-validate-golden-agent
-          tag: current-22.04
           agent_uuid: ${MCD_AGENT_UUID_WITH_AWS_AGENT}
           agent_version: ${NEXT_VERSION}
           image_repo: pre-release-agent
@@ -433,7 +430,6 @@ workflows:
                 - dev
       - update-and-validate-golden-agent:
           name: aws-prod-update-and-validate-golden-agent-merge-queue
-          tag: current-22.04
           use_aws_cli: true
           agent_uuid: ${MCD_AGENT_UUID_WITH_AWS_AGENT}
           agent_version: ${NEXT_VERSION}
@@ -487,7 +483,6 @@ workflows:
               ignore: /.*/
       - update-and-validate-golden-agent:
           name: gcp-prod-update-and-validate-golden-agent
-          tag: current-22.04
           agent_uuid: ${MCD_AGENT_UUID_WITH_GCP_AGENT}
           agent_version: ${VERSION_TAG}
           pre-steps:
@@ -499,7 +494,6 @@ workflows:
             - build-and-push-prod
       - update-and-validate-golden-agent:
           name: az-prod-update-and-validate-golden-agent
-          tag: current-22.04
           agent_uuid: ${MCD_AGENT_UUID_WITH_AZ_AGENT}
           agent_version: ${VERSION_TAG}
           sleep_seconds: "120"
@@ -531,7 +525,6 @@ workflows:
               ignore: /.*/
       - update-and-validate-golden-agent:
           name: aws-prod-update-and-validate-golden-agent
-          tag: current-22.04
           use_aws_cli: true
           agent_uuid: ${MCD_AGENT_UUID_WITH_AWS_AGENT}
           agent_version: ${VERSION_TAG}
