@@ -17,7 +17,7 @@ RUN apt-get update
 # install git as we need it for the direct oscrypto dependency
 # this is a temporary workaround and it should be removed once we update oscrypto to 1.3.1+
 # see: https://community.snowflake.com/s/article/Python-Connector-fails-to-connect-with-LibraryNotFoundError-Error-detecting-the-version-of-libcrypto
-RUN apt-get install -y git \Add commentMore actions
+RUN apt-get install -y git \
     && apt-get install -y libcap2=1:2.66-4+deb12u1  # Fix CVE-2025-1390
 
 # Upgrade pip globally to fix the vulnerability - VULN-510
