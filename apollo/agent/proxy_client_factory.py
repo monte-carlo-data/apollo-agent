@@ -284,16 +284,6 @@ def _get_proxy_client_dremio(
     return DremioProxyClient(credentials=credentials, platform=platform)
 
 
-def _get_proxy_client_load_test(
-    credentials: Optional[Dict], platform: str, **kwargs  # type: ignore
-) -> BaseProxyClient:
-    from apollo.integrations.test.load_test_client import (
-        LoadTestProxyClient,
-    )
-
-    return LoadTestProxyClient(credentials=credentials, platform=platform)
-
-
 def _get_proxy_client_salesforce_crm(
     credentials: Optional[Dict], platform: str, **kwargs  # type: ignore
 ) -> BaseProxyClient:
@@ -302,6 +292,16 @@ def _get_proxy_client_salesforce_crm(
     )
 
     return SalesforceCRMProxyClient(credentials=credentials, platform=platform)
+
+
+def _get_proxy_client_load_test(
+    credentials: Optional[Dict], platform: str, **kwargs  # type: ignore
+) -> BaseProxyClient:
+    from apollo.integrations.test.load_test_client import (
+        LoadTestProxyClient,
+    )
+
+    return LoadTestProxyClient(credentials=credentials, platform=platform)
 
 
 @dataclass
@@ -338,7 +338,7 @@ _CLIENT_FACTORY_MAPPING = {
     "msk-connect": _get_proxy_client_msk_connect,
     "msk-kafka": _get_proxy_client_msk_kafka,
     "dremio": _get_proxy_client_dremio,
-    "salesforce_crm": _get_proxy_client_salesforce_crm,
+    "salesforce-crm": _get_proxy_client_salesforce_crm,
     "load_test": _get_proxy_client_load_test,
 }
 
