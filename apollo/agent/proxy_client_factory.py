@@ -299,7 +299,7 @@ _CLIENT_FACTORY_MAPPING = {
     "msk-connect": _get_proxy_client_msk_connect,
     "msk-kafka": _get_proxy_client_msk_kafka,
     "dremio": _get_proxy_client_dremio,
-    "salesforce_crm": _get_proxy_client_salesforce_crm,
+    "salesforce-crm": _get_proxy_client_salesforce_crm,
 }
 
 
