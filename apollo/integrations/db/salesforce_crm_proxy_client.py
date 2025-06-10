@@ -24,32 +24,27 @@ class SalesforceCRMProxyClient(BaseDbProxyClient):
         pass
 
     def execute(self, query: str) -> Dict:
-        results = self._connection.query(query)
+        description = []
+        records = []
 
+        results = self._connection.query(query)
         rowcount = results["totalSize"]
         records_raw = results["records"]
-        if not records_raw:
-            records = []
-            field_names = []
-            description = []
-        else:
-            field_names = [k for k in records_raw[0].keys() if k != "attributes"]
 
-            records = [[row.get(field) for field in field_names] for row in records_raw]
-        description = self._infer_cursor_description(records_raw[0])
+        if records_raw:
+            description = self._infer_cursor_description(records_raw[0])
+            for row in records_raw:
+                record = [v for k, v in row.items() if k != "attributes"]
+                records.append(record)
 
-        for record in records:
-            for i in range(len(record)):
-                print(description[i][0:2], record[i])
-
-        return {"records": records, "rowcount": rowcount, "description": description}
+        return {"description": description, "records": records, "rowcount": rowcount}
 
     def describe_global(self) -> Dict:
+        sobjects = []
         results = self._connection.describe()
         if results:
-            return {"objects": results["sobjects"]}
-        else:
-            return {"objects": []}
+            sobjects = results["sobjects"]
+        return {"objects": sobjects}
 
     def describe_object(self, object_name: str) -> Dict:
         salesforce_object = getattr(self._connection, object_name)
@@ -70,7 +65,7 @@ class SalesforceCRMProxyClient(BaseDbProxyClient):
                 None,  # internal_size
                 None,  # precision
                 None,  # scale
-                None,  # null_ok (guess)
+                None,  # null_ok
             )
             for k, v in row.items()
             if k != "attributes"
