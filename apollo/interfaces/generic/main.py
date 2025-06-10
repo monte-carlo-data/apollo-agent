@@ -794,7 +794,7 @@ def test_network_http_connection_get() -> Tuple[Dict, int]:
                     description: The trace_id passed as an input parameter.
             example:
                 __mcd_result__:
-                    message: URL https://getmontecarlo.com responded with status code: 200.
+                    message: "URL https://getmontecarlo.com responded with status code: 200."
                 __mcd_trace_id__: 324986b4-b185-4187-b4af-b0c2cd60f7a0
     responses:
         200:
