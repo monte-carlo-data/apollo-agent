@@ -42,7 +42,7 @@ class SalesforceCRMProxyClientTests(TestCase):
         # Verify connection is set
         self.assertEqual(client._connection, mock_sf_instance)
         # Verify connection type
-        self.assertEqual(client._connection_type, "salesforce_crm")
+        self.assertEqual(client._connection_type, "salesforce-crm")
 
     @patch("apollo.integrations.db.salesforce_crm_proxy_client.Salesforce")
     def test_wrapped_client_property(self, mock_salesforce: MagicMock):
