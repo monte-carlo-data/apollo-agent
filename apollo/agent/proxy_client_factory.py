@@ -255,6 +255,16 @@ def _get_proxy_client_dremio(
     return DremioProxyClient(credentials=credentials, platform=platform)
 
 
+def _get_proxy_client_salesforce_crm(
+    credentials: Optional[Dict], platform: str, **kwargs  # type: ignore
+) -> BaseProxyClient:
+    from apollo.integrations.db.salesforce_crm_proxy_client import (
+        SalesforceCRMProxyClient,
+    )
+
+    return SalesforceCRMProxyClient(credentials=credentials, platform=platform)
+
+
 @dataclass
 class ProxyClientCacheEntry:
     created_time: datetime
@@ -289,6 +299,7 @@ _CLIENT_FACTORY_MAPPING = {
     "msk-connect": _get_proxy_client_msk_connect,
     "msk-kafka": _get_proxy_client_msk_kafka,
     "dremio": _get_proxy_client_dremio,
+    "salesforce-crm": _get_proxy_client_salesforce_crm,
 }
 
 
