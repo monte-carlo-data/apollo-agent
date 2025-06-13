@@ -59,14 +59,14 @@ class SalesforceCRMProxyClient(BaseDbProxyClient):
 
         return [
             (
-                k,
-                infer_type(v),
+                key,
+                infer_type(val),
                 None,  # display_size
                 None,  # internal_size
                 None,  # precision
                 None,  # scale
                 None,  # null_ok
             )
-            for k, v in row.items()
-            if k != "attributes"
+            for key, val in row.items()
+            if key != "attributes"
         ]
