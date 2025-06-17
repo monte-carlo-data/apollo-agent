@@ -57,6 +57,7 @@ class AzureBlobReaderWriter(AzureBlobBaseReaderWriter):
             credential=AzureUtils.get_default_credential(),
             **kwargs,
         )
+        self.ensure_container_exists()
 
     def _generate_sas_token(
         self, blob_client: BlobClient, expiry: datetime, permission: BlobSasPermissions
