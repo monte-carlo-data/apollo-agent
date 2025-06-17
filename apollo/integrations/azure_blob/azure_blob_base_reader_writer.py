@@ -84,6 +84,11 @@ class AzureBlobBaseReaderWriter(BaseStorageClient):
         """
         return self._bucket_name
 
+    def ensure_container_exists(self):
+        container_client = self._client.get_container_client(self._bucket_name)
+        if not container_client.exists():
+            container_client.create_container()
+
     @convert_azure_errors
     def write(self, key: str, obj_to_write: Union[bytes, str]) -> None:
         """
