@@ -544,3 +544,73 @@ class SalesforceCRMProxyClientTests(TestCase):
         # TODO: Handle nested dicts
         self.assertIsInstance(record[2], dict)  # Account relationship
         self.assertIsInstance(record[3], dict)  # OpportunityLineItems subquery
+
+    @patch("apollo.integrations.db.salesforce_crm_proxy_client.Salesforce")
+    def test_execute_count_query(self, mock_salesforce: MagicMock):
+        mock_salesforce.return_value = MagicMock()
+        client = SalesforceCRMProxyClient(credentials=self.credentials)
+
+        client._connection.query.return_value = {
+            "done": True,
+            "totalSize": 100,
+            "records": ["not relevant to test"],
+        }
+
+        result = client.execute_count_query("SELECT Id FROM Account")
+
+        self.assertEqual(result["rowcount"], 1)
+        self.assertEqual(result["records"], [[100]])
+        self.assertEqual(
+            result["description"], [("count", "int", None, None, None, None, None)]
+        )
+
+    @patch("apollo.integrations.db.salesforce_crm_proxy_client.Salesforce")
+    def test_execute_row_limit(self, mock_salesforce: MagicMock):
+        mock_salesforce.return_value = MagicMock()
+        client = SalesforceCRMProxyClient(credentials=self.credentials)
+
+        client._connection.query.return_value = {
+            "totalSize": 5,
+            "records": [
+                {
+                    "attributes": {"type": "Account", "url": "/test"},
+                    "Id": "001",
+                    "Name": "Account 1",
+                },
+                {
+                    "attributes": {"type": "Account", "url": "/test"},
+                    "Id": "002",
+                    "Name": "Account 2",
+                },
+                {
+                    "attributes": {"type": "Account", "url": "/test"},
+                    "Id": "003",
+                    "Name": "Account 3",
+                },
+                {
+                    "attributes": {"type": "Account", "url": "/test"},
+                    "Id": "004",
+                    "Name": "Account 4",
+                },
+                {
+                    "attributes": {"type": "Account", "url": "/test"},
+                    "Id": "005",
+                    "Name": "Account 5",
+                },
+            ],
+        }
+
+        result = client.execute_row_limit("SELECT Id, Name FROM Account", 3)
+
+        self.assertEqual(result["rowcount"], 3)
+        self.assertEqual(
+            result["records"],
+            [["001", "Account 1"], ["002", "Account 2"], ["003", "Account 3"]],
+        )
+        self.assertEqual(
+            result["description"],
+            [
+                ("Id", "str", None, None, None, None, None),
+                ("Name", "str", None, None, None, None, None),
+            ],
+        )

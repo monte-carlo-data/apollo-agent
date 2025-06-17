@@ -39,6 +39,43 @@ class SalesforceCRMProxyClient(BaseDbProxyClient):
 
         return {"description": description, "records": records, "rowcount": rowcount}
 
+    def execute_count_query(self, query: str) -> Dict:
+        headers = {
+            "Sforce-Query-Options": "batchSize=200",
+        }
+        results = self._connection.query(query, headers=headers)
+        description = [("count", "int", None, None, None, None, None)]
+        records = [[results["totalSize"]]]
+
+        return {
+            "description": description,
+            "records": records,
+            "rowcount": len(records),
+        }
+
+    def execute_row_limit(self, query: str, limit: int) -> Dict:
+        description = []
+        records = []
+
+        limit = min(limit, 200)
+        headers = {
+            "Sforce-Query-Options": f"batchSize={limit}",
+        }
+        results = self._connection.query(query, headers=headers)
+        records_raw = results["records"][:limit]
+
+        if records_raw:
+            description = self._infer_cursor_description(records_raw[0])
+            for row in records_raw:
+                record = [v for k, v in row.items() if k != "attributes"]
+                records.append(record)
+
+        return {
+            "description": description,
+            "records": records,
+            "rowcount": len(records),
+        }
+
     def describe_global(self) -> Dict:
         sobjects = []
         results = self._connection.describe()
