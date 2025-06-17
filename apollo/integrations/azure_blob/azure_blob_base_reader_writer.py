@@ -1,4 +1,5 @@
 import gzip
+import logging
 from datetime import (
     datetime,
     timedelta,
@@ -28,6 +29,8 @@ from azure.storage.blob import (
 )
 
 from apollo.integrations.storage.base_storage_client import BaseStorageClient
+
+logger = logging.getLogger(__name__)
 
 
 def convert_azure_errors(func: Callable):
@@ -88,6 +91,7 @@ class AzureBlobBaseReaderWriter(BaseStorageClient):
         container_client = self._client.get_container_client(self._bucket_name)
         if not container_client.exists():
             container_client.create_container()
+            logger.info(f"Created container {self._bucket_name}")
 
     @convert_azure_errors
     def write(self, key: str, obj_to_write: Union[bytes, str]) -> None:
