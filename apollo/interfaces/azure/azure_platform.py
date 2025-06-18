@@ -15,9 +15,6 @@ from apollo.agent.constants import PLATFORM_AZURE
 from apollo.agent.models import AgentConfigurationError
 from apollo.agent.platform import AgentPlatformProvider
 from apollo.agent.updater import AgentUpdater
-from apollo.integrations.azure_blob.azure_blob_reader_writer import (
-    AzureBlobReaderWriter,
-)
 from apollo.integrations.azure_blob.utils import AzureUtils
 from apollo.interfaces.azure.azure_updater import AzureUpdater
 from apollo.interfaces.generic.utils import AgentPlatformUtils
@@ -31,9 +28,6 @@ class AzurePlatformProvider(AgentPlatformProvider):
     Azure Platform Provider, uses AzureUpdater to update and return the infra details (that is currently
     returning the Azure Resource for the function.
     """
-
-    def __init__(self):
-        self._ensure_storage_container()
 
     @property
     def platform(self) -> str:
@@ -149,10 +143,3 @@ class AzurePlatformProvider(AgentPlatformProvider):
         elif column_name == "timestamp" and isinstance(value, datetime):
             return value.isoformat()
         return value
-
-    @staticmethod
-    def _ensure_storage_container():
-        try:
-            AzureBlobReaderWriter().ensure_container_exists()
-        except Exception as exc:
-            logger.error(f"Failed to ensure storage container exists: {exc}")
