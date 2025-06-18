@@ -1,7 +1,8 @@
 import os
 from datetime import datetime
-from typing import Optional
+from typing import Optional, cast
 
+from azure.identity import DefaultAzureCredential
 from azure.mgmt.storage import StorageManagementClient
 from azure.storage.blob import (
     BlobClient,
