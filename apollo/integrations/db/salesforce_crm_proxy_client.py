@@ -44,7 +44,7 @@ class SalesforceCRMProxyClient(BaseDbProxyClient):
             "Sforce-Query-Options": "batchSize=200",
         }
         results = self._connection.query(query, headers=headers)
-        description = [("count", "int", None, None, None, None, None)]
+        description = [("ROW_COUNT", "int", None, None, None, None, None)]
         records = [[results["totalSize"]]]
 
         return {

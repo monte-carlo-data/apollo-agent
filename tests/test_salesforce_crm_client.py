@@ -561,7 +561,7 @@ class SalesforceCRMProxyClientTests(TestCase):
         self.assertEqual(result["rowcount"], 1)
         self.assertEqual(result["records"], [[100]])
         self.assertEqual(
-            result["description"], [("count", "int", None, None, None, None, None)]
+            result["description"], [("ROW_COUNT", "int", None, None, None, None, None)]
         )
 
     @patch("apollo.integrations.db.salesforce_crm_proxy_client.Salesforce")
