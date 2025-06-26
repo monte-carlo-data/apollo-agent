@@ -39,6 +39,10 @@ from apollo.agent.env_vars import CLIENT_CACHE_EXPIRATION_SECONDS_ENV_VAR
 from apollo.agent.models import AgentError
 from apollo.agent.serde import decode_dictionary
 from apollo.integrations.base_proxy_client import BaseProxyClient
+from apollo.integrations.db.salesforce_data_cloud_proxy_client import (
+    SalesforceDataCloudProxyClient,
+    SalesforceDataCloudCredentials,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -304,6 +308,35 @@ def _get_proxy_client_load_test(
     return LoadTestProxyClient(credentials=credentials, platform=platform)
 
 
+def _get_proxy_client_salesforce_data_cloud(
+    raw_credentials: dict | None,
+) -> BaseProxyClient:
+    _ATTR_CONNECT_ARGS = "connect_args"
+    if not raw_credentials or _ATTR_CONNECT_ARGS not in raw_credentials:
+        raise ValueError(
+            f"Salesforce Data Cloud agent client requires {_ATTR_CONNECT_ARGS} in credentials"
+        )
+
+    connect_args = raw_credentials[_ATTR_CONNECT_ARGS]
+    host = connect_args.get("host")
+    client_id = connect_args.get("client_id")
+    client_secret = connect_args.get("client_secret")
+    core_token = connect_args.get("core_token")
+    refresh_token = connect_args.get("refresh_token")
+
+    if not all([host, client_id, client_secret, core_token, refresh_token]):
+        raise ValueError("Missing required connection parameters")
+
+    credentials = SalesforceDataCloudCredentials(
+        host=host,
+        client_id=client_id,
+        client_secret=client_secret,
+        core_token=core_token,
+        refresh_token=refresh_token,
+    )
+    return SalesforceDataCloudProxyClient(credentials=credentials)
+
+
 @dataclass
 class ProxyClientCacheEntry:
     created_time: datetime
@@ -339,6 +372,7 @@ _CLIENT_FACTORY_MAPPING = {
     "msk-kafka": _get_proxy_client_msk_kafka,
     "dremio": _get_proxy_client_dremio,
     "salesforce-crm": _get_proxy_client_salesforce_crm,
+    "salesforce-data-cloud": _get_proxy_client_salesforce_data_cloud,
     "load_test": _get_proxy_client_load_test,
 }
 

@@ -31,6 +31,7 @@ pyOpenSSL>=24.2.1
 requests>=2.32.0
 RestrictedPython==8.0
 retry2==0.9.5
+salesforce-cdp-connector==1.0.16  # For Salesforce Data Cloud integration
 simple-salesforce==1.12.6
 snowflake-connector-python>=3.13.1
 # python_version conditions below to resolve urllib3 compatibility issues with snowflake-connector-python
