@@ -310,6 +310,7 @@ def _get_proxy_client_load_test(
 
 def _get_proxy_client_salesforce_data_cloud(
     raw_credentials: dict | None,
+    platform: str = "",
 ) -> BaseProxyClient:
     _ATTR_CONNECT_ARGS = "connect_args"
     if not raw_credentials or _ATTR_CONNECT_ARGS not in raw_credentials:
@@ -318,17 +319,17 @@ def _get_proxy_client_salesforce_data_cloud(
         )
 
     connect_args = raw_credentials[_ATTR_CONNECT_ARGS]
-    host = connect_args.get("host")
+    domain = connect_args.get("domain")
     client_id = connect_args.get("client_id")
     client_secret = connect_args.get("client_secret")
     core_token = connect_args.get("core_token")
     refresh_token = connect_args.get("refresh_token")
 
-    if not all([host, client_id, client_secret, core_token, refresh_token]):
+    if not all([domain, client_id, client_secret, core_token, refresh_token]):
         raise ValueError("Missing required connection parameters")
 
     credentials = SalesforceDataCloudCredentials(
-        host=host,
+        domain=domain,
         client_id=client_id,
         client_secret=client_secret,
         core_token=core_token,
