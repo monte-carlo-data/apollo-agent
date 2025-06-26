@@ -1,21 +1,22 @@
 from unittest import TestCase
 from unittest.mock import patch, MagicMock
 
-from apollo.integrations.db.salesforce_data_cloud_proxy_client import (
-    SalesforceDataCloudProxyClient,
-    SalesforceDataCloudCredentials,
-)
+from apollo.agent.agent import Agent
+from apollo.agent.logging_utils import LoggingUtils
 
 
 class SalesforceDataCloudProxyClientTests(TestCase):
     def setUp(self):
-        self.credentials = SalesforceDataCloudCredentials(
-            host="test.salesforce.com",
-            client_id="test_client_id",
-            client_secret="test_client_secret",
-            core_token="test_core_token",
-            refresh_token="test_refresh_token",
-        )
+        self.agent = Agent(LoggingUtils())
+        self.credentials = {
+            "connect_args": {
+                "host": "test.salesforce.com",
+                "client_id": "test_client_id",
+                "client_secret": "test_client_secret",
+                "core_token": "test_core_token",
+                "refresh_token": "test_refresh_token",
+            }
+        }
 
     @patch(
         "apollo.integrations.db.salesforce_data_cloud_proxy_client.SalesforceCDPConnection"
@@ -23,20 +24,32 @@ class SalesforceDataCloudProxyClientTests(TestCase):
     def test_init(self, mock_connection):
         salesforce_cdp_mock = mock_connection.return_value
 
-        client = SalesforceDataCloudProxyClient(credentials=self.credentials)
+        # Test that the agent can create a SalesforceDataCloudProxyClient via execute_operation
+        operation = {
+            "trace_id": "test-trace-id",
+            "skip_cache": True,  # Force a new client to be created
+            "commands": [{"method": "_connection_type"}],
+        }
+
+        response = self.agent.execute_operation(
+            connection_type="salesforce-data-cloud",
+            operation_name="test_init",
+            operation_dict=operation,
+            credentials=self.credentials,
+        )
 
         # Verify SalesforceCDPConnection was called with correct arguments
+        connect_args = self.credentials["connect_args"]
         mock_connection.assert_called_once_with(
-            f"https://{self.credentials.host}",
-            client_id=self.credentials.client_id,
-            client_secret=self.credentials.client_secret,
-            core_token=self.credentials.core_token,
-            refresh_token=self.credentials.refresh_token,
+            f"https://{connect_args['host']}",
+            client_id=connect_args["client_id"],
+            client_secret=connect_args["client_secret"],
+            core_token=connect_args["core_token"],
+            refresh_token=connect_args["refresh_token"],
         )
-        # Verify connection is set
-        self.assertEqual(client._connection, salesforce_cdp_mock)
-        # Verify connection type
-        self.assertEqual(client._connection_type, "salesforce-data-cloud")
+        # Verify the operation was successful and returned the connection type
+        self.assertFalse(response.is_error)
+        self.assertEqual(response.result["__mcd_result__"], "salesforce-data-cloud")
 
     @patch(
         "apollo.integrations.db.salesforce_data_cloud_proxy_client.SalesforceCDPConnection"
@@ -63,11 +76,24 @@ class SalesforceDataCloudProxyClientTests(TestCase):
 
         salesforce_cdp_mock.list_tables.return_value = [mock_table1]
 
-        client = SalesforceDataCloudProxyClient(credentials=self.credentials)
-        result = client.list_tables()
+        operation = {
+            "trace_id": "test-trace-id",
+            "skip_cache": True,  # Force a new client to be created
+            "commands": [{"method": "list_tables"}],
+        }
+
+        response = self.agent.execute_operation(
+            connection_type="salesforce-data-cloud",
+            operation_name="test_list_tables",
+            operation_dict=operation,
+            credentials=self.credentials,
+        )
 
         # Verify list_tables was called
         salesforce_cdp_mock.list_tables.assert_called_once()
+
+        # Verify the operation was successful
+        self.assertFalse(response.is_error)
 
         # Verify the result is correctly serialized
         expected_result = [
@@ -81,4 +107,4 @@ class SalesforceDataCloudProxyClientTests(TestCase):
                 ],
             }
         ]
-        self.assertEqual(result, expected_result)
+        self.assertEqual(response.result["__mcd_result__"], expected_result)

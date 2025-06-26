@@ -271,6 +271,7 @@ def _get_proxy_client_salesforce_crm(
 
 def _get_proxy_client_salesforce_data_cloud(
     raw_credentials: dict | None,
+    platform: str = "",
 ) -> BaseProxyClient:
     _ATTR_CONNECT_ARGS = "connect_args"
     if not raw_credentials or _ATTR_CONNECT_ARGS not in raw_credentials:
