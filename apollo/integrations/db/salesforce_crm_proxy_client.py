@@ -27,7 +27,7 @@ class SalesforceCRMProxyClient(BaseDbProxyClient):
         description = []
         records = []
 
-        results = self._connection.query(query)
+        results = self._connection.query_all(query)
         rowcount = results["totalSize"]
         records_raw = results["records"]
 
@@ -58,8 +58,13 @@ class SalesforceCRMProxyClient(BaseDbProxyClient):
         description = []
         records = []
 
-        # limit cannot be negative.
-        limit = max(limit, 0)
+        # Return early, if we're not going to return any rows.
+        if limit < 1:
+            return {
+                "description": description,
+                "records": records,
+                "rowcount": 0,
+            }
 
         # REST API docs say batch size must be between 200 and 2000.
         if limit < 200:
@@ -72,19 +77,37 @@ class SalesforceCRMProxyClient(BaseDbProxyClient):
         headers = {
             "Sforce-Query-Options": f"batchSize={batch_size}",
         }
-        results = self._connection.query(query, headers=headers)
-        records_raw = results["records"][:limit]
+        results_iter = self._connection.query_all_iter(query, headers=headers)
 
-        if records_raw:
-            description = self._infer_cursor_description(records_raw[0])
-            for row in records_raw:
-                record = [v for k, v in row.items() if k != "attributes"]
-                records.append(record)
+        try:
+            first_row = next(results_iter)
+        except StopIteration:
+            return {
+                "description": description,
+                "records": records,
+                "rowcount": 0,
+            }
+
+        # Set the description from the first row
+        description = self._infer_cursor_description(first_row)
+
+        # Store first row
+        records.append([v for k, v in first_row.items() if k != "attributes"])
+        row_count = 1
+
+        # Fetch remaining rows up to the limit.
+        while row_count < limit:
+            try:
+                row = next(results_iter)
+                records.append([v for k, v in row.items() if k != "attributes"])
+                row_count += 1
+            except StopIteration:
+                break
 
         return {
             "description": description,
             "records": records,
-            "rowcount": len(records),
+            "rowcount": row_count,
         }
 
     def describe_global(self) -> Dict:
