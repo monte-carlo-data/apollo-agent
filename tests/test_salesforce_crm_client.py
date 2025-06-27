@@ -88,7 +88,7 @@ class SalesforceCRMProxyClientTests(TestCase):
         mock_salesforce.return_value = MagicMock()
         client = SalesforceCRMProxyClient(credentials=self.credentials)
 
-        client._connection.query.return_value = {
+        client._connection.query_all.return_value = {
             "totalSize": 1,
             "records": [
                 {
@@ -167,7 +167,7 @@ class SalesforceCRMProxyClientTests(TestCase):
     def test_execute(self, mock_salesforce: MagicMock):
         mock_salesforce.return_value = MagicMock()
         client = SalesforceCRMProxyClient(credentials=self.credentials)
-        client._connection.query.return_value = {
+        client._connection.query_all.return_value = {
             "totalSize": 1,
             "records": [
                 {
@@ -231,7 +231,7 @@ class SalesforceCRMProxyClientTests(TestCase):
     def test_execute_empty_results(self, mock_salesforce: MagicMock):
         mock_salesforce.return_value = MagicMock()
         client = SalesforceCRMProxyClient(credentials=self.credentials)
-        client._connection.query.return_value = {"totalSize": 0, "records": []}
+        client._connection.query_all.return_value = {"totalSize": 0, "records": []}
 
         result = client.execute("SELECT Id FROM Account WHERE 1=0")
 
@@ -243,7 +243,7 @@ class SalesforceCRMProxyClientTests(TestCase):
     def test_execute_with_null_values(self, mock_salesforce: MagicMock):
         mock_salesforce.return_value = MagicMock()
         client = SalesforceCRMProxyClient(credentials=self.credentials)
-        client._connection.query.return_value = {
+        client._connection.query_all.return_value = {
             "totalSize": 2,
             "records": [
                 {
@@ -311,7 +311,7 @@ class SalesforceCRMProxyClientTests(TestCase):
         test_boolean = True
         test_integer = 42
 
-        client._connection.query.return_value = {
+        client._connection.query_all.return_value = {
             "totalSize": 1,
             "records": [
                 {
@@ -378,7 +378,10 @@ class SalesforceCRMProxyClientTests(TestCase):
                 }
             )
 
-        client._connection.query.return_value = {"totalSize": 5000, "records": records}
+        client._connection.query_all.return_value = {
+            "totalSize": 5000,
+            "records": records,
+        }
 
         result = client.execute(
             "SELECT Id, FirstName, LastName, Email FROM Contact LIMIT 5"
@@ -397,7 +400,7 @@ class SalesforceCRMProxyClientTests(TestCase):
         mock_salesforce.return_value = MagicMock()
         client = SalesforceCRMProxyClient(credentials=self.credentials)
 
-        client._connection.query.return_value = {
+        client._connection.query_all.return_value = {
             "totalSize": 2,
             "records": [
                 {
@@ -459,7 +462,7 @@ class SalesforceCRMProxyClientTests(TestCase):
         mock_salesforce.return_value = MagicMock()
         client = SalesforceCRMProxyClient(credentials=self.credentials)
 
-        client._connection.query.return_value = {
+        client._connection.query_all.return_value = {
             "totalSize": 1,
             "records": [
                 {
@@ -509,7 +512,7 @@ class SalesforceCRMProxyClientTests(TestCase):
         mock_salesforce.return_value = MagicMock()
         client = SalesforceCRMProxyClient(credentials=self.credentials)
 
-        client._connection.query.return_value = {
+        client._connection.query_all.return_value = {
             "totalSize": 1,
             "records": [
                 {
@@ -569,9 +572,8 @@ class SalesforceCRMProxyClientTests(TestCase):
         mock_salesforce.return_value = MagicMock()
         client = SalesforceCRMProxyClient(credentials=self.credentials)
 
-        client._connection.query.return_value = {
-            "totalSize": 5,
-            "records": [
+        client._connection.query_all_iter.return_value = iter(
+            [
                 {
                     "attributes": {"type": "Account", "url": "/test"},
                     "Id": "001",
@@ -597,8 +599,8 @@ class SalesforceCRMProxyClientTests(TestCase):
                     "Id": "005",
                     "Name": "Account 5",
                 },
-            ],
-        }
+            ]
+        )
 
         result = client.execute_row_limit("SELECT Id, Name FROM Account", 3)
 
@@ -620,10 +622,10 @@ class SalesforceCRMProxyClientTests(TestCase):
         mock_salesforce.return_value = MagicMock()
         client = SalesforceCRMProxyClient(credentials=self.credentials)
 
-        client._connection.query.return_value = {
-            "totalSize": 0,
-            "records": [],
-        }
+        client._connection.query_all_iter.return_value = iter(
+            [{"totalSize": 0, "records": []}]
+        )
+
         result = client.execute_row_limit("SELECT Id, Name FROM Account", -1)
 
         self.assertEqual(result["rowcount"], 0)
@@ -635,10 +637,10 @@ class SalesforceCRMProxyClientTests(TestCase):
         mock_salesforce.return_value = MagicMock()
         client = SalesforceCRMProxyClient(credentials=self.credentials)
 
-        client._connection.query.return_value = {
-            "totalSize": 0,
-            "records": [],
-        }
+        client._connection.query_all_iter.return_value = iter(
+            [{"totalSize": 0, "records": []}]
+        )
+
         result = client.execute_row_limit("SELECT Id, Name FROM Account", 0)
 
         self.assertEqual(result["rowcount"], 0)
