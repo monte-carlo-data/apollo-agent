@@ -40,6 +40,7 @@ class SalesforceCRMProxyClient(BaseDbProxyClient):
         return {"description": description, "records": records, "rowcount": rowcount}
 
     def execute_count_query(self, query: str) -> Dict:
+        # The minimum batch size for the REST API is 200.
         headers = {
             "Sforce-Query-Options": "batchSize=200",
         }
@@ -57,9 +58,19 @@ class SalesforceCRMProxyClient(BaseDbProxyClient):
         description = []
         records = []
 
-        limit = min(limit, 200)
+        # limit cannot be negative.
+        limit = max(limit, 0)
+
+        # REST API docs say batch size must be between 200 and 2000.
+        if limit < 200:
+            batch_size = 200
+        elif 200 <= limit <= 2000:
+            batch_size = limit
+        else:
+            batch_size = 2000
+
         headers = {
-            "Sforce-Query-Options": f"batchSize={limit}",
+            "Sforce-Query-Options": f"batchSize={batch_size}",
         }
         results = self._connection.query(query, headers=headers)
         records_raw = results["records"][:limit]
