@@ -614,3 +614,33 @@ class SalesforceCRMProxyClientTests(TestCase):
                 ("Name", "str", None, None, None, None, None),
             ],
         )
+
+    @patch("apollo.integrations.db.salesforce_crm_proxy_client.Salesforce")
+    def test_execute_row_limit_negative_limit(self, mock_salesforce: MagicMock):
+        mock_salesforce.return_value = MagicMock()
+        client = SalesforceCRMProxyClient(credentials=self.credentials)
+
+        client._connection.query.return_value = {
+            "totalSize": 0,
+            "records": [],
+        }
+        result = client.execute_row_limit("SELECT Id, Name FROM Account", -1)
+
+        self.assertEqual(result["rowcount"], 0)
+        self.assertEqual(result["records"], [])
+        self.assertEqual(result["description"], [])
+
+    @patch("apollo.integrations.db.salesforce_crm_proxy_client.Salesforce")
+    def test_execute_row_limit_zero_limit(self, mock_salesforce: MagicMock):
+        mock_salesforce.return_value = MagicMock()
+        client = SalesforceCRMProxyClient(credentials=self.credentials)
+
+        client._connection.query.return_value = {
+            "totalSize": 0,
+            "records": [],
+        }
+        result = client.execute_row_limit("SELECT Id, Name FROM Account", 0)
+
+        self.assertEqual(result["rowcount"], 0)
+        self.assertEqual(result["records"], [])
+        self.assertEqual(result["description"], [])
