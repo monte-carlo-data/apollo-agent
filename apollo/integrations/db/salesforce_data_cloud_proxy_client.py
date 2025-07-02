@@ -7,13 +7,13 @@ from apollo.integrations.db.base_db_proxy_client import BaseDbProxyClient
 class SalesforceDataCloudCredentials:
     def __init__(
         self,
-        host: str,
+        domain: str,
         client_id: str,
         client_secret: str,
         core_token: str,
         refresh_token: str,
     ):
-        self.host = host
+        self.domain = domain
         self.client_id = client_id
         self.client_secret = client_secret
         self.core_token = core_token
@@ -24,7 +24,7 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
     def __init__(self, credentials: SalesforceDataCloudCredentials):
         super().__init__(connection_type="salesforce-data-cloud")
         self._connection = SalesforceCDPConnection(
-            f"https://{credentials.host}",
+            f"https://{credentials.domain}",
             client_id=credentials.client_id,
             client_secret=credentials.client_secret,
             core_token=credentials.core_token,
