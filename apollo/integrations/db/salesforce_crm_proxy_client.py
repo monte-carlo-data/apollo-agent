@@ -8,6 +8,17 @@ _ATTR_CONNECT_ARGS = "connect_args"
 
 
 class SalesforceCRMProxyClient(BaseDbProxyClient):
+    """
+    Wrapper around the Salesforce REST client to implement the DB API cursor interface.
+
+    Because Salesforce does not support SQL, but instead uses its own query language,
+    called Salesforce Object Query Language (SOQL), we need to add some additional
+    execute methods to support count and row limit queries. These methods run the
+    original query as-is, but transform the results before returning them.
+
+    See https://www.notion.so/montecarlodata/Salesforce-CRM-Integration-Limitations-222334399e65809fb9f2eb2b5c0f5db9
+    """
+
     def __init__(self, credentials: Optional[Dict], **kwargs: Any):
         super().__init__(connection_type="salesforce-crm")
         if not credentials or _ATTR_CONNECT_ARGS not in credentials:
