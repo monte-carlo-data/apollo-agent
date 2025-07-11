@@ -1,4 +1,5 @@
 import datetime
+import hashlib
 from copy import copy
 from typing import (
     Iterable,
@@ -57,7 +58,7 @@ class TeradataClientTests(TestCase):
             "https_port": _TERADATA_CREDENTIALS.get("dbs_port"),
             "sslmode": "VERIFY-FULL",
             "encryptdata": "true",
-            "sslca": "/tmp/teradata_ca.pem",
+            "sslca": f"/tmp/{hashlib.sha256(_TERADATA_CREDENTIALS.get('host').encode()).hexdigest()[:12]}_teradata_ca.pem",
         }
         mock_connect.assert_called_with(**expected_connection_parameters)
 
