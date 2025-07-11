@@ -38,9 +38,9 @@ class TeradataProxyClient(BaseDbProxyClient):
             # Use the hashed host name in the temp file name to distinguish between
             # connections if there are multiple teradata connections using SSL through
             # this agent.
-            hashed_host = hashlib.sha256(
-                connect_args.get("host", "").encode()
-            ).hexdigest()[:12]
+            hashed_host = hashlib.sha256(connect_args.get("host").encode()).hexdigest()[
+                :12
+            ]
             connect_args["sslca"] = ssl_options.write_ca_data_to_temp_file(
                 f"/tmp/{hashed_host}_teradata_ca.pem", upsert=True
             )
