@@ -299,6 +299,16 @@ def _get_proxy_client_salesforce_data_cloud(
     return SalesforceDataCloudProxyClient(credentials=credentials)
 
 
+def _get_proxy_client_clickhouse(
+    credentials: Optional[Dict], platform: str, **kwargs  # type: ignore
+) -> BaseProxyClient:
+    from apollo.integrations.db.clickhouse_proxy_client import (
+        ClickHouseProxyClient,
+    )
+
+    return ClickHouseProxyClient(credentials=credentials, platform=platform)
+
+
 @dataclass
 class ProxyClientCacheEntry:
     created_time: datetime
@@ -335,6 +345,7 @@ _CLIENT_FACTORY_MAPPING = {
     "dremio": _get_proxy_client_dremio,
     "salesforce-crm": _get_proxy_client_salesforce_crm,
     "salesforce-data-cloud": _get_proxy_client_salesforce_data_cloud,
+    "clickhouse": _get_proxy_client_clickhouse,
 }
 
 
