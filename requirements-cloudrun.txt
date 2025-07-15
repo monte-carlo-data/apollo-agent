@@ -16,6 +16,8 @@ charset-normalizer==3.3.2
     # via
     #   -c requirements.txt
     #   requests
+deprecated==1.2.18
+    # via opentelemetry-api
 google-api-core==2.19.1
     # via
     #   -c requirements.txt
@@ -66,10 +68,14 @@ idna==3.7
     # via
     #   -c requirements.txt
     #   requests
-importlib-metadata==8.7.0
-    # via opentelemetry-api
-opentelemetry-api==1.35.0
-    # via google-cloud-logging
+importlib-metadata==7.1.0
+    # via
+    #   -r requirements-cloudrun.in
+    #   opentelemetry-api
+opentelemetry-api==1.25.0
+    # via
+    #   -r requirements-cloudrun.in
+    #   google-cloud-logging
 proto-plus==1.24.0
     # via
     #   -c requirements.txt
@@ -106,13 +112,11 @@ rsa==4.9
     # via
     #   -c requirements.txt
     #   google-auth
-typing-extensions==4.12.2
-    # via
-    #   -c requirements.txt
-    #   opentelemetry-api
 urllib3==2.4.0
     # via
     #   -c requirements.txt
     #   requests
+wrapt==1.17.2
+    # via deprecated
 zipp==3.23.0
     # via importlib-metadata
