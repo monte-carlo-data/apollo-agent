@@ -46,6 +46,7 @@ cattrs==23.2.3
     # via looker-sdk
 certifi==2024.8.30
     # via
+    #   clickhouse-connect
     #   requests
     #   snowflake-connector-python
 cffi==1.16.0
@@ -60,6 +61,8 @@ click==8.1.7
     # via
     #   flask
     #   presto-python-client
+clickhouse-connect==0.8.18
+    # via -r requirements.in
 cryptography==44.0.1
     # via
     #   -r requirements.in
@@ -155,7 +158,9 @@ looker-sdk==24.2.0
 lxml==5.4.0
     # via zeep
 lz4==4.3.3
-    # via databricks-sql-connector
+    # via
+    #   clickhouse-connect
+    #   databricks-sql-connector
 markupsafe==2.1.5
     # via
     #   jinja2
@@ -257,6 +262,7 @@ python-dateutil==2.9.0.post0
     #   salesforce-cdp-connector
 pytz==2024.1
     # via
+    #   clickhouse-connect
     #   pandas
     #   snowflake-connector-python
     #   zeep
@@ -339,6 +345,7 @@ uritemplate==4.1.1
 urllib3==2.4.0
     # via
     #   botocore
+    #   clickhouse-connect
     #   databricks-sql-connector
     #   requests
     #   salesforce-cdp-connector
@@ -349,3 +356,5 @@ werkzeug==3.1.0
     #   flask
 zeep==4.3.1
     # via simple-salesforce
+zstandard==0.23.0
+    # via clickhouse-connect
