@@ -7,9 +7,9 @@ from apollo.integrations.db.base_db_proxy_client import BaseDbProxyClient
 _ATTR_CONNECT_ARGS = "connect_args"
 
 
-class ClickhouseProxyClient(BaseDbProxyClient):
+class ClickHouseProxyClient(BaseDbProxyClient):
     """
-    Proxy client for Clickhouse.
+    Proxy client for ClickHouse.
     """
 
     def __init__(self, credentials: Optional[Dict], **kwargs: Any):

@@ -21,7 +21,7 @@ _CLICKHOUSE_CREDENTIALS = {
 }
 
 
-class ClickhouseClientTests(TestCase):
+class ClickHouseClientTests(TestCase):
     def setUp(self) -> None:
         self._agent = Agent(LoggingUtils())
         self._mock_connection = Mock()

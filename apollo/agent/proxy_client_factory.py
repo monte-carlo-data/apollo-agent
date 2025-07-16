@@ -342,10 +342,10 @@ def _get_proxy_client_clickhouse(
     credentials: Optional[Dict], platform: str, **kwargs  # type: ignore
 ) -> BaseProxyClient:
     from apollo.integrations.db.clickhouse_proxy_client import (
-        ClickhouseProxyClient,
+        ClickHouseProxyClient,
     )
 
-    return ClickhouseProxyClient(credentials=credentials, platform=platform)
+    return ClickHouseProxyClient(credentials=credentials, platform=platform)
 
 
 @dataclass
