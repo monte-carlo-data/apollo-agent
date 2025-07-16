@@ -16,6 +16,8 @@ charset-normalizer==3.3.2
     # via
     #   -c requirements.txt
     #   requests
+deprecated==1.2.18
+    # via opentelemetry-api
 google-api-core==2.19.1
     # via
     #   -c requirements.txt
@@ -33,15 +35,15 @@ google-auth==2.30.0
     #   google-cloud-run
 google-cloud-appengine-logging==1.4.5
     # via google-cloud-logging
-google-cloud-audit-log==0.3.0
+google-cloud-audit-log==0.3.2
     # via google-cloud-logging
 google-cloud-core==2.4.1
     # via
     #   -c requirements.txt
     #   google-cloud-logging
-google-cloud-logging==3.10.0
+google-cloud-logging==3.12.1
     # via -r requirements-cloudrun.in
-google-cloud-run==0.10.5
+google-cloud-run==0.10.18
     # via -r requirements-cloudrun.in
 googleapis-common-protos==1.63.2
     # via
@@ -50,7 +52,7 @@ googleapis-common-protos==1.63.2
     #   google-cloud-audit-log
     #   grpc-google-iam-v1
     #   grpcio-status
-grpc-google-iam-v1==0.13.1
+grpc-google-iam-v1==0.14.2
     # via
     #   google-cloud-logging
     #   google-cloud-run
@@ -66,6 +68,14 @@ idna==3.7
     # via
     #   -c requirements.txt
     #   requests
+importlib-metadata==7.1.0
+    # via
+    #   -r requirements-cloudrun.in
+    #   opentelemetry-api
+opentelemetry-api==1.25.0
+    # via
+    #   -r requirements-cloudrun.in
+    #   google-cloud-logging
 proto-plus==1.24.0
     # via
     #   -c requirements.txt
@@ -73,7 +83,7 @@ proto-plus==1.24.0
     #   google-cloud-appengine-logging
     #   google-cloud-logging
     #   google-cloud-run
-protobuf==4.25.3
+protobuf==5.29.5
     # via
     #   -c requirements.txt
     #   google-api-core
@@ -106,3 +116,7 @@ urllib3==2.4.0
     # via
     #   -c requirements.txt
     #   requests
+wrapt==1.17.2
+    # via deprecated
+zipp==3.23.0
+    # via importlib-metadata
