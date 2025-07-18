@@ -56,19 +56,19 @@ class ClickHouseClientTests(TestCase):
     @patch("clickhouse_connect.dbapi.connect")
     def test_datetime_query(self, mock_connect: Mock):
         query = "SELECT name, created_date, updated_datetime FROM table"  # noqa
-        data = [
+        expected_data = [
             [
                 "name_1",
                 datetime.date.fromisoformat("2023-11-01"),
                 datetime.datetime.fromisoformat("2023-11-01T10:59:00"),
             ],
         ]
-        description = [
+        expected_description = [
             ["name", "String", None, None, None, None, None],
             ["created_date", "Date", None, None, None, None, None],
             ["updated_datetime", "DateTime", None, None, None, None, None],
         ]
-        self._test_run_query(mock_connect, query, data, description)
+        self._test_run_query(mock_connect, query, expected_data, expected_description)
 
     def _test_run_query(
         self,
@@ -108,13 +108,13 @@ class ClickHouseClientTests(TestCase):
         }
         mock_connect.return_value = self._mock_connection
 
-        expected_rows = len(data)
+        rowcount = len(data)
 
         if raise_exception:
             self._mock_cursor.execute.side_effect = raise_exception
         self._mock_cursor.fetchall.return_value = data
         self._mock_cursor.description.return_value = description
-        self._mock_cursor.rowcount.return_value = expected_rows
+        self._mock_cursor.rowcount.return_value = rowcount
 
         response = self._agent.execute_operation(
             "clickhouse",
@@ -137,7 +137,6 @@ class ClickHouseClientTests(TestCase):
         self.assertIsNone(response.result.get(ATTRIBUTE_NAME_ERROR))
         self.assertTrue(ATTRIBUTE_NAME_RESULT in response.result)
         result = response.result.get(ATTRIBUTE_NAME_RESULT)
-        print(result)
 
         mock_connect.assert_called_with(
             **_CLICKHOUSE_CREDENTIALS,
@@ -158,7 +157,7 @@ class ClickHouseClientTests(TestCase):
         self.assertEqual(description, result["description"])
 
         self.assertTrue("rowcount" in result)
-        self.assertEqual(expected_rows, result["rowcount"])
+        self.assertEqual(rowcount, result["rowcount"])
 
     @classmethod
     def _serialized_data(cls, data: List) -> List:
