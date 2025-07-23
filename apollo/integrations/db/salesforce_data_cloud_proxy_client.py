@@ -1,29 +1,74 @@
+from dataclasses import dataclass
+from typing import Any
+
 from salesforcecdpconnector.connection import SalesforceCDPConnection
 from salesforcecdpconnector.genie_table import GenieTable, Field
 
 from apollo.integrations.db.base_db_proxy_client import BaseDbProxyClient
 
 
-class SalesforceDataCloudCredentials:
+class SalesforceDataCloudConnection(SalesforceCDPConnection):
     def __init__(
         self,
-        domain: str,
+        login_url: str,
         client_id: str,
         client_secret: str,
-        core_token: str,
-        refresh_token: str,
+        core_token: str | None = None,
+        refresh_token: str | None = None,
     ):
-        self.domain = domain
-        self.client_id = client_id
-        self.client_secret = client_secret
-        self.core_token = core_token
-        self.refresh_token = refresh_token
+        """
+        SalesforceCDPConnection is designed to use a refresh token.
+        After it exchanges the given core_token for a Data Cloud API token,
+        it then revokes the core_token with the assumption that it can get a new one using the refresh token.
+
+        In order to support client credentials, which doesn't involve a refresh token, we need to do a bit of a hack:
+        1. Pass a fake refresh token
+        2. Prevent the core token from being revoked
+        """
+
+        refresh_token = (
+            None if refresh_token == "required_but_not_used" else refresh_token
+        )  # Todo: remove this once data collectors are upgraded
+
+        super().__init__(
+            login_url,
+            client_id=client_id,
+            client_secret=client_secret,
+            core_token=core_token,
+            refresh_token=(refresh_token or "required_but_not_used"),
+        )
+
+        if refresh_token is None:
+
+            def noop(*args: Any, **kwargs: Any):
+                pass
+
+            if (
+                hasattr(self, "authentication_helper")
+                and self.authentication_helper
+                and hasattr(self.authentication_helper, "_revoke_core_token")
+            ):
+                # Prevent core token from being revoked.
+                self.authentication_helper._revoke_core_token = noop
+            else:
+                raise Exception(
+                    "salesforce-cdp-connector library has changed. Cannot override _revoke_core_token()"
+                )
+
+
+@dataclass
+class SalesforceDataCloudCredentials:
+    domain: str
+    client_id: str
+    client_secret: str
+    core_token: str | None
+    refresh_token: str | None
 
 
 class SalesforceDataCloudProxyClient(BaseDbProxyClient):
     def __init__(self, credentials: SalesforceDataCloudCredentials):
         super().__init__(connection_type="salesforce-data-cloud")
-        self._connection = SalesforceCDPConnection(
+        self._connection = SalesforceDataCloudConnection(
             f"https://{credentials.domain}",
             client_id=credentials.client_id,
             client_secret=credentials.client_secret,
