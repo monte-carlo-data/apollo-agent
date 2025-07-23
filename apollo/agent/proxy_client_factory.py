@@ -286,7 +286,9 @@ def _get_proxy_client_salesforce_data_cloud(
     core_token = connect_args.get("core_token")
     refresh_token = connect_args.get("refresh_token")
 
-    if not all([domain, client_id, client_secret, core_token, refresh_token]):
+    if not all([domain, client_id, client_secret]) or not any(
+        [core_token, refresh_token]
+    ):
         raise ValueError("Missing required connection parameters")
 
     credentials = SalesforceDataCloudCredentials(
