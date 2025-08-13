@@ -36,12 +36,11 @@ RUN . $VENV_DIR/bin/activate && pip install setuptools==75.1.0
 # [VULN-XXX] update libcap2 to 1:2.66-4+deb12u1
 # [VULN-613] update systemd to 252.38-1~deb12u1.
 RUN apt-get update \
-    && apt-get install -y gnupg gnupg2 gnupg1 curl apt-transport-https \
-    && curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add - \
-    && curl https://packages.microsoft.com/config/debian/10/prod.list \
-    > /etc/apt/sources.list.d/mssql-release.list \
+    && apt-get install -y gnupg gnupg2 gnupg1 curl apt-transport-https ca-certificates \
+    && curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor -o /usr/share/keyrings/microsoft-archive-keyring.gpg \
+    && echo "deb [arch=amd64,arm64,armhf signed-by=/usr/share/keyrings/microsoft-archive-keyring.gpg] https://packages.microsoft.com/debian/12/prod bookworm main" > /etc/apt/sources.list.d/mssql-release.list \
     && apt-get update \
-    && ACCEPT_EULA=Y apt-get install -y msodbcsql17 unixodbc unixodbc-dev \
+    && ACCEPT_EULA=Y apt-get install -y msodbcsql18 unixodbc unixodbc-dev \
     && apt-get install -y passwd=1:4.13+dfsg1-1+deb12u1 \
     && apt-get install -y libgssapi-krb5-2=1.20.1-2+deb12u3 libkrb5-3=1.20.1-2+deb12u3 libkrb5support0=1.20.1-2+deb12u3 \
     && apt-get install -y libcap2=1:2.66-4+deb12u1 \
@@ -156,8 +155,11 @@ RUN apt-get install -y git wget  # VULN-543 upgrade wget
 # Updating libglib to resolve CVE-2024-52533.
 # Updating OpenSSL to resolve CVE-2024-13176
 RUN apt-get update \
-    && apt-get install -y gnupg gnupg2 gnupg1 curl apt-transport-https libgnutls30 \
-    && ACCEPT_EULA=Y apt-get install -y msodbcsql17 odbcinst=2.3.11-2+deb12u1 odbcinst1debian2=2.3.11-2+deb12u1 unixodbc-dev=2.3.11-2+deb12u1 unixodbc=2.3.11-2+deb12u1 \
+    && apt-get install -y gnupg gnupg2 gnupg1 curl apt-transport-https libgnutls30 ca-certificates \
+    && curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor -o /usr/share/keyrings/microsoft-archive-keyring.gpg \
+    && echo "deb [arch=amd64,arm64,armhf signed-by=/usr/share/keyrings/microsoft-archive-keyring.gpg] https://packages.microsoft.com/debian/12/prod bookworm main" > /etc/apt/sources.list.d/mssql-release.list \
+    && apt-get update \
+    && ACCEPT_EULA=Y apt-get install -y msodbcsql18 odbcinst=2.3.11-2+deb12u1 odbcinst1debian2=2.3.11-2+deb12u1 unixodbc-dev=2.3.11-2+deb12u1 unixodbc=2.3.11-2+deb12u1 \
     && apt-get install -y sqlite3=3.40.1-2+deb12u1 openssl=3.0.16-1~deb12u1 libglib2.0-0 \
     && apt-get install -y libcap2=1:2.66-4+deb12u1
 
