@@ -160,7 +160,7 @@ RUN apt-get update \
     && echo "deb [arch=amd64,arm64,armhf signed-by=/usr/share/keyrings/microsoft-archive-keyring.gpg] https://packages.microsoft.com/debian/12/prod bookworm main" > /etc/apt/sources.list.d/mssql-release.list \
     && apt-get update \
     && ACCEPT_EULA=Y apt-get install -y msodbcsql18 odbcinst=2.3.11-2+deb12u1 odbcinst1debian2=2.3.11-2+deb12u1 unixodbc-dev=2.3.11-2+deb12u1 unixodbc=2.3.11-2+deb12u1 \
-    && apt-get install -y sqlite3=3.40.1-2+deb12u1 openssl=3.0.16-1~deb12u1 libglib2.0-0 \
+    && apt-get install -y sqlite3=3.40.1-2+deb12u1 libglib2.0-0 \
     && apt-get install -y libcap2=1:2.66-4+deb12u1
 
 # delete this file that includes an old golang version (including vulns) and is not used
