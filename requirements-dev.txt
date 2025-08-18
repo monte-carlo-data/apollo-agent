@@ -101,7 +101,7 @@ responses==0.23.3
     # via -r requirements-dev.in
 types-pyyaml==6.0.12.20250516
     # via responses
-urllib3==2.4.0
+urllib3==2.5.0
     # via
     #   -c requirements.txt
     #   requests
