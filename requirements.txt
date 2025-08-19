@@ -266,7 +266,7 @@ pytz==2024.1
     #   pandas
     #   snowflake-connector-python
     #   zeep
-requests==2.32.3
+requests==2.32.4
     # via
     #   -r requirements.in
     #   azure-core
