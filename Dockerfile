@@ -158,7 +158,7 @@ RUN apt-get install -y git wget  # VULN-543 upgrade wget
 RUN apt-get update \
     && apt-get install -y gnupg gnupg2 gnupg1 curl apt-transport-https libgnutls30 \
     && ACCEPT_EULA=Y apt-get install -y msodbcsql17 odbcinst=2.3.11-2+deb12u1 odbcinst1debian2=2.3.11-2+deb12u1 unixodbc-dev=2.3.11-2+deb12u1 unixodbc=2.3.11-2+deb12u1 \
-    && apt-get install -y sqlite3=3.40.1-2+deb12u1 openssl=3.0.16-1~deb12u1 libglib2.0-0 \
+    && apt-get install -y sqlite3=3.40.1-2+deb12u1 libglib2.0-0 \
     && apt-get install -y libcap2=1:2.66-4+deb12u1
 
 # delete this file that includes an old golang version (including vulns) and is not used

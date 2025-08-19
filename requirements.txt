@@ -342,8 +342,9 @@ tzdata==2024.1
     # via pandas
 uritemplate==4.1.1
     # via google-api-python-client
-urllib3==2.4.0
+urllib3==2.5.0
     # via
+    #   -r requirements.in
     #   botocore
     #   clickhouse-connect
     #   databricks-sql-connector
