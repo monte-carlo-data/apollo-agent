@@ -1,10 +1,15 @@
+import hashlib
 from typing import Dict, Optional
 
 import psycopg2
 from psycopg2 import DatabaseError
 from psycopg2.errors import QueryCanceled, InsufficientPrivilege  # noqa
 
-from apollo.integrations.db.base_db_proxy_client import BaseDbProxyClient, logger
+from apollo.integrations.db.base_db_proxy_client import (
+    BaseDbProxyClient,
+    logger,
+    SslOptions,
+)
 
 _ATTR_CONNECT_ARGS = "connect_args"
 
@@ -26,6 +31,21 @@ class PostgresProxyClient(BaseDbProxyClient):
         connect_args = {
             **credentials[_ATTR_CONNECT_ARGS],
         }
+        ssl_options = SslOptions(**(credentials.get("ssl_options", {})))
+        if ssl_options.ca_data:
+            connect_args["sslmode"] = "verify-full"
+            # Pyscopg2 only supports providing a path to the CA bundle. Write the
+            # CA data to a temp file and provide that path in the connection args.
+            # Use the hashed host in the temp file name to distinguish between
+            # connections if there are multiple using SSL through this agent.
+            hashed_host = hashlib.sha256(
+                connect_args.get("host", "").encode()
+            ).hexdigest()[:12]
+            connect_args["sslrootcert"] = ssl_options.write_ca_data_to_temp_file(
+                f"/tmp/{hashed_host}_ca_bundle.crt",
+                upsert=True,
+            )
+
         # we were having tcp keep alive issues in Azure, so we're forcing it now unless configured from the dc
         # https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-KEEPALIVES
         if "keepalives" not in connect_args:
