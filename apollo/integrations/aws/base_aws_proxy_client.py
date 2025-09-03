@@ -65,11 +65,13 @@ class BaseAwsProxyClient(BaseProxyClient):
             session = boto3.Session(region_name=aws_region)
         return session.client(
             service_type,
-            verify=ssl_config.write_ca_data_to_temp_file(
-                f"/tmp/{service_type}_ca_bundle.pem", upsert=True
-            )
-            if ssl_config.ca_data
-            else None,
+            verify=(
+                ssl_config.write_ca_data_to_temp_file(
+                    f"/tmp/{service_type}_ca_bundle.pem", upsert=True
+                )
+                if ssl_config.ca_data
+                else None
+            ),
         )
 
     @staticmethod
