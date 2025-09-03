@@ -1,4 +1,5 @@
 import datetime
+import hashlib
 from typing import List, Any, Optional
 from unittest import TestCase
 from unittest.mock import Mock, call, patch
@@ -11,6 +12,7 @@ from apollo.agent.constants import (
     ATTRIBUTE_NAME_ERROR_TYPE,
 )
 from apollo.agent.logging_utils import LoggingUtils
+from apollo.integrations.redshift.redshift_proxy_client import RedshiftProxyClient
 
 _RS_CREDENTIALS = {
     "host": "www.test.com",
@@ -76,6 +78,27 @@ class RedshiftClientTests(TestCase):
             description,
             raise_exception=InsufficientPrivilege("insufficient privilege"),
             expected_error_type="InsufficientPrivilege",
+        )
+
+    @patch("psycopg2.connect")
+    def test_connect_with_client_cert(self, mock_connect):
+        credentials = {
+            "connect_args": _RS_CREDENTIALS,
+            "ssl_options": {
+                "ca_data": "-----BEGIN CERTIFICATE-----\nabc\n-----END CERTIFICATE-----"
+            },
+        }
+
+        RedshiftProxyClient(credentials)
+
+        mock_connect.assert_called_with(
+            **_RS_CREDENTIALS,
+            sslmode="verify-full",
+            sslrootcert=f"/tmp/{hashlib.sha256('www.test.com'.encode()).hexdigest()[:12]}_ca_bundle.crt",
+            keepalives=1,
+            keepalives_idle=30,
+            keepalives_interval=10,
+            keepalives_count=5,
         )
 
     def _test_run_query(
