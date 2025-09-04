@@ -51,6 +51,9 @@ class Agent:
         self._platform_provider: Optional[AgentPlatformProvider] = None
         self._log_context: Optional[AgentLogContext] = None
 
+        # Setup AWS CA bundle if configured, ensuring all boto3/botocore operations use it
+        AgentUtils.setup_aws_ca_bundle()
+
     @property
     def platform(self) -> str:
         """

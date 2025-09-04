@@ -21,6 +21,7 @@ from apollo.agent.env_vars import (
     DEFAULT_TEMP_PATH,
     CHECK_OUTBOUND_IP_ADDRESS_URL_ENV_VAR,
     CHECK_OUTBOUND_IP_ADDRESS_URL_DEFAULT_VALUE,
+    MCD_AWS_CA_BUNDLE_DATA_ENV_VAR,
 )
 from apollo.integrations.base_proxy_client import BaseProxyClient
 from apollo.interfaces.agent_response import AgentResponse
@@ -112,6 +113,41 @@ class AgentUtils:
     @staticmethod
     def open_file(path: str) -> BinaryIO:
         return open(path, "rb")
+
+    @classmethod
+    def setup_aws_ca_bundle(cls) -> None:
+        """
+        Sets up AWS CA bundle for all boto3/botocore operations.
+
+        If MCD_AWS_CA_BUNDLE_DATA environment variable is set, this method:
+        1. Creates a temporary .pem file with the CA bundle data (if not already exists)
+        2. Sets the AWS_CA_BUNDLE environment variable to point to this file
+
+        This ensures all boto3/botocore clients use the custom CA bundle.
+        Since multiple requests can be handled in one invocation, we check if the
+        temp file already exists before creating it.
+        """
+        ca_bundle_data = os.getenv(MCD_AWS_CA_BUNDLE_DATA_ENV_VAR)
+        if not ca_bundle_data:
+            return
+
+        # Use a predictable filename so we can check if it already exists
+        temp_path = cls.ensure_temp_path("ca_bundle")
+        ca_bundle_file_path = os.path.join(temp_path, "aws_ca_bundle.pem")
+
+        # Check if the file already exists to avoid recreating it for multiple requests
+        if not os.path.exists(ca_bundle_file_path):
+            try:
+                with open(ca_bundle_file_path, "w") as f:
+                    f.write(ca_bundle_data)
+
+                # Ensure the file has appropriate permissions
+                os.chmod(ca_bundle_file_path, 0o600)
+            except Exception as e:
+                raise ValueError(f"Failed to create CA bundle file: {e}")
+
+        # Set the AWS_CA_BUNDLE environment variable that boto3/botocore will use
+        os.environ["AWS_CA_BUNDLE"] = ca_bundle_file_path
 
     @classmethod
     def redact_attributes(cls, value: Any, attributes: List[str]) -> Any:

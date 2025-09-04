@@ -77,6 +77,10 @@ GUNICORN_TIMEOUT_ENV_VAR = "GUNICORN_TIMEOUT"
 
 MCD_AGENT_CLOUD_PLATFORM_ENV_VAR = "MCD_AGENT_CLOUD_PLATFORM"
 
+# Environment variable that contains the CA bundle data for AWS operations.
+# When set and AgentUtils.setup_aws_ca_bundle() is called, the agent will
+# create a temporary .pem file with this data and set AWS_CA_BUNDLE to its path
+MCD_AWS_CA_BUNDLE_DATA_ENV_VAR = "MCD_AWS_CA_BUNDLE_DATA"
 
 HEALTH_ENV_VARS = [
     "PYTHON_VERSION",
