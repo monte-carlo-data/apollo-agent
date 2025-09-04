@@ -21,7 +21,7 @@ from apollo.agent.env_vars import (
     DEFAULT_TEMP_PATH,
     CHECK_OUTBOUND_IP_ADDRESS_URL_ENV_VAR,
     CHECK_OUTBOUND_IP_ADDRESS_URL_DEFAULT_VALUE,
-    MCD_AWS_CA_BUNDLE_DATA_ENV_VAR,
+    MCD_AWS_CA_BUNDLE_SECRET_NAME_ENV_VAR,
 )
 from apollo.integrations.base_proxy_client import BaseProxyClient
 from apollo.interfaces.agent_response import AgentResponse
@@ -119,16 +119,17 @@ class AgentUtils:
         """
         Sets up AWS CA bundle for all boto3/botocore operations.
 
-        If MCD_AWS_CA_BUNDLE_DATA environment variable is set, this method:
-        1. Creates a temporary .pem file with the CA bundle data (if not already exists)
-        2. Sets the AWS_CA_BUNDLE environment variable to point to this file
+        If MCD_AWS_CA_BUNDLE_SECRET_NAME environment variable is set, this method:
+        1. Fetches the CA bundle data from AWS Secrets Manager using the secret name/ARN
+        2. Creates a temporary .pem file with the CA bundle data (if not already exists)
+        3. Sets the AWS_CA_BUNDLE environment variable to point to this file
 
         This ensures all boto3/botocore clients use the custom CA bundle.
         Since multiple requests can be handled in one invocation, we check if the
         temp file already exists before creating it.
         """
-        ca_bundle_data = os.getenv(MCD_AWS_CA_BUNDLE_DATA_ENV_VAR)
-        if not ca_bundle_data:
+        secret_name = os.getenv(MCD_AWS_CA_BUNDLE_SECRET_NAME_ENV_VAR)
+        if not secret_name:
             return
 
         # Use a predictable filename so we can check if it already exists
@@ -138,13 +139,32 @@ class AgentUtils:
         # Check if the file already exists to avoid recreating it for multiple requests
         if not os.path.exists(ca_bundle_file_path):
             try:
+                # Import here to avoid circular imports
+                from apollo.integrations.aws.asm_proxy_client import (
+                    SecretsManagerProxyClient,
+                )
+
+                # Fetch CA bundle data from AWS Secrets Manager
+                asm_client = SecretsManagerProxyClient(
+                    credentials=None
+                )  # Use default AWS credentials
+                ca_bundle_data = asm_client.get_secret_string(secret_name)
+
+                if not ca_bundle_data:
+                    raise ValueError(
+                        f"No secret string found for secret name: {secret_name}"
+                    )
+
+                # Create the CA bundle file
                 with open(ca_bundle_file_path, "w") as f:
                     f.write(ca_bundle_data)
 
                 # Ensure the file has appropriate permissions
                 os.chmod(ca_bundle_file_path, 0o600)
             except Exception as e:
-                raise ValueError(f"Failed to create CA bundle file: {e}")
+                raise ValueError(
+                    f"Failed to setup CA bundle from secret '{secret_name}': {e}"
+                )
 
         # Set the AWS_CA_BUNDLE environment variable that boto3/botocore will use
         os.environ["AWS_CA_BUNDLE"] = ca_bundle_file_path
