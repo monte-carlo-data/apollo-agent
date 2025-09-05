@@ -114,6 +114,27 @@ class AgentUtils:
         return open(path, "rb")
 
     @classmethod
+    def setup_aws_ca_bundle(cls, ca_bundle_data: Optional[str] = None) -> None:
+        if not ca_bundle_data:
+            return
+
+        # Use a predictable filename so we can check if it already exists
+        temp_path = cls.ensure_temp_path("ca_bundle")
+        ca_bundle_file_path = os.path.join(temp_path, "aws_ca_bundle.pem")
+
+        # Check if the file already exists to avoid recreating it for multiple requests
+        if not os.path.exists(ca_bundle_file_path):
+            # Create the CA bundle file
+            with open(ca_bundle_file_path, "w") as f:
+                f.write(ca_bundle_data)
+
+            # Ensure the file has appropriate permissions
+            os.chmod(ca_bundle_file_path, 0o600)
+
+            # Set the AWS_CA_BUNDLE environment variable that boto3/botocore will use
+            os.environ["AWS_CA_BUNDLE"] = ca_bundle_file_path
+
+    @classmethod
     def redact_attributes(cls, value: Any, attributes: List[str]) -> Any:
         if isinstance(value, Dict):
             return {

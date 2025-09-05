@@ -12,6 +12,7 @@ from apollo.agent.constants import TRACE_ID_HEADER
 from apollo.agent.env_vars import DEBUG_ENV_VAR, MCD_AGENT_CLOUD_PLATFORM_ENV_VAR
 from apollo.agent.logging_utils import LoggingUtils
 from apollo.agent.settings import VERSION
+from apollo.agent.utils import AgentUtils
 from apollo.credentials.factory import CredentialsFactory
 from apollo.interfaces.agent_response import AgentResponse
 
@@ -202,6 +203,7 @@ def execute_agent_operation(
 ) -> AgentResponse:
     credentials = _extract_credentials_in_request(json_request.get("credentials", {}))
     operation = json_request.get("operation")
+    AgentUtils.setup_aws_ca_bundle(json_request.get("custom_ca_bundle"))
 
     return agent.execute_operation(
         connection_type, operation_name, operation, credentials
@@ -322,6 +324,7 @@ def agent_execute_script(
 def execute_agent_script(connection_type: str, json_request: Dict) -> AgentResponse:
     script = json_request.get("operation")
     credentials = _extract_credentials_in_request(json_request.get("credentials", {}))
+    AgentUtils.setup_aws_ca_bundle(json_request.get("custom_ca_bundle"))
     return agent.execute_script(connection_type, script, credentials)
 
 
@@ -430,6 +433,7 @@ def test_health_post() -> Tuple[Dict, int]:
 
 def _test_health() -> Tuple[Dict, int]:
     request_dict: Dict = request.json if request.method == "POST" else request.args  # type: ignore
+    AgentUtils.setup_aws_ca_bundle(request_dict.get("custom_ca_bundle"))
     trace_id = request_dict.get("trace_id")
     full = str(request_dict.get("full", "false")).lower() == "true"
     return agent.health_information(trace_id, full).to_dict(), 200
@@ -909,6 +913,7 @@ def upgrade_agent() -> Tuple[Dict, int]:
     :return: a dictionary from the updater with the result of the upgrade request.
     """
     request_dict: Dict[str, Any] = {**request.json}  # type: ignore
+    AgentUtils.setup_aws_ca_bundle(request_dict.get("custom_ca_bundle"))
     trace_id = request_dict.pop("trace_id") if "trace_id" in request_dict else None
     image = request_dict.pop("image") if "image" in request_dict else None
     timeout = request_dict.pop("timeout") if "timeout" in request_dict else None
@@ -1032,6 +1037,7 @@ def get_upgrade_logs_post() -> Tuple[Dict, int]:
 
 def _get_upgrade_logs() -> Tuple[Dict, int]:
     request_dict: Dict = request.json if request.method == "POST" else request.args  # type: ignore
+    AgentUtils.setup_aws_ca_bundle(request_dict.get("custom_ca_bundle"))
     trace_id: Optional[str] = request_dict.get("trace_id")
     start_time_str: Optional[str] = request_dict.get("start_time")
     limit_value: Optional[Union[int, str]] = request_dict.get("limit")
@@ -1129,6 +1135,7 @@ def get_infra_details_post() -> Tuple[Dict, int]:
 
 def _get_infra_details() -> Tuple[Dict, int]:
     request_dict: Dict = request.json if request.method == "POST" else request.args  # type: ignore
+    AgentUtils.setup_aws_ca_bundle(request_dict.get("custom_ca_bundle"))
     trace_id: Optional[str] = request_dict.get("trace_id")
     response = agent.get_infra_details(trace_id=trace_id)
 
@@ -1166,6 +1173,7 @@ def get_outbound_ip_address() -> Tuple[Dict, int]:
                             outbound_ip_address: 12.34.5.255
 
     """
+    AgentUtils.setup_aws_ca_bundle(request.args.get("custom_ca_bundle"))
     response = agent.get_outbound_ip_address(request.args.get("trace_id"))
     return response.result, response.status_code
 

@@ -104,6 +104,7 @@ def aws_logs_filter() -> Tuple[Dict, int]:
         for example "message" and "timestamp" attributes.
     """
     request_dict: Dict = request.json if request.method == "POST" else request.args  # type: ignore
+    AgentUtils.setup_aws_ca_bundle(request_dict.get("custom_ca_bundle"))
     trace_id: Optional[str] = request_dict.get("trace_id")
     start_time_str: Optional[str] = request_dict.get("start_time")
     end_time_str: Optional[str] = request_dict.get("end_time")
@@ -140,6 +141,7 @@ def aws_logs_start_query() -> Tuple[Dict, int]:
     :return: a dictionary with a "query_id" attribute that can be used to call aws/logs/query_results.
     """
     request_dict: Dict = request.json if request.method == "POST" else request.args  # type: ignore
+    AgentUtils.setup_aws_ca_bundle(request_dict.get("custom_ca_bundle"))
     trace_id: Optional[str] = request_dict.get("trace_id")
     start_time_str: Optional[str] = request_dict.get("start_time")
     end_time_str: Optional[str] = request_dict.get("end_time")
@@ -174,6 +176,7 @@ def aws_logs_stop_query() -> Tuple[Dict, int]:
     :return: a dictionary with a single boolean attribute: "success" as returned by `CloudWatchLogs.Client.stop_query`.
     """
     request_dict: Dict = request.json if request.method == "POST" else request.args  # type: ignore
+    AgentUtils.setup_aws_ca_bundle(request_dict.get("custom_ca_bundle"))
     trace_id: Optional[str] = request_dict.get("trace_id")
     query_id: Optional[str] = request_dict.get("query_id")
     if not query_id:
@@ -202,6 +205,7 @@ def aws_logs_get_query_results() -> Tuple[Dict, int]:
     :return: a dictionary with "events" (the "results" attribute from the CW get_query_results response) and "status".
     """
     request_dict: Dict = request.json if request.method == "POST" else request.args  # type: ignore
+    AgentUtils.setup_aws_ca_bundle(request_dict.get("custom_ca_bundle"))
     trace_id: Optional[str] = request_dict.get("trace_id")
     query_id: Optional[str] = request_dict.get("query_id")
     if not query_id:
