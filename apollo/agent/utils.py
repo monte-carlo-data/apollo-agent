@@ -115,7 +115,11 @@ class AgentUtils:
 
     @classmethod
     def setup_aws_ca_bundle(cls, ca_bundle_data: Optional[str] = None) -> None:
+        # If no ca_bundle is provided in request, make sure the
+        # env var is not being preserved in a warm container from a
+        # previous invocation that did have it.
         if not ca_bundle_data:
+            os.environ.pop("AWS_CA_BUNDLE", None)
             return
 
         # Use a predictable filename so we can check if it already exists
