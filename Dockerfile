@@ -31,6 +31,8 @@ RUN . $VENV_DIR/bin/activate && pip install --no-cache-dir -r requirements.txt
 RUN . $VENV_DIR/bin/activate && pip install setuptools==75.1.0
 
 # Azure database clients uses pyodbc which requires unixODBC and 'ODBC Driver 17 for SQL Server'
+# ODBC Driver 17's latest release was April, 2024. To patch vulnerabilities raised since then,
+# we have to apt-get those specific versions:
 # [VULN-602] update passwd to 1:4.13+dfsg1-1+deb12u1
 # [VULN-606] update krb5 (kerberos) to 1.20.1-2+deb12u3
 # [VULN-XXX] update libcap2 to 1:2.66-4+deb12u1
