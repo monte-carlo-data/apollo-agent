@@ -6,7 +6,6 @@ from unittest.mock import patch, mock_open
 from apollo.agent.agent import Agent
 from apollo.agent.env_vars import MCD_AWS_CA_BUNDLE_SECRET_NAME_ENV_VAR
 from apollo.agent.logging_utils import LoggingUtils
-from apollo.agent.utils import AgentUtils
 
 
 class TestAwsCaBundleSetup(TestCase):
@@ -51,8 +50,8 @@ R9I4LtD+gdwyah617jzV/OeBHRnDJELqYzmp
         # Ensure the environment variable is not set
         self.assertNotIn(MCD_AWS_CA_BUNDLE_SECRET_NAME_ENV_VAR, os.environ)
 
-        # Call the method
-        AgentUtils.setup_aws_ca_bundle()
+        # Call the method by creating an Agent
+        Agent(LoggingUtils())
 
         # AWS_CA_BUNDLE should not be set
         self.assertNotIn("AWS_CA_BUNDLE", os.environ)
@@ -60,8 +59,8 @@ R9I4LtD+gdwyah617jzV/OeBHRnDJELqYzmp
     @patch.dict(os.environ, {MCD_AWS_CA_BUNDLE_SECRET_NAME_ENV_VAR: ""})
     def test_setup_aws_ca_bundle_empty_env_var(self):
         """Test that setup_aws_ca_bundle does nothing when MCD_AWS_CA_BUNDLE_SECRET_NAME is empty."""
-        # Call the method
-        AgentUtils.setup_aws_ca_bundle()
+        # Call the method by creating an Agent
+        Agent(LoggingUtils())
 
         # AWS_CA_BUNDLE should not be set
         self.assertNotIn("AWS_CA_BUNDLE", os.environ)
@@ -70,7 +69,7 @@ R9I4LtD+gdwyah617jzV/OeBHRnDJELqYzmp
     @patch("os.chmod")
     @patch("builtins.open", new_callable=mock_open)
     @patch("apollo.agent.utils.AgentUtils.ensure_temp_path")
-    @patch("apollo.integrations.aws.asm_proxy_client.SecretsManagerProxyClient")
+    @patch("apollo.agent.agent.SecretsManagerProxyClient")
     def test_setup_aws_ca_bundle_creates_file(
         self,
         mock_asm_client_class,
@@ -95,7 +94,7 @@ R9I4LtD+gdwyah617jzV/OeBHRnDJELqYzmp
         with patch.dict(
             os.environ, {MCD_AWS_CA_BUNDLE_SECRET_NAME_ENV_VAR: secret_name}
         ):
-            AgentUtils.setup_aws_ca_bundle()
+            Agent(LoggingUtils())
 
             # Verify calls
             mock_ensure_temp_path.assert_called_once_with("ca_bundle")
@@ -112,7 +111,7 @@ R9I4LtD+gdwyah617jzV/OeBHRnDJELqYzmp
     @patch("os.chmod")
     @patch("builtins.open", new_callable=mock_open)
     @patch("apollo.agent.utils.AgentUtils.ensure_temp_path")
-    @patch("apollo.integrations.aws.asm_proxy_client.SecretsManagerProxyClient")
+    @patch("apollo.agent.agent.SecretsManagerProxyClient")
     def test_setup_aws_ca_bundle_file_creation_error(
         self,
         mock_asm_client_class,
@@ -140,7 +139,7 @@ R9I4LtD+gdwyah617jzV/OeBHRnDJELqYzmp
             os.environ, {MCD_AWS_CA_BUNDLE_SECRET_NAME_ENV_VAR: secret_name}
         ):
             with self.assertRaises(ValueError) as context:
-                AgentUtils.setup_aws_ca_bundle()
+                Agent(LoggingUtils())
 
             self.assertIn(
                 "Failed to setup CA bundle from secret", str(context.exception)
@@ -150,7 +149,7 @@ R9I4LtD+gdwyah617jzV/OeBHRnDJELqYzmp
 
     @patch("os.path.exists")
     @patch("apollo.agent.utils.AgentUtils.ensure_temp_path")
-    @patch("apollo.integrations.aws.asm_proxy_client.SecretsManagerProxyClient")
+    @patch("apollo.agent.agent.SecretsManagerProxyClient")
     def test_setup_aws_ca_bundle_secret_not_found(
         self, mock_asm_client_class, mock_ensure_temp_path, mock_path_exists
     ):
@@ -172,14 +171,14 @@ R9I4LtD+gdwyah617jzV/OeBHRnDJELqYzmp
             os.environ, {MCD_AWS_CA_BUNDLE_SECRET_NAME_ENV_VAR: secret_name}
         ):
             with self.assertRaises(ValueError) as context:
-                AgentUtils.setup_aws_ca_bundle()
+                Agent(LoggingUtils())
 
             self.assertIn("No secret string found", str(context.exception))
             self.assertIn(secret_name, str(context.exception))
 
     @patch("os.path.exists")
     @patch("apollo.agent.utils.AgentUtils.ensure_temp_path")
-    @patch("apollo.integrations.aws.asm_proxy_client.SecretsManagerProxyClient")
+    @patch("apollo.agent.agent.SecretsManagerProxyClient")
     def test_setup_aws_ca_bundle_asm_error(
         self, mock_asm_client_class, mock_ensure_temp_path, mock_path_exists
     ):
@@ -200,7 +199,7 @@ R9I4LtD+gdwyah617jzV/OeBHRnDJELqYzmp
             os.environ, {MCD_AWS_CA_BUNDLE_SECRET_NAME_ENV_VAR: secret_name}
         ):
             with self.assertRaises(ValueError) as context:
-                AgentUtils.setup_aws_ca_bundle()
+                Agent(LoggingUtils())
 
             self.assertIn(
                 "Failed to setup CA bundle from secret", str(context.exception)
@@ -208,31 +207,7 @@ R9I4LtD+gdwyah617jzV/OeBHRnDJELqYzmp
             self.assertIn(secret_name, str(context.exception))
             self.assertIn("AWS credentials not found", str(context.exception))
 
-    @patch("apollo.agent.utils.AgentUtils.setup_aws_ca_bundle")
-    def test_agent_init_calls_setup_aws_ca_bundle(self, mock_setup_ca_bundle):
-        """Test that Agent.__init__ calls setup_aws_ca_bundle."""
-        # Create an Agent instance
-        logging_utils = LoggingUtils()
-        agent = Agent(logging_utils)
-
-        # Verify that setup_aws_ca_bundle was called during initialization
-        mock_setup_ca_bundle.assert_called_once()
-
-    @patch("apollo.agent.utils.AgentUtils.setup_aws_ca_bundle")
-    def test_agent_init_handles_ca_bundle_setup_error(self, mock_setup_ca_bundle):
-        """Test that Agent initialization handles CA bundle setup errors gracefully."""
-        # Make setup_aws_ca_bundle raise an exception
-        mock_setup_ca_bundle.side_effect = ValueError("CA bundle setup failed")
-
-        logging_utils = LoggingUtils()
-
-        # Agent initialization should raise the exception
-        with self.assertRaises(ValueError) as context:
-            Agent(logging_utils)
-
-        self.assertIn("CA bundle setup failed", str(context.exception))
-
-    @patch("apollo.integrations.aws.asm_proxy_client.SecretsManagerProxyClient")
+    @patch("apollo.agent.agent.SecretsManagerProxyClient")
     def test_integration_with_real_temp_directory(self, mock_asm_client_class):
         """Integration test using real temporary directory."""
         secret_name = "my-ca-bundle-secret"
@@ -249,7 +224,7 @@ R9I4LtD+gdwyah617jzV/OeBHRnDJELqYzmp
                 with patch.dict(
                     os.environ, {MCD_AWS_CA_BUNDLE_SECRET_NAME_ENV_VAR: secret_name}
                 ):
-                    AgentUtils.setup_aws_ca_bundle()
+                    Agent(LoggingUtils())
 
                     # Verify AWS_CA_BUNDLE is set
                     aws_ca_bundle = os.environ.get("AWS_CA_BUNDLE")

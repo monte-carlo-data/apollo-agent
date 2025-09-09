@@ -12,6 +12,7 @@ from apollo.agent.env_vars import (
     IS_REMOTE_UPGRADABLE_ENV_VAR,
     PRE_SIGNED_URL_RESPONSE_EXPIRATION_SECONDS_DEFAULT_VALUE,
     PRE_SIGNED_URL_RESPONSE_EXPIRATION_SECONDS_ENV_VAR,
+    MCD_AWS_CA_BUNDLE_SECRET_NAME_ENV_VAR,
 )
 from apollo.agent.evaluation_utils import AgentEvaluationUtils
 from apollo.agent.platform import AgentPlatformProvider
@@ -36,6 +37,7 @@ from apollo.agent.proxy_client_factory import ProxyClientFactory
 from apollo.agent.settings import VERSION, BUILD_NUMBER
 from apollo.agent.updater import AgentUpdater
 from apollo.agent.utils import AgentUtils
+from apollo.integrations.aws.asm_proxy_client import SecretsManagerProxyClient
 from apollo.integrations.base_proxy_client import BaseProxyClient
 from apollo.integrations.storage.storage_proxy_client import StorageProxyClient
 from apollo.interfaces.agent_response import AgentResponse
@@ -52,7 +54,7 @@ class Agent:
         self._log_context: Optional[AgentLogContext] = None
 
         # Setup AWS CA bundle if configured, ensuring all boto3/botocore operations use it
-        AgentUtils.setup_aws_ca_bundle()
+        self.setup_aws_ca_bundle()
 
     @property
     def platform(self) -> str:
@@ -680,3 +682,52 @@ class Agent:
         finally:
             if self._log_context:
                 self._log_context.set_agent_context({})
+
+    @staticmethod
+    def setup_aws_ca_bundle() -> None:
+        """
+        Sets up AWS CA bundle for all boto3/botocore operations.
+
+        If MCD_AWS_CA_BUNDLE_SECRET_NAME environment variable is set, this method:
+        1. Fetches the CA bundle data from AWS Secrets Manager using the secret name/ARN
+        2. Creates a temporary .pem file with the CA bundle data (if not already exists)
+        3. Sets the AWS_CA_BUNDLE environment variable to point to this file
+
+        This ensures all boto3/botocore clients use the custom CA bundle.
+        """
+        secret_name = os.getenv(MCD_AWS_CA_BUNDLE_SECRET_NAME_ENV_VAR)
+        if not secret_name:
+            # Ensure the env var is not being preserved in a
+            # warm container from a previous invocation.
+            os.environ.pop("AWS_CA_BUNDLE", None)
+            return
+
+        # Use a predictable filename so we can check if it already exists
+        temp_path = AgentUtils.ensure_temp_path("ca_bundle")
+        ca_bundle_file_path = os.path.join(temp_path, "aws_ca_bundle.pem")
+
+        try:
+            # Fetch CA bundle data from AWS Secrets Manager
+            asm_client = SecretsManagerProxyClient(
+                credentials=None
+            )  # Use default AWS credentials
+            ca_bundle_data = asm_client.get_secret_string(secret_name)
+
+            if not ca_bundle_data:
+                raise ValueError(
+                    f"No secret string found for secret name: {secret_name}"
+                )
+
+            # Create the CA bundle file
+            with open(ca_bundle_file_path, "w") as f:
+                f.write(ca_bundle_data)
+
+            # Ensure the file has appropriate permissions
+            os.chmod(ca_bundle_file_path, 0o600)
+        except Exception as e:
+            raise ValueError(
+                f"Failed to setup CA bundle from secret '{secret_name}': {e}"
+            )
+
+        # Set the AWS_CA_BUNDLE environment variable that boto3/botocore will use
+        os.environ["AWS_CA_BUNDLE"] = ca_bundle_file_path
