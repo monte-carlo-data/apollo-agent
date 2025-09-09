@@ -66,7 +66,6 @@ R9I4LtD+gdwyah617jzV/OeBHRnDJELqYzmp
         # AWS_CA_BUNDLE should not be set
         self.assertNotIn("AWS_CA_BUNDLE", os.environ)
 
-    @patch("os.path.exists")
     @patch("os.makedirs")
     @patch("os.chmod")
     @patch("builtins.open", new_callable=mock_open)
@@ -79,7 +78,6 @@ R9I4LtD+gdwyah617jzV/OeBHRnDJELqYzmp
         mock_file_open,
         mock_chmod,
         mock_makedirs,
-        mock_path_exists,
     ):
         """Test that setup_aws_ca_bundle creates a file when fetching from AWS Secrets Manager."""
         # Set up mocks
@@ -88,7 +86,6 @@ R9I4LtD+gdwyah617jzV/OeBHRnDJELqYzmp
         secret_name = "my-ca-bundle-secret"
 
         mock_ensure_temp_path.return_value = temp_path
-        mock_path_exists.return_value = False  # File doesn't exist yet
 
         # Mock the ASM client
         mock_asm_client = mock_asm_client_class.return_value
@@ -102,7 +99,6 @@ R9I4LtD+gdwyah617jzV/OeBHRnDJELqYzmp
 
             # Verify calls
             mock_ensure_temp_path.assert_called_once_with("ca_bundle")
-            mock_path_exists.assert_called_once_with(ca_bundle_path)
             mock_asm_client_class.assert_called_once_with(credentials=None)
             mock_asm_client.get_secret_string.assert_called_once_with(secret_name)
             mock_file_open.assert_called_once_with(ca_bundle_path, "w")
@@ -111,36 +107,6 @@ R9I4LtD+gdwyah617jzV/OeBHRnDJELqYzmp
 
             # Verify AWS_CA_BUNDLE is set
             self.assertEqual(os.environ.get("AWS_CA_BUNDLE"), ca_bundle_path)
-
-    @patch("os.path.exists")
-    @patch("apollo.agent.utils.AgentUtils.ensure_temp_path")
-    @patch("apollo.integrations.aws.asm_proxy_client.SecretsManagerProxyClient")
-    def test_setup_aws_ca_bundle_file_already_exists(
-        self, mock_asm_client_class, mock_ensure_temp_path, mock_path_exists
-    ):
-        """Test that setup_aws_ca_bundle skips file creation if file already exists."""
-        # Set up mocks
-        temp_path = "/tmp/ca_bundle"
-        ca_bundle_path = "/tmp/ca_bundle/aws_ca_bundle.pem"
-        secret_name = "my-ca-bundle-secret"
-
-        mock_ensure_temp_path.return_value = temp_path
-        mock_path_exists.return_value = True  # File already exists
-
-        with patch("builtins.open", new_callable=mock_open) as mock_file_open:
-            # Set environment variable and test inside the context
-            with patch.dict(
-                os.environ, {MCD_AWS_CA_BUNDLE_SECRET_NAME_ENV_VAR: secret_name}
-            ):
-                AgentUtils.setup_aws_ca_bundle()
-
-                # File should not be opened for writing since it already exists
-                mock_file_open.assert_not_called()
-                # ASM client should not be called either
-                mock_asm_client_class.assert_not_called()
-
-                # Verify AWS_CA_BUNDLE is still set
-                self.assertEqual(os.environ.get("AWS_CA_BUNDLE"), ca_bundle_path)
 
     @patch("os.path.exists")
     @patch("os.chmod")
@@ -303,44 +269,6 @@ R9I4LtD+gdwyah617jzV/OeBHRnDJELqYzmp
                     self.assertEqual(file_permissions, "600")
 
                     # Verify ASM client was called correctly
-                    mock_asm_client_class.assert_called_once_with(credentials=None)
-                    mock_asm_client.get_secret_string.assert_called_once_with(
-                        secret_name
-                    )
-
-    @patch("apollo.integrations.aws.asm_proxy_client.SecretsManagerProxyClient")
-    def test_integration_multiple_calls_same_file(self, mock_asm_client_class):
-        """Integration test that multiple calls reuse the same file."""
-        secret_name = "my-ca-bundle-secret"
-
-        # Mock the ASM client
-        mock_asm_client = mock_asm_client_class.return_value
-        mock_asm_client.get_secret_string.return_value = self.test_ca_data
-
-        with tempfile.TemporaryDirectory() as temp_dir:
-            with patch(
-                "apollo.agent.utils.AgentUtils.temp_path", return_value=temp_dir
-            ):
-                # Set environment variable
-                with patch.dict(
-                    os.environ, {MCD_AWS_CA_BUNDLE_SECRET_NAME_ENV_VAR: secret_name}
-                ):
-                    # First call
-                    AgentUtils.setup_aws_ca_bundle()
-                    first_ca_bundle_path = os.environ.get("AWS_CA_BUNDLE")
-                    first_mtime = os.path.getmtime(first_ca_bundle_path)
-
-                    # Second call
-                    AgentUtils.setup_aws_ca_bundle()
-                    second_ca_bundle_path = os.environ.get("AWS_CA_BUNDLE")
-                    second_mtime = os.path.getmtime(second_ca_bundle_path)
-
-                    # Should be the same file
-                    self.assertEqual(first_ca_bundle_path, second_ca_bundle_path)
-                    # File modification time should be the same (file not recreated)
-                    self.assertEqual(first_mtime, second_mtime)
-
-                    # ASM client should only be called once (first time, when file doesn't exist)
                     mock_asm_client_class.assert_called_once_with(credentials=None)
                     mock_asm_client.get_secret_string.assert_called_once_with(
                         secret_name
