@@ -49,6 +49,9 @@ RUN apt-get update \
     && apt-get install -y libcap2=1:2.66-4+deb12u2 \
     && apt-get install -y systemd=252.39-1~deb12u1
 
+# remove sqlite3 that is not used and introduces vulns
+RUN apt-get purge -y sqlite
+
 # copy sources in the last step so we don't install python libraries due to a change in source code
 COPY apollo/ ./apollo
 
@@ -165,9 +168,6 @@ RUN apt-get update \
 
 # delete this file that includes an old golang version (including vulns) and is not used
 RUN rm -rf /opt/startupcmdgen/
-
-# remove sqlite3 that is not used and introduces vulns
-RUN apt-get purge -y sqlite3
 
 COPY requirements.txt /
 COPY requirements-azure.txt /
