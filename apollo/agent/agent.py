@@ -1,6 +1,7 @@
 import gzip
 import logging
 import os
+import ssl
 import sys
 import time
 from contextlib import contextmanager
@@ -707,10 +708,13 @@ class Agent:
         ca_bundle_file_path = os.path.join(temp_path, "aws_ca_bundle.pem")
 
         try:
-            # Fetch CA bundle data from AWS Secrets Manager
+            # Fetch CA bundle data from AWS Secrets Manager using the default
+            # CA bundle.
+            with open(ssl.get_default_verify_paths().cafile, "r") as f:
+                default_ca_bundle = f.read()
             asm_client = SecretsManagerProxyClient(
-                credentials=None
-            )  # Use default AWS credentials
+                credentials={"ssl_options": {"ca_data": default_ca_bundle}}
+            )
             ca_bundle_data = asm_client.get_secret_string(secret_name)
 
             if not ca_bundle_data:
