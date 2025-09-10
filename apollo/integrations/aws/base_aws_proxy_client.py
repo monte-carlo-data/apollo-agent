@@ -7,6 +7,7 @@ from dataclasses_json import DataClassJsonMixin
 
 from apollo.agent.utils import AgentUtils
 from apollo.integrations.base_proxy_client import BaseProxyClient
+from apollo.integrations.db.base_db_proxy_client import SslOptions
 
 
 @dataclass
@@ -34,6 +35,7 @@ class BaseAwsProxyClient(BaseProxyClient):
             assumable_role=credentials.get("assumable_role") if credentials else None,
             aws_region=credentials.get("aws_region") if credentials else None,
             external_id=credentials.get("external_id") if credentials else None,
+            ssl_options=credentials.get("ssl_options") if credentials else None,
         )
 
     @property
@@ -46,7 +48,9 @@ class BaseAwsProxyClient(BaseProxyClient):
         aws_region: Optional[str] = None,
         assumable_role: Optional[str] = None,
         external_id: Optional[str] = None,
+        ssl_options: Optional[dict] = None,
     ):
+        ssl_config = SslOptions(**(ssl_options or {}))
         if assumable_role:
             assumed_role = self._assume_role(
                 assumable_role=assumable_role, external_id=external_id
@@ -59,7 +63,16 @@ class BaseAwsProxyClient(BaseProxyClient):
             )
         else:
             session = boto3.Session(region_name=aws_region)
-        return session.client(service_type)
+        return session.client(
+            service_type,
+            verify=(
+                ssl_config.write_ca_data_to_temp_file(
+                    f"/tmp/{service_type}_ca_bundle.pem", upsert=True
+                )
+                if ssl_config.ca_data
+                else None
+            ),
+        )
 
     @staticmethod
     def _assume_role(
