@@ -1,4 +1,5 @@
 import os
+import ssl
 import tempfile
 from unittest import TestCase
 from unittest.mock import patch, mock_open
@@ -98,9 +99,12 @@ R9I4LtD+gdwyah617jzV/OeBHRnDJELqYzmp
 
             # Verify calls
             mock_ensure_temp_path.assert_called_once_with("ca_bundle")
-            mock_asm_client_class.assert_called_once_with(credentials=None)
+            with open(ssl.get_default_verify_paths().cafile, "r") as f:
+                default_ca_bundle = f.read()
+            mock_asm_client_class.assert_called_once_with(
+                credentials={"ssl_options": {"ca_data": default_ca_bundle}}
+            )
             mock_asm_client.get_secret_string.assert_called_once_with(secret_name)
-            mock_file_open.assert_called_once_with(ca_bundle_path, "w")
             mock_file_open().write.assert_called_once_with(self.test_ca_data)
             mock_chmod.assert_called_once_with(ca_bundle_path, 0o600)
 
@@ -244,7 +248,11 @@ R9I4LtD+gdwyah617jzV/OeBHRnDJELqYzmp
                     self.assertEqual(file_permissions, "600")
 
                     # Verify ASM client was called correctly
-                    mock_asm_client_class.assert_called_once_with(credentials=None)
+                    with open(ssl.get_default_verify_paths().cafile, "r") as f:
+                        default_ca_bundle = f.read()
+                    mock_asm_client_class.assert_called_once_with(
+                        credentials={"ssl_options": {"ca_data": default_ca_bundle}}
+                    )
                     mock_asm_client.get_secret_string.assert_called_once_with(
                         secret_name
                     )
