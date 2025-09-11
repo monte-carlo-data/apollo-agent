@@ -50,7 +50,7 @@ RUN apt-get update \
     && apt-get install -y systemd=252.39-1~deb12u1
 
 # remove sqlite that is not used and introduces vulns
-RUN dpkg --purge sqlite3
+RUN apt-get purge libsqlite3-dev
 
 # copy sources in the last step so we don't install python libraries due to a change in source code
 COPY apollo/ ./apollo
