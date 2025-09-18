@@ -311,6 +311,14 @@ def _get_proxy_client_clickhouse(
     return ClickHouseProxyClient(credentials=credentials, platform=platform)
 
 
+def _get_proxy_client_db2(
+    credentials: Optional[Dict], platform: str, **kwargs  # type: ignore
+) -> BaseProxyClient:
+    from apollo.integrations.db.db2_proxy_client import Db2ProxyClient
+
+    return Db2ProxyClient(credentials=credentials, platform=platform)
+
+
 @dataclass
 class ProxyClientCacheEntry:
     created_time: datetime
@@ -320,6 +328,7 @@ class ProxyClientCacheEntry:
 _CLIENT_FACTORY_MAPPING = {
     "bigquery": _get_proxy_client_bigquery,
     "databricks": _get_proxy_client_databricks,
+    "db2": _get_proxy_client_db2,
     "http": _get_proxy_client_http,
     "s3": _get_proxy_client_s3,
     "storage": _get_proxy_client_storage,
