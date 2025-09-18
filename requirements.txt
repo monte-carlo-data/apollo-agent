@@ -130,6 +130,8 @@ httplib2==0.22.0
     # via
     #   google-api-python-client
     #   google-auth-httplib2
+ibm-db==3.2.7
+    # via -r requirements.in
 idna==3.7
     # via
     #   requests
