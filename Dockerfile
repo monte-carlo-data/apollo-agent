@@ -18,6 +18,8 @@ RUN apt-get update
 # this is a temporary workaround and it should be removed once we update oscrypto to 1.3.1+
 # see: https://community.snowflake.com/s/article/Python-Connector-fails-to-connect-with-LibraryNotFoundError-Error-detecting-the-version-of-libcrypto
 RUN apt-get install -y git
+# install libcrypt1 for IBM DB2 ibm-db package compatibility (provides libcrypt.so.1)
+RUN apt-get install -y libcrypt1
 
 # Upgrade pip globally to fix the vulnerability - VULN-510
 RUN pip install --no-cache-dir -U pip==25.0.0
@@ -96,6 +98,8 @@ RUN . $VENV_DIR/bin/activate && pip install --no-cache-dir -r requirements-cloud
 
 RUN apt update
 RUN apt install git -y
+# install libcrypt1 for IBM DB2 ibm-db package compatibility (provides libcrypt.so.1)
+RUN apt install -y libcrypt1
 
 CMD . $VENV_DIR/bin/activate && \
     gunicorn --timeout 930 --bind :$PORT apollo.interfaces.cloudrun.main:app
@@ -105,6 +109,8 @@ FROM public.ecr.aws/lambda/python:3.12.2025.04.28.11 AS lambda-builder
 RUN dnf update -y
 # install git as we need it for the direct oscrypto dependency
 RUN dnf install git -y
+# install libxcrypt-compat for IBM DB2 ibm-db package compatibility (requires libcrypt.so.1)
+RUN dnf install -y libxcrypt-compat
 
 COPY requirements.txt ./
 COPY requirements-lambda.txt ./
@@ -155,6 +161,8 @@ ENV AzureWebJobsScriptRoot=/home/site/wwwroot \
 
 RUN apt-get update && apt-get upgrade -y
 RUN apt-get install -y git wget  # VULN-543 upgrade wget
+# install libcrypt1 for IBM DB2 ibm-db package compatibility (provides libcrypt.so.1)
+RUN apt-get install -y libcrypt1
 
 # Azure database clients and sql-server uses pyodbc which requires unixODBC and 'ODBC Driver 17
 # for SQL Server' Microsoft's python 3.12 base image comes with msodbcsql18 but we are expecting to
