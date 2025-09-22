@@ -14,6 +14,7 @@ google-api-python-client==2.176.0  # Upgraded in VULN-620
 google-cloud-storage==2.10.0
 gunicorn==22.0.0
 hdbcli==2.18.27
+ibm-db==3.2.7
 jinja2>=3.1.6
 lambda-git==0.1.1
 looker-sdk==24.2.0
@@ -41,7 +42,7 @@ tableauserverclient==0.25 ; python_version < "3.10"
 tableauserverclient @ git+https://github.com/tableau/server-client-python.git@master ; python_version >= "3.10"
 urllib3==2.5.0 # Upgraded in VULN-621
 
-teradatasql>=20.0.0.40
+teradatasql>=20.0.0.33
 oscrypto @ git+https://github.com/wbond/oscrypto@master
 
 # Note this is a beta version of impyla that is needed in order to support HTTPS connections on python 3.12.
