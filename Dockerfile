@@ -17,9 +17,9 @@ RUN apt-get update
 # install git as we need it for the direct oscrypto dependency
 # this is a temporary workaround and it should be removed once we update oscrypto to 1.3.1+
 # see: https://community.snowflake.com/s/article/Python-Connector-fails-to-connect-with-LibraryNotFoundError-Error-detecting-the-version-of-libcrypto
-RUN apt-get install -y git
+RUN apt-get install -y --no-install-recommends git
 # install libcrypt1 for IBM DB2 ibm-db package compatibility (provides libcrypt.so.1)
-RUN apt-get install -y libcrypt1
+RUN apt-get install -y --no-install-recommends libcrypt1
 
 # Upgrade pip globally to fix the vulnerability - VULN-510
 RUN pip install --no-cache-dir -U pip==25.0.0
@@ -39,12 +39,13 @@ RUN . $VENV_DIR/bin/activate && pip install setuptools==75.1.0
 # [VULN-606] update krb5 (kerberos) to 1.20.1-2+deb12u3
 # [VULN-XXX] update libcap2 to 1:2.66-4+deb12u1
 # [VULN-613] update systemd to 252.38-1~deb12u1.
+RUN apt-get install -y --no-install-recommends curl ca-certificates gnupg
+RUN install -m 0755 -d /etc/apt/keyrings
+RUN curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor -o /etc/apt/keyrings/microsoft.gpg
+RUN chmod a+r /etc/apt/keyrings/microsoft.gpg
+RUN echo "deb [arch=amd64,arm64, signed-by=/etc/apt/keyrings/microsoft.gpg] https://packages.microsoft.com/debian/12/prod bookworm main" > /etc/apt/sources.list.d/mssql-release.list
 RUN apt-get update
-RUN apt-get install -y gnupg gnupg2 gnupg1 curl apt-transport-https
-RUN curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add -
-RUN curl https://packages.microsoft.com/config/debian/10/prod.list > /etc/apt/sources.list.d/mssql-release.list
-RUN apt-get update
-RUN ACCEPT_EULA=Y apt-get install -y msodbcsql17 unixodbc unixodbc-dev
+RUN ACCEPT_EULA=Y apt-get install -y --no-install-recommends msodbcsql17 unixodbc unixodbc-dev
 RUN apt-get install -y passwd=1:4.13+dfsg1-1+deb12u1
 RUN apt-get install -y libgssapi-krb5-2=1.20.1-2+deb12u4 libkrb5-3=1.20.1-2+deb12u4 libkrb5support0=1.20.1-2+deb12u4
 RUN apt-get install -y libcap2=1:2.66-4+deb12u2
@@ -94,11 +95,6 @@ FROM base AS cloudrun
 COPY requirements-cloudrun.txt ./
 RUN . $VENV_DIR/bin/activate && pip install --no-cache-dir -U pip==25.0.0  # VULN-510
 RUN . $VENV_DIR/bin/activate && pip install --no-cache-dir -r requirements-cloudrun.txt
-
-RUN apt update
-RUN apt install git -y
-# install libcrypt1 for IBM DB2 ibm-db package compatibility (provides libcrypt.so.1)
-RUN apt install -y libcrypt1
 
 CMD . $VENV_DIR/bin/activate && \
     gunicorn --timeout 930 --bind :$PORT apollo.interfaces.cloudrun.main:app
