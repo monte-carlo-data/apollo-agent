@@ -35,10 +35,6 @@ RUN . $VENV_DIR/bin/activate && pip install setuptools==75.1.0
 # Azure database clients uses pyodbc which requires unixODBC and 'ODBC Driver 17 for SQL Server'
 # ODBC Driver 17's latest release was April, 2024. To patch vulnerabilities raised since then,
 # we have to apt-get those specific versions:
-# [VULN-602] update passwd to 1:4.13+dfsg1-1+deb12u1
-# [VULN-606] update krb5 (kerberos) to 1.20.1-2+deb12u3
-# [VULN-XXX] update libcap2 to 1:2.66-4+deb12u1
-# [VULN-613] update systemd to 252.38-1~deb12u1.
 RUN apt-get install -y --no-install-recommends curl ca-certificates gnupg
 RUN install -m 0755 -d /etc/apt/keyrings
 RUN curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor -o /etc/apt/keyrings/microsoft.gpg
@@ -46,10 +42,6 @@ RUN chmod a+r /etc/apt/keyrings/microsoft.gpg
 RUN echo "deb [arch=amd64,arm64, signed-by=/etc/apt/keyrings/microsoft.gpg] https://packages.microsoft.com/debian/12/prod bookworm main" > /etc/apt/sources.list.d/mssql-release.list
 RUN apt-get update
 RUN ACCEPT_EULA=Y apt-get install -y --no-install-recommends msodbcsql17 unixodbc unixodbc-dev
-RUN apt-get install -y passwd=1:4.13+dfsg1-1+deb12u1
-RUN apt-get install -y libgssapi-krb5-2=1.20.1-2+deb12u4 libkrb5-3=1.20.1-2+deb12u4 libkrb5support0=1.20.1-2+deb12u4
-RUN apt-get install -y libcap2=1:2.66-4+deb12u2
-RUN apt-get install -y systemd=252.39-1~deb12u1
 
 # remove sqlite that is not used and introduces vulns
 RUN apt-get purge -y libsqlite3-0 sqlite3
