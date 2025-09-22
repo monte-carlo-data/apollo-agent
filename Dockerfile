@@ -79,7 +79,7 @@ RUN . $VENV_DIR/bin/activate && pip install --no-cache-dir -r requirements-cloud
 CMD . $VENV_DIR/bin/activate && \
     gunicorn --timeout 930 --bind :$PORT apollo.interfaces.cloudrun.main:app
 
-FROM public.ecr.aws/lambda/python:3.12.2025.04.28.11 AS lambda-builder
+FROM public.ecr.aws/lambda/python:3.12.2025.09.22.12 AS lambda-builder
 
 RUN dnf update -y
 # install git as we need it for the direct oscrypto dependency
@@ -93,11 +93,7 @@ RUN pip install --no-cache-dir --target "${LAMBDA_TASK_ROOT}" \
     -r requirements.txt \
     -r requirements-lambda.txt
 
-FROM public.ecr.aws/lambda/python:3.12.2025.04.28.11 AS lambda
-
-# VULN-369: Base ECR image includes urllib3-1.26.18 which is vulnerable (CVE-2024-37891)
-RUN pip install --no-cache-dir --upgrade urllib3==1.26.19
-RUN rm -rf /var/lang/lib/python3.12/site-packages/urllib3-1.26.19.dist-info
+FROM public.ecr.aws/lambda/python:3.12.2025.09.22.12 AS lambda
 
 COPY --from=lambda-builder "${LAMBDA_TASK_ROOT}" "${LAMBDA_TASK_ROOT}"
 
