@@ -6,10 +6,10 @@ ENV GUNICORN_THREADS=8
 ENV GUNICORN_TIMEOUT=0
 
 # Allow statements and log messages to immediately appear in the logs
-ENV PYTHONUNBUFFERED True
+ENV PYTHONUNBUFFERED=True
 
-ENV APP_HOME /app
-ENV VENV_DIR .venv
+ENV APP_HOME=/app
+ENV VENV_DIR=.venv
 WORKDIR $APP_HOME
 COPY requirements.txt ./
 
@@ -42,9 +42,6 @@ RUN chmod a+r /etc/apt/keyrings/microsoft.gpg
 RUN echo "deb [arch=amd64,arm64, signed-by=/etc/apt/keyrings/microsoft.gpg] https://packages.microsoft.com/debian/12/prod bookworm main" > /etc/apt/sources.list.d/mssql-release.list
 RUN apt-get update
 RUN ACCEPT_EULA=Y apt-get install -y --no-install-recommends msodbcsql17 unixodbc unixodbc-dev
-
-# remove sqlite that is not used and introduces vulns
-RUN apt-get purge -y libsqlite3-0 sqlite3
 
 # clean up all unused libraries
 RUN apt-get autoremove -y && apt-get clean && rm -rf /var/lib/apt/lists/*
