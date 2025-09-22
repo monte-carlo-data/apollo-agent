@@ -171,8 +171,9 @@ RUN apt-get install -y libcrypt1
 # Updating libgnutls30 to resolve CVE-2024-28835 and CVE-2024-28834.
 # Updating libglib to resolve CVE-2024-52533.
 # Updating OpenSSL to resolve CVE-2024-13176
+# updating libgnutls30 to resolve VULN-627
 RUN apt-get update \
-    && apt-get install -y gnupg gnupg2 gnupg1 curl apt-transport-https libgnutls30 \
+    && apt-get install -y gnupg gnupg2 gnupg1 curl apt-transport-https libgnutls30=3.7.9-2+deb12u5 \
     && ACCEPT_EULA=Y apt-get install -y msodbcsql17 odbcinst=2.3.11-2+deb12u1 odbcinst1debian2=2.3.11-2+deb12u1 unixodbc-dev=2.3.11-2+deb12u1 unixodbc=2.3.11-2+deb12u1 \
     && apt-get install -y libglib2.0-0 \
     && apt-get install -y libcap2=1:2.66-4+deb12u2
