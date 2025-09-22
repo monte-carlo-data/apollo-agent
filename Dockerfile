@@ -75,13 +75,7 @@ CMD . $VENV_DIR/bin/activate \
 FROM base AS cloudrun
 
 COPY requirements-cloudrun.txt ./
-RUN . $VENV_DIR/bin/activate && pip install --no-cache-dir -U pip==25.0.0  # VULN-510
 RUN . $VENV_DIR/bin/activate && pip install --no-cache-dir -r requirements-cloudrun.txt
-
-RUN apt update
-RUN apt install git -y
-# install libcrypt1 for IBM DB2 ibm-db package compatibility (provides libcrypt.so.1)
-RUN apt install -y libcrypt1
 
 CMD . $VENV_DIR/bin/activate && \
     gunicorn --timeout 930 --bind :$PORT apollo.interfaces.cloudrun.main:app
