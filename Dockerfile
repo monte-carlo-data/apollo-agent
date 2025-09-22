@@ -1,4 +1,4 @@
-FROM python:3.12.11-slim AS base
+FROM python:3.12.9-slim AS base
 
 # Web server env var configuration
 ENV GUNICORN_WORKERS=5
@@ -45,7 +45,11 @@ RUN apt-get update \
     && curl https://packages.microsoft.com/config/debian/10/prod.list \
     > /etc/apt/sources.list.d/mssql-release.list \
     && apt-get update \
-    && ACCEPT_EULA=Y apt-get install -y msodbcsql17 unixodbc unixodbc-dev
+    && ACCEPT_EULA=Y apt-get install -y msodbcsql17 unixodbc unixodbc-dev \
+    && apt-get install -y passwd=1:4.13+dfsg1-1+deb12u1 \
+    && apt-get install -y libgssapi-krb5-2=1.20.1-2+deb12u4 libkrb5-3=1.20.1-2+deb12u4 libkrb5support0=1.20.1-2+deb12u4 \
+    && apt-get install -y libcap2=1:2.66-4+deb12u2 \
+    && apt-get install -y systemd=252.39-1~deb12u1
 
 # remove sqlite that is not used and introduces vulns
 RUN apt-get purge -y libsqlite3-0 sqlite3
