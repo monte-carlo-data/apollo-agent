@@ -80,7 +80,7 @@ RUN . $VENV_DIR/bin/activate && pip install --no-cache-dir -r requirements-cloud
 CMD . $VENV_DIR/bin/activate && \
     gunicorn --timeout 930 --bind :$PORT apollo.interfaces.cloudrun.main:app
 
-FROM public.ecr.aws/lambda/python:3.12.2025.04.28.11 AS lambda-builder
+FROM public.ecr.aws/lambda/python:3.12.2025.09.22.12 AS lambda-builder
 
 RUN dnf update -y
 # install git as we need it for the direct oscrypto dependency
@@ -90,37 +90,30 @@ RUN dnf install -y libxcrypt-compat
 
 COPY requirements.txt ./
 COPY requirements-lambda.txt ./
-RUN pip install --no-cache-dir -U pip==25.0.0  # VULN-510
 RUN pip install --no-cache-dir --target "${LAMBDA_TASK_ROOT}" \
     -r requirements.txt \
     -r requirements-lambda.txt
 
-FROM public.ecr.aws/lambda/python:3.12.2025.04.28.11 AS lambda
+FROM public.ecr.aws/lambda/python:3.12.2025.09.22.12 AS lambda
 
-# VULN-423: setuptools 68.0.0 contains (CVE-2024-6345)
-RUN pip install --no-cache-dir setuptools==75.1.0
-# VULN-369: Base ECR image includes urllib3-1.26.18 which is vulnerable (CVE-2024-37891)
-RUN pip install --no-cache-dir --upgrade urllib3==1.26.19
-RUN rm -rf /var/lang/lib/python3.12/site-packages/urllib3-1.26.19.dist-info
-
-# VULN-230 CWE-77 VULN-510
-RUN pip install --no-cache-dir -U pip==25.0.0
+# VULN-369: Base ECR image includes urllib3-1.26.18 which is vulnerable (CVE-2024-37891).
+# Note that this is the system install, not our app.
+RUN pip install --no-cache-dir -U urllib3
 
 COPY --from=lambda-builder "${LAMBDA_TASK_ROOT}" "${LAMBDA_TASK_ROOT}"
 
 # install unixodbc and 'ODBC Driver 17 for SQL Server', needed for Azure Dedicated SQL Pools
 # install git needed for looker views collection
-RUN dnf -y update \
-    && dnf -y install unixODBC \
-    git \
-    && dnf clean all \
-    && rm -rf /var/cache/yum
+RUN dnf -y update
+RUN dnf -y install unixODBC git
 RUN curl https://packages.microsoft.com/config/rhel/7/prod.repo \
     | tee /etc/yum.repos.d/mssql-release.repo
 RUN ACCEPT_EULA=Y dnf install -y msodbcsql17
 
-# VULN-464: Upgrade package libarchive
+# VULN-464
 RUN rm -rf /var/lib/rpm/rpmdb.sqlite*
+
+RUN dnf clean all && rm -rf /var/cache/yum
 
 COPY apollo "${LAMBDA_TASK_ROOT}/apollo"
 COPY resources/lambda/openssl ${LAMBDA_TASK_ROOT}
@@ -136,31 +129,26 @@ ENV AzureWebJobsScriptRoot=/home/site/wwwroot \
     AzureFunctionsJobHost__Logging__Console__IsEnabled=true
 
 RUN apt-get update && apt-get upgrade -y
-RUN apt-get install -y git wget  # VULN-543 upgrade wget
+RUN apt-get install -y --no-install-recommends git
 # install libcrypt1 for IBM DB2 ibm-db package compatibility (provides libcrypt.so.1)
-RUN apt-get install -y libcrypt1
+RUN apt-get install -y --no-install-recommends libcrypt1
 
 # Azure database clients and sql-server uses pyodbc which requires unixODBC and 'ODBC Driver 17
 # for SQL Server' Microsoft's python 3.12 base image comes with msodbcsql18 but we are expecting to
 # use the msodbcsql17 driver so need to install specific versions of some libraries and allow Docker
 # to downgrade some pre-installed packages.
-# Updating libgnutls30 to resolve CVE-2024-28835 and CVE-2024-28834.
-# Updating libglib to resolve CVE-2024-52533.
-# Updating OpenSSL to resolve CVE-2024-13176
-# updating libgnutls30 to resolve VULN-627
-RUN apt-get update \
-    && apt-get install -y gnupg gnupg2 gnupg1 curl apt-transport-https libgnutls30=3.7.9-2+deb12u5 \
-    && ACCEPT_EULA=Y apt-get install -y msodbcsql17 odbcinst=2.3.11-2+deb12u1 odbcinst1debian2=2.3.11-2+deb12u1 unixodbc-dev=2.3.11-2+deb12u1 unixodbc=2.3.11-2+deb12u1 \
-    && apt-get install -y libglib2.0-0 \
-    && apt-get install -y libcap2=1:2.66-4+deb12u2
+RUN apt-get update
+RUN apt-get install -y --no-install-recommends gnupg gnupg2 gnupg1 curl apt-transport-https
+RUN ACCEPT_EULA=Y apt-get install -y --no-install-recommends msodbcsql17 odbcinst=2.3.11-2+deb12u1 odbcinst1debian2=2.3.11-2+deb12u1 unixodbc-dev=2.3.11-2+deb12u1 unixodbc=2.3.11-2+deb12u1
+
+# clean up all unused libraries
+RUN apt-get autoremove -y && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # delete this file that includes an old golang version (including vulns) and is not used
 RUN rm -rf /opt/startupcmdgen/
 
 COPY requirements.txt /
 COPY requirements-azure.txt /
-RUN pip install --no-cache-dir setuptools==75.1.0
-RUN pip install --no-cache-dir -U pip==25.0.0  # VULN-510
 RUN pip install --no-cache-dir -r /requirements.txt -r /requirements-azure.txt
 
 COPY apollo /home/site/wwwroot/apollo
