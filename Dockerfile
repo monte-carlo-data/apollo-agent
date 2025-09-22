@@ -74,7 +74,6 @@ CMD . $VENV_DIR/bin/activate \
 FROM base AS cloudrun
 
 COPY requirements-cloudrun.txt ./
-RUN . $VENV_DIR/bin/activate && pip install --no-cache-dir -U pip==25.0.0  # VULN-510
 RUN . $VENV_DIR/bin/activate && pip install --no-cache-dir -r requirements-cloudrun.txt
 
 CMD . $VENV_DIR/bin/activate && \
