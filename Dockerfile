@@ -129,30 +129,26 @@ ENV AzureWebJobsScriptRoot=/home/site/wwwroot \
     AzureFunctionsJobHost__Logging__Console__IsEnabled=true
 
 RUN apt-get update && apt-get upgrade -y
-RUN apt-get install -y git wget  # VULN-543 upgrade wget
+RUN apt-get install -y --no-install-recommends git
 # install libcrypt1 for IBM DB2 ibm-db package compatibility (provides libcrypt.so.1)
-RUN apt-get install -y libcrypt1
+RUN apt-get install -y --no-install-recommends libcrypt1
 
 # Azure database clients and sql-server uses pyodbc which requires unixODBC and 'ODBC Driver 17
 # for SQL Server' Microsoft's python 3.12 base image comes with msodbcsql18 but we are expecting to
 # use the msodbcsql17 driver so need to install specific versions of some libraries and allow Docker
 # to downgrade some pre-installed packages.
-# Updating libgnutls30 to resolve CVE-2024-28835 and CVE-2024-28834.
-# Updating libglib to resolve CVE-2024-52533.
-# Updating OpenSSL to resolve CVE-2024-13176
-RUN apt-get update \
-    && apt-get install -y gnupg gnupg2 gnupg1 curl apt-transport-https libgnutls30 \
-    && ACCEPT_EULA=Y apt-get install -y msodbcsql17 odbcinst=2.3.11-2+deb12u1 odbcinst1debian2=2.3.11-2+deb12u1 unixodbc-dev=2.3.11-2+deb12u1 unixodbc=2.3.11-2+deb12u1 \
-    && apt-get install -y libglib2.0-0 \
-    && apt-get install -y libcap2=1:2.66-4+deb12u2
+RUN apt-get update
+RUN apt-get install -y --no-install-recommends gnupg gnupg2 gnupg1 curl apt-transport-https
+RUN ACCEPT_EULA=Y apt-get install -y --no-install-recommends msodbcsql17 odbcinst=2.3.11-2+deb12u1 odbcinst1debian2=2.3.11-2+deb12u1 unixodbc-dev=2.3.11-2+deb12u1 unixodbc=2.3.11-2+deb12u1
+
+# clean up all unused libraries
+RUN apt-get autoremove -y && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # delete this file that includes an old golang version (including vulns) and is not used
 RUN rm -rf /opt/startupcmdgen/
 
 COPY requirements.txt /
 COPY requirements-azure.txt /
-RUN pip install --no-cache-dir setuptools==75.1.0
-RUN pip install --no-cache-dir -U pip==25.0.0  # VULN-510
 RUN pip install --no-cache-dir -r /requirements.txt -r /requirements-azure.txt
 
 COPY apollo /home/site/wwwroot/apollo
