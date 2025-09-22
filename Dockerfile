@@ -1,4 +1,4 @@
-FROM python:3.12.11-slim AS base
+FROM python:3.12.9-slim AS base
 
 # Web server env var configuration
 ENV GUNICORN_WORKERS=5
@@ -39,13 +39,16 @@ RUN . $VENV_DIR/bin/activate && pip install setuptools==75.1.0
 # [VULN-606] update krb5 (kerberos) to 1.20.1-2+deb12u3
 # [VULN-XXX] update libcap2 to 1:2.66-4+deb12u1
 # [VULN-613] update systemd to 252.38-1~deb12u1.
-RUN apt-get update \
-    && apt-get install -y gnupg gnupg2 gnupg1 curl apt-transport-https \
-    && curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add - \
-    && curl https://packages.microsoft.com/config/debian/10/prod.list \
-    > /etc/apt/sources.list.d/mssql-release.list \
-    && apt-get update \
-    && ACCEPT_EULA=Y apt-get install -y msodbcsql17 unixodbc unixodbc-dev
+RUN apt-get update
+RUN apt-get install -y gnupg gnupg2 gnupg1 curl apt-transport-https
+RUN curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add -
+RUN curl https://packages.microsoft.com/config/debian/10/prod.list > /etc/apt/sources.list.d/mssql-release.list
+RUN apt-get update
+RUN ACCEPT_EULA=Y apt-get install -y msodbcsql17 unixodbc unixodbc-dev
+RUN apt-get install -y passwd=1:4.13+dfsg1-1+deb12u1
+RUN apt-get install -y libgssapi-krb5-2=1.20.1-2+deb12u4 libkrb5-3=1.20.1-2+deb12u4 libkrb5support0=1.20.1-2+deb12u4
+RUN apt-get install -y libcap2=1:2.66-4+deb12u2
+RUN apt-get install -y systemd=252.39-1~deb12u1
 
 # remove sqlite that is not used and introduces vulns
 RUN apt-get purge -y libsqlite3-0 sqlite3
@@ -130,11 +133,10 @@ COPY --from=lambda-builder "${LAMBDA_TASK_ROOT}" "${LAMBDA_TASK_ROOT}"
 
 # install unixodbc and 'ODBC Driver 17 for SQL Server', needed for Azure Dedicated SQL Pools
 # install git needed for looker views collection
-RUN dnf -y update \
-    && dnf -y install unixODBC \
-    git \
-    && dnf clean all \
-    && rm -rf /var/cache/yum
+RUN dnf -y update
+RUN dnf -y install unixODBC git
+RUN dnf clean all
+RUN rm -rf /var/cache/yum
 RUN curl https://packages.microsoft.com/config/rhel/7/prod.repo \
     | tee /etc/yum.repos.d/mssql-release.repo
 RUN ACCEPT_EULA=Y dnf install -y msodbcsql17
@@ -167,11 +169,11 @@ RUN apt-get install -y libcrypt1
 # Updating libgnutls30 to resolve CVE-2024-28835 and CVE-2024-28834.
 # Updating libglib to resolve CVE-2024-52533.
 # Updating OpenSSL to resolve CVE-2024-13176
-RUN apt-get update \
-    && apt-get install -y gnupg gnupg2 gnupg1 curl apt-transport-https libgnutls30 \
-    && ACCEPT_EULA=Y apt-get install -y msodbcsql17 odbcinst=2.3.11-2+deb12u1 odbcinst1debian2=2.3.11-2+deb12u1 unixodbc-dev=2.3.11-2+deb12u1 unixodbc=2.3.11-2+deb12u1 \
-    && apt-get install -y libglib2.0-0 \
-    && apt-get install -y libcap2=1:2.66-4+deb12u2
+RUN apt-get update
+RUN apt-get install -y gnupg gnupg2 gnupg1 curl apt-transport-https libgnutls30
+RUN ACCEPT_EULA=Y apt-get install -y msodbcsql17 odbcinst=2.3.11-2+deb12u1 odbcinst1debian2=2.3.11-2+deb12u1 unixodbc-dev=2.3.11-2+deb12u1 unixodbc=2.3.11-2+deb12u1
+RUN apt-get install -y libglib2.0-0
+RUN apt-get install -y libcap2=1:2.66-4+deb12u2
 
 # delete this file that includes an old golang version (including vulns) and is not used
 RUN rm -rf /opt/startupcmdgen/
