@@ -21,16 +21,8 @@ RUN apt-get install -y --no-install-recommends git
 # install libcrypt1 for IBM DB2 ibm-db package compatibility (provides libcrypt.so.1)
 RUN apt-get install -y --no-install-recommends libcrypt1
 
-# Upgrade pip globally to fix the vulnerability - VULN-510
-RUN pip install --no-cache-dir -U pip==25.0.0
-
 RUN python -m venv $VENV_DIR
-# Upgrade pip inside the virtual environment - VULN-510
-RUN . $VENV_DIR/bin/activate && pip install --no-cache-dir -U pip==25.0.0
 RUN . $VENV_DIR/bin/activate && pip install --no-cache-dir -r requirements.txt
-
-# VULN-423: setuptools 68.0.0 contains (CVE-2024-6345)
-RUN . $VENV_DIR/bin/activate && pip install setuptools==75.1.0
 
 # Azure database clients uses pyodbc which requires unixODBC and 'ODBC Driver 17 for SQL Server'
 # ODBC Driver 17's latest release was April, 2024. To patch vulnerabilities raised since then,
@@ -98,21 +90,15 @@ RUN dnf install -y libxcrypt-compat
 
 COPY requirements.txt ./
 COPY requirements-lambda.txt ./
-RUN pip install --no-cache-dir -U pip==25.0.0  # VULN-510
 RUN pip install --no-cache-dir --target "${LAMBDA_TASK_ROOT}" \
     -r requirements.txt \
     -r requirements-lambda.txt
 
 FROM public.ecr.aws/lambda/python:3.12.2025.04.28.11 AS lambda
 
-# VULN-423: setuptools 68.0.0 contains (CVE-2024-6345)
-RUN pip install --no-cache-dir setuptools==75.1.0
 # VULN-369: Base ECR image includes urllib3-1.26.18 which is vulnerable (CVE-2024-37891)
 RUN pip install --no-cache-dir --upgrade urllib3==1.26.19
 RUN rm -rf /var/lang/lib/python3.12/site-packages/urllib3-1.26.19.dist-info
-
-# VULN-230 CWE-77 VULN-510
-RUN pip install --no-cache-dir -U pip==25.0.0
 
 COPY --from=lambda-builder "${LAMBDA_TASK_ROOT}" "${LAMBDA_TASK_ROOT}"
 
@@ -165,8 +151,6 @@ RUN rm -rf /opt/startupcmdgen/
 
 COPY requirements.txt /
 COPY requirements-azure.txt /
-RUN pip install --no-cache-dir setuptools==75.1.0
-RUN pip install --no-cache-dir -U pip==25.0.0  # VULN-510
 RUN pip install --no-cache-dir -r /requirements.txt -r /requirements-azure.txt
 
 COPY apollo /home/site/wwwroot/apollo
