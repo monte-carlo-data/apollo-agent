@@ -94,32 +94,26 @@ RUN pip install --no-cache-dir --target "${LAMBDA_TASK_ROOT}" \
     -r requirements.txt \
     -r requirements-lambda.txt
 
-FROM public.ecr.aws/lambda/python:3.12.2025.04.28.11 AS lambda
+FROM public.ecr.aws/lambda/python:3.12.2025.09.22.12 AS lambda
 
-# VULN-423: setuptools 68.0.0 contains (CVE-2024-6345)
-RUN pip install --no-cache-dir setuptools==75.1.0
-# VULN-369: Base ECR image includes urllib3-1.26.18 which is vulnerable (CVE-2024-37891)
-RUN pip install --no-cache-dir --upgrade urllib3==1.26.19
-RUN rm -rf /var/lang/lib/python3.12/site-packages/urllib3-1.26.19.dist-info
-
-# VULN-230 CWE-77 VULN-510
-RUN pip install --no-cache-dir -U pip==25.0.0
+# VULN-369: Base ECR image includes urllib3-1.26.18 which is vulnerable (CVE-2024-37891).
+# Note that this is the system install, not our app.
+RUN pip install --no-cache-dir -U urllib3
 
 COPY --from=lambda-builder "${LAMBDA_TASK_ROOT}" "${LAMBDA_TASK_ROOT}"
 
 # install unixodbc and 'ODBC Driver 17 for SQL Server', needed for Azure Dedicated SQL Pools
 # install git needed for looker views collection
-RUN dnf -y update \
-    && dnf -y install unixODBC \
-    git \
-    && dnf clean all \
-    && rm -rf /var/cache/yum
+RUN dnf -y update
+RUN dnf -y install unixODBC git
 RUN curl https://packages.microsoft.com/config/rhel/7/prod.repo \
     | tee /etc/yum.repos.d/mssql-release.repo
 RUN ACCEPT_EULA=Y dnf install -y msodbcsql17
 
-# VULN-464: Upgrade package libarchive
+# VULN-464
 RUN rm -rf /var/lib/rpm/rpmdb.sqlite*
+
+RUN dnf clean all && rm -rf /var/cache/yum
 
 COPY apollo "${LAMBDA_TASK_ROOT}/apollo"
 COPY resources/lambda/openssl ${LAMBDA_TASK_ROOT}
