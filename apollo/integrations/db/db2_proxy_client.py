@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Any
+from typing import Any
 import logging
 
 import ibm_db
@@ -19,7 +19,7 @@ class Db2ProxyClient(BaseDbProxyClient):
     Common parameters: DATABASE, HOSTNAME, PORT, PROTOCOL, UID, PWD, etc.
     """
 
-    def __init__(self, credentials: Optional[Dict], **kwargs: Any):
+    def __init__(self, credentials: dict | None, **kwargs: Any):
         super().__init__(connection_type="db2")
         if not credentials or _ATTR_CONNECT_ARGS not in credentials:
             raise ValueError(
@@ -47,17 +47,7 @@ class Db2ProxyClient(BaseDbProxyClient):
     def wrapped_client(self):
         return self._connection
 
-    def close(self):
-        """Close the DB2 connection. The DBI connection automatically closes the native connection."""
-        if self._connection:
-            logger.info("Closing DB2 connection")
-            try:
-                self._connection.close()  # This automatically closes the native connection
-            except Exception as e:
-                logger.warning(f"Error closing DB2 connection: {e}")
-            self._connection = None
-
-    def get_error_type(self, error: Exception) -> Optional[str]:
+    def get_error_type(self, error: Exception) -> str | None:
         """
         Convert DB2 specific errors to error types that can be handled client side.
         """
