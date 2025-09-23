@@ -22,6 +22,8 @@ RUN apt-get install -y --no-install-recommends git
 RUN apt-get install -y --no-install-recommends libcrypt1
 
 RUN python -m venv $VENV_DIR
+# VULN-423
+RUN . $VENV_DIR/bin/activate && pip install -U setuptools
 RUN . $VENV_DIR/bin/activate && pip install --no-cache-dir -r requirements.txt
 
 # Azure database clients uses pyodbc which requires unixODBC and 'ODBC Driver 17 for SQL Server'
