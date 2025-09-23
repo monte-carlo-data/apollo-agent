@@ -22,9 +22,9 @@ RUN apt-get install -y --no-install-recommends git
 RUN apt-get install -y --no-install-recommends libcrypt1
 
 RUN python -m venv $VENV_DIR
+RUN . $VENV_DIR/bin/activate && pip install --no-cache-dir -r requirements.txt
 # VULN-423
 RUN . $VENV_DIR/bin/activate && pip install -U setuptools
-RUN . $VENV_DIR/bin/activate && pip install --no-cache-dir -r requirements.txt
 
 # Azure database clients uses pyodbc which requires unixODBC and 'ODBC Driver 17 for SQL Server'
 # ODBC Driver 17's latest release was April, 2024. To patch vulnerabilities raised since then,
@@ -34,7 +34,7 @@ RUN apt-get install -y --no-install-recommends gnupg gnupg2 gnupg1 curl apt-tran
 RUN install -m 0755 -d /etc/apt/keyrings
 RUN curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor -o /etc/apt/keyrings/microsoft.gpg
 RUN chmod a+r /etc/apt/keyrings/microsoft.gpg
-RUN echo "deb [arch=amd64,arm64, signed-by=/etc/apt/keyrings/microsoft.gpg] https://packages.microsoft.com/debian/12/prod bookworm main" > /etc/apt/sources.list.d/mssql-release.list
+RUN echo "deb [arch=amd64,arm64 signed-by=/etc/apt/keyrings/microsoft.gpg] https://packages.microsoft.com/debian/12/prod bookworm main" > /etc/apt/sources.list.d/mssql-release.list
 RUN apt-get update
 RUN ACCEPT_EULA=Y apt-get install -y msodbcsql17 unixodbc unixodbc-dev
 

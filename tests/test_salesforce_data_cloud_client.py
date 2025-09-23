@@ -1,11 +1,12 @@
 import json
 import uuid
 from unittest import TestCase
-from unittest.mock import patch, MagicMock, Mock
+from unittest.mock import Mock
 
 import responses
 
 from apollo.agent.agent import Agent
+from apollo.agent.constants import ATTRIBUTE_NAME_RESULT
 from apollo.agent.logging_utils import LoggingUtils
 
 
@@ -170,7 +171,9 @@ class SalesforceDataCloudProxyClientTests(TestCase):
 
         # Verify the operation was successful and returned the connection type
         self.assertFalse(response.is_error)
-        self.assertEqual(response.result["__mcd_result__"], "salesforce-data-cloud")
+        self.assertEqual(
+            response.result[ATTRIBUTE_NAME_RESULT], "salesforce-data-cloud"
+        )
 
     def test_init_with_refresh_token(self):
         # Test that the agent can create a SalesforceDataCloudProxyClient via execute_operation
@@ -194,7 +197,9 @@ class SalesforceDataCloudProxyClientTests(TestCase):
 
         # Verify the operation was successful and returned the connection type
         self.assertFalse(response.is_error)
-        self.assertEqual(response.result["__mcd_result__"], "salesforce-data-cloud")
+        self.assertEqual(
+            response.result[ATTRIBUTE_NAME_RESULT], "salesforce-data-cloud"
+        )
 
     def test_list_tables(self):
         operation = {
@@ -210,7 +215,7 @@ class SalesforceDataCloudProxyClientTests(TestCase):
             credentials=self.credentials,
         )
 
-        tables = response.result["__mcd_result__"]
+        tables = response.result[ATTRIBUTE_NAME_RESULT]
         self.assertEqual(len(tables), len(self.metadata_response))
 
         for mock_table in self.metadata_response:
@@ -256,7 +261,7 @@ class SalesforceDataCloudProxyClientTests(TestCase):
         )
 
         self.assertFalse(response.is_error)
-        result = response.result["__mcd_result__"]
+        result = response.result[ATTRIBUTE_NAME_RESULT]
 
         for i, row in enumerate(self.data_response["data"]):
             self.assertEqual(result["all_results"][i][0], row[0])

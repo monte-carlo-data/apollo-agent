@@ -1,10 +1,15 @@
 from unittest import TestCase
 from unittest.mock import Mock, patch
 
+import ibm_db_dbi
+
 from apollo.agent.agent import Agent
 from apollo.agent.constants import ATTRIBUTE_NAME_RESULT
 from apollo.agent.logging_utils import LoggingUtils
 from apollo.integrations.db.db2_proxy_client import Db2ProxyClient
+
+STRING_TYPE = ibm_db_dbi.DBAPITypeObject(("CHARACTER", "CHAR", "VARCHAR"))
+NUMBER_TYPE = ibm_db_dbi.DBAPITypeObject(("DECIMAL",))
 
 _DB2_CREDENTIALS = {
     "connect_args": {
@@ -35,9 +40,10 @@ class Db2ClientTests(TestCase):
 
         query = "SELECT name, value FROM table"
         data = [["name_1", 11.1], ["name_2", 22.2]]
+        # Use actual DBAPITypeObject instances to simulate real DB2 cursor behavior
         description = [
-            ["name", "string", None, None, None, None, None],
-            ["value", "float", None, None, None, None, None],
+            ["name", STRING_TYPE, None, None, None, None, None],
+            ["value", NUMBER_TYPE, None, None, None, None, None],
         ]
 
         operation_dict = {
@@ -83,9 +89,14 @@ class Db2ClientTests(TestCase):
         )
 
         self.assertIn(ATTRIBUTE_NAME_RESULT, result.result)
+        # The description should be processed to convert DBAPITypeObject instances to strings
+        serialized_description = [
+            ["name", "CHARACTER", None, None, None, None, None],
+            ["value", "DECIMAL", None, None, None, None, None],
+        ]
         expected_result = {
             "all_results": data if data is not None else data,
-            "description": description,
+            "description": serialized_description,
             "rowcount": len(data),
         }
         self.assertEqual(result.result[ATTRIBUTE_NAME_RESULT], expected_result)

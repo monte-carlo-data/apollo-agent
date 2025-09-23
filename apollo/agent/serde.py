@@ -64,6 +64,10 @@ class AgentSerializer(json.JSONEncoder):
             }
         elif dataclasses.is_dataclass(value):
             return dataclasses.asdict(value)
+        elif hasattr(value, "col_types") and isinstance(value.col_types, tuple):
+            # Handle DBAPITypeObject instances from DB-API drivers (like IBM DB2)
+            # These are not JSON serializable, so return the first value from col_types
+            return value.col_types[0] if len(value.col_types) > 0 else "UNKNOWN"
 
         return value
 
