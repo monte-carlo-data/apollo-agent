@@ -122,7 +122,7 @@ google-resumable-media==2.7.1
     # via google-cloud-storage
 googleapis-common-protos==1.63.2
     # via google-api-core
-gunicorn==22.0.0
+gunicorn==23.0.0
     # via -r requirements.in
 hdbcli==2.18.27
     # via -r requirements.in
