@@ -1,7 +1,7 @@
 from typing import Dict, Optional, Callable
 
 from databricks import sql
-from databricks.sdk.core import oauth_service_principal, Config
+from databricks.sdk.core import oauth_service_principal, azure_service_principal, Config
 
 from apollo.integrations.db.base_db_proxy_client import BaseDbProxyClient
 
@@ -11,6 +11,8 @@ _ATTR_CREDENTIALS_PROVIDER = "credentials_provider"
 SERVER_HOSTNAME = "server_hostname"
 CLIENT_ID_KEY = "databricks_client_id"
 CLIENT_SECRET_KEY = "databricks_client_secret"
+AZURE_TENANT_ID = "azure_tenant_id"
+AZURE_WORKSPACE_RESOURCE_ID = "azure_workspace_resource_id"
 
 
 class DatabricksSqlWarehouseProxyClient(BaseDbProxyClient):
@@ -38,15 +40,33 @@ class DatabricksSqlWarehouseProxyClient(BaseDbProxyClient):
         return CLIENT_ID_KEY in connect_args and CLIENT_SECRET_KEY in connect_args
 
     def _oauth_credentials_provider(self, connect_args: Dict) -> Callable:
-        # create the auth callable here because it can't be serialized
-        config = Config(
-            host=connect_args.get(SERVER_HOSTNAME),
-            # Service Principal UUID
-            client_id=connect_args.get(CLIENT_ID_KEY),
-            # Service Principal Secret
-            client_secret=connect_args.get(CLIENT_SECRET_KEY),
+        """Factory for OAuth credentials provider (Azure or Databricks-managed)."""
+        host = connect_args.get(SERVER_HOSTNAME)
+
+        is_azure_managed = all(
+            connect_args.get(k) for k in (AZURE_TENANT_ID, AZURE_WORKSPACE_RESOURCE_ID)
         )
-        return lambda: oauth_service_principal(config)
+
+        if is_azure_managed:
+            config = Config(
+                host=host,
+                azure_client_id=connect_args.get(CLIENT_ID_KEY),
+                azure_client_secret=connect_args.get(CLIENT_SECRET_KEY),
+                azure_tenant_id=connect_args.get(AZURE_TENANT_ID),
+                azure_workspace_resource_id=connect_args.get(
+                    AZURE_WORKSPACE_RESOURCE_ID
+                ),
+            )
+            provider = azure_service_principal
+        else:
+            config = Config(
+                host=host,
+                client_id=connect_args.get(CLIENT_ID_KEY),
+                client_secret=connect_args.get(CLIENT_SECRET_KEY),
+            )
+            provider = oauth_service_principal
+
+        return lambda: provider(config)
 
     @property
     def wrapped_client(self):
