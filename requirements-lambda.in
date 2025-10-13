@@ -1,2 +1,2 @@
 -c requirements.txt
-apig-wsgi==2.18.0
+apig-wsgi>=2.18.0
