@@ -10,6 +10,7 @@ from apollo.agent.constants import (
     ATTRIBUTE_NAME_ERROR,
     ATTRIBUTE_NAME_ERROR_TYPE,
     ATTRIBUTE_NAME_ERROR_ATTRS,
+    ATTRIBUTE_VALUE_REDACTED,
 )
 from apollo.agent.logging_utils import LoggingUtils
 
@@ -69,6 +70,62 @@ class TestHttpClient(TestCase):
         )
         self.assertTrue(ATTRIBUTE_NAME_RESULT in response.result)
         self.assertEqual(expected_result, response.result.get(ATTRIBUTE_NAME_RESULT))
+
+    @patch("requests.request")
+    @patch("apollo.agent.agent.logger.info")
+    def test_http_request_data_redacted(self, mock_info, mock_request):
+        mock_response = create_autospec(Response)
+        mock_request.return_value = mock_response
+        expected_result = {
+            "ok": True,
+        }
+        mock_response.json.return_value = expected_result
+        operation = deepcopy(_HTTP_OPERATION)
+        operation["commands"][0]["kwargs"]["data"] = "client_secret=1234&client_id=4321"
+        operation["commands"][0]["kwargs"]["additional_headers"] = {
+            "Authorization": f"Bearer {_HTTP_CREDENTIALS['token']}",
+            "client_secret": "1234",
+            "client_id": "4321",
+            "auth_key": "1234",
+        }
+        self._agent.execute_operation(
+            "http",
+            "do_request",
+            operation,
+            _HTTP_CREDENTIALS,
+        )
+        mock_info.assert_called_with(
+            f"Executing operation: http/do_request",
+            extra={
+                "mcd_operation_name": "do_request",
+                "response_size_limit_bytes": 0,
+                "compress_response_threshold_bytes": 0,
+                "response_type": "json",
+                "skip_cache": False,
+                "compress_response_file": False,
+                "mcd_trace_id": "1234",
+                "commands": [
+                    {
+                        "method": "do_request",
+                        "kwargs": {
+                            "url": "https://test.com/path",
+                            "http_method": "GET",
+                            "payload": ATTRIBUTE_VALUE_REDACTED,
+                            "user_agent": ATTRIBUTE_VALUE_REDACTED,
+                            "additional_headers": {
+                                "Authorization": ATTRIBUTE_VALUE_REDACTED,
+                                "client_secret": ATTRIBUTE_VALUE_REDACTED,
+                                "client_id": ATTRIBUTE_VALUE_REDACTED,
+                                "auth_key": ATTRIBUTE_VALUE_REDACTED,
+                            },
+                            "retry_status_code_ranges": None,
+                            "verify_ssl": None,
+                            "data": ATTRIBUTE_VALUE_REDACTED,
+                        },
+                    }
+                ],
+            },
+        )
 
     @patch("requests.request")
     def test_http_request_with_custom_auth_type(self, mock_request):

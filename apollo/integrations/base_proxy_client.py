@@ -2,6 +2,19 @@ from abc import ABC, abstractmethod
 from typing import Optional, Any, Dict
 
 from apollo.agent.models import AgentOperation
+from apollo.agent.redact import AgentRedactUtilities
+
+# any lower cased attribute including any of these values in the key will be redacted in log messages
+_REDACTED_ATTRIBUTES = [
+    "pass",
+    "secret",
+    "client",
+    "token",
+    "user",
+    "auth",
+    "credential",
+    "key",
+]
 
 
 class BaseProxyClient(ABC):
@@ -45,7 +58,7 @@ class BaseProxyClient(ABC):
         # we're already logging trace_id as mcd_trace_id, avoid the duplicated attribute
         extra.pop("trace_id", None)
 
-        return extra
+        return AgentRedactUtilities.redact_attributes(extra, _REDACTED_ATTRIBUTES)
 
     def process_result(self, value: Any) -> Any:
         """
