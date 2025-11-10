@@ -24,6 +24,7 @@ from apollo.agent.env_vars import (
     STORAGE_PREFIX_DEFAULT_VALUE,
 )
 from apollo.agent.models import AgentConfigurationError, AgentOperation
+from apollo.agent.redact import AgentRedactUtilities
 from apollo.agent.utils import AgentUtils
 from apollo.integrations.azure_blob.azure_blob_reader_writer import (
     AzureBlobReaderWriter,
@@ -111,7 +112,7 @@ class StorageProxyClient(BaseProxyClient):
             **super().log_payload(operation),
             "bucket_name": self._client.bucket_name,
         }
-        return AgentUtils.redact_attributes(payload, [_OBJ_TO_WRITE_ARG_NAME])
+        return AgentRedactUtilities.redact_attributes(payload, [_OBJ_TO_WRITE_ARG_NAME])
 
     def download_file(self, key: str) -> BinaryIO:
         """

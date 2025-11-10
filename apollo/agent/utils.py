@@ -13,7 +13,6 @@ from apollo.agent.constants import (
     ATTRIBUTE_NAME_EXCEPTION,
     ATTRIBUTE_NAME_STACK_TRACE,
     ATTRIBUTE_NAME_ERROR_TYPE,
-    ATTRIBUTE_VALUE_REDACTED,
     ATTRIBUTE_NAME_ERROR_ATTRS,
 )
 from apollo.agent.env_vars import (
@@ -112,22 +111,6 @@ class AgentUtils:
     @staticmethod
     def open_file(path: str) -> BinaryIO:
         return open(path, "rb")
-
-    @classmethod
-    def redact_attributes(cls, value: Any, attributes: List[str]) -> Any:
-        if isinstance(value, Dict):
-            return {
-                k: (
-                    ATTRIBUTE_VALUE_REDACTED
-                    if k in attributes
-                    else cls.redact_attributes(v, attributes)
-                )
-                for k, v in value.items()
-            }
-        elif isinstance(value, List):
-            return [cls.redact_attributes(v, attributes) for v in value]
-        else:
-            return value
 
     @staticmethod
     def get_outbound_ip_address() -> str:

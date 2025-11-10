@@ -5,6 +5,8 @@ import requests
 from requests import HTTPError
 from retry.api import retry_call
 
+from apollo.agent.models import AgentOperation
+from apollo.agent.redact import AgentRedactUtilities
 from apollo.integrations.base_proxy_client import BaseProxyClient
 
 
@@ -13,6 +15,11 @@ _logger = logging.getLogger(__name__)
 _DEFAULT_RETRY_STATUS_CODE_RANGES = [
     (429, 430),
     (500, 600),
+]
+_HTTP_REDACTED_ATTRIBUTES = [
+    "payload",
+    "data",
+    "params",
 ]
 
 _RRI = dict(
@@ -47,6 +54,16 @@ class HttpProxyClient(BaseProxyClient):
     @staticmethod
     def is_client_error_status_code(status_code: int) -> bool:
         return 400 <= status_code < 500
+
+    def log_payload(self, operation: AgentOperation) -> Dict:
+        """
+        Implements `log_payload` from `BaseProxyClient` to additionally redact
+        "payload" and "data" attributes, preventing OAuth tokens from being logged.
+        """
+        payload = super().log_payload(operation)
+        return AgentRedactUtilities.redact_attributes(
+            payload, _HTTP_REDACTED_ATTRIBUTES
+        )
 
     def do_request(
         self,
