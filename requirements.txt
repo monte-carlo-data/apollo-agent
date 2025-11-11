@@ -225,9 +225,7 @@ psycopg2-binary==2.9.9
 pure-sasl==0.6.2
     # via thrift-sasl
 pyarrow==17.0.0
-    # via
-    #   -r requirements.in
-    #   salesforce-cdp-connector
+    # via salesforce-cdp-connector
 pyasn1==0.6.0
     # via
     #   pyasn1-modules
@@ -270,7 +268,6 @@ pytz==2024.1
     #   zeep
 requests==2.32.4
     # via
-    #   -r requirements.in
     #   azure-core
     #   databricks-sdk
     #   databricks-sql-connector
@@ -317,7 +314,7 @@ sortedcontainers==2.4.0
     # via snowflake-connector-python
 tableauserverclient @ git+https://github.com/tableau/server-client-python.git@master ; python_version >= "3.10"
     # via -r requirements.in
-teradatasql==20.0.0.43
+teradatasql==20.0.0.44
     # via -r requirements.in
 thrift==0.16.0
     # via
@@ -346,7 +343,6 @@ uritemplate==4.1.1
     # via google-api-python-client
 urllib3==2.5.0
     # via
-    #   -r requirements.in
     #   botocore
     #   clickhouse-connect
     #   databricks-sql-connector

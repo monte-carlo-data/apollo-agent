@@ -24,13 +24,11 @@ oracledb>=2.4.1
 presto-python-client==0.8.3
 protobuf==5.29.5  # from google-cloud-logging in requirements-cloudrun - Upgraded in VULN-620
 psycopg2-binary==2.9.9
-pyarrow==17.0.0  # CVE-2024-52338
 pycryptodome>=3.21.0
 pyjwt>=2.8.0
 PyMySQL>=1.1.1
 pyodbc==5.0.1
 pyOpenSSL>=24.2.1
-requests>=2.32.4 # Upgraded in VULN-616
 RestrictedPython==8.0
 retry2==0.9.5
 salesforce-cdp-connector==1.0.16  # For Salesforce Data Cloud integration
@@ -40,9 +38,7 @@ snowflake-connector-python>=3.13.1
 tableauserverclient==0.25 ; python_version < "3.10"
 # using master branch to get urllib3 dependency updated to ==2.2.2, switch to v0.32 when released
 tableauserverclient @ git+https://github.com/tableau/server-client-python.git@master ; python_version >= "3.10"
-urllib3==2.5.0 # Upgraded in VULN-621
-
-teradatasql>=20.0.0.43
+teradatasql>=20.0.0.44
 oscrypto @ git+https://github.com/wbond/oscrypto@master
 
 # Note this is a beta version of impyla that is needed in order to support HTTPS connections on python 3.12.
