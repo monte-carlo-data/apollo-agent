@@ -20,6 +20,8 @@ RUN apt-get update
 RUN apt-get install -y --no-install-recommends git
 # install libcrypt1 for IBM DB2 ibm-db package compatibility (provides libcrypt.so.1)
 RUN apt-get install -y --no-install-recommends libcrypt1
+# openssh-client required by git client
+RUN apt-get install -y openssh-client
 
 RUN python -m venv $VENV_DIR
 RUN . $VENV_DIR/bin/activate && pip install --no-cache-dir -r requirements.txt
@@ -100,7 +102,8 @@ FROM public.ecr.aws/lambda/python:3.12 AS lambda
 
 # VULN-369: Base ECR image includes urllib3-1.26.18 which is vulnerable (CVE-2024-37891).
 # Note that this is the system install, not our app.
-RUN pip install --no-cache-dir -U urllib3
+# Added setuptools as distutils is required by the git module we use for Looker
+RUN pip install --no-cache-dir -U urllib3 setuptools
 
 COPY --from=lambda-builder "${LAMBDA_TASK_ROOT}" "${LAMBDA_TASK_ROOT}"
 
@@ -142,6 +145,9 @@ RUN apt-get install -y --no-install-recommends libcrypt1
 RUN apt-get update
 RUN apt-get install -y --no-install-recommends gnupg gnupg2 gnupg1 curl apt-transport-https
 RUN ACCEPT_EULA=Y apt-get install -y --no-install-recommends msodbcsql17 odbcinst=2.3.11-2+deb12u1 odbcinst1debian2=2.3.11-2+deb12u1 unixodbc-dev=2.3.11-2+deb12u1 unixodbc=2.3.11-2+deb12u1
+
+# openssh-client required by git client
+RUN apt-get install -y openssh-client
 
 # clean up all unused libraries
 RUN apt-get autoremove -y && apt-get clean && rm -rf /var/lib/apt/lists/*
