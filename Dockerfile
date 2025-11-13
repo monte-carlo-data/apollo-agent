@@ -100,7 +100,8 @@ FROM public.ecr.aws/lambda/python:3.12 AS lambda
 
 # VULN-369: Base ECR image includes urllib3-1.26.18 which is vulnerable (CVE-2024-37891).
 # Note that this is the system install, not our app.
-RUN pip install --no-cache-dir -U urllib3
+# Added setuptools as distutils is required by the git module we use for Looker
+RUN pip install --no-cache-dir -U urllib3 setuptools
 
 COPY --from=lambda-builder "${LAMBDA_TASK_ROOT}" "${LAMBDA_TASK_ROOT}"
 
