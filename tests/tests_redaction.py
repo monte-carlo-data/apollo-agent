@@ -214,6 +214,88 @@ class RedactionTests(TestCase):
         result = AgentRedactUtilities._redact_string("abc")
         self.assertEqual(result, "abc")
 
+    def test_redact_string_with_long_alphanumeric_token(self):
+        """Test _redact_string with long alphanumeric strings (20-64 chars) like tokens"""
+        # 20 character token - should be redacted
+        token_20 = "abcdefghij1234567890"
+        result = AgentRedactUtilities._redact_string(token_20)
+        self.assertEqual(result, ATTRIBUTE_VALUE_REDACTED)
+
+        # 40 character token - should be redacted
+        token_40 = "abcdefghijklmnopqrstuvwxyz12345678901234"
+        result = AgentRedactUtilities._redact_string(token_40)
+        self.assertEqual(result, ATTRIBUTE_VALUE_REDACTED)
+
+        # 64 character token - should be redacted
+        token_64 = "abcdefghijklmnopqrstuvwxyz1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZ12"
+        result = AgentRedactUtilities._redact_string(token_64)
+        self.assertEqual(result, ATTRIBUTE_VALUE_REDACTED)
+
+    def test_redact_string_with_token_too_short(self):
+        """Test _redact_string with alphanumeric string shorter than 20 chars"""
+        # 19 character token - should NOT be redacted
+        token_19 = "abcdefghij123456789"
+        result = AgentRedactUtilities._redact_string(token_19)
+        self.assertEqual(result, token_19)
+
+    def test_redact_string_with_token_too_long(self):
+        """Test _redact_string with alphanumeric string longer than 64 chars"""
+        # 70 character token - includes a 64 chars token, should be redacted
+        token_65 = (
+            "abcdefghijk-lmnopqrstuvwxyz1-234567890ABC-DEFGHIJKLMNOP-QRSTUVWXYZ-123"
+        )
+        result = AgentRedactUtilities._redact_string(token_65)
+        self.assertEqual(result, ATTRIBUTE_VALUE_REDACTED)
+
+    def test_redact_string_with_oauth_token_request_body(self):
+        """Test _redact_string with OAuth token request body containing sensitive data"""
+        oauth_body = "grant_type=client_credentials&client_id=abc123&client_secret=xyz789&scope=read"
+        result = AgentRedactUtilities._redact_string(oauth_body)
+        # This is a long string but contains special characters, so won't match [a-zA-Z0-9_\-]{20,64}
+        self.assertEqual(result, oauth_body)
+
+    def test_redact_string_with_json_containing_password(self):
+        """Test _redact_string with JSON string containing password field"""
+        json_str = '{"username": "admin", "password": "secret123"}'
+        result = AgentRedactUtilities._redact_string(json_str)
+        # Should match pattern .*password.*"
+        self.assertEqual(result, ATTRIBUTE_VALUE_REDACTED)
+
+    def test_redact_string_with_json_containing_token(self):
+        """Test _redact_string with JSON string containing token field"""
+        json_str = '{"access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"}'
+        result = AgentRedactUtilities._redact_string(json_str)
+        # Should match pattern .*token.*"
+        self.assertEqual(result, ATTRIBUTE_VALUE_REDACTED)
+
+    def test_redact_string_with_json_containing_secret(self):
+        """Test _redact_string with JSON string containing secret field"""
+        json_str = '{"api_secret": "super_secret_value_123"}'
+        result = AgentRedactUtilities._redact_string(json_str)
+        # Should match pattern .*secret.*"
+        self.assertEqual(result, ATTRIBUTE_VALUE_REDACTED)
+
+    def test_redact_string_with_json_containing_key(self):
+        """Test _redact_string with JSON string containing key field"""
+        json_str = '{"api_key": "1234567890abcdef"}'
+        result = AgentRedactUtilities._redact_string(json_str)
+        # Should match pattern .*key.*"
+        self.assertEqual(result, ATTRIBUTE_VALUE_REDACTED)
+
+    def test_redact_string_with_json_containing_auth(self):
+        """Test _redact_string with JSON string containing auth field"""
+        json_str = '{"authorization": "Bearer token123"}'
+        result = AgentRedactUtilities._redact_string(json_str)
+        # Should match pattern .*auth.*"
+        self.assertEqual(result, ATTRIBUTE_VALUE_REDACTED)
+
+    def test_redact_string_with_json_containing_credential(self):
+        """Test _redact_string with JSON string containing credential field"""
+        json_str = '{"credentials": "user:password"}'
+        result = AgentRedactUtilities._redact_string(json_str)
+        # Should match pattern .*credential.*"
+        self.assertEqual(result, ATTRIBUTE_VALUE_REDACTED)
+
     def test_redact_attributes_preserves_structure(self):
         """Test that redact_attributes preserves the original structure"""
         input_data = {"level1": {"level2": {"password": "secret", "data": "value"}}}
