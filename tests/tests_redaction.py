@@ -1,6 +1,6 @@
 from unittest import TestCase
 
-from apollo.agent.constants import ATTRIBUTE_VALUE_REDACTED
+from apollo.agent.constants import ATTRIBUTE_VALUE_REDACTED, LOG_ATTRIBUTE_TRACE_ID
 from apollo.agent.redact import AgentRedactUtilities
 
 
@@ -44,10 +44,21 @@ class RedactionTests(TestCase):
 
     def test_standard_redact_with_dict_containing_credential(self):
         """Test standard_redact redacts dictionary keys containing 'credential'"""
-        input_data = {"credentials": "user:pass", "status": "active"}
+        input_data = {
+            "credentials": "user:pass",
+            "status": "active",
+            LOG_ATTRIBUTE_TRACE_ID: "abcdefghij1234567890",
+            LOG_ATTRIBUTE_TRACE_ID + "_test": "abcdefghij1234567890",
+        }
         result = AgentRedactUtilities.standard_redact(input_data)
         self.assertEqual(result["credentials"], ATTRIBUTE_VALUE_REDACTED)
         self.assertEqual(result["status"], "active")
+        # trace id is not redacted, even when matching the token value pattern
+        self.assertEqual(result[LOG_ATTRIBUTE_TRACE_ID], "abcdefghij1234567890")
+        # attributes containing trace_id are redacted
+        self.assertEqual(
+            result[LOG_ATTRIBUTE_TRACE_ID + "_test"], ATTRIBUTE_VALUE_REDACTED
+        )
 
     def test_standard_redact_with_dict_containing_user(self):
         """Test standard_redact redacts dictionary keys containing 'user'"""
@@ -144,9 +155,10 @@ class RedactionTests(TestCase):
 
     def test_redact_attributes_with_empty_attribute_list(self):
         """Test redact_attributes with empty attribute list"""
-        input_data = {"password": "secret", "token": "abc"}
+        input_data = {"password": "my secret value", "token": "abc"}
         result = AgentRedactUtilities.redact_attributes(input_data, [])
-        self.assertEqual(result["password"], "secret")
+        # value containing "secret" should be redacted
+        self.assertEqual(result["password"], ATTRIBUTE_VALUE_REDACTED)
         self.assertEqual(result["token"], "abc")
 
     def test_redact_attributes_with_empty_dict(self):
@@ -162,46 +174,46 @@ class RedactionTests(TestCase):
     def test_is_redacted_attribute_matches_substring(self):
         """Test _is_redacted_attribute matches substrings"""
         self.assertTrue(
-            AgentRedactUtilities._is_redacted_attribute("my_password", ["pass"])
+            AgentRedactUtilities._is_attribute_included("my_password", ["pass"])
         )
         self.assertTrue(
-            AgentRedactUtilities._is_redacted_attribute("api_token_value", ["token"])
+            AgentRedactUtilities._is_attribute_included("api_token_value", ["token"])
         )
         self.assertTrue(
-            AgentRedactUtilities._is_redacted_attribute("SECRET_KEY", ["secret"])
+            AgentRedactUtilities._is_attribute_included("SECRET_KEY", ["secret"])
         )
 
     def test_is_redacted_attribute_case_insensitive(self):
         """Test _is_redacted_attribute is case-insensitive"""
         self.assertTrue(
-            AgentRedactUtilities._is_redacted_attribute("PASSWORD", ["pass"])
+            AgentRedactUtilities._is_attribute_included("PASSWORD", ["pass"])
         )
-        self.assertTrue(AgentRedactUtilities._is_redacted_attribute("Token", ["token"]))
-        self.assertTrue(AgentRedactUtilities._is_redacted_attribute("API_KEY", ["key"]))
+        self.assertTrue(AgentRedactUtilities._is_attribute_included("Token", ["token"]))
+        self.assertTrue(AgentRedactUtilities._is_attribute_included("API_KEY", ["key"]))
 
     def test_is_redacted_attribute_no_match(self):
         """Test _is_redacted_attribute returns False when no match"""
         self.assertFalse(
-            AgentRedactUtilities._is_redacted_attribute("username", ["pass"])
+            AgentRedactUtilities._is_attribute_included("username", ["pass"])
         )
         self.assertFalse(
-            AgentRedactUtilities._is_redacted_attribute("data", ["token", "key"])
+            AgentRedactUtilities._is_attribute_included("data", ["token", "key"])
         )
 
     def test_is_redacted_attribute_multiple_attributes(self):
         """Test _is_redacted_attribute with multiple attributes"""
         attributes = ["pass", "token", "key"]
         self.assertTrue(
-            AgentRedactUtilities._is_redacted_attribute("password", attributes)
+            AgentRedactUtilities._is_attribute_included("password", attributes)
         )
         self.assertTrue(
-            AgentRedactUtilities._is_redacted_attribute("api_token", attributes)
+            AgentRedactUtilities._is_attribute_included("api_token", attributes)
         )
         self.assertTrue(
-            AgentRedactUtilities._is_redacted_attribute("secret_key", attributes)
+            AgentRedactUtilities._is_attribute_included("secret_key", attributes)
         )
         self.assertFalse(
-            AgentRedactUtilities._is_redacted_attribute("username", attributes)
+            AgentRedactUtilities._is_attribute_included("username", attributes)
         )
 
     def test_redact_string_with_normal_string(self):
@@ -251,8 +263,7 @@ class RedactionTests(TestCase):
         """Test _redact_string with OAuth token request body containing sensitive data"""
         oauth_body = "grant_type=client_credentials&client_id=abc123&client_secret=xyz789&scope=read"
         result = AgentRedactUtilities._redact_string(oauth_body)
-        # This is a long string but contains special characters, so won't match [a-zA-Z0-9_\-]{20,64}
-        self.assertEqual(result, oauth_body)
+        self.assertEqual(result, ATTRIBUTE_VALUE_REDACTED)
 
     def test_redact_string_with_json_containing_password(self):
         """Test _redact_string with JSON string containing password field"""
