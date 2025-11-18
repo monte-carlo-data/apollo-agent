@@ -2,6 +2,7 @@ import json
 from threading import local
 from typing import Dict, cast, Any
 
+from apollo.agent.redact import AgentRedactUtilities
 from apollo.interfaces.generic.log_context import BaseLogContext
 
 _context = local()
@@ -26,12 +27,14 @@ class AzureLogContext(BaseLogContext):
         # we're converting list and dictionaries to json and anything else to str.
         return {
             key: (
-                value
-                if isinstance(value, (str, float, int, bool))
-                else (
-                    json.dumps(value)
-                    if isinstance(value, (list, dict, tuple))
-                    else str(value)
+                AgentRedactUtilities.standard_redact(
+                    value
+                    if isinstance(value, (str, float, int, bool))
+                    else (
+                        json.dumps(value)
+                        if isinstance(value, (list, dict, tuple))
+                        else str(value)
+                    )
                 )
             )
             for key, value in context.items()
