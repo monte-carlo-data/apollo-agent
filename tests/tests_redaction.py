@@ -264,6 +264,9 @@ class RedactionTests(TestCase):
         oauth_body = "grant_type=client_credentials&client_id=abc123&client_secret=xyz789&scope=read"
         result = AgentRedactUtilities._redact_string(oauth_body)
         self.assertEqual(result, ATTRIBUTE_VALUE_REDACTED)
+        oauth_body_new_lines = "\ngrant_type=client_credentials\n&client_id=abc123&client_secret=xyz789&scope=read\n"
+        result = AgentRedactUtilities._redact_string(oauth_body_new_lines)
+        self.assertEqual(result, ATTRIBUTE_VALUE_REDACTED)
 
     def test_redact_string_with_json_containing_password(self):
         """Test _redact_string with JSON string containing password field"""

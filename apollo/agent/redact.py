@@ -15,14 +15,14 @@ _STANDARD_REDACTED_ATTRIBUTES = [
 ]
 _REDACT_VALUE_EXPRESSIONS = [
     re.compile(r"[a-zA-Z0-9_\-]{20,64}"),
-    re.compile(r".*password.*"),
-    re.compile(r".*secret.*"),
-    re.compile(r".*token.*"),
-    re.compile(r".*key.*"),
-    re.compile(r".*auth.*"),
-    re.compile(r".*credential.*"),
+    re.compile(r"password", re.IGNORECASE),
+    re.compile(r"secret", re.IGNORECASE),
+    re.compile(r"token", re.IGNORECASE),
+    re.compile(r"key", re.IGNORECASE),
+    re.compile(r"auth", re.IGNORECASE),
+    re.compile(r"credential", re.IGNORECASE),
 ]
-_SKIP_REDACT_ATTRIBUTES = [LOG_ATTRIBUTE_TRACE_ID]
+_SKIP_REDACT_ATTRIBUTES = [LOG_ATTRIBUTE_TRACE_ID, "agent_id", "uuid"]
 
 
 class AgentRedactUtilities:
@@ -65,6 +65,6 @@ class AgentRedactUtilities:
     @staticmethod
     def _redact_string(value: str) -> str:
         for expression in _REDACT_VALUE_EXPRESSIONS:
-            if expression.match(value):
+            if expression.search(value):
                 return ATTRIBUTE_VALUE_REDACTED
         return value
