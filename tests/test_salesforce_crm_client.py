@@ -162,6 +162,51 @@ class SalesforceCRMProxyClientTests(TestCase):
         self.assertEqual(result["object_description"], mock_object_description)
         mock_sf_object.describe.assert_called_once()
 
+    @patch("apollo.integrations.db.salesforce_crm_proxy_client.Salesforce")
+    def test_describe_objects(self, mock_salesforce: MagicMock):
+        mock_connection = MagicMock()
+        mock_salesforce.return_value = mock_connection
+        client = SalesforceCRMProxyClient(credentials=self.credentials)
+
+        mock_account_object_description = {
+            "name": "Account",
+            "label": "Account",
+            "fields": [
+                {"name": "Id", "type": "id", "label": "Account ID"},
+                {"name": "Name", "type": "string", "label": "Account Name"},
+            ],
+        }
+        mock_contact_object_description = {
+            "name": "Contact",
+            "label": "Contact",
+            "fields": [
+                {"name": "Id", "type": "id", "label": "Contact ID"},
+                {"name": "Name", "type": "string", "label": "Contact Name"},
+            ],
+        }
+
+        # Mock the salesforce object by setting it as an attribute on the connection
+        mock_sf_object = MagicMock()
+        mock_sf_object.describe.side_effect = [
+            mock_account_object_description,
+            mock_contact_object_description,
+        ]
+
+        # Set the Account and Contact attribute directly on the mock connection
+        setattr(mock_connection, "Account", mock_sf_object)
+        setattr(mock_connection, "Contact", mock_sf_object)
+
+        result = client.describe_objects(["Account", "Contact"])
+
+        self.assertEqual(
+            result,
+            {
+                "Account": mock_account_object_description,
+                "Contact": mock_contact_object_description,
+            },
+        )
+        mock_sf_object.describe.assert_has_calls([])
+
     # Execute Method Tests
     @patch("apollo.integrations.db.salesforce_crm_proxy_client.Salesforce")
     def test_execute(self, mock_salesforce: MagicMock):
