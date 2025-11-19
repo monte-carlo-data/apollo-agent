@@ -1,5 +1,5 @@
 import re
-from typing import Any, List, Dict
+from typing import Any, List, Dict, Tuple
 
 from apollo.agent.constants import ATTRIBUTE_VALUE_REDACTED, LOG_ATTRIBUTE_TRACE_ID
 
@@ -52,6 +52,8 @@ class AgentRedactUtilities:
             }
         elif isinstance(value, List):
             return [cls.redact_attributes(v, attributes) for v in value]
+        elif isinstance(value, Tuple):
+            return tuple(cls.redact_attributes(v, attributes) for v in value)
         elif isinstance(value, str):
             return cls._redact_string(value)
         else:

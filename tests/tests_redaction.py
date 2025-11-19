@@ -328,6 +328,12 @@ class RedactionTests(TestCase):
         result = AgentRedactUtilities.redact_attributes(input_data, ["pass"])
         self.assertEqual(result, [1, 2, 3, "test", True, None])
 
+    def test_redact_tuple(self):
+        """Test redact_attributes with tuple"""
+        input_data = (1, 2, 3, "test", True, None)
+        result = AgentRedactUtilities.redact_attributes(input_data, ["pass"])
+        self.assertEqual(result, (1, 2, 3, "test", True, None))
+
     def test_redact_attributes_with_mixed_list(self):
         """Test redact_attributes with mixed list of dicts and primitives"""
         input_data = [
@@ -337,6 +343,22 @@ class RedactionTests(TestCase):
             {"token": "abc", "id": 1},
         ]
         result = AgentRedactUtilities.redact_attributes(input_data, ["pass", "token"])
+        self.assertEqual(result[0]["password"], ATTRIBUTE_VALUE_REDACTED)
+        self.assertEqual(result[1], "plain string")
+        self.assertEqual(result[2], 123)
+        self.assertEqual(result[3]["token"], ATTRIBUTE_VALUE_REDACTED)
+        self.assertEqual(result[3]["id"], 1)
+
+    def test_redact_attributes_with_mixed_tuple(self):
+        """Test redact_attributes with mixed tuple of dicts and primitives"""
+        input_data = (
+            {"password": "secret1"},
+            "plain string",
+            123,
+            {"token": "abc", "id": 1},
+        )
+        result = AgentRedactUtilities.redact_attributes(input_data, ["pass", "token"])
+        self.assertIsInstance(result, tuple)
         self.assertEqual(result[0]["password"], ATTRIBUTE_VALUE_REDACTED)
         self.assertEqual(result[1], "plain string")
         self.assertEqual(result[2], 123)
