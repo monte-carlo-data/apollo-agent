@@ -47,14 +47,16 @@ class RedactionTests(TestCase):
         input_data = {
             "credentials": "user:pass",
             "status": "active",
-            LOG_ATTRIBUTE_TRACE_ID: "abcdefghij1234567890",
-            LOG_ATTRIBUTE_TRACE_ID + "_test": "abcdefghij1234567890",
+            LOG_ATTRIBUTE_TRACE_ID: "abcdefghij1234567890abcdefghij12",
+            LOG_ATTRIBUTE_TRACE_ID + "_test": "abcdefghij1234567890abcdefghij12",
         }
         result = AgentRedactUtilities.standard_redact(input_data)
         self.assertEqual(result["credentials"], ATTRIBUTE_VALUE_REDACTED)
         self.assertEqual(result["status"], "active")
         # trace id is not redacted, even when matching the token value pattern
-        self.assertEqual(result[LOG_ATTRIBUTE_TRACE_ID], "abcdefghij1234567890")
+        self.assertEqual(
+            result[LOG_ATTRIBUTE_TRACE_ID], "abcdefghij1234567890abcdefghij12"
+        )
         # attributes containing trace_id are redacted
         self.assertEqual(
             result[LOG_ATTRIBUTE_TRACE_ID + "_test"], ATTRIBUTE_VALUE_REDACTED
@@ -227,10 +229,10 @@ class RedactionTests(TestCase):
         self.assertEqual(result, "abc")
 
     def test_redact_string_with_long_alphanumeric_token(self):
-        """Test _redact_string with long alphanumeric strings (20-64 chars) like tokens"""
-        # 20 character token - should be redacted
-        token_20 = "abcdefghij1234567890"
-        result = AgentRedactUtilities._redact_string(token_20)
+        """Test _redact_string with long alphanumeric strings (32-64 chars) like tokens"""
+        # 32 character token - should be redacted
+        token_32 = "abcdefghij1234567890abcdefghij12"
+        result = AgentRedactUtilities._redact_string(token_32)
         self.assertEqual(result, ATTRIBUTE_VALUE_REDACTED)
 
         # 40 character token - should be redacted
