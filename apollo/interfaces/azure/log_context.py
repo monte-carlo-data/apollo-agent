@@ -30,7 +30,7 @@ class AzureLogContext(BaseLogContext):
                 value
                 if isinstance(value, (str, float, int, bool))
                 else (
-                    json.dumps(value)
+                    json.dumps(AgentRedactUtilities.standard_redact(value))
                     if isinstance(value, (list, dict, tuple))
                     else str(value)
                 )
