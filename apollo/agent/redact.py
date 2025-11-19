@@ -31,6 +31,11 @@ class AgentRedactUtilities:
         return cls.redact_attributes(value, _STANDARD_REDACTED_ATTRIBUTES)
 
     @classmethod
+    def is_redacted_attribute(cls, key: str) -> bool:
+        # all attributes are redacted, except those skipped (mcd_trace_id, etc.)
+        return not cls._is_attribute_included(key, _SKIP_REDACT_ATTRIBUTES, True)
+
+    @classmethod
     def redact_attributes(cls, value: Any, attributes: List[str]) -> Any:
         if isinstance(value, Dict):
             return {
