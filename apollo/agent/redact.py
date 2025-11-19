@@ -14,7 +14,7 @@ _STANDARD_REDACTED_ATTRIBUTES = [
     "key",
 ]
 _REDACT_VALUE_EXPRESSIONS = [
-    re.compile(r"[a-zA-Z0-9_\-]{20,64}"),
+    re.compile(r"[a-zA-Z0-9_\-]{32,64}"),
     re.compile(r"password", re.IGNORECASE),
     re.compile(r"secret", re.IGNORECASE),
     re.compile(r"token", re.IGNORECASE),
@@ -29,11 +29,6 @@ class AgentRedactUtilities:
     @classmethod
     def standard_redact(cls, value: Any):
         return cls.redact_attributes(value, _STANDARD_REDACTED_ATTRIBUTES)
-
-    @classmethod
-    def is_redacted_attribute(cls, key: str) -> bool:
-        # all attributes are redacted, except those skipped (mcd_trace_id, etc.)
-        return not cls._is_attribute_included(key, _SKIP_REDACT_ATTRIBUTES, True)
 
     @classmethod
     def redact_attributes(cls, value: Any, attributes: List[str]) -> Any:
