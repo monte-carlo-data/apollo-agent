@@ -133,6 +133,13 @@ class SalesforceCRMProxyClient(BaseDbProxyClient):
         results = salesforce_object.describe()
         return {"object_description": results}
 
+    def describe_objects(self, object_names: List[str]) -> Dict:
+        results = {}
+        for obj_name in object_names:
+            salesforce_object = getattr(self._connection, obj_name)
+            results[obj_name] = salesforce_object.describe()
+        return results
+
     def _infer_cursor_description(self, row: dict) -> List[Tuple]:
         def infer_type(value: Any) -> str:
             if value is None:
