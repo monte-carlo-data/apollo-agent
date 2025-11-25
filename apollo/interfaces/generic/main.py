@@ -1,6 +1,7 @@
 import io
 import logging
 import os
+import time
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Tuple, Callable, Optional, Union, Any, BinaryIO
 
@@ -433,6 +434,13 @@ def _test_health() -> Tuple[Dict, int]:
     trace_id = request_dict.get("trace_id")
     full = str(request_dict.get("full", "false")).lower() == "true"
     return agent.health_information(trace_id, full).to_dict(), 200
+
+
+@app.route("/api/v1/test/sleep", methods=["POST"])
+def sleep_post() -> Tuple[Dict, int]:
+    sleep_seconds = (request.json or {}).get("sleep_seconds", 10)
+    time.sleep(sleep_seconds)
+    return {}, 200
 
 
 @app.route("/api/v1/test/network/open", methods=["GET"])
