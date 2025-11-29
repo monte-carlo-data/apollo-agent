@@ -2,7 +2,7 @@ import base64
 from unittest import TestCase
 from unittest.mock import patch, create_autospec, ANY
 
-from apollo.agent.utils import AgentUtils
+from apollo.common.agent.utils import AgentUtils
 from apollo.integrations.git.git_client import GitCloneClient, GitFileData
 from apollo.integrations.git.git_proxy_client import GitProxyClient
 from apollo.integrations.storage.storage_proxy_client import StorageProxyClient

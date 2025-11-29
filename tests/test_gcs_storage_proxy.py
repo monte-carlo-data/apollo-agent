@@ -7,18 +7,18 @@ from box import Box
 from google.cloud.storage import Client, Bucket, Blob
 
 from apollo.agent.agent import Agent
-from apollo.agent.constants import (
+from apollo.common.agent.constants import (
     PLATFORM_GCP,
     ATTRIBUTE_NAME_RESULT,
     ATTRIBUTE_NAME_ERROR,
 )
-from apollo.agent.env_vars import (
+from apollo.common.agent.env_vars import (
     STORAGE_BUCKET_NAME_ENV_VAR,
     STORAGE_PREFIX_ENV_VAR,
     STORAGE_PREFIX_DEFAULT_VALUE,
 )
 from apollo.agent.logging_utils import LoggingUtils
-from apollo.agent.utils import AgentUtils
+from apollo.common.agent.utils import AgentUtils
 from apollo.interfaces.cloudrun.metadata_service import (
     GCP_PLATFORM_INFO_KEY_SERVICE_NAME,
     GCP_PLATFORM_INFO_KEY_PROJECT_ID,

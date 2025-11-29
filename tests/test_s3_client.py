@@ -7,7 +7,7 @@ from unittest.mock import patch, Mock
 from botocore.response import StreamingBody
 
 from apollo.agent.agent import Agent
-from apollo.agent.constants import (
+from apollo.common.agent.constants import (
     ATTRIBUTE_NAME_RESULT,
     ATTRIBUTE_NAME_ERROR,
     ATTRIBUTE_VALUE_TYPE_STREAMING_BODY,

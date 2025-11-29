@@ -8,12 +8,12 @@ from flask import Flask, request, Response, send_file, jsonify, render_template
 from flask_compress import Compress
 
 from apollo.agent.agent import Agent
-from apollo.agent.constants import TRACE_ID_HEADER
-from apollo.agent.env_vars import DEBUG_ENV_VAR, MCD_AGENT_CLOUD_PLATFORM_ENV_VAR
+from apollo.common.agent.constants import TRACE_ID_HEADER
+from apollo.common.agent.env_vars import DEBUG_ENV_VAR, MCD_AGENT_CLOUD_PLATFORM_ENV_VAR
+from apollo.common.agent.settings import VERSION
+from apollo.common.interfaces.agent_response import AgentResponse
 from apollo.agent.logging_utils import LoggingUtils
-from apollo.agent.settings import VERSION
 from apollo.credentials.factory import CredentialsFactory
-from apollo.interfaces.agent_response import AgentResponse
 
 app = Flask(__name__)
 Compress(app)

@@ -4,9 +4,9 @@ from typing import Tuple, Dict, Optional, cast, Callable, Union
 
 from flask import request
 
-from apollo.agent.constants import PLATFORM_AWS, PLATFORM_AWS_GENERIC
-from apollo.agent.utils import AgentUtils
-from apollo.interfaces.agent_response import AgentResponse
+from apollo.common.agent.constants import PLATFORM_AWS, PLATFORM_AWS_GENERIC
+from apollo.common.agent.utils import AgentUtils
+from apollo.common.interfaces.agent_response import AgentResponse
 from apollo.interfaces.generic import main
 from apollo.interfaces.aws.platform import (
     AwsPlatformProvider,
@@ -16,7 +16,7 @@ from apollo.interfaces.lambda_function.json_log_formatter import (
     JsonLogFormatter,
     ExtraLogger,
 )
-from apollo.agent.env_vars import (
+from apollo.common.agent.env_vars import (
     DEBUG_ENV_VAR,
 )
 from apollo.interfaces.generic.log_context import BaseLogContext

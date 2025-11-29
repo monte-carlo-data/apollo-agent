@@ -11,9 +11,12 @@ from RestrictedPython.Guards import (
     safer_getattr,
 )
 
-from apollo.agent.constants import AGENT_SCRIPT_ENTRYPOINT, AGENT_SCRIPT_BUILTIN_MODULES
-from apollo.agent.models import AgentScript
-from apollo.integrations.base_proxy_client import BaseProxyClient
+from apollo.common.agent.constants import (
+    AGENT_SCRIPT_ENTRYPOINT,
+    AGENT_SCRIPT_BUILTIN_MODULES,
+)
+from apollo.common.agent.models import AgentScript
+from apollo.common.integrations.base_proxy_client import BaseProxyClient
 
 
 class AgentScriptContext:

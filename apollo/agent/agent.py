@@ -8,7 +8,7 @@ from contextlib import contextmanager
 from datetime import datetime
 from typing import Any, Callable, Dict, Optional, List, Union
 
-from apollo.agent.env_vars import (
+from apollo.common.agent.env_vars import (
     HEALTH_ENV_VARS,
     IS_REMOTE_UPGRADABLE_ENV_VAR,
     PRE_SIGNED_URL_RESPONSE_EXPIRATION_SECONDS_DEFAULT_VALUE,
@@ -19,7 +19,7 @@ from apollo.agent.evaluation_utils import AgentEvaluationUtils
 from apollo.agent.platform import AgentPlatformProvider
 from apollo.agent.log_context import AgentLogContext
 from apollo.agent.logging_utils import LoggingUtils
-from apollo.agent.constants import (
+from apollo.common.agent.constants import (
     CONTEXT_VAR_UTILS,
     CONTEXT_VAR_CLIENT,
     PLATFORM_GENERIC,
@@ -27,7 +27,7 @@ from apollo.agent.constants import (
     LOG_ATTRIBUTE_OPERATION_NAME,
 )
 from apollo.agent.operation_utils import OperationUtils
-from apollo.agent.models import (
+from apollo.common.agent.models import (
     AgentCommands,
     AgentHealthInformation,
     AgentConfigurationError,
@@ -35,13 +35,13 @@ from apollo.agent.models import (
     AgentScript,
 )
 from apollo.agent.proxy_client_factory import ProxyClientFactory
-from apollo.agent.settings import VERSION, BUILD_NUMBER
+from apollo.common.agent.settings import VERSION, BUILD_NUMBER
 from apollo.agent.updater import AgentUpdater
-from apollo.agent.utils import AgentUtils
+from apollo.common.agent.utils import AgentUtils
 from apollo.integrations.aws.asm_proxy_client import SecretsManagerProxyClient
-from apollo.integrations.base_proxy_client import BaseProxyClient
+from apollo.common.integrations.base_proxy_client import BaseProxyClient
 from apollo.integrations.storage.storage_proxy_client import StorageProxyClient
-from apollo.interfaces.agent_response import AgentResponse
+from apollo.common.interfaces.agent_response import AgentResponse
 from apollo.interfaces.cloudrun.metadata_service import PLATFORM_INFO_KEY_IMAGE
 from apollo.validators.validate_network import ValidateNetwork
 

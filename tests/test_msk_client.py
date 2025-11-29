@@ -1,7 +1,7 @@
 from unittest import TestCase
 from unittest.mock import Mock, patch
 
-from apollo.agent import constants
+from apollo.common.agent import constants
 from apollo.agent.agent import Agent
 from apollo.agent.logging_utils import LoggingUtils
 from apollo.integrations.aws.base_aws_proxy_client import BaseAwsProxyClient

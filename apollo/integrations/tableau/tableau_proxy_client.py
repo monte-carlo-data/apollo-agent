@@ -13,7 +13,7 @@ import requests
 from tableauserverclient.models.tableau_auth import Credentials
 from tableauserverclient.server.server import Server
 
-from apollo.integrations.base_proxy_client import BaseProxyClient
+from apollo.common.integrations.base_proxy_client import BaseProxyClient
 
 logger = logging.getLogger(__name__)
 

@@ -4,8 +4,8 @@ from typing import Optional, Callable, Dict, Tuple, Union
 
 import requests
 
-from apollo.agent.utils import AgentUtils
-from apollo.interfaces.agent_response import AgentResponse
+from apollo.common.agent.utils import AgentUtils
+from apollo.common.interfaces.agent_response import AgentResponse
 
 _DEFAULT_TIMEOUT_SECS = 5
 _DEFAULT_HTTP_TIMEOUT_SECS = 10
@@ -213,7 +213,7 @@ class ValidateNetwork:
 
         try:
             lookup_result = socket.getaddrinfo(host, port)
-            addresses = sorted(set([addr[4][0] for addr in lookup_result]))
+            addresses = list(sorted(set([addr[4][0] for addr in lookup_result])))
             return {"message": f"Host {host} resolves to: {', '.join(addresses)}"}
         except Exception as err:
             raise ConnectionFailedError(

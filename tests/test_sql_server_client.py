@@ -10,13 +10,13 @@ from unittest.mock import Mock, call, patch
 from psycopg2.errors import InsufficientPrivilege  # noqa
 
 from apollo.agent.agent import Agent
-from apollo.agent.constants import (
+from apollo.common.agent.constants import (
     ATTRIBUTE_NAME_ERROR,
     ATTRIBUTE_NAME_RESULT,
     ATTRIBUTE_NAME_ERROR_TYPE,
 )
 from apollo.agent.logging_utils import LoggingUtils
-from apollo.agent.models import AgentError
+from apollo.common.agent.models import AgentError
 from apollo.integrations.db.sql_server_proxy_client import SqlServerProxyClient
 
 _SQL_SERVER_CREDENTIALS = (

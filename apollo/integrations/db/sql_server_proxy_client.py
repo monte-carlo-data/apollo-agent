@@ -9,7 +9,7 @@ from typing import (
 
 import pyodbc
 
-from apollo.agent.models import AgentError
+from apollo.common.agent.models import AgentError
 from apollo.integrations.db.base_db_proxy_client import BaseDbProxyClient
 
 _ATTR_CONNECT_ARGS = "connect_args"

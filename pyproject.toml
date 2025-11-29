@@ -7,6 +7,9 @@ exclude = [
   "examples",
   ".venv",
 ]
+extraPaths = [
+  "mcd-agent-common",
+]
 reportMissingParameterType = true
 reportMissingTypeArgument = false
 typeCheckingMode = "basic"

@@ -49,3 +49,5 @@ oscrypto @ git+https://github.com/wbond/oscrypto@master
 # It should be updated to stable version 0.20.0 once that is released.
 impyla==0.20a1
 werkzeug==3.1.0
+
+-e ./mcd-agent-common

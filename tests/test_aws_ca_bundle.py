@@ -5,7 +5,7 @@ from unittest import TestCase
 from unittest.mock import patch, mock_open
 
 from apollo.agent.agent import Agent
-from apollo.agent.env_vars import MCD_AWS_CA_BUNDLE_SECRET_NAME_ENV_VAR
+from apollo.common.agent.env_vars import MCD_AWS_CA_BUNDLE_SECRET_NAME_ENV_VAR
 from apollo.agent.logging_utils import LoggingUtils
 
 
@@ -69,7 +69,7 @@ R9I4LtD+gdwyah617jzV/OeBHRnDJELqYzmp
     @patch("os.makedirs")
     @patch("os.chmod")
     @patch("builtins.open", new_callable=mock_open)
-    @patch("apollo.agent.utils.AgentUtils.ensure_temp_path")
+    @patch("apollo.common.agent.utils.AgentUtils.ensure_temp_path")
     @patch("apollo.agent.agent.SecretsManagerProxyClient")
     def test_setup_aws_ca_bundle_creates_file(
         self,
@@ -114,7 +114,7 @@ R9I4LtD+gdwyah617jzV/OeBHRnDJELqYzmp
     @patch("os.path.exists")
     @patch("os.chmod")
     @patch("builtins.open", new_callable=mock_open)
-    @patch("apollo.agent.utils.AgentUtils.ensure_temp_path")
+    @patch("apollo.common.agent.utils.AgentUtils.ensure_temp_path")
     @patch("apollo.agent.agent.SecretsManagerProxyClient")
     def test_setup_aws_ca_bundle_file_creation_error(
         self,
@@ -152,7 +152,7 @@ R9I4LtD+gdwyah617jzV/OeBHRnDJELqYzmp
             self.assertIn("Permission denied", str(context.exception))
 
     @patch("os.path.exists")
-    @patch("apollo.agent.utils.AgentUtils.ensure_temp_path")
+    @patch("apollo.common.agent.utils.AgentUtils.ensure_temp_path")
     @patch("apollo.agent.agent.SecretsManagerProxyClient")
     def test_setup_aws_ca_bundle_secret_not_found(
         self, mock_asm_client_class, mock_ensure_temp_path, mock_path_exists
@@ -181,7 +181,7 @@ R9I4LtD+gdwyah617jzV/OeBHRnDJELqYzmp
             self.assertIn(secret_name, str(context.exception))
 
     @patch("os.path.exists")
-    @patch("apollo.agent.utils.AgentUtils.ensure_temp_path")
+    @patch("apollo.common.agent.utils.AgentUtils.ensure_temp_path")
     @patch("apollo.agent.agent.SecretsManagerProxyClient")
     def test_setup_aws_ca_bundle_asm_error(
         self, mock_asm_client_class, mock_ensure_temp_path, mock_path_exists
@@ -222,7 +222,7 @@ R9I4LtD+gdwyah617jzV/OeBHRnDJELqYzmp
 
         with tempfile.TemporaryDirectory() as temp_dir:
             with patch(
-                "apollo.agent.utils.AgentUtils.temp_path", return_value=temp_dir
+                "apollo.common.agent.utils.AgentUtils.temp_path", return_value=temp_dir
             ):
                 # Set environment variable
                 with patch.dict(

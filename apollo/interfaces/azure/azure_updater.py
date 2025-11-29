@@ -6,12 +6,12 @@ from typing import List, Dict, Optional
 
 from azure.mgmt.resource import ResourceManagementClient
 
-from apollo.agent.env_vars import (
+from apollo.common.agent.env_vars import (
     LAST_UPDATE_TS_ENV_VAR,
     AZURE_MAX_ACTIVITY_FUNCTIONS_ENV_VAR,
     AZURE_MAX_ORCHESTRATOR_FUNCTIONS_ENV_VAR,
 )
-from apollo.agent.models import AgentError
+from apollo.common.agent.models import AgentError
 from apollo.agent.updater import AgentUpdater
 from apollo.integrations.azure_blob.utils import AzureUtils
 

@@ -4,8 +4,8 @@ from typing import Dict, cast, List
 import boto3
 from botocore.client import BaseClient
 
-from apollo.agent.env_vars import CLOUDFORMATION_STACK_ID_ENV_VAR
-from apollo.agent.models import AgentConfigurationError
+from apollo.common.agent.env_vars import CLOUDFORMATION_STACK_ID_ENV_VAR
+from apollo.common.agent.models import AgentConfigurationError
 
 
 class CloudFormationUtils:

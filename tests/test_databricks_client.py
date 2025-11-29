@@ -5,7 +5,7 @@ from unittest.mock import patch, Mock, call
 
 from apollo.agent.agent import Agent
 from apollo.agent.logging_utils import LoggingUtils
-from apollo.agent.constants import ATTRIBUTE_NAME_ERROR, ATTRIBUTE_NAME_RESULT
+from apollo.common.agent.constants import ATTRIBUTE_NAME_ERROR, ATTRIBUTE_NAME_RESULT
 
 _DATABRICKS_CREDENTIALS = {
     "server_hostname": "www.test.com",

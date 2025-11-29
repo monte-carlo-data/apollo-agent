@@ -9,9 +9,11 @@ from unittest.mock import (
 )
 
 from apollo.agent.agent import Agent
-from apollo.agent.env_vars import PRE_SIGNED_URL_RESPONSE_EXPIRATION_SECONDS_ENV_VAR
+from apollo.common.agent.env_vars import (
+    PRE_SIGNED_URL_RESPONSE_EXPIRATION_SECONDS_ENV_VAR,
+)
 from apollo.agent.logging_utils import LoggingUtils
-from apollo.agent.models import (
+from apollo.common.agent.models import (
     AgentCommand,
     AgentCommands,
 )
