@@ -8,21 +8,21 @@ from typing import Optional, Dict, List, BinaryIO, Any, Tuple
 
 import requests
 
-from apollo.agent.constants import (
+from apollo.common.agent.constants import (
     ATTRIBUTE_NAME_ERROR,
     ATTRIBUTE_NAME_EXCEPTION,
     ATTRIBUTE_NAME_STACK_TRACE,
     ATTRIBUTE_NAME_ERROR_TYPE,
     ATTRIBUTE_NAME_ERROR_ATTRS,
 )
-from apollo.agent.env_vars import (
+from apollo.common.agent.env_vars import (
     TEMP_PATH_ENV_VAR,
     DEFAULT_TEMP_PATH,
     CHECK_OUTBOUND_IP_ADDRESS_URL_ENV_VAR,
     CHECK_OUTBOUND_IP_ADDRESS_URL_DEFAULT_VALUE,
 )
-from apollo.integrations.base_proxy_client import BaseProxyClient
-from apollo.interfaces.agent_response import AgentResponse
+from apollo.common.integrations.base_proxy_client import BaseProxyClient
+from apollo.common.interfaces.agent_response import AgentResponse
 
 
 class AgentUtils:

@@ -2,9 +2,9 @@ from os import path
 from unittest import TestCase
 
 from apollo.agent.agent import Agent
-from apollo.agent.constants import ATTRIBUTE_NAME_ERROR
+from apollo.common.agent.constants import ATTRIBUTE_NAME_ERROR
 from apollo.agent.logging_utils import LoggingUtils
-from apollo.agent.models import AgentScript
+from apollo.common.agent.models import AgentScript
 from tests.sample_proxy_client import SampleProxyClient
 
 

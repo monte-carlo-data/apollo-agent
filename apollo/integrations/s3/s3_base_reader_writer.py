@@ -19,7 +19,7 @@ from dataclasses_json import (
     dataclass_json,
 )
 
-from apollo.integrations.storage.base_storage_client import BaseStorageClient
+from apollo.common.integrations.storage.base_storage_client import BaseStorageClient
 from apollo.interfaces.lambda_function.aws_utils import get_boto_config
 
 _ACL_GRANTEE_TYPE_GROUP = "Group"

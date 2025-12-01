@@ -16,19 +16,19 @@ from azure.storage.blob import (
 from box import Box
 
 from apollo.agent.agent import Agent
-from apollo.agent.constants import (
+from apollo.common.agent.constants import (
     PLATFORM_AZURE,
     ATTRIBUTE_NAME_RESULT,
     ATTRIBUTE_NAME_ERROR,
 )
-from apollo.agent.env_vars import (
+from apollo.common.agent.env_vars import (
     STORAGE_BUCKET_NAME_ENV_VAR,
     STORAGE_PREFIX_ENV_VAR,
     STORAGE_PREFIX_DEFAULT_VALUE,
     STORAGE_ACCOUNT_NAME_ENV_VAR,
 )
 from apollo.agent.logging_utils import LoggingUtils
-from apollo.agent.utils import AgentUtils
+from apollo.common.agent.utils import AgentUtils
 from tests.platform_provider import TestPlatformProvider
 
 _TEST_BUCKET_NAME = "test_bucket"

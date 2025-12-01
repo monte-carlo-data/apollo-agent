@@ -11,14 +11,14 @@ from looker_sdk.sdk.api40.models import (
     Category,
 )
 
-from apollo.agent.constants import (
+from apollo.common.agent.constants import (
     ATTRIBUTE_NAME_TYPE,
     ATTRIBUTE_NAME_DATA,
     ATTRIBUTE_VALUE_TYPE_LOOKER_CATEGORY,
 )
-from apollo.agent.serde import AgentSerializer
-from apollo.agent.utils import AgentUtils
-from apollo.integrations.base_proxy_client import BaseProxyClient
+from apollo.common.agent.serde import AgentSerializer
+from apollo.common.agent.utils import AgentUtils
+from apollo.common.integrations.base_proxy_client import BaseProxyClient
 
 _LOOKER_DIRECTORY = "looker"
 

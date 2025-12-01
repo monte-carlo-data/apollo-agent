@@ -1,6 +1,6 @@
 from typing import Any, List, Dict
 
-from apollo.agent.constants import ATTRIBUTE_VALUE_REDACTED
+from apollo.common.agent.constants import ATTRIBUTE_VALUE_REDACTED
 
 
 class AgentRedactUtilities:

@@ -7,7 +7,7 @@ from typing import (
 
 import msal
 
-from apollo.agent.models import AgentError
+from apollo.common.agent.models import AgentError
 from apollo.integrations.http.http_proxy_client import HttpProxyClient
 
 logger = logging.getLogger(__name__)

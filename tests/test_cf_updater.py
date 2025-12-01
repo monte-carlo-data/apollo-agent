@@ -3,7 +3,7 @@ from datetime import datetime, timezone, timedelta
 from unittest import TestCase
 from unittest.mock import patch, Mock, ANY
 
-from apollo.agent.env_vars import CLOUDFORMATION_STACK_ID_ENV_VAR
+from apollo.common.agent.env_vars import CLOUDFORMATION_STACK_ID_ENV_VAR
 from apollo.interfaces.lambda_function.cf_updater import LambdaCFUpdater
 from apollo.interfaces.lambda_function.direct_updater import LambdaDirectUpdater
 

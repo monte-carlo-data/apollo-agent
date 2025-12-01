@@ -5,8 +5,8 @@ from dataclasses_json import DataClassJsonMixin, config
 
 
 # used so we don't include an empty platform info
-from apollo.agent.constants import RESPONSE_TYPE_JSON, RESPONSE_TYPE_URL
-from apollo.agent.serde import rows_encoder
+from apollo.common.agent.constants import RESPONSE_TYPE_JSON, RESPONSE_TYPE_URL
+from apollo.common.agent.serde import rows_encoder
 
 
 def exclude_empty_values(value: Any) -> bool:

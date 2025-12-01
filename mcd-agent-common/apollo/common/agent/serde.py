@@ -16,7 +16,7 @@ from typing import Any, Dict, List, Tuple, Union
 
 from botocore.response import StreamingBody
 
-from apollo.agent.constants import (
+from apollo.common.agent.constants import (
     ATTRIBUTE_NAME_DATA,
     ATTRIBUTE_NAME_TYPE,
     ATTRIBUTE_VALUE_TYPE_DATE,
@@ -63,7 +63,7 @@ class AgentSerializer(json.JSONEncoder):
                 ATTRIBUTE_NAME_DATA: encode_streaming_body_gzip_base64(value),
             }
         elif dataclasses.is_dataclass(value):
-            return dataclasses.asdict(value)
+            return dataclasses.asdict(value)  # type: ignore
         elif hasattr(value, "col_types") and isinstance(value.col_types, tuple):
             # Handle DBAPITypeObject instances from DB-API drivers (like IBM DB2)
             # These are not JSON serializable, so return the first value from col_types

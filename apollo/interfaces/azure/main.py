@@ -6,7 +6,7 @@ from typing import Tuple, Dict, Optional
 from flask import request
 from werkzeug.exceptions import InternalServerError
 
-from apollo.agent.utils import AgentUtils
+from apollo.common.agent.utils import AgentUtils
 from apollo.interfaces.azure.azure_platform import AzurePlatformProvider
 from apollo.interfaces.azure.log_context import AzureLogContext
 from apollo.interfaces.generic import main

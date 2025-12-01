@@ -3,21 +3,21 @@ from typing import Any, Callable, Optional, Dict, List, cast
 
 from apollo.agent.annotate_logger import annotate_logger
 from apollo.agent.logging_utils import LoggingUtils
-from apollo.agent.models import (
+from apollo.common.agent.models import (
     AgentError,
     AgentCommand,
     AgentScript,
 )
-from apollo.agent.constants import (
+from apollo.common.agent.constants import (
     ATTRIBUTE_NAME_REFERENCE,
     ATTRIBUTE_NAME_TYPE,
     ATTRIBUTE_VALUE_TYPE_CALL,
     CONTEXT_VAR_CLIENT,
 )
 from apollo.agent.scripts import AgentScriptContext, execute_script
-from apollo.agent.serde import decode_dict_value
-from apollo.agent.utils import AgentUtils
-from apollo.integrations.base_proxy_client import BaseProxyClient
+from apollo.common.agent.serde import decode_dict_value
+from apollo.common.integrations.base_proxy_client import BaseProxyClient
+from apollo.common.agent.utils import AgentUtils
 
 logger = logging.getLogger(__name__)
 

@@ -3,14 +3,14 @@ from dataclasses import dataclass
 from io import BufferedReader
 from typing import Dict, Optional, Any, BinaryIO
 
-from apollo.agent.constants import (
+from apollo.common.agent.constants import (
     ATTRIBUTE_NAME_ERROR,
     ATTRIBUTE_NAME_RESULT_LOCATION,
     ATTRIBUTE_NAME_TRACE_ID,
     ATTRIBUTE_NAME_RESULT,
     ATTRIBUTE_NAME_RESULT_COMPRESSED,
 )
-from apollo.agent.serde import AgentSerializer
+from apollo.common.agent.serde import AgentSerializer
 
 
 @dataclass
