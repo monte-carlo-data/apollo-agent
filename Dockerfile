@@ -11,6 +11,8 @@ ENV PYTHONUNBUFFERED=True
 ENV APP_HOME=/app
 ENV VENV_DIR=.venv
 WORKDIR $APP_HOME
+
+COPY mcd-agent-common/ ./mcd-agent-common
 COPY requirements.txt ./
 
 RUN apt-get update
@@ -76,6 +78,19 @@ FROM base AS aws_generic
 CMD . $VENV_DIR/bin/activate \
     && gunicorn --bind :$PORT --workers $GUNICORN_WORKERS --threads $GUNICORN_THREADS --timeout $GUNICORN_TIMEOUT apollo.interfaces.aws.main:app
 
+FROM base AS on-prem-generic
+
+WORKDIR $APP_HOME
+COPY mcd-egress-agent-common/ ./mcd-egress-agent-common
+COPY mcd-on-prem-agent/ ./mcd-on-prem-agent
+RUN . $VENV_DIR/bin/activate && pip install --no-cache-dir ./mcd-egress-agent-common && pip install --no-cache-dir sseclient
+
+ENV PYTHONPATH=./mcd-on-prem-agent
+
+CMD . $VENV_DIR/bin/activate \
+    && gunicorn --bind :$PORT --workers $GUNICORN_WORKERS --threads $GUNICORN_THREADS --timeout $GUNICORN_TIMEOUT apollo.onprem.agent.main:app
+
+
 FROM base AS cloudrun
 
 COPY requirements-cloudrun.txt ./
@@ -92,6 +107,7 @@ RUN dnf install git -y
 # install libxcrypt-compat for IBM DB2 ibm-db package compatibility (requires libcrypt.so.1)
 RUN dnf install -y libxcrypt-compat
 
+COPY mcd-agent-common/ "${LAMBDA_TASK_ROOT}/mcd-agent-common"
 COPY requirements.txt ./
 COPY requirements-lambda.txt ./
 RUN pip install --no-cache-dir --target "${LAMBDA_TASK_ROOT}" \
@@ -155,6 +171,7 @@ RUN apt-get autoremove -y && apt-get clean && rm -rf /var/lib/apt/lists/*
 # delete this file that includes an old golang version (including vulns) and is not used
 RUN rm -rf /opt/startupcmdgen/
 
+COPY mcd-agent-common/ /home/site/wwwroot/mcd-agent-common
 COPY requirements.txt /
 COPY requirements-azure.txt /
 RUN pip install --no-cache-dir -r /requirements.txt -r /requirements-azure.txt

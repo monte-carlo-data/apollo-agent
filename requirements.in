@@ -50,4 +50,4 @@ oscrypto @ git+https://github.com/wbond/oscrypto@master
 impyla==0.20a1
 werkzeug==3.1.0
 
--e ./mcd-agent-common
+file:./mcd-agent-common
