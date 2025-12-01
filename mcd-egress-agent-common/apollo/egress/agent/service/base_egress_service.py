@@ -1,5 +1,6 @@
 import logging
 import uuid
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
 from typing import Dict, Tuple, Optional, Any, Callable
@@ -98,7 +99,7 @@ class EgressAgentError(Exception):
     pass
 
 
-class BaseEgressAgentService:
+class BaseEgressAgentService(ABC):
     """
     Base Egress Agent Service, it opens a connection to the Monte Carlo backend
     (using the token provided through configuration) and waits for events including
@@ -114,6 +115,7 @@ class BaseEgressAgentService:
 
     def __init__(
         self,
+        service_name: str,
         config_manager: ConfigurationManager,
         logs_service: LogsService,
         storage_service: StorageService,
@@ -123,6 +125,7 @@ class BaseEgressAgentService:
         ack_sender: Optional[AckSender] = None,
         logs_sender: Optional[TimerService] = None,
     ):
+        self._service_name = service_name
         self._config_manager = config_manager
         self._ops_runner = ops_runner or OperationsRunner(
             handler=self._execute_scheduled_operation,
@@ -157,9 +160,9 @@ class BaseEgressAgentService:
         )
         self._operations_mapping = [
             OperationMapping(
-                path="/api/v1/agent/execute/storage",
+                path="/api/v1/agent/execute/",
                 matching_type=OperationMatchingType.STARTS_WITH,
-                method=self._execute_storage_operation,
+                method=self._execute_agent_operation,
                 schedule=True,
             ),
             OperationMapping(
@@ -201,7 +204,9 @@ class BaseEgressAgentService:
         self._ack_sender.start(handler=self._send_ack)
         self._logs_sender.start(handler=self._push_logs)
 
-        logger.info(f"SNA Service Started: v{VERSION} (build #{BUILD_NUMBER})")
+        logger.info(
+            f"{self._service_name} Service Started: v{VERSION} (build #{BUILD_NUMBER})"
+        )
 
     def stop(self):
         self._ops_runner.stop()
@@ -284,9 +289,15 @@ class BaseEgressAgentService:
                 raise ValueError(f"Invalid matching type: {op.matching_type}")
         return None, False
 
-    def _execute_storage_operation(self, operation_id: str, event: Dict[str, Any]):
-        result = self._storage.execute_operation(decode_dictionary(event))
+    def _execute_agent_operation(self, operation_id: str, event: Dict[str, Any]):
+        result = self._internal_execute_agent_operation(decode_dictionary(event))
         self._schedule_push_results(operation_id, result)
+
+    @abstractmethod
+    def _internal_execute_agent_operation(
+        self, event: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        raise NotImplementedError
 
     def _execute_health(self, operation_id: str, event: Dict[str, Any]):
         try:
