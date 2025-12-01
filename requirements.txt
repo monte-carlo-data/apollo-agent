@@ -169,8 +169,6 @@ markupsafe==2.1.5
     #   werkzeug
 marshmallow==3.21.3
     # via dataclasses-json
-file:./mcd-agent-common
-    # via -r requirements.in
 more-itertools==10.7.0
     # via simple-salesforce
 msal==1.31.0

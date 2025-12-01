@@ -26,7 +26,7 @@ RUN apt-get install -y --no-install-recommends libcrypt1
 RUN apt-get install -y openssh-client
 
 RUN python -m venv $VENV_DIR
-RUN . $VENV_DIR/bin/activate && pip install --no-cache-dir -r requirements.txt
+RUN . $VENV_DIR/bin/activate && pip install --no-cache-dir -r requirements.txt && pip install --no-cache-dir ./mcd-agent-common
 # VULN-423
 RUN . $VENV_DIR/bin/activate && pip install -U pip setuptools
 
@@ -113,6 +113,7 @@ COPY requirements-lambda.txt ./
 RUN pip install --no-cache-dir --target "${LAMBDA_TASK_ROOT}" \
     -r requirements.txt \
     -r requirements-lambda.txt
+RUN pip install --no-cache-dir ./mcd-agent-common
 
 FROM public.ecr.aws/lambda/python:3.12 AS lambda
 
@@ -175,6 +176,7 @@ COPY mcd-agent-common/ /home/site/wwwroot/mcd-agent-common
 COPY requirements.txt /
 COPY requirements-azure.txt /
 RUN pip install --no-cache-dir -r /requirements.txt -r /requirements-azure.txt
+RUN pip install --no-cache-dir ./mcd-agent-common
 
 COPY apollo /home/site/wwwroot/apollo
 
