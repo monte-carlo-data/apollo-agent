@@ -1,8 +1,11 @@
+import logging
 from typing import Dict
 from apollo.credentials.base import BaseCredentialsService
 from apollo.credentials.env_var import EnvVarCredentialsService
 from apollo.credentials.asm import AwsSecretsManagerCredentialsService
 from apollo.credentials.gsm import GoogleSecretManagerCredentialsService
+
+logger = logging.getLogger(__name__)
 
 SELF_HOSTED_CREDENTIALS_TYPE = "self_hosted_credentials_type"
 SELF_HOSTED_CREDENTIALS_ENV_VAR = "env_var"
