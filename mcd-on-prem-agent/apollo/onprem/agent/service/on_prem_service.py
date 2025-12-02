@@ -21,6 +21,7 @@ class OnPremService(BaseEgressAgentService):
         logging_utils: LoggingUtils,
     ):
         super().__init__(
+            platform="OnPrem",
             service_name="On Prem",
             config_manager=config_manager,
             logs_service=LogsService(),

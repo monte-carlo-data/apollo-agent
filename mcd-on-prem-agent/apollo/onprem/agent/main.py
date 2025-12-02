@@ -15,6 +15,7 @@ from apollo.common.integrations.storage.base_storage_client import BaseStorageCl
 from apollo.egress.agent.config.config_manager import ConfigurationManager
 from apollo.egress.agent.config.local_config import LocalConfig
 from apollo.egress.agent.utils.utils import enable_tcp_keep_alive, init_logging, LOCAL
+from apollo.integrations.gcs.gcs_reader_writer import GcsReaderWriter
 from apollo.integrations.s3.s3_reader_writer import S3ReaderWriter
 
 init_logging()
@@ -88,7 +89,7 @@ app = Flask(__name__)
 logging_utils = LoggingUtils()
 service = OnPremService(
     config_manager=ConfigurationManager(persistence=LocalConfig()),
-    storage_client=EmptyStorageClient(),
+    storage_client=GcsReaderWriter(),
     logging_utils=logging_utils,
 )
 

@@ -92,9 +92,9 @@ def enable_tcp_keep_alive():
     logger.info("TCP Keep-alive enabled")
 
 
-def health_information(trace_id: Optional[str] = None) -> Dict[str, Any]:
+def health_information(platform: str, trace_id: Optional[str] = None) -> Dict[str, Any]:
     health_info = {
-        "platform": "SNA",
+        "platform": platform,
         "version": VERSION,
         "build": BUILD_NUMBER,
         "env": _env_dictionary(),

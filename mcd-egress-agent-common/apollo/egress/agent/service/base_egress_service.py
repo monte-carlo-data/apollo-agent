@@ -115,6 +115,7 @@ class BaseEgressAgentService(ABC):
 
     def __init__(
         self,
+        platform: str,
         service_name: str,
         config_manager: ConfigurationManager,
         logs_service: LogsService,
@@ -125,6 +126,7 @@ class BaseEgressAgentService(ABC):
         ack_sender: Optional[AckSender] = None,
         logs_sender: Optional[TimerService] = None,
     ):
+        self._platform = platform
         self._service_name = service_name
         self._config_manager = config_manager
         self._ops_runner = ops_runner or OperationsRunner(
@@ -216,7 +218,7 @@ class BaseEgressAgentService(ABC):
         self._logs_sender.stop()
 
     def health_information(self, trace_id: Optional[str] = None) -> Dict[str, Any]:
-        health_info = utils.health_information(trace_id)
+        health_info = utils.health_information(self._platform, trace_id)
         health_info[_ATTR_NAME_PARAMETERS] = self._config_manager.get_all_values()
         # update env to include the same env var other agent platforms use to report if they are remote upgradable
         health_info[_ATTR_NAME_ENV][_ENV_NAME_IS_REMOTE_UPGRADABLE] = (
