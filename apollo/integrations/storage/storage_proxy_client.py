@@ -17,6 +17,7 @@ from apollo.agent.constants import (
     STORAGE_TYPE_AZURE,
     STORAGE_TYPE_GCS,
     STORAGE_TYPE_S3,
+    STORAGE_TYPE_MINIO,
 )
 from apollo.agent.env_vars import (
     STORAGE_TYPE_ENV_VAR,
@@ -31,6 +32,7 @@ from apollo.integrations.azure_blob.azure_blob_reader_writer import (
 )
 from apollo.integrations.base_proxy_client import BaseProxyClient
 from apollo.integrations.gcs.gcs_reader_writer import GcsReaderWriter
+from apollo.integrations.minio.minio_reader_writer import MinIOReaderWriter
 from apollo.integrations.s3.s3_reader_writer import S3ReaderWriter
 from apollo.integrations.storage.base_storage_client import BaseStorageClient
 
@@ -54,19 +56,21 @@ _STORAGE_CLIENTS = {
     STORAGE_TYPE_AZURE: AzureBlobReaderWriter,
     STORAGE_TYPE_GCS: GcsReaderWriter,
     STORAGE_TYPE_S3: S3ReaderWriter,
+    STORAGE_TYPE_MINIO: MinIOReaderWriter,
 }
 
 
 class StorageProxyClient(BaseProxyClient):
     """
-    Proxy client for storage operations, it forwards calls to a `BaseStorageClient`, for example GCS or S3.
+    Proxy client for storage operations, it forwards calls to a `BaseStorageClient`, for example GCS, S3, or MinIO.
     The storage client to use is automatically derived from the platform:
     - AWS -> S3
     - GCP -> GCS
-    - Generic -> S3/GCS as configured by MCD_STORAGE env var
+    - Generic -> S3/GCS/MinIO as configured by MCD_STORAGE env var
     Credentials to use by the storage client are derived from the environment, in the case of S3 from env vars as
     supported by boto3, for GCS from ADC (Application Default Credentials) that are automatically set when
-    running in CloudRun and can be set with `gcloud` CLI or API in other cases.
+    running in CloudRun and can be set with `gcloud` CLI or API in other cases. For MinIO, credentials are
+    provided via environment variables.
     """
 
     def __init__(self, platform: str, **kwargs):  # type: ignore
