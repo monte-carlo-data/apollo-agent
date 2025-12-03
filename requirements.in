@@ -11,6 +11,7 @@ duckdb==1.1.0
 flask==2.3.3
 flask-compress==1.14
 google-api-python-client==2.176.0  # Upgraded in VULN-620
+google-cloud-secret-manager==2.25.0
 google-cloud-storage==2.10.0
 gunicorn==23.0.0
 hdbcli==2.18.27
