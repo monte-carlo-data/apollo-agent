@@ -4,7 +4,6 @@ from typing import Optional
 
 import boto3
 from botocore.config import Config
-from botocore.client import BaseClient
 
 from apollo.agent.env_vars import (
     STORAGE_BUCKET_NAME_ENV_VAR,
@@ -95,7 +94,7 @@ class MinIOReaderWriter(S3BaseReaderWriter):
             aws_secret_access_key=self._secret_key,
         )
 
-    def _get_s3_client_with_config(self, config: Config) -> BaseClient:
+    def _get_s3_client_with_config(self, config: Config):
         """
         Returns a client for MinIO with the provided configuration, used to create clients
         with a different connect_timeout and max_attempts when testing connectivity to
