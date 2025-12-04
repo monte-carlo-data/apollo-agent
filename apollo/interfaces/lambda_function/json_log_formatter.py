@@ -4,6 +4,8 @@ from datetime import datetime
 from logging import Formatter, LogRecord, Logger
 from typing import Any, Optional, Dict
 
+from apollo.agent.redact import AgentRedactUtilities
+
 
 class JsonLogFormatter(Formatter):
     """
@@ -31,10 +33,12 @@ class JsonLogFormatter(Formatter):
                     "message": str(record.exc_info[1]),
                     "stack": self.formatException(record.exc_info),
                 }
-            result = json.dumps(message)
+            result = json.dumps(AgentRedactUtilities.standard_redact(message))
         except Exception as e:
             result = json.dumps(
-                {"level": "error", "msg": msg, "invalid_log_error": str(e)}
+                AgentRedactUtilities.standard_redact(
+                    {"level": "error", "msg": msg, "invalid_log_error": str(e)}
+                )
             )
 
         # add newline to force log flush
