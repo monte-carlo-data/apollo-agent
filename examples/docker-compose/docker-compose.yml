@@ -24,7 +24,7 @@ services:
 
   apollo-agent:
     build:
-      context: ..
+      context: ../..
       dockerfile: Dockerfile
       target: generic
       platforms:
