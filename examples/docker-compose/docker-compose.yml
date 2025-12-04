@@ -1,0 +1,68 @@
+version: '3.8'
+
+services:
+  minio:
+    image: minio/minio:latest
+    container_name: apollo-agent-minio
+    ports:
+      - "9000:9000"  # MinIO API
+      - "9001:9001"  # MinIO Console
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+      start_period: 10s
+    networks:
+      - apollo-network
+
+  apollo-agent:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      target: generic
+      platforms:
+        - linux/amd64
+    container_name: apollo-agent
+    ports:
+      - "8080:8080"
+    environment:
+      # Port for gunicorn
+      PORT: 8080
+      
+      # Platform configuration
+      MCD_AGENT_CLOUD_PLATFORM: Generic
+      
+      # Storage configuration - MinIO
+      MCD_STORAGE: MINIO
+      MCD_STORAGE_BUCKET_NAME: apollo-bucket
+      MCD_STORAGE_PREFIX: mcd
+      
+      # MinIO connection settings
+      MCD_MINIO_ENDPOINT_URL: http://minio:9000
+      MCD_MINIO_ACCESS_KEY: minioadmin
+      MCD_MINIO_SECRET_KEY: minioadmin
+      
+      # Optional: Debug settings
+      # MCD_DEBUG: "true"
+      # MCD_DEBUG_LOG: "true"
+    depends_on:
+      minio:
+        condition: service_healthy
+    networks:
+      - apollo-network
+
+volumes:
+  minio_data:
+    driver: local
+
+networks:
+  apollo-network:
+    driver: bridge
+
