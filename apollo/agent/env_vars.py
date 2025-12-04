@@ -41,10 +41,10 @@ STORAGE_BUCKET_NAME_ENV_VAR = "MCD_STORAGE_BUCKET_NAME"
 # Environment variable used to configure the storage account name for Azure
 STORAGE_ACCOUNT_NAME_ENV_VAR = "MCD_STORAGE_ACCOUNT_NAME"
 
-# Environment variables used to configure MinIO storage
-MINIO_ENDPOINT_URL_ENV_VAR = "MCD_MINIO_ENDPOINT_URL"
-MINIO_ACCESS_KEY_ENV_VAR = "MCD_MINIO_ACCESS_KEY"
-MINIO_SECRET_KEY_ENV_VAR = "MCD_MINIO_SECRET_KEY"
+# Environment variables used to configure S3-compatible storage (MinIO, Ceph, etc.)
+STORAGE_ENDPOINT_URL_ENV_VAR = "MCD_STORAGE_ENDPOINT_URL"
+STORAGE_ACCESS_KEY_ENV_VAR = "MCD_STORAGE_ACCESS_KEY"
+STORAGE_SECRET_KEY_ENV_VAR = "MCD_STORAGE_SECRET_KEY"
 
 # Environment variable used to initialize Flask application with debug=True and to set log level to debug
 # Used only by the generic interface when `interfaces/generic/main.py` is executed.

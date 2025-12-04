@@ -11,13 +11,15 @@ from apollo.agent.env_vars import (
     STORAGE_BUCKET_NAME_ENV_VAR,
     STORAGE_PREFIX_ENV_VAR,
     STORAGE_TYPE_ENV_VAR,
-    MINIO_ENDPOINT_URL_ENV_VAR,
-    MINIO_ACCESS_KEY_ENV_VAR,
-    MINIO_SECRET_KEY_ENV_VAR,
+    STORAGE_ENDPOINT_URL_ENV_VAR,
+    STORAGE_ACCESS_KEY_ENV_VAR,
+    STORAGE_SECRET_KEY_ENV_VAR,
 )
 from apollo.agent.logging_utils import LoggingUtils
 from apollo.agent.models import AgentConfigurationError
-from apollo.integrations.minio.minio_reader_writer import MinIOReaderWriter
+from apollo.integrations.s3_compatible.s3_compatible_reader_writer import (
+    S3CompatibleReaderWriter,
+)
 
 _TEST_BUCKET_NAME = "test_bucket"
 _TEST_ENDPOINT_URL = "http://localhost:9000"
@@ -25,7 +27,7 @@ _TEST_ACCESS_KEY = "minioadmin"
 _TEST_SECRET_KEY = "minioadmin"
 
 
-class StorageMinIOTests(TestCase):
+class StorageS3CompatibleTests(TestCase):
     def setUp(self) -> None:
         self._agent = Agent(LoggingUtils())
 
@@ -34,13 +36,13 @@ class StorageMinIOTests(TestCase):
         {
             STORAGE_BUCKET_NAME_ENV_VAR: _TEST_BUCKET_NAME,
             STORAGE_PREFIX_ENV_VAR: "",
-            STORAGE_TYPE_ENV_VAR: "MINIO",
-            MINIO_ENDPOINT_URL_ENV_VAR: _TEST_ENDPOINT_URL,
-            MINIO_ACCESS_KEY_ENV_VAR: _TEST_ACCESS_KEY,
-            MINIO_SECRET_KEY_ENV_VAR: _TEST_SECRET_KEY,
+            STORAGE_TYPE_ENV_VAR: "S3_COMPATIBLE",
+            STORAGE_ENDPOINT_URL_ENV_VAR: _TEST_ENDPOINT_URL,
+            STORAGE_ACCESS_KEY_ENV_VAR: _TEST_ACCESS_KEY,
+            STORAGE_SECRET_KEY_ENV_VAR: _TEST_SECRET_KEY,
         },
     )
-    @patch.object(MinIOReaderWriter, "s3_client")
+    @patch.object(S3CompatibleReaderWriter, "s3_client")
     def test_list_objects(self, mock_s3_client):
         result = self._agent.execute_operation(
             "storage",
@@ -61,13 +63,13 @@ class StorageMinIOTests(TestCase):
         {
             STORAGE_BUCKET_NAME_ENV_VAR: _TEST_BUCKET_NAME,
             STORAGE_PREFIX_ENV_VAR: "",
-            STORAGE_TYPE_ENV_VAR: "MINIO",
-            MINIO_ENDPOINT_URL_ENV_VAR: _TEST_ENDPOINT_URL,
-            MINIO_ACCESS_KEY_ENV_VAR: _TEST_ACCESS_KEY,
-            MINIO_SECRET_KEY_ENV_VAR: _TEST_SECRET_KEY,
+            STORAGE_TYPE_ENV_VAR: "S3_COMPATIBLE",
+            STORAGE_ENDPOINT_URL_ENV_VAR: _TEST_ENDPOINT_URL,
+            STORAGE_ACCESS_KEY_ENV_VAR: _TEST_ACCESS_KEY,
+            STORAGE_SECRET_KEY_ENV_VAR: _TEST_SECRET_KEY,
         },
     )
-    @patch.object(MinIOReaderWriter, "s3_client")
+    @patch.object(S3CompatibleReaderWriter, "s3_client")
     def test_write(self, mock_s3_client):
         file_key = "test_file"
         result = self._agent.execute_operation(
@@ -98,15 +100,15 @@ class StorageMinIOTests(TestCase):
         {
             STORAGE_BUCKET_NAME_ENV_VAR: _TEST_BUCKET_NAME,
             STORAGE_PREFIX_ENV_VAR: "",
-            STORAGE_TYPE_ENV_VAR: "MINIO",
-            MINIO_ENDPOINT_URL_ENV_VAR: _TEST_ENDPOINT_URL,
-            MINIO_ACCESS_KEY_ENV_VAR: _TEST_ACCESS_KEY,
-            MINIO_SECRET_KEY_ENV_VAR: _TEST_SECRET_KEY,
+            STORAGE_TYPE_ENV_VAR: "S3_COMPATIBLE",
+            STORAGE_ENDPOINT_URL_ENV_VAR: _TEST_ENDPOINT_URL,
+            STORAGE_ACCESS_KEY_ENV_VAR: _TEST_ACCESS_KEY,
+            STORAGE_SECRET_KEY_ENV_VAR: _TEST_SECRET_KEY,
         },
     )
     @patch("boto3.client")
     def test_client_configured_with_endpoint_and_credentials(self, mock_boto_client):
-        rw = MinIOReaderWriter()
+        rw = S3CompatibleReaderWriter()
         _ = rw.s3_client
         mock_boto_client.assert_called_with(
             "s3",
@@ -120,15 +122,15 @@ class StorageMinIOTests(TestCase):
         {
             STORAGE_BUCKET_NAME_ENV_VAR: _TEST_BUCKET_NAME,
             STORAGE_PREFIX_ENV_VAR: "",
-            STORAGE_TYPE_ENV_VAR: "MINIO",
-            MINIO_ENDPOINT_URL_ENV_VAR: _TEST_ENDPOINT_URL,
-            MINIO_ACCESS_KEY_ENV_VAR: _TEST_ACCESS_KEY,
-            MINIO_SECRET_KEY_ENV_VAR: _TEST_SECRET_KEY,
+            STORAGE_TYPE_ENV_VAR: "S3_COMPATIBLE",
+            STORAGE_ENDPOINT_URL_ENV_VAR: _TEST_ENDPOINT_URL,
+            STORAGE_ACCESS_KEY_ENV_VAR: _TEST_ACCESS_KEY,
+            STORAGE_SECRET_KEY_ENV_VAR: _TEST_SECRET_KEY,
         },
     )
     @patch("boto3.client")
     def test_regional_client(self, mock_boto_client):
-        rw = MinIOReaderWriter()
+        rw = S3CompatibleReaderWriter()
         _ = rw.s3_regional_client
         mock_boto_client.assert_called_with(
             "s3",
@@ -146,17 +148,17 @@ class StorageMinIOTests(TestCase):
         {
             STORAGE_BUCKET_NAME_ENV_VAR: _TEST_BUCKET_NAME,
             STORAGE_PREFIX_ENV_VAR: "",
-            STORAGE_TYPE_ENV_VAR: "MINIO",
-            MINIO_ENDPOINT_URL_ENV_VAR: _TEST_ENDPOINT_URL,
-            MINIO_ACCESS_KEY_ENV_VAR: _TEST_ACCESS_KEY,
-            MINIO_SECRET_KEY_ENV_VAR: _TEST_SECRET_KEY,
+            STORAGE_TYPE_ENV_VAR: "S3_COMPATIBLE",
+            STORAGE_ENDPOINT_URL_ENV_VAR: _TEST_ENDPOINT_URL,
+            STORAGE_ACCESS_KEY_ENV_VAR: _TEST_ACCESS_KEY,
+            STORAGE_SECRET_KEY_ENV_VAR: _TEST_SECRET_KEY,
         },
     )
     @patch("boto3.resource")
     def test_resource_configured_with_endpoint_and_credentials(
         self, mock_boto_resource
     ):
-        rw = MinIOReaderWriter()
+        rw = S3CompatibleReaderWriter()
         _ = rw.s3_resource
         mock_boto_resource.assert_called_with(
             "s3",
@@ -170,15 +172,15 @@ class StorageMinIOTests(TestCase):
             os.environ,
             {
                 STORAGE_PREFIX_ENV_VAR: "",
-                STORAGE_TYPE_ENV_VAR: "MINIO",
-                MINIO_ENDPOINT_URL_ENV_VAR: _TEST_ENDPOINT_URL,
-                MINIO_ACCESS_KEY_ENV_VAR: _TEST_ACCESS_KEY,
-                MINIO_SECRET_KEY_ENV_VAR: _TEST_SECRET_KEY,
+                STORAGE_TYPE_ENV_VAR: "S3_COMPATIBLE",
+                STORAGE_ENDPOINT_URL_ENV_VAR: _TEST_ENDPOINT_URL,
+                STORAGE_ACCESS_KEY_ENV_VAR: _TEST_ACCESS_KEY,
+                STORAGE_SECRET_KEY_ENV_VAR: _TEST_SECRET_KEY,
             },
             clear=False,
         ):
             with self.assertRaises(AgentConfigurationError) as context:
-                MinIOReaderWriter()
+                S3CompatibleReaderWriter()
             self.assertIn(STORAGE_BUCKET_NAME_ENV_VAR, str(context.exception))
 
     def test_missing_endpoint_url(self):
@@ -187,15 +189,15 @@ class StorageMinIOTests(TestCase):
             {
                 STORAGE_BUCKET_NAME_ENV_VAR: _TEST_BUCKET_NAME,
                 STORAGE_PREFIX_ENV_VAR: "",
-                STORAGE_TYPE_ENV_VAR: "MINIO",
-                MINIO_ACCESS_KEY_ENV_VAR: _TEST_ACCESS_KEY,
-                MINIO_SECRET_KEY_ENV_VAR: _TEST_SECRET_KEY,
+                STORAGE_TYPE_ENV_VAR: "S3_COMPATIBLE",
+                STORAGE_ACCESS_KEY_ENV_VAR: _TEST_ACCESS_KEY,
+                STORAGE_SECRET_KEY_ENV_VAR: _TEST_SECRET_KEY,
             },
             clear=False,
         ):
             with self.assertRaises(AgentConfigurationError) as context:
-                MinIOReaderWriter()
-            self.assertIn(MINIO_ENDPOINT_URL_ENV_VAR, str(context.exception))
+                S3CompatibleReaderWriter()
+            self.assertIn(STORAGE_ENDPOINT_URL_ENV_VAR, str(context.exception))
 
     def test_missing_access_key(self):
         with patch.dict(
@@ -203,15 +205,15 @@ class StorageMinIOTests(TestCase):
             {
                 STORAGE_BUCKET_NAME_ENV_VAR: _TEST_BUCKET_NAME,
                 STORAGE_PREFIX_ENV_VAR: "",
-                STORAGE_TYPE_ENV_VAR: "MINIO",
-                MINIO_ENDPOINT_URL_ENV_VAR: _TEST_ENDPOINT_URL,
-                MINIO_SECRET_KEY_ENV_VAR: _TEST_SECRET_KEY,
+                STORAGE_TYPE_ENV_VAR: "S3_COMPATIBLE",
+                STORAGE_ENDPOINT_URL_ENV_VAR: _TEST_ENDPOINT_URL,
+                STORAGE_SECRET_KEY_ENV_VAR: _TEST_SECRET_KEY,
             },
             clear=False,
         ):
             with self.assertRaises(AgentConfigurationError) as context:
-                MinIOReaderWriter()
-            self.assertIn(MINIO_ACCESS_KEY_ENV_VAR, str(context.exception))
+                S3CompatibleReaderWriter()
+            self.assertIn(STORAGE_ACCESS_KEY_ENV_VAR, str(context.exception))
 
     def test_missing_secret_key(self):
         with patch.dict(
@@ -219,12 +221,12 @@ class StorageMinIOTests(TestCase):
             {
                 STORAGE_BUCKET_NAME_ENV_VAR: _TEST_BUCKET_NAME,
                 STORAGE_PREFIX_ENV_VAR: "",
-                STORAGE_TYPE_ENV_VAR: "MINIO",
-                MINIO_ENDPOINT_URL_ENV_VAR: _TEST_ENDPOINT_URL,
-                MINIO_ACCESS_KEY_ENV_VAR: _TEST_ACCESS_KEY,
+                STORAGE_TYPE_ENV_VAR: "S3_COMPATIBLE",
+                STORAGE_ENDPOINT_URL_ENV_VAR: _TEST_ENDPOINT_URL,
+                STORAGE_ACCESS_KEY_ENV_VAR: _TEST_ACCESS_KEY,
             },
             clear=False,
         ):
             with self.assertRaises(AgentConfigurationError) as context:
-                MinIOReaderWriter()
-            self.assertIn(MINIO_SECRET_KEY_ENV_VAR, str(context.exception))
+                S3CompatibleReaderWriter()
+            self.assertIn(STORAGE_SECRET_KEY_ENV_VAR, str(context.exception))
