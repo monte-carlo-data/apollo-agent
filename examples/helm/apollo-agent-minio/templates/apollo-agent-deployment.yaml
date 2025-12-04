@@ -35,12 +35,12 @@ spec:
           value: {{ .Values.apolloAgent.env.storageBucketName | quote }}
         - name: MCD_STORAGE_PREFIX
           value: {{ .Values.apolloAgent.env.storagePrefix | quote }}
-        - name: MCD_MINIO_ENDPOINT_URL
+        - name: MCD_STORAGE_ENDPOINT_URL
           value: "http://{{ include "apollo-agent-minio.fullname" . }}-minio:{{ .Values.minio.service.apiPort }}"
-        - name: MCD_MINIO_ACCESS_KEY
-          value: {{ .Values.apolloAgent.env.minioAccessKey | quote }}
-        - name: MCD_MINIO_SECRET_KEY
-          value: {{ .Values.apolloAgent.env.minioSecretKey | quote }}
+        - name: MCD_STORAGE_ACCESS_KEY
+          value: {{ .Values.apolloAgent.env.storageAccessKey | quote }}
+        - name: MCD_STORAGE_SECRET_KEY
+          value: {{ .Values.apolloAgent.env.storageSecretKey | quote }}
         {{- if .Values.apolloAgent.env.debug }}
         - name: MCD_DEBUG
           value: {{ .Values.apolloAgent.env.debug | quote }}

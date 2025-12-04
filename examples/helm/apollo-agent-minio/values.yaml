@@ -46,12 +46,12 @@ apolloAgent:
   env:
     port: 8080
     platform: Generic
-    storage: MINIO
+    storage: S3_COMPATIBLE
     storageBucketName: apollo-bucket
     storagePrefix: mcd
-    minioEndpointUrl: ""  # Will be set automatically from service name
-    minioAccessKey: minioadmin
-    minioSecretKey: minioadmin
+    storageEndpointUrl: ""  # Will be set automatically from service name
+    storageAccessKey: minioadmin
+    storageSecretKey: minioadmin
     # Optional debug settings
     # debug: "false"
     # debugLog: "false"
