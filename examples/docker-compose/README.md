@@ -58,12 +58,12 @@ This docker-compose file sets up Apollo Agent with MinIO as the storage backend.
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `MCD_STORAGE` | Storage type | `MINIO` |
-| `MCD_STORAGE_BUCKET_NAME` | MinIO bucket name | `apollo-bucket` |
+| `MCD_STORAGE` | Storage type | `S3_COMPATIBLE` |
+| `MCD_STORAGE_BUCKET_NAME` | S3-compatible storage bucket name | `apollo-bucket` |
 | `MCD_STORAGE_PREFIX` | Storage prefix for files | `mcd` |
-| `MCD_MINIO_ENDPOINT_URL` | MinIO server endpoint | `http://minio:9000` |
-| `MCD_MINIO_ACCESS_KEY` | MinIO access key | `minioadmin` |
-| `MCD_MINIO_SECRET_KEY` | MinIO secret key | `minioadmin` |
+| `MCD_STORAGE_ENDPOINT_URL` | S3-compatible storage server endpoint | `http://minio:9000` |
+| `MCD_STORAGE_ACCESS_KEY` | S3-compatible storage access key | `minioadmin` |
+| `MCD_STORAGE_SECRET_KEY` | S3-compatible storage secret key | `minioadmin` |
 | `PORT` | Gunicorn port | `8080` |
 | `MCD_AGENT_CLOUD_PLATFORM` | Platform type | `Generic` |
 
@@ -81,8 +81,8 @@ minio:
 
 apollo-agent:
   environment:
-    MCD_MINIO_ACCESS_KEY: your-access-key
-    MCD_MINIO_SECRET_KEY: your-secret-key
+    MCD_STORAGE_ACCESS_KEY: your-access-key
+    MCD_STORAGE_SECRET_KEY: your-secret-key
 ```
 
 ### Change Bucket Name
@@ -91,12 +91,12 @@ Update `MCD_STORAGE_BUCKET_NAME` in the apollo-agent service and create the buck
 
 ### Use External MinIO
 
-If you want to use an external MinIO instance, update `MCD_MINIO_ENDPOINT_URL`:
+If you want to use an external S3-compatible storage instance, update `MCD_STORAGE_ENDPOINT_URL`:
 
 ```yaml
 apollo-agent:
   environment:
-    MCD_MINIO_ENDPOINT_URL: https://your-minio-server.com
+    MCD_STORAGE_ENDPOINT_URL: https://your-s3-compatible-server.com
 ```
 
 ## Stopping Services
