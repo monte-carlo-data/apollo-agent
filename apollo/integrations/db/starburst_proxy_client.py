@@ -38,4 +38,3 @@ class StarburstProxyClient(BaseDbProxyClient):
     @property
     def wrapped_client(self):
         return self._connection
-
