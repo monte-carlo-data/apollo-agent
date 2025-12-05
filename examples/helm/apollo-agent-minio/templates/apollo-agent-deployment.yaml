@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "apollo-agent-minio.fullname" . }}-apollo-agent
+  labels:
+    {{- include "apollo-agent-minio.apollo-agent.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.apolloAgent.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "apollo-agent-minio.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: apollo-agent
+  template:
+    metadata:
+      labels:
+        {{- include "apollo-agent-minio.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: apollo-agent
+    spec:
+      containers:
+      - name: apollo-agent
+        image: "{{ .Values.apolloAgent.image.repository }}:{{ .Values.apolloAgent.image.tag }}"
+        imagePullPolicy: {{ .Values.apolloAgent.image.pullPolicy }}
+        ports:
+        - name: http
+          containerPort: {{ .Values.apolloAgent.env.port }}
+          protocol: TCP
+        env:
+        - name: PORT
+          value: "{{ .Values.apolloAgent.env.port }}"
+        - name: MCD_AGENT_CLOUD_PLATFORM
+          value: {{ .Values.apolloAgent.env.platform | quote }}
+        - name: MCD_STORAGE
+          value: {{ .Values.apolloAgent.env.storage | quote }}
+        - name: MCD_STORAGE_BUCKET_NAME
+          value: {{ .Values.apolloAgent.env.storageBucketName | quote }}
+        - name: MCD_STORAGE_PREFIX
+          value: {{ .Values.apolloAgent.env.storagePrefix | quote }}
+        - name: MCD_STORAGE_ENDPOINT_URL
+          value: "http://{{ include "apollo-agent-minio.fullname" . }}-minio:{{ .Values.minio.service.apiPort }}"
+        - name: MCD_STORAGE_ACCESS_KEY
+          value: {{ .Values.apolloAgent.env.storageAccessKey | quote }}
+        - name: MCD_STORAGE_SECRET_KEY
+          value: {{ .Values.apolloAgent.env.storageSecretKey | quote }}
+        {{- if .Values.apolloAgent.env.debug }}
+        - name: MCD_DEBUG
+          value: {{ .Values.apolloAgent.env.debug | quote }}
+        {{- end }}
+        {{- if .Values.apolloAgent.env.debugLog }}
+        - name: MCD_DEBUG_LOG
+          value: {{ .Values.apolloAgent.env.debugLog | quote }}
+        {{- end }}
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        resources:
+          {{- toYaml .Values.apolloAgent.resources | nindent 10 }}
+
