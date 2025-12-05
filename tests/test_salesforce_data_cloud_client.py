@@ -4,9 +4,14 @@ from unittest import TestCase
 from unittest.mock import Mock
 
 import responses
+from salesforcecdpconnector.exceptions import Error
 
 from apollo.agent.agent import Agent
-from apollo.agent.constants import ATTRIBUTE_NAME_RESULT
+from apollo.agent.constants import (
+    ATTRIBUTE_NAME_RESULT,
+    ATTRIBUTE_NAME_ERROR,
+    ATTRIBUTE_NAME_STACK_TRACE,
+)
 from apollo.agent.logging_utils import LoggingUtils
 
 
@@ -24,6 +29,7 @@ class SalesforceDataCloudProxyClientTests(TestCase):
 
         self.mock_responses = responses.RequestsMock()
         self.mock_responses.start()
+        self.mock_responses.reset()
 
         self.addCleanup(self.mock_responses.stop)
         self.addCleanup(self.mock_responses.reset)
@@ -270,3 +276,31 @@ class SalesforceDataCloudProxyClientTests(TestCase):
         for i, (key, value) in enumerate(self.data_response["metadata"].items()):
             self.assertEqual(result["description"][i][0], key)
             self.assertEqual(result["description"][i][1], value["type"])
+
+    def test_monkey_patch_handles_non_json_error_response(self):
+        self.metadata_endpoint.return_value = (
+            500,
+            {"content-type": "text/html"},
+            "<html><body><h1>500 Internal Server Error</h1></body></html>",
+        )
+
+        operation = {
+            "trace_id": "test-trace-id",
+            "skip_cache": True,  # Force a new client to be created
+            "commands": [{"method": "list_tables"}],
+        }
+
+        response = self.agent.execute_operation(
+            connection_type="salesforce-data-cloud",
+            operation_name="test_monkey_patch",
+            operation_dict=operation,
+            credentials=self.credentials,
+        )
+
+        # Verify the operation returned an error
+        self.assertTrue(response.is_error)
+
+        # Verify it's the patched error message
+        error_message = response.result[ATTRIBUTE_NAME_ERROR]
+        self.assertIn("could not be parsed", error_message)
+        self.assertIn("Failed executing metadata query on server", error_message)

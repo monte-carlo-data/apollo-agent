@@ -3,8 +3,37 @@ from typing import Any
 
 from salesforcecdpconnector.connection import SalesforceCDPConnection
 from salesforcecdpconnector.genie_table import GenieTable, Field
+import salesforcecdpconnector.query_submitter as query_submitter_module
+from salesforcecdpconnector.exceptions import Error
 
 from apollo.integrations.db.base_db_proxy_client import BaseDbProxyClient
+
+# Monkey patch to fix UnboundLocalError in salesforcecdpconnector library
+# Bug: In query_submitter.py, when status_code != 200 and response.json() raises JSONDecodeError,
+# the error_message variable is never assigned but is accessed in the finally block.
+# This patch wraps the original function and catches the UnboundLocalError.
+_original_get_metadata_results = (
+    query_submitter_module.QuerySubmitter._QuerySubmitter__get_metadata_results
+)
+
+
+def _patched_get_metadata_results(instance_url, token, request_params):
+    """
+    Wrapper for QuerySubmitter.__get_metadata_results that catches UnboundLocalError.
+    """
+    try:
+        return _original_get_metadata_results(instance_url, token, request_params)
+    except UnboundLocalError as e:
+        raise Error(
+            "Failed executing metadata query on server: "
+            "The API returned an error response that could not be parsed."
+        ) from e
+
+
+# Apply the monkey patch
+query_submitter_module.QuerySubmitter._QuerySubmitter__get_metadata_results = (
+    _patched_get_metadata_results
+)
 
 
 class SalesforceDataCloudConnection(SalesforceCDPConnection):
