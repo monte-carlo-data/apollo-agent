@@ -18,9 +18,12 @@ azure-common==1.1.28
 azure-core==1.31.0
     # via
     #   azure-identity
+    #   azure-keyvault-secrets
     #   azure-mgmt-core
     #   azure-storage-blob
 azure-identity==1.18.0
+    # via -r requirements.in
+azure-keyvault-secrets==4.10.0
     # via -r requirements.in
 azure-mgmt-core==1.4.0
     # via azure-mgmt-storage
@@ -158,6 +161,7 @@ impyla==0.20a1
     # via -r requirements.in
 isodate==0.6.1
     # via
+    #   azure-keyvault-secrets
     #   azure-mgmt-storage
     #   azure-storage-blob
     #   zeep
@@ -363,6 +367,7 @@ typing-extensions==4.12.2
     # via
     #   azure-core
     #   azure-identity
+    #   azure-keyvault-secrets
     #   azure-storage-blob
     #   grpcio
     #   looker-sdk
