@@ -256,7 +256,7 @@ class RedactionTests(TestCase):
         """Test _redact_string with alphanumeric string longer than 64 chars"""
         # 70 character token - includes a 64 chars token, should be redacted
         token_65 = (
-            "abcdefghijk-lmnopqrstuvwxyz1-234567890ABC-DEFGHIJKLMNOP-QRSTUVWXYZ-123"
+            "abcdefghijk-lmnopqrstuvwxyz1-234567890ABC-DEFGHIJKLMNOP-QRSTUV+WXYZ==="
         )
         result = AgentRedactUtilities._redact_string(token_65)
         self.assertEqual(result, ATTRIBUTE_VALUE_REDACTED)

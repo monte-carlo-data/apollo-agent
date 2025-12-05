@@ -311,6 +311,16 @@ def _get_proxy_client_clickhouse(
     return ClickHouseProxyClient(credentials=credentials, platform=platform)
 
 
+def _get_proxy_client_starburst(
+    credentials: Optional[Dict], platform: str, **kwargs  # type: ignore
+) -> BaseProxyClient:
+    from apollo.integrations.db.starburst_proxy_client import (
+        StarburstProxyClient,
+    )
+
+    return StarburstProxyClient(credentials=credentials, platform=platform)
+
+
 def _get_proxy_client_db2(
     credentials: Optional[Dict], platform: str, **kwargs  # type: ignore
 ) -> BaseProxyClient:
@@ -357,6 +367,8 @@ _CLIENT_FACTORY_MAPPING = {
     "salesforce-crm": _get_proxy_client_salesforce_crm,
     "salesforce-data-cloud": _get_proxy_client_salesforce_data_cloud,
     "clickhouse": _get_proxy_client_clickhouse,
+    "starburst-galaxy": _get_proxy_client_starburst,
+    "starburst-enterprise": _get_proxy_client_starburst,
 }
 
 

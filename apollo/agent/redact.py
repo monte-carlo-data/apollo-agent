@@ -14,7 +14,7 @@ _STANDARD_REDACTED_ATTRIBUTES = [
     "key",
 ]
 _REDACT_VALUE_EXPRESSIONS = [
-    re.compile(r"[a-zA-Z0-9_\-]{32,64}"),
+    re.compile(r"[a-zA-Z0-9_\-+=]{32,64}"),  # trying to match tokens and API keys
     re.compile(r"password", re.IGNORECASE),
     re.compile(r"secret", re.IGNORECASE),
     re.compile(r"token", re.IGNORECASE),
