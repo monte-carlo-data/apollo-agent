@@ -13,6 +13,7 @@ from apollo.agent.env_vars import DEBUG_ENV_VAR, MCD_AGENT_CLOUD_PLATFORM_ENV_VA
 from apollo.agent.logging_utils import LoggingUtils
 from apollo.agent.redact_formatter import RedactFormatterWrapper
 from apollo.agent.settings import VERSION
+from apollo.agent.utils import AgentUtils
 from apollo.credentials.factory import CredentialsFactory
 from apollo.interfaces.agent_response import AgentResponse
 
@@ -205,7 +206,16 @@ def agent_execute(
 def execute_agent_operation(
     connection_type: str, operation_name: str, json_request: Dict
 ) -> AgentResponse:
-    credentials = _extract_credentials_in_request(json_request.get("credentials", {}))
+    try:
+        credentials = _extract_credentials_in_request(
+            json_request.get("credentials", {})
+        )
+    except Exception:  # noqa
+        logger.exception("Failed to read self-hosted credentials")
+        return AgentUtils.agent_response_for_last_exception(
+            prefix="Failed to read self-hosted credentials:", status_code=400
+        )
+
     operation = json_request.get("operation")
 
     return agent.execute_operation(
