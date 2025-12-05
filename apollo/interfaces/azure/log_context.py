@@ -2,6 +2,7 @@ import json
 from threading import local
 from typing import Dict, cast, Any
 
+from apollo.agent.redact import AgentRedactUtilities
 from apollo.interfaces.generic.log_context import BaseLogContext
 
 _context = local()
@@ -24,6 +25,7 @@ class AzureLogContext(BaseLogContext):
     def filter_log_context(context: Dict) -> Dict:
         # open telemetry supports only: str, float, int and bool
         # we're converting list and dictionaries to json and anything else to str.
+        context = AgentRedactUtilities.standard_redact(context)
         return {
             key: (
                 value
