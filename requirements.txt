@@ -183,6 +183,7 @@ lz4==4.3.3
     # via
     #   clickhouse-connect
     #   databricks-sql-connector
+    #   trino
 markupsafe==2.1.5
     # via
     #   jinja2
@@ -212,6 +213,8 @@ openpyxl==3.1.5
     # via databricks-sql-connector
 oracledb==2.5.1
     # via -r requirements.in
+orjson==3.11.4
+    # via trino
 oscrypto @ git+https://github.com/wbond/oscrypto@master
     # via -r requirements.in
 packaging==24.1
@@ -287,11 +290,13 @@ python-dateutil==2.9.0.post0
     #   botocore
     #   pandas
     #   salesforce-cdp-connector
+    #   trino
 pytz==2024.1
     # via
     #   clickhouse-connect
     #   pandas
     #   snowflake-connector-python
+    #   trino
     #   zeep
 requests==2.32.4
     # via
@@ -310,6 +315,7 @@ requests==2.32.4
     #   simple-salesforce
     #   snowflake-connector-python
     #   tableauserverclient
+    #   trino
     #   zeep
 requests-file==2.1.0
     # via zeep
@@ -353,6 +359,8 @@ thrift-sasl==0.4.3
     # via impyla
 tomlkit==0.13.2
     # via snowflake-connector-python
+trino==0.336.0
+    # via -r requirements.in
 typing-extensions==4.12.2
     # via
     #   azure-core
@@ -368,6 +376,8 @@ typing-inspect==0.9.0
     # via dataclasses-json
 tzdata==2024.1
     # via pandas
+tzlocal==5.3.1
+    # via trino
 uritemplate==4.1.1
     # via google-api-python-client
 urllib3==2.5.0
@@ -386,4 +396,6 @@ werkzeug==3.1.0
 zeep==4.3.1
     # via simple-salesforce
 zstandard==0.23.0
-    # via clickhouse-connect
+    # via
+    #   clickhouse-connect
+    #   trino

@@ -26,6 +26,7 @@ msal==1.31.0
 numpy<2.0.0  # prevent "numpy.dtype size changed" errors: https://github.com/numpy/numpy/issues/26710
 oracledb>=2.4.1
 presto-python-client==0.8.3
+trino==0.336.0
 protobuf==5.29.5  # from google-cloud-logging in requirements-cloudrun - Upgraded in VULN-620
 psycopg2-binary==2.9.9
 pyarrow==17.0.0  # CVE-2024-52338
