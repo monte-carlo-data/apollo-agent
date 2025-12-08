@@ -29,7 +29,7 @@ class TestAzureKeyVaultCredentialsService(TestCase):
             self.service.get_credentials({SECRET_NAME: "test-secret"})
 
         self.assertEqual(
-            "One of 'akv_url' or 'akv_name' is required in credentials",
+            "One of 'akv_vault_url' or 'akv_vault_name' is required in credentials",
             str(context.exception),
         )
 

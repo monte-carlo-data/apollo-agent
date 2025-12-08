@@ -4,8 +4,8 @@ from azure.keyvault.secrets import SecretClient
 from apollo.credentials.base import BaseCredentialsService
 import json
 
-VAULT_URL = "akv_url"
-VAULT_NAME = "akv_name"
+VAULT_URL = "akv_vault_url"
+VAULT_NAME = "akv_vault_name"
 SECRET_NAME = "akv_secret"
 
 
@@ -23,7 +23,7 @@ class AzureKeyVaultCredentialsService(BaseCredentialsService):
             vault_name = credentials.get(VAULT_NAME)
             if not vault_name:
                 raise ValueError(
-                    "One of 'akv_url' or 'akv_name' is required in credentials"
+                    f"One of '{VAULT_URL}' or '{VAULT_NAME}' is required in credentials"
                 )
             vault_url = f"https://{vault_name}.vault.azure.net/"
         try:
