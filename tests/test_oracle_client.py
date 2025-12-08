@@ -1,4 +1,5 @@
 import datetime
+import ssl
 from typing import (
     Iterable,
     List,
@@ -6,7 +7,7 @@ from typing import (
     Optional,
 )
 from unittest import TestCase
-from unittest.mock import Mock, call, patch
+from unittest.mock import Mock, call, patch, MagicMock
 
 from oracledb.base_impl import (
     DB_TYPE_VARCHAR,
@@ -21,6 +22,7 @@ from apollo.agent.constants import (
     ATTRIBUTE_NAME_ERROR_TYPE,
 )
 from apollo.agent.logging_utils import LoggingUtils
+from apollo.integrations.db.oracle_proxy_client import OracleProxyClient
 
 _ORACLE_DB_CREDENTIALS = {
     "dsn": "www.example.com:1521/ORCL",
@@ -38,7 +40,7 @@ class OracleDbClientTests(TestCase):
         self.maxDiff = None
 
     @patch("oracledb.connect")
-    def test_query(self, mock_connect):
+    def test_query(self, mock_connect: Mock) -> None:
         query = "SELECT name, value FROM table OFFSET :1 ROWS FETCH NEXT :2 ROWS ONLY"  # noqa
         args = [0, 2]
         expected_data = [
@@ -180,3 +182,145 @@ class OracleDbClientTests(TestCase):
             return value.name
         else:
             return value
+
+    @patch("oracledb.connect")
+    @patch("apollo.integrations.db.oracle_proxy_client.create_oracle_ssl_context")
+    def test_connect_with_ssl_ca_cert(
+        self, mock_create_ssl_context: Mock, mock_connect: Mock
+    ) -> None:
+        """Test Oracle connection with SSL using CA certificate only."""
+        mock_ssl_context = MagicMock(spec=ssl.SSLContext)
+        mock_create_ssl_context.return_value = mock_ssl_context
+        mock_connect.return_value = self._mock_connection
+
+        ca_cert_data = "-----BEGIN CERTIFICATE-----\nCA_CERT_DATA\n-----END CERTIFICATE-----"
+        credentials = {
+            "connect_args": _ORACLE_DB_CREDENTIALS,
+            "ssl_options": {
+                "ca_data": ca_cert_data,
+                "disabled": False,
+            },
+        }
+
+        client = OracleProxyClient(credentials)
+
+        # Verify SSL context was created with correct options
+        mock_create_ssl_context.assert_called_once()
+        ssl_options_arg = mock_create_ssl_context.call_args[0][0]
+        self.assertEqual(ssl_options_arg.ca_data, ca_cert_data)
+        self.assertFalse(ssl_options_arg.disabled)
+
+        # Verify oracledb.connect was called with ssl_context
+        mock_connect.assert_called_once()
+        call_kwargs = mock_connect.call_args[1]
+        self.assertIn("ssl_context", call_kwargs)
+        self.assertEqual(call_kwargs["ssl_context"], mock_ssl_context)
+        self.assertEqual(call_kwargs["expire_time"], 1)
+        self.assertEqual(call_kwargs["dsn"], _ORACLE_DB_CREDENTIALS["dsn"])
+        self.assertEqual(call_kwargs["user"], _ORACLE_DB_CREDENTIALS["user"])
+        self.assertEqual(call_kwargs["password"], _ORACLE_DB_CREDENTIALS["password"])
+
+        self.assertEqual(client.wrapped_client, self._mock_connection)
+
+    @patch("oracledb.connect")
+    @patch("apollo.integrations.db.oracle_proxy_client.create_oracle_ssl_context")
+    def test_connect_with_ssl_mtls(
+        self, mock_create_ssl_context: Mock, mock_connect: Mock
+    ) -> None:
+        """Test Oracle connection with SSL using CA cert and client cert/key (mTLS)."""
+        mock_ssl_context = MagicMock(spec=ssl.SSLContext)
+        mock_create_ssl_context.return_value = mock_ssl_context
+        mock_connect.return_value = self._mock_connection
+
+        ca_cert_data = "-----BEGIN CERTIFICATE-----\nCA_CERT_DATA\n-----END CERTIFICATE-----"
+        client_cert_data = "-----BEGIN CERTIFICATE-----\nCLIENT_CERT_DATA\n-----END CERTIFICATE-----"
+        client_key_data = "-----BEGIN PRIVATE KEY-----\nCLIENT_KEY_DATA\n-----END PRIVATE KEY-----"
+        credentials = {
+            "connect_args": _ORACLE_DB_CREDENTIALS,
+            "ssl_options": {
+                "ca_data": ca_cert_data,
+                "cert_data": client_cert_data,
+                "key_data": client_key_data,
+                "key_password": None,
+                "disabled": False,
+            },
+        }
+
+        client = OracleProxyClient(credentials)
+
+        # Verify SSL context was created with correct options including client cert
+        mock_create_ssl_context.assert_called_once()
+        ssl_options_arg = mock_create_ssl_context.call_args[0][0]
+        self.assertEqual(ssl_options_arg.ca_data, ca_cert_data)
+        self.assertEqual(ssl_options_arg.cert_data, client_cert_data)
+        self.assertEqual(ssl_options_arg.key_data, client_key_data)
+        self.assertFalse(ssl_options_arg.disabled)
+
+        # Verify oracledb.connect was called with ssl_context
+        mock_connect.assert_called_once()
+        call_kwargs = mock_connect.call_args[1]
+        self.assertIn("ssl_context", call_kwargs)
+        self.assertEqual(call_kwargs["ssl_context"], mock_ssl_context)
+
+        self.assertEqual(client.wrapped_client, self._mock_connection)
+
+    @patch("oracledb.connect")
+    @patch("apollo.integrations.db.oracle_proxy_client.create_oracle_ssl_context")
+    def test_connect_with_ssl_disabled(
+        self, mock_create_ssl_context: Mock, mock_connect: Mock
+    ) -> None:
+        """Test Oracle connection with SSL disabled."""
+        mock_create_ssl_context.return_value = None  # SSL disabled returns None
+        mock_connect.return_value = self._mock_connection
+
+        credentials = {
+            "connect_args": _ORACLE_DB_CREDENTIALS,
+            "ssl_options": {
+                "disabled": True,
+                # Note: ca_data cannot be provided when disabled=True due to SslOptions validation
+            },
+        }
+
+        client = OracleProxyClient(credentials)
+
+        # Verify SSL context creation was attempted but returned None (no ca_data)
+        mock_create_ssl_context.assert_called_once()
+        ssl_options_arg = mock_create_ssl_context.call_args[0][0]
+        self.assertTrue(ssl_options_arg.disabled)
+        self.assertIsNone(ssl_options_arg.ca_data)
+
+        # Verify oracledb.connect was called WITHOUT ssl_context
+        mock_connect.assert_called_once()
+        call_kwargs = mock_connect.call_args[1]
+        self.assertNotIn("ssl_context", call_kwargs)
+        self.assertEqual(call_kwargs["expire_time"], 1)
+
+        self.assertEqual(client.wrapped_client, self._mock_connection)
+
+    @patch("oracledb.connect")
+    @patch("apollo.integrations.db.oracle_proxy_client.create_oracle_ssl_context")
+    def test_connect_without_ssl_options(
+        self, mock_create_ssl_context: Mock, mock_connect: Mock
+    ) -> None:
+        """Test Oracle connection without SSL options."""
+        mock_create_ssl_context.return_value = None  # No ca_data returns None
+        mock_connect.return_value = self._mock_connection
+
+        credentials = {
+            "connect_args": _ORACLE_DB_CREDENTIALS,
+        }
+
+        client = OracleProxyClient(credentials)
+
+        # Verify SSL context creation was attempted but returned None (no ca_data)
+        mock_create_ssl_context.assert_called_once()
+        ssl_options_arg = mock_create_ssl_context.call_args[0][0]
+        self.assertIsNone(ssl_options_arg.ca_data)
+
+        # Verify oracledb.connect was called WITHOUT ssl_context
+        mock_connect.assert_called_once()
+        call_kwargs = mock_connect.call_args[1]
+        self.assertNotIn("ssl_context", call_kwargs)
+        self.assertEqual(call_kwargs["expire_time"], 1)
+
+        self.assertEqual(client.wrapped_client, self._mock_connection)
