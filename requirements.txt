@@ -4,7 +4,7 @@
 #
 #    pip-compile --strip-extras requirements.in
 #
-agent-base @ git+ssh://git@github.com/monte-carlo-data/agent-base.git@mrostan/yet-184-agent-refactoring-common
+agent-base @ git+ssh://git@github.com/monte-carlo-data/agent-base.git@dev
     # via -r requirements.in
 asn1crypto==1.5.1
     # via
@@ -34,12 +34,6 @@ bitarray==3.0.0
     # via impyla
 blinker==1.8.2
     # via flask
-boto3==1.34.151
-    # via -r requirements.in
-botocore==1.34.152
-    # via
-    #   boto3
-    #   s3transfer
 brotli==1.1.0
     # via flask-compress
 cachetools==5.3.3
@@ -78,8 +72,6 @@ cryptography==44.0.1
 databricks-sdk==0.39.0
     # via -r requirements.in
 databricks-sql-connector==4.0.0
-    # via -r requirements.in
-dataclasses-json==0.6.0
     # via -r requirements.in
 decorator==5.1.1
     # via retry2
@@ -169,10 +161,6 @@ jinja2==3.1.6
     # via
     #   -r requirements.in
     #   flask
-jmespath==1.0.1
-    # via
-    #   boto3
-    #   botocore
 lambda-git==0.1.1
     # via -r requirements.in
 looker-sdk==24.2.0
@@ -188,8 +176,6 @@ markupsafe==2.1.5
     # via
     #   jinja2
     #   werkzeug
-marshmallow==3.21.3
-    # via dataclasses-json
 more-itertools==10.7.0
     # via simple-salesforce
 msal==1.31.0
@@ -199,8 +185,6 @@ msal==1.31.0
     #   msal-extensions
 msal-extensions==1.2.0
     # via azure-identity
-mypy-extensions==1.0.0
-    # via typing-inspect
 numpy==1.26.4
     # via
     #   -r requirements.in
@@ -220,7 +204,6 @@ oscrypto @ git+https://github.com/wbond/oscrypto@master
 packaging==24.1
     # via
     #   gunicorn
-    #   marshmallow
     #   snowflake-connector-python
     #   tableauserverclient
 pandas==2.1.1
@@ -287,7 +270,6 @@ pyparsing==3.1.2
     # via httplib2
 python-dateutil==2.9.0.post0
     # via
-    #   botocore
     #   pandas
     #   salesforce-cdp-connector
     #   trino
@@ -327,8 +309,6 @@ retry2==0.9.5
     # via -r requirements.in
 rsa==4.9
     # via google-auth
-s3transfer==0.10.2
-    # via boto3
 salesforce-cdp-connector==1.0.16
     # via -r requirements.in
 simple-salesforce==1.12.6
@@ -371,9 +351,6 @@ typing-extensions==4.12.2
     #   simple-salesforce
     #   snowflake-connector-python
     #   tableauserverclient
-    #   typing-inspect
-typing-inspect==0.9.0
-    # via dataclasses-json
 tzdata==2024.1
     # via pandas
 tzlocal==5.3.1
@@ -383,7 +360,6 @@ uritemplate==4.1.1
 urllib3==2.5.0
     # via
     #   -r requirements.in
-    #   botocore
     #   clickhouse-connect
     #   databricks-sql-connector
     #   requests
