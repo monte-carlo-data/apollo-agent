@@ -2,7 +2,7 @@ import json
 from threading import local
 from typing import Dict, cast, Any
 
-from apollo.agent.redact import AgentRedactUtilities
+from apollo.common.agent.redact import AgentRedactUtilities
 from apollo.interfaces.generic.log_context import BaseLogContext
 
 _context = local()
