@@ -25,6 +25,7 @@ from apollo.common.agent.constants import (
     PLATFORM_GENERIC,
     LOG_ATTRIBUTE_TRACE_ID,
     LOG_ATTRIBUTE_OPERATION_NAME,
+    PLATFORM_INFO_KEY_IMAGE,
 )
 from apollo.agent.operation_utils import OperationUtils
 from apollo.common.agent.models import (
@@ -42,7 +43,6 @@ from apollo.integrations.aws.asm_proxy_client import SecretsManagerProxyClient
 from apollo.common.integrations.base_proxy_client import BaseProxyClient
 from apollo.integrations.storage.storage_proxy_client import StorageProxyClient
 from apollo.common.interfaces.agent_response import AgentResponse
-from apollo.interfaces.cloudrun.metadata_service import PLATFORM_INFO_KEY_IMAGE
 from apollo.validators.validate_network import ValidateNetwork
 
 logger = logging.getLogger(__name__)

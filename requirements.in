@@ -1,3 +1,6 @@
+#git+https://github.com/monte-carlo-data/agent-base.git@mrostan/yet-184-agent-refactoring-common
+agent-base @ git+ssh://git@github.com/monte-carlo-data/agent-base.git@mrostan/yet-184-agent-refactoring-common
+
 azure-identity==1.18.0
 azure-mgmt-storage==21.2.1
 azure-storage-blob==12.23.0

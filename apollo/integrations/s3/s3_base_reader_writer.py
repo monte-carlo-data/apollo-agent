@@ -20,7 +20,7 @@ from dataclasses_json import (
 )
 
 from apollo.common.integrations.storage.base_storage_client import BaseStorageClient
-from apollo.interfaces.lambda_function.aws_utils import get_boto_config
+from apollo.integrations.aws.aws_utils import get_boto_config
 
 _ACL_GRANTEE_TYPE_GROUP = "Group"
 _ACL_GRANTEE_URI_ALL_USERS = "http://acs.amazonaws.com/groups/global/AllUsers"
