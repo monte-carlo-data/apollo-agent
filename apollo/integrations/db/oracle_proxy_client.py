@@ -85,6 +85,23 @@ def create_oracle_ssl_context(ssl_options: SslOptions) -> ssl.SSLContext | None:
             os.unlink(cert_file.name)
             os.unlink(key_file.name)
 
+    # Log SSL context creation with options
+    has_client_cert = bool(ssl_options.cert_data and ssl_options.key_data)
+    logger.info(
+        "Oracle SSL context created",
+        extra={
+            "ssl_options": {
+                "has_ca_data": bool(ssl_options.ca_data),
+                "has_client_cert": has_client_cert,
+                "skip_cert_verification": ssl_options.skip_cert_verification,
+                "verify_cert": ssl_options.verify_cert,
+                "verify_identity": ssl_options.verify_identity,
+                "check_hostname": ssl_context.check_hostname,
+                "verify_mode": ssl_context.verify_mode,
+            }
+        },
+    )
+
     return ssl_context
 
 
@@ -112,7 +129,7 @@ class OracleProxyClient(BaseDbProxyClient):
         ssl_options = SslOptions(**(credentials.get("ssl_options") or {}))
         if ssl_context := create_oracle_ssl_context(ssl_options):
             connect_args["ssl_context"] = ssl_context
-            logger.debug("Oracle SSL context created")
+            logger.info("Oracle SSL context created")
 
         self._connection = oracledb.connect(**connect_args)  # type: ignore
 
