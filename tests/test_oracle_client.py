@@ -193,7 +193,9 @@ class OracleDbClientTests(TestCase):
         mock_create_ssl_context.return_value = mock_ssl_context
         mock_connect.return_value = self._mock_connection
 
-        ca_cert_data = "-----BEGIN CERTIFICATE-----\nCA_CERT_DATA\n-----END CERTIFICATE-----"
+        ca_cert_data = (
+            "-----BEGIN CERTIFICATE-----\nCA_CERT_DATA\n-----END CERTIFICATE-----"
+        )
         credentials = {
             "connect_args": _ORACLE_DB_CREDENTIALS,
             "ssl_options": {
@@ -232,9 +234,15 @@ class OracleDbClientTests(TestCase):
         mock_create_ssl_context.return_value = mock_ssl_context
         mock_connect.return_value = self._mock_connection
 
-        ca_cert_data = "-----BEGIN CERTIFICATE-----\nCA_CERT_DATA\n-----END CERTIFICATE-----"
-        client_cert_data = "-----BEGIN CERTIFICATE-----\nCLIENT_CERT_DATA\n-----END CERTIFICATE-----"
-        client_key_data = "-----BEGIN PRIVATE KEY-----\nCLIENT_KEY_DATA\n-----END PRIVATE KEY-----"
+        ca_cert_data = (
+            "-----BEGIN CERTIFICATE-----\nCA_CERT_DATA\n-----END CERTIFICATE-----"
+        )
+        client_cert_data = (
+            "-----BEGIN CERTIFICATE-----\nCLIENT_CERT_DATA\n-----END CERTIFICATE-----"
+        )
+        client_key_data = (
+            "-----BEGIN PRIVATE KEY-----\nCLIENT_KEY_DATA\n-----END PRIVATE KEY-----"
+        )
         credentials = {
             "connect_args": _ORACLE_DB_CREDENTIALS,
             "ssl_options": {

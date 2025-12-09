@@ -24,17 +24,17 @@ logger = logging.getLogger(__name__)
 def create_oracle_ssl_context(ssl_options: SslOptions) -> ssl.SSLContext | None:
     """
     Create an SSL context for Oracle connections.
-    
+
     Creates an SSLContext with relaxed cipher requirements to support older cipher suites
     used by some databases (e.g., AWS RDS Oracle uses AES256-GCM-SHA384).
-    
+
     Args:
         ssl_options: SslOptions object containing CA data and optionally client cert/key
-        
+
     Returns:
         Configured ssl.SSLContext for use with oracledb connections, or None if SSL is disabled
         or no CA data is provided.
-        
+
     Note: Only thin mode supports ssl_context - thick mode does not.
     """
     if ssl_options.disabled or not ssl_options.ca_data:
@@ -47,7 +47,7 @@ def create_oracle_ssl_context(ssl_options: SslOptions) -> ssl.SSLContext | None:
     # @SECLEVEL=1 allows older ciphers like AES256-GCM-SHA384 (plain RSA, no forward secrecy)
     ssl_context.set_ciphers("DEFAULT:@SECLEVEL=1")
     ssl_context.load_verify_locations(cadata=ssl_options.ca_data)
-    
+
     # Load client certificate if provided (for mTLS)
     # Note: load_cert_chain() only accepts file paths, not string data,
     # so we must use temp files (unlike load_verify_locations which accepts cadata)
@@ -55,11 +55,11 @@ def create_oracle_ssl_context(ssl_options: SslOptions) -> ssl.SSLContext | None:
         cert_file = tempfile.NamedTemporaryFile(mode="w", suffix=".pem", delete=False)
         cert_file.write(ssl_options.cert_data)
         cert_file.close()
-        
+
         key_file = tempfile.NamedTemporaryFile(mode="w", suffix=".pem", delete=False)
         key_file.write(ssl_options.key_data)
         key_file.close()
-        
+
         try:
             ssl_context.load_cert_chain(
                 certfile=cert_file.name,
@@ -70,7 +70,7 @@ def create_oracle_ssl_context(ssl_options: SslOptions) -> ssl.SSLContext | None:
             # Clean up temp files after loading into SSL context
             os.unlink(cert_file.name)
             os.unlink(key_file.name)
-    
+
     return ssl_context
 
 
