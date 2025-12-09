@@ -22,7 +22,8 @@ from apollo.agent.constants import (
     ATTRIBUTE_NAME_ERROR_TYPE,
 )
 from apollo.agent.logging_utils import LoggingUtils
-from apollo.integrations.db.oracle_proxy_client import OracleProxyClient
+from apollo.integrations.db.oracle_proxy_client import OracleProxyClient, create_oracle_ssl_context
+from apollo.integrations.db.base_db_proxy_client import SslOptions
 
 _ORACLE_DB_CREDENTIALS = {
     "dsn": "www.example.com:1521/ORCL",
@@ -332,3 +333,103 @@ class OracleDbClientTests(TestCase):
         self.assertEqual(call_kwargs["expire_time"], 1)
 
         self.assertEqual(client.wrapped_client, self._mock_connection)
+
+
+class CreateOracleSslContextTests(TestCase):
+    """Tests for the create_oracle_ssl_context function"""
+
+    @patch("ssl.SSLContext")
+    def test_create_ssl_context_default_verification(self, mock_ssl_context_class: Mock):
+        """Test SSL context creation with default verification settings (all enabled)"""
+        mock_ctx = MagicMock()
+        mock_ssl_context_class.return_value = mock_ctx
+
+        ssl_options = SslOptions(
+            ca_data="-----BEGIN CERTIFICATE-----\ntest\n-----END CERTIFICATE-----",
+            skip_cert_verification=False,
+            verify_cert=True,
+            verify_identity=True,
+        )
+
+        result = create_oracle_ssl_context(ssl_options)
+
+        mock_ssl_context_class.assert_called_with(ssl.PROTOCOL_TLS_CLIENT)
+        # With default settings, both hostname check and cert verification are enabled
+        self.assertTrue(mock_ctx.check_hostname)
+        self.assertEqual(mock_ctx.verify_mode, ssl.CERT_REQUIRED)
+        mock_ctx.set_ciphers.assert_called_with("DEFAULT:@SECLEVEL=1")
+        mock_ctx.load_verify_locations.assert_called_once()
+        self.assertEqual(result, mock_ctx)
+
+    @patch("ssl.SSLContext")
+    def test_create_ssl_context_verify_identity_false(self, mock_ssl_context_class: Mock):
+        """Test SSL context creation with verify_identity=False (hostname check disabled)"""
+        mock_ctx = MagicMock()
+        mock_ssl_context_class.return_value = mock_ctx
+
+        ssl_options = SslOptions(
+            ca_data="-----BEGIN CERTIFICATE-----\ntest\n-----END CERTIFICATE-----",
+            skip_cert_verification=False,
+            verify_cert=True,
+            verify_identity=False,
+        )
+
+        result = create_oracle_ssl_context(ssl_options)
+
+        # Hostname check disabled, but cert verification still enabled
+        self.assertFalse(mock_ctx.check_hostname)
+        self.assertEqual(mock_ctx.verify_mode, ssl.CERT_REQUIRED)
+        mock_ctx.load_verify_locations.assert_called_once()
+
+    @patch("ssl.SSLContext")
+    def test_create_ssl_context_skip_cert_verification(self, mock_ssl_context_class: Mock):
+        """Test SSL context creation with skip_cert_verification=True (all verification disabled)"""
+        mock_ctx = MagicMock()
+        mock_ssl_context_class.return_value = mock_ctx
+
+        ssl_options = SslOptions(
+            ca_data="-----BEGIN CERTIFICATE-----\ntest\n-----END CERTIFICATE-----",
+            skip_cert_verification=True,
+            verify_cert=True,
+            verify_identity=True,
+        )
+
+        result = create_oracle_ssl_context(ssl_options)
+
+        # Both hostname check and cert verification disabled
+        self.assertFalse(mock_ctx.check_hostname)
+        self.assertEqual(mock_ctx.verify_mode, ssl.CERT_NONE)
+        # CA should NOT be loaded when skipping verification
+        mock_ctx.load_verify_locations.assert_not_called()
+
+    @patch("ssl.SSLContext")
+    def test_create_ssl_context_verify_cert_false(self, mock_ssl_context_class: Mock):
+        """Test SSL context creation with verify_cert=False"""
+        mock_ctx = MagicMock()
+        mock_ssl_context_class.return_value = mock_ctx
+
+        ssl_options = SslOptions(
+            ca_data="-----BEGIN CERTIFICATE-----\ntest\n-----END CERTIFICATE-----",
+            skip_cert_verification=False,
+            verify_cert=False,
+            verify_identity=True,
+        )
+
+        result = create_oracle_ssl_context(ssl_options)
+
+        # Cert verification disabled
+        self.assertEqual(mock_ctx.verify_mode, ssl.CERT_NONE)
+        # Hostname check still respects verify_identity
+        self.assertTrue(mock_ctx.check_hostname)
+
+    def test_create_ssl_context_disabled_returns_none(self):
+        """Test that disabled SSL returns None"""
+        ssl_options = SslOptions(disabled=True)
+        result = create_oracle_ssl_context(ssl_options)
+        self.assertIsNone(result)
+
+    def test_create_ssl_context_no_ca_data_returns_none(self):
+        """Test that missing CA data returns None"""
+        ssl_options = SslOptions(ca_data=None)
+        result = create_oracle_ssl_context(ssl_options)
+        self.assertIsNone(result)
