@@ -22,7 +22,10 @@ from apollo.agent.constants import (
     ATTRIBUTE_NAME_ERROR_TYPE,
 )
 from apollo.agent.logging_utils import LoggingUtils
-from apollo.integrations.db.oracle_proxy_client import OracleProxyClient, create_oracle_ssl_context
+from apollo.integrations.db.oracle_proxy_client import (
+    OracleProxyClient,
+    create_oracle_ssl_context,
+)
 from apollo.integrations.db.base_db_proxy_client import SslOptions
 
 _ORACLE_DB_CREDENTIALS = {
@@ -339,7 +342,9 @@ class CreateOracleSslContextTests(TestCase):
     """Tests for the create_oracle_ssl_context function"""
 
     @patch("ssl.SSLContext")
-    def test_create_ssl_context_default_verification(self, mock_ssl_context_class: Mock):
+    def test_create_ssl_context_default_verification(
+        self, mock_ssl_context_class: Mock
+    ):
         """Test SSL context creation with default verification settings (all enabled)"""
         mock_ctx = MagicMock()
         mock_ssl_context_class.return_value = mock_ctx
@@ -362,7 +367,9 @@ class CreateOracleSslContextTests(TestCase):
         self.assertEqual(result, mock_ctx)
 
     @patch("ssl.SSLContext")
-    def test_create_ssl_context_verify_identity_false(self, mock_ssl_context_class: Mock):
+    def test_create_ssl_context_verify_identity_false(
+        self, mock_ssl_context_class: Mock
+    ):
         """Test SSL context creation with verify_identity=False (hostname check disabled)"""
         mock_ctx = MagicMock()
         mock_ssl_context_class.return_value = mock_ctx
@@ -382,7 +389,9 @@ class CreateOracleSslContextTests(TestCase):
         mock_ctx.load_verify_locations.assert_called_once()
 
     @patch("ssl.SSLContext")
-    def test_create_ssl_context_skip_cert_verification(self, mock_ssl_context_class: Mock):
+    def test_create_ssl_context_skip_cert_verification(
+        self, mock_ssl_context_class: Mock
+    ):
         """Test SSL context creation with skip_cert_verification=True (all verification disabled)"""
         mock_ctx = MagicMock()
         mock_ssl_context_class.return_value = mock_ctx
