@@ -41,12 +41,26 @@ def create_oracle_ssl_context(ssl_options: SslOptions) -> ssl.SSLContext | None:
         return None
 
     ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-    # Disable hostname checking for RDS compatibility
-    ssl_context.check_hostname = False
-    ssl_context.verify_mode = ssl.CERT_REQUIRED
+
+    # Respect SslOptions verification settings
+    # - skip_cert_verification: skips ALL validation (cert + hostname)
+    # - verify_cert: whether to validate the certificate chain
+    # - verify_identity: whether to check hostname matches certificate
+    ssl_context.check_hostname = (
+        not ssl_options.skip_cert_verification and ssl_options.verify_identity
+    )
+    ssl_context.verify_mode = (
+        ssl.CERT_NONE
+        if ssl_options.skip_cert_verification
+        else (ssl.CERT_REQUIRED if ssl_options.verify_cert else ssl.CERT_NONE)
+    )
+
     # @SECLEVEL=1 allows older ciphers like AES256-GCM-SHA384 (plain RSA, no forward secrecy)
     ssl_context.set_ciphers("DEFAULT:@SECLEVEL=1")
-    ssl_context.load_verify_locations(cadata=ssl_options.ca_data)
+
+    # Load CA certificate for server verification (if not skipping verification)
+    if ssl_options.ca_data and not ssl_options.skip_cert_verification:
+        ssl_context.load_verify_locations(cadata=ssl_options.ca_data)
 
     # Load client certificate if provided (for mTLS)
     # Note: load_cert_chain() only accepts file paths, not string data,
