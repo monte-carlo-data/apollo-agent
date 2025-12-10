@@ -58,7 +58,7 @@ markupsafe==2.1.5
     #   -c requirements.txt
     #   jinja2
     #   werkzeug
-mypy-extensions==1.0.0
+mypy-extensions==1.1.0
     # via
     #   -c requirements.txt
     #   black
