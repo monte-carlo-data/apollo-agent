@@ -1,6 +1,6 @@
 from typing import Optional, List, Dict
 
-from apollo.common.integrations.base_proxy_client import BaseProxyClient
+from apollo.integrations.base_proxy_client import BaseProxyClient
 
 
 class SampleQueryResult:

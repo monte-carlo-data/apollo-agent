@@ -3,7 +3,7 @@ import traceback
 from typing import Optional, Dict, Tuple
 
 from apollo.common.agent.utils import AgentUtils as BaseAgentUtils
-from apollo.common.integrations.base_proxy_client import BaseProxyClient
+from apollo.integrations.base_proxy_client import BaseProxyClient
 from apollo.common.interfaces.agent_response import AgentResponse
 
 

@@ -7,7 +7,7 @@ from retry.api import retry_call
 
 from apollo.common.agent.models import AgentOperation
 from apollo.common.agent.redact import AgentRedactUtilities
-from apollo.common.integrations.base_proxy_client import BaseProxyClient
+from apollo.integrations.base_proxy_client import BaseProxyClient
 
 
 _logger = logging.getLogger(__name__)

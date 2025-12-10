@@ -14,8 +14,8 @@ from urllib.request import urlretrieve
 
 from apollo.common.agent.serde import AgentSerializer
 from apollo.agent.utils import AgentUtils
-from apollo.common.integrations.base_proxy_client import BaseProxyClient
-from apollo.common.integrations.storage.base_storage_client import BaseStorageClient
+from apollo.integrations.base_proxy_client import BaseProxyClient
+from apollo.integrations.storage.base_storage_client import BaseStorageClient
 from apollo.integrations.storage.storage_proxy_client import StorageProxyClient
 
 logger = logging.getLogger(__name__)

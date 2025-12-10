@@ -6,7 +6,7 @@ import boto3
 from dataclasses_json import DataClassJsonMixin
 
 from apollo.agent.utils import AgentUtils
-from apollo.common.integrations.base_proxy_client import BaseProxyClient
+from apollo.integrations.base_proxy_client import BaseProxyClient
 from apollo.integrations.db.base_db_proxy_client import SslOptions
 
 

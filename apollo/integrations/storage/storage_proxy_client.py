@@ -29,10 +29,10 @@ from apollo.agent.utils import AgentUtils
 from apollo.integrations.azure_blob.azure_blob_reader_writer import (
     AzureBlobReaderWriter,
 )
-from apollo.common.integrations.base_proxy_client import BaseProxyClient
+from apollo.integrations.base_proxy_client import BaseProxyClient
 from apollo.integrations.gcs.gcs_reader_writer import GcsReaderWriter
 from apollo.integrations.s3.s3_reader_writer import S3ReaderWriter
-from apollo.common.integrations.storage.base_storage_client import BaseStorageClient
+from apollo.integrations.storage.base_storage_client import BaseStorageClient
 
 _API_SERVICE_NAME = "storage"
 _API_VERSION = "v1"

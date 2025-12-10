@@ -40,7 +40,7 @@ from apollo.common.agent.settings import VERSION, BUILD_NUMBER
 from apollo.agent.updater import AgentUpdater
 from apollo.agent.utils import AgentUtils
 from apollo.integrations.aws.asm_proxy_client import SecretsManagerProxyClient
-from apollo.common.integrations.base_proxy_client import BaseProxyClient
+from apollo.integrations.base_proxy_client import BaseProxyClient
 from apollo.integrations.storage.storage_proxy_client import StorageProxyClient
 from apollo.common.interfaces.agent_response import AgentResponse
 from apollo.validators.validate_network import ValidateNetwork

@@ -18,7 +18,7 @@ from apollo.common.agent.constants import (
 )
 from apollo.common.agent.serde import AgentSerializer
 from apollo.agent.utils import AgentUtils
-from apollo.common.integrations.base_proxy_client import BaseProxyClient
+from apollo.integrations.base_proxy_client import BaseProxyClient
 
 _LOOKER_DIRECTORY = "looker"
 

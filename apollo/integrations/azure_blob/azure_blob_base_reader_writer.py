@@ -27,7 +27,7 @@ from azure.storage.blob import (
     BlobClient,
 )
 
-from apollo.common.integrations.storage.base_storage_client import BaseStorageClient
+from apollo.integrations.storage.base_storage_client import BaseStorageClient
 
 
 def convert_azure_errors(func: Callable):

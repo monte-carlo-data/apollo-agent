@@ -16,7 +16,7 @@ from google.cloud.storage import (
     transfer_manager,
 )
 from google.oauth2.service_account import Credentials
-from apollo.common.integrations.storage.base_storage_client import BaseStorageClient
+from apollo.integrations.storage.base_storage_client import BaseStorageClient
 
 
 def _extract_error_message(error: ClientError) -> str:

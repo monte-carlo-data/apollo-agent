@@ -4,7 +4,7 @@ from typing import Optional, Dict
 import googleapiclient.discovery
 from google.oauth2.service_account import Credentials
 
-from apollo.common.integrations.base_proxy_client import BaseProxyClient
+from apollo.integrations.base_proxy_client import BaseProxyClient
 
 _API_SERVICE_NAME = "bigquery"
 _API_VERSION = "v2"
