@@ -17,7 +17,7 @@ from apollo.common.agent.constants import (
     ATTRIBUTE_VALUE_TYPE_LOOKER_CATEGORY,
 )
 from apollo.common.agent.serde import AgentSerializer
-from apollo.common.agent.utils import AgentUtils
+from apollo.agent.utils import AgentUtils
 from apollo.common.integrations.base_proxy_client import BaseProxyClient
 
 _LOOKER_DIRECTORY = "looker"

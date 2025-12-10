@@ -12,7 +12,7 @@ from apollo.common.agent.constants import (
 from apollo.common.agent.env_vars import DEBUG_LOG_ENV_VAR
 from apollo.common.agent.redact import AgentRedactUtilities
 from apollo.common.agent.redact_formatter import RedactFormatterWrapper
-from apollo.common.agent.utils import AgentUtils
+from apollo.agent.utils import AgentUtils
 from apollo.interfaces.generic.log_context import BaseLogContext
 from apollo.interfaces.cloudrun.platform import CloudRunPlatformProvider
 

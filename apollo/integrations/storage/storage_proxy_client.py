@@ -25,7 +25,7 @@ from apollo.common.agent.env_vars import (
 )
 from apollo.common.agent.models import AgentConfigurationError, AgentOperation
 from apollo.common.agent.redact import AgentRedactUtilities
-from apollo.common.agent.utils import AgentUtils
+from apollo.agent.utils import AgentUtils
 from apollo.integrations.azure_blob.azure_blob_reader_writer import (
     AzureBlobReaderWriter,
 )

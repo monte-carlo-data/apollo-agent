@@ -18,7 +18,7 @@ from apollo.common.agent.env_vars import (
     STORAGE_PREFIX_DEFAULT_VALUE,
 )
 from apollo.agent.logging_utils import LoggingUtils
-from apollo.common.agent.utils import AgentUtils
+from apollo.agent.utils import AgentUtils
 from apollo.interfaces.cloudrun.metadata_service import (
     GCP_PLATFORM_INFO_KEY_SERVICE_NAME,
     GCP_PLATFORM_INFO_KEY_PROJECT_ID,

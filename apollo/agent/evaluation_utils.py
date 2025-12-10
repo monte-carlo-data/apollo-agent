@@ -17,7 +17,7 @@ from apollo.common.agent.constants import (
 from apollo.agent.scripts import AgentScriptContext, execute_script
 from apollo.common.agent.serde import decode_dict_value
 from apollo.common.integrations.base_proxy_client import BaseProxyClient
-from apollo.common.agent.utils import AgentUtils
+from apollo.agent.utils import AgentUtils
 
 logger = logging.getLogger(__name__)
 

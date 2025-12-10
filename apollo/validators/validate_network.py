@@ -4,7 +4,7 @@ from typing import Optional, Callable, Dict, Tuple, Union
 
 import requests
 
-from apollo.common.agent.utils import AgentUtils
+from apollo.agent.utils import AgentUtils
 from apollo.common.interfaces.agent_response import AgentResponse
 
 _DEFAULT_TIMEOUT_SECS = 5

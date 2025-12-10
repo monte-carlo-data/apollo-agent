@@ -9,7 +9,7 @@ import oracledb
 from oracledb.base_impl import DbType
 
 from apollo.common.agent.serde import AgentSerializer
-from apollo.common.agent.utils import AgentUtils
+from apollo.agent.utils import AgentUtils
 from apollo.integrations.db.base_db_proxy_client import BaseDbProxyClient
 
 _ATTR_CONNECT_ARGS = "connect_args"

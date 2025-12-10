@@ -12,7 +12,7 @@ from apollo.common.agent.constants import (
     ATTRIBUTE_NAME_RESULT,
 )
 from apollo.agent.logging_utils import LoggingUtils
-from apollo.common.agent.utils import AgentUtils
+from apollo.agent.utils import AgentUtils
 from apollo.validators.validate_network import _DEFAULT_TIMEOUT_SECS
 from tests.platform_provider import TestPlatformProvider
 

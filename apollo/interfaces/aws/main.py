@@ -5,7 +5,7 @@ from typing import Tuple, Dict, Optional, cast, Callable, Union
 from flask import request
 
 from apollo.common.agent.constants import PLATFORM_AWS, PLATFORM_AWS_GENERIC
-from apollo.common.agent.utils import AgentUtils
+from apollo.agent.utils import AgentUtils
 from apollo.common.interfaces.agent_response import AgentResponse
 from apollo.interfaces.generic import main
 from apollo.interfaces.aws.platform import (

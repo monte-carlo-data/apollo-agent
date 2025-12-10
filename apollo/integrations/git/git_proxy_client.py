@@ -3,7 +3,7 @@ import uuid
 import zipfile
 from typing import Dict, Optional, List, Generator
 
-from apollo.common.agent.utils import AgentUtils
+from apollo.agent.utils import AgentUtils
 from apollo.common.integrations.base_proxy_client import BaseProxyClient
 from apollo.integrations.git.git_client import GitCloneClient, GitFileData
 from apollo.integrations.storage.storage_proxy_client import StorageProxyClient

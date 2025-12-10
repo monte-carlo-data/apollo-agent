@@ -28,7 +28,7 @@ from apollo.common.agent.env_vars import (
     STORAGE_ACCOUNT_NAME_ENV_VAR,
 )
 from apollo.agent.logging_utils import LoggingUtils
-from apollo.common.agent.utils import AgentUtils
+from apollo.agent.utils import AgentUtils
 from tests.platform_provider import TestPlatformProvider
 
 _TEST_BUCKET_NAME = "test_bucket"
