@@ -1,5 +1,4 @@
-#agent-base @ git+https://github.com/monte-carlo-data/agent-base.git@dev
-agent-base @ git+ssh://git@github.com/monte-carlo-data/agent-base.git@dev
+agent-base @ git+https://github.com/monte-carlo-data/agent-base.git@dev
 
 azure-identity==1.18.0
 azure-mgmt-storage==21.2.1
