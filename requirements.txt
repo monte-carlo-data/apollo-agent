@@ -4,6 +4,8 @@
 #
 #    pip-compile --strip-extras requirements.in
 #
+agent-base @ git+https://github.com/monte-carlo-data/agent-base.git@dev
+    # via -r requirements.in
 asn1crypto==1.5.1
     # via
     #   oscrypto
