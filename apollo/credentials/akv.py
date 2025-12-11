@@ -17,7 +17,7 @@ class AzureKeyVaultCredentialsService(BaseCredentialsService):
     def _load_external_credentials(self, credentials: dict) -> dict:
         secret_name = credentials.get(SECRET_NAME)
         if not secret_name:
-            raise ValueError("Missing expected secret name 'akv_secret' in credentials")
+            raise ValueError(f"Missing expected secret name '{SECRET_NAME}' in credentials")
         vault_url = credentials.get(VAULT_URL)
         if not vault_url:
             vault_name = credentials.get(VAULT_NAME)
