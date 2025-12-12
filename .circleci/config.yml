@@ -209,7 +209,7 @@ jobs:
       - run:
           name: Install dependencies
           command: |
-            pip install virtualenv==20.13.0
+            pip install virtualenv==20.35.4
             pip install --upgrade pip
       - run:
           name: Publish docs and invalidate the cloudfront cache
