@@ -13,7 +13,7 @@ from apollo.common.agent.env_vars import DEBUG_ENV_VAR
 from apollo.common.interfaces.agent_response import AgentResponse
 from apollo.agent.logging_utils import LoggingUtils
 from apollo.common.agent.redact_formatter import RedactFormatterWrapper
-from apollo.common.agent.settings import VERSION
+from apollo.agent.settings import VERSION
 from apollo.agent.utils import AgentUtils
 from apollo.credentials.factory import CredentialsFactory
 
