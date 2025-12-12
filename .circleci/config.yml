@@ -326,7 +326,7 @@ workflows:
           filters:
             branches:
               only:
-#                - dev
+                - dev
                 - /.*\/pr-.*/
       - update-and-validate-golden-agent:
           name: gcp-dev-update-and-validate-golden-agent
@@ -411,7 +411,7 @@ workflows:
           filters:
             branches:
               only:
-#                - dev
+                - dev
                 - /.*\/pr-.*/
       - update-and-validate-golden-agent:
           name: aws-dev-update-and-validate-golden-agent
