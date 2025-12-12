@@ -197,7 +197,7 @@ jobs:
 
   build-and-push-docs:
     docker:
-      - image: python:3.11.7
+      - image: python:3.12
     parameters:
       code_version:
         type: string
