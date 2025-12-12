@@ -4,8 +4,8 @@ from unittest import TestCase
 from unittest.mock import patch, Mock, ANY, call
 
 from apollo.agent.agent import Agent
-from apollo.agent.constants import ATTRIBUTE_NAME_ERROR, ATTRIBUTE_NAME_RESULT
-from apollo.agent.env_vars import AWS_LAMBDA_FUNCTION_NAME_ENV_VAR
+from apollo.common.agent.constants import ATTRIBUTE_NAME_ERROR, ATTRIBUTE_NAME_RESULT
+from apollo.common.agent.env_vars import AWS_LAMBDA_FUNCTION_NAME_ENV_VAR
 from apollo.agent.logging_utils import LoggingUtils
 from apollo.interfaces.lambda_function.platform import AwsPlatformProvider
 

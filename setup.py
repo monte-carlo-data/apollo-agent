@@ -1,4 +1,4 @@
-import distutils.text_file
+import distutils.text_file  # type: ignore
 from pathlib import Path
 from typing import List, Optional
 
@@ -28,7 +28,12 @@ setup(
     author="Monte Carlo Data, Inc",
     author_email="info@montecarlodata.com",
     url="https://www.montecarlodata.com/",
-    packages=find_packages(exclude=["tests*", "utils*", "examples*"]),
+    packages=[
+        f"apollo.{p}"
+        for p in find_packages(
+            where="apollo", exclude=["tests*", "utils*", "examples*"]
+        )
+    ],
     include_package_data=True,
     install_requires=parse_requirements(),
     classifiers=[

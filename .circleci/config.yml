@@ -55,7 +55,7 @@ jobs:
 
   run-linter:
     docker:
-      - image: cimg/python:3.11-node
+      - image: cimg/python:3.12-node
     steps:
       - checkout
       - run:
@@ -197,7 +197,7 @@ jobs:
 
   build-and-push-docs:
     docker:
-      - image: python:3.11.7
+      - image: python:3.12
     parameters:
       code_version:
         type: string
@@ -209,7 +209,8 @@ jobs:
       - run:
           name: Install dependencies
           command: |
-            pip install virtualenv==20.13.0
+            pip install virtualenv==20.35.4
+            pip install --upgrade pip
       - run:
           name: Publish docs and invalidate the cloudfront cache
           command: make VERSION=<< parameters.code_version >> publish-docs

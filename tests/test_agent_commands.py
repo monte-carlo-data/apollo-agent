@@ -4,7 +4,7 @@ from unittest.mock import create_autospec, call
 from apollo.agent.agent import Agent
 from apollo.agent.log_context import AgentLogContext
 from apollo.agent.logging_utils import LoggingUtils
-from apollo.agent.models import AgentCommands
+from apollo.common.agent.models import AgentCommands
 from tests.sample_proxy_client import SampleProxyClient
 
 

@@ -1,7 +1,7 @@
 import json
 from typing import Any, Dict, Optional
 
-from apollo.agent.serde import AgentSerializer, encode_dictionary
+from apollo.common.agent.serde import AgentSerializer, encode_dictionary
 from apollo.integrations.aws.base_aws_proxy_client import BaseAwsProxyClient
 
 

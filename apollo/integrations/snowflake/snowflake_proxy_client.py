@@ -3,7 +3,7 @@ from typing import Dict, List, Optional
 import snowflake.connector
 from snowflake.connector.errors import DatabaseError, ProgrammingError
 
-from apollo.agent.models import AgentExecuteSqlQueryResponse
+from apollo.common.agent.models import AgentExecuteSqlQueryResponse
 from apollo.integrations.db.base_db_proxy_client import BaseDbProxyClient
 
 _ATTR_CONNECT_ARGS = "connect_args"

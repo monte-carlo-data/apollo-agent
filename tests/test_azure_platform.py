@@ -12,8 +12,8 @@ from azure.durable_functions.models import OrchestrationRuntimeStatus
 from box import Box
 
 from apollo.agent.agent import Agent
-from apollo.agent.constants import ATTRIBUTE_NAME_ERROR, ATTRIBUTE_NAME_RESULT
-from apollo.agent.env_vars import IS_REMOTE_UPGRADABLE_ENV_VAR
+from apollo.common.agent.constants import ATTRIBUTE_NAME_ERROR, ATTRIBUTE_NAME_RESULT
+from apollo.common.agent.env_vars import IS_REMOTE_UPGRADABLE_ENV_VAR
 from apollo.agent.logging_utils import LoggingUtils
 from apollo.interfaces.azure.azure_platform import AzurePlatformProvider
 from apollo.interfaces.azure.azure_updater import AzureUpdater

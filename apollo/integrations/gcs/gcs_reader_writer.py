@@ -1,8 +1,8 @@
 import os
 from typing import Optional
 
-from apollo.agent.env_vars import STORAGE_BUCKET_NAME_ENV_VAR
-from apollo.agent.models import AgentConfigurationError
+from apollo.common.agent.env_vars import STORAGE_BUCKET_NAME_ENV_VAR
+from apollo.common.agent.models import AgentConfigurationError
 from apollo.integrations.gcs.gcs_base_reader_writer import GcsBaseReaderWriter
 
 

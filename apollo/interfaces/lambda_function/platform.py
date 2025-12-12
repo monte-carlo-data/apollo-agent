@@ -4,13 +4,13 @@ from typing import Dict, Optional, List, cast
 
 import boto3
 
-from apollo.agent.constants import PLATFORM_AWS
-from apollo.agent.env_vars import (
+from apollo.common.agent.constants import PLATFORM_AWS
+from apollo.common.agent.env_vars import (
     CLOUDWATCH_LOG_GROUP_ID_ENV_VAR,
     AGENT_WRAPPER_TYPE_ENV_VAR,
     WRAPPER_TYPE_CLOUDFORMATION,
 )
-from apollo.agent.models import AgentConfigurationError
+from apollo.common.agent.models import AgentConfigurationError
 from apollo.agent.platform import AgentPlatformProvider
 from apollo.agent.updater import AgentUpdater
 from apollo.interfaces.generic.utils import AgentPlatformUtils

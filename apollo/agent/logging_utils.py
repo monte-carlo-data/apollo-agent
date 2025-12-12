@@ -1,6 +1,9 @@
 from typing import Dict, Optional
 
-from apollo.agent.constants import LOG_ATTRIBUTE_TRACE_ID, LOG_ATTRIBUTE_OPERATION_NAME
+from apollo.common.agent.constants import (
+    LOG_ATTRIBUTE_TRACE_ID,
+    LOG_ATTRIBUTE_OPERATION_NAME,
+)
 
 
 class LoggingUtils:

@@ -3,7 +3,7 @@ from datetime import timezone, timedelta, datetime
 from typing import Dict, Optional, List
 from google.cloud.logging_v2 import ASCENDING, Client
 
-from apollo.agent.constants import PLATFORM_GCP
+from apollo.common.agent.constants import PLATFORM_GCP
 from apollo.agent.platform import AgentPlatformProvider
 from apollo.agent.updater import AgentUpdater
 from apollo.interfaces.cloudrun.cloudrun_updater import CloudRunUpdater

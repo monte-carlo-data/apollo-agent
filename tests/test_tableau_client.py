@@ -11,7 +11,7 @@ from tableauserverclient.server.endpoint.metadata_endpoint import Metadata
 from tableauserverclient.server.server import Server
 
 from apollo.agent.agent import Agent
-from apollo.agent.constants import (
+from apollo.common.agent.constants import (
     ATTRIBUTE_NAME_ERROR,
     ATTRIBUTE_NAME_RESULT,
 )

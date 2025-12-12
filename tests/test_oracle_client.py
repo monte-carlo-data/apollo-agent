@@ -16,7 +16,7 @@ from oracledb.base_impl import (
 )
 
 from apollo.agent.agent import Agent
-from apollo.agent.constants import (
+from apollo.common.agent.constants import (
     ATTRIBUTE_NAME_ERROR,
     ATTRIBUTE_NAME_RESULT,
     ATTRIBUTE_NAME_ERROR_TYPE,
