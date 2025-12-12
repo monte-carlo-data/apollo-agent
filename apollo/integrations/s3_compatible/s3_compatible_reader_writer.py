@@ -5,13 +5,13 @@ from typing import Optional
 import boto3
 from botocore.config import Config
 
-from apollo.agent.env_vars import (
+from apollo.common.agent.env_vars import (
     STORAGE_BUCKET_NAME_ENV_VAR,
     STORAGE_ENDPOINT_URL_ENV_VAR,
     STORAGE_ACCESS_KEY_ENV_VAR,
     STORAGE_SECRET_KEY_ENV_VAR,
 )
-from apollo.agent.models import AgentConfigurationError
+from apollo.common.agent.models import AgentConfigurationError
 from apollo.integrations.s3.s3_base_reader_writer import S3BaseReaderWriter
 
 
