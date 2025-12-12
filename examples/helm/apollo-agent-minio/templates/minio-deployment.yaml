@@ -1,0 +1,72 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "apollo-agent-minio.fullname" . }}-minio
+  labels:
+    {{- include "apollo-agent-minio.minio.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "apollo-agent-minio.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: minio
+  template:
+    metadata:
+      labels:
+        {{- include "apollo-agent-minio.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: minio
+    spec:
+      containers:
+      - name: minio
+        image: "{{ .Values.minio.image.repository }}:{{ .Values.minio.image.tag }}"
+        imagePullPolicy: {{ .Values.minio.image.pullPolicy }}
+        args:
+        - server
+        - /data
+        - --console-address
+        - ":{{ .Values.minio.service.consolePort }}"
+        env:
+        - name: MINIO_ROOT_USER
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "apollo-agent-minio.fullname" . }}-minio
+              key: root-user
+        - name: MINIO_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "apollo-agent-minio.fullname" . }}-minio
+              key: root-password
+        ports:
+        - name: api
+          containerPort: {{ .Values.minio.service.apiPort }}
+          protocol: TCP
+        - name: console
+          containerPort: {{ .Values.minio.service.consolePort }}
+          protocol: TCP
+        livenessProbe:
+          httpGet:
+            path: /minio/health/live
+            port: api
+          initialDelaySeconds: 30
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /minio/health/ready
+            port: api
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        volumeMounts:
+        - name: data
+          mountPath: /data
+        resources:
+          {{- toYaml .Values.minio.resources | nindent 10 }}
+      volumes:
+      {{- if .Values.minio.persistence.enabled }}
+      - name: data
+        persistentVolumeClaim:
+          claimName: {{ include "apollo-agent-minio.fullname" . }}-minio-pvc
+      {{- else }}
+      - name: data
+        emptyDir: {}
+      {{- end }}
+

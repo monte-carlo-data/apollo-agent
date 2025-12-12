@@ -1,0 +1,39 @@
+{{- if .Values.bucketInit.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "apollo-agent-minio.fullname" . }}-bucket-init
+  labels:
+    {{- include "apollo-agent-minio.labels" . | nindent 4 }}
+    app.kubernetes.io/component: bucket-init
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "1"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  template:
+    metadata:
+      labels:
+        {{- include "apollo-agent-minio.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: bucket-init
+    spec:
+      restartPolicy: OnFailure
+      containers:
+      - name: mc
+        image: "{{ .Values.bucketInit.image.repository }}:{{ .Values.bucketInit.image.tag }}"
+        imagePullPolicy: {{ .Values.bucketInit.image.pullPolicy }}
+        env:
+        - name: MC_HOST_minio
+          value: "http://{{ .Values.minio.rootUser }}:{{ .Values.minio.rootPassword }}@{{ include "apollo-agent-minio.fullname" . }}-minio:{{ .Values.minio.service.apiPort }}"
+        command:
+        - /bin/sh
+        - -c
+        - |
+          until mc ready minio; do
+            echo "Waiting for MinIO to be ready..."
+            sleep 2
+          done
+          mc mb minio/{{ .Values.bucketInit.bucketName }} || echo "Bucket may already exist"
+          echo "Bucket '{{ .Values.bucketInit.bucketName }}' is ready"
+{{- end }}
+
