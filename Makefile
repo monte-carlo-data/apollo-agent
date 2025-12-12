@@ -13,8 +13,7 @@ clean:
 install: clean
 	virtualenv $(ENVIRONMENT_NAME); \
 	. $(ENVIRONMENT_NAME)/bin/activate; \
-	pip install setuptools==80.9.0 \
-	pip install -r requirements.txt -r requirements-dev.txt; \
+	pip install -r requirements.txt -r requirements-dev.txt;
 
 generate-docs: install
 	. $(ENVIRONMENT_NAME)/bin/activate; \
