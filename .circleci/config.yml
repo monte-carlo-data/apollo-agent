@@ -210,7 +210,6 @@ jobs:
           name: Install dependencies
           command: |
             pip install virtualenv==20.13.0
-            pip install setuptools==80.9.0
       - run:
           name: Publish docs and invalidate the cloudfront cache
           command: make VERSION=<< parameters.code_version >> publish-docs
