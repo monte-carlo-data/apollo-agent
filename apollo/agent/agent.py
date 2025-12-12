@@ -36,7 +36,7 @@ from apollo.common.agent.models import (
     AgentScript,
 )
 from apollo.agent.proxy_client_factory import ProxyClientFactory
-from apollo.common.agent.settings import VERSION, BUILD_NUMBER
+from apollo.agent.settings import VERSION, BUILD_NUMBER
 from apollo.agent.updater import AgentUpdater
 from apollo.agent.utils import AgentUtils
 from apollo.integrations.aws.asm_proxy_client import SecretsManagerProxyClient
