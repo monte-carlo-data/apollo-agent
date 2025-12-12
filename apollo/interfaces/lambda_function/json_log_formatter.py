@@ -4,7 +4,7 @@ from datetime import datetime
 from logging import Formatter, LogRecord, Logger
 from typing import Any, Optional, Dict
 
-from apollo.agent.redact import AgentRedactUtilities
+from apollo.common.agent.redact import AgentRedactUtilities
 
 
 class JsonLogFormatter(Formatter):

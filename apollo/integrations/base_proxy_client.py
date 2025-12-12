@@ -1,8 +1,8 @@
 from abc import ABC, abstractmethod
 from typing import Optional, Any, Dict
 
-from apollo.agent.models import AgentOperation
-from apollo.agent.redact import AgentRedactUtilities
+from apollo.common.agent.models import AgentOperation
+from apollo.common.agent.redact import AgentRedactUtilities
 
 # any lower cased attribute including any of these values in the key will be redacted in log messages
 _REDACTED_ATTRIBUTES = [

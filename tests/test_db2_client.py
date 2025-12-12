@@ -4,7 +4,7 @@ from unittest.mock import Mock, patch
 import ibm_db_dbi
 
 from apollo.agent.agent import Agent
-from apollo.agent.constants import ATTRIBUTE_NAME_RESULT
+from apollo.common.agent.constants import ATTRIBUTE_NAME_RESULT
 from apollo.agent.logging_utils import LoggingUtils
 from apollo.integrations.db.db2_proxy_client import Db2ProxyClient
 

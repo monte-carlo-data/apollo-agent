@@ -7,8 +7,8 @@ from typing import Dict, cast
 from azure.durable_functions.models.Task import TimerTask
 from azure.monitor.opentelemetry import configure_azure_monitor
 
-from apollo.agent.constants import ATTRIBUTE_NAME_ERROR
-from apollo.agent.env_vars import (
+from apollo.common.agent.constants import ATTRIBUTE_NAME_ERROR
+from apollo.common.agent.env_vars import (
     DEBUG_ENV_VAR,
     ORCHESTRATION_ACTIVITY_TIMEOUT_ENV_VAR,
     ORCHESTRATION_ACTIVITY_TIMEOUT_DEFAULT_VALUE,

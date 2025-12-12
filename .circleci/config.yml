@@ -55,7 +55,7 @@ jobs:
 
   run-linter:
     docker:
-      - image: cimg/python:3.11-node
+      - image: cimg/python:3.12-node
     steps:
       - checkout
       - run:

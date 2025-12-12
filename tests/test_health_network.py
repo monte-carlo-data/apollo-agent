@@ -6,7 +6,7 @@ from unittest import TestCase
 from unittest.mock import patch, create_autospec, Mock
 
 from apollo.agent.agent import Agent
-from apollo.agent.constants import (
+from apollo.common.agent.constants import (
     ATTRIBUTE_NAME_ERROR,
     ATTRIBUTE_NAME_TRACE_ID,
     ATTRIBUTE_NAME_RESULT,

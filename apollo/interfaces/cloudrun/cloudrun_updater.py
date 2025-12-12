@@ -5,8 +5,8 @@ from typing import Dict, Optional, cast, List
 from google.cloud import run_v2
 from google.cloud.run_v2 import Service, EnvVar
 
-from apollo.agent.env_vars import AGENT_IMAGE_TAG_ENV_VAR
-from apollo.agent.models import AgentConfigurationError
+from apollo.common.agent.env_vars import AGENT_IMAGE_TAG_ENV_VAR
+from apollo.common.agent.models import AgentConfigurationError
 from apollo.agent.updater import AgentUpdater
 from apollo.interfaces.cloudrun.metadata_service import (
     GCP_PLATFORM_INFO_KEY_SERVICE_NAME,
