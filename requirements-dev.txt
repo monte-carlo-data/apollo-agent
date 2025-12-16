@@ -97,14 +97,7 @@ requests==2.32.4
     # via
     #   -c requirements.txt
     #   responses
-    #   sseclient
 responses==0.23.3
-    # via -r requirements-dev.in
-six==1.16.0
-    # via
-    #   -c requirements.txt
-    #   sseclient
-sseclient==0.0.27
     # via -r requirements-dev.in
 types-pyyaml==6.0.12.20250516
     # via responses
