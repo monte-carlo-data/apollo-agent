@@ -1,4 +1,4 @@
-agent-base @ git+https://github.com/monte-carlo-data/agent-base.git@dev
+agent-base @ git+https://github.com/monte-carlo-data/agent-base.git@v0.0.1
 
 azure-identity==1.18.0
 azure-keyvault-secrets==4.10.0
