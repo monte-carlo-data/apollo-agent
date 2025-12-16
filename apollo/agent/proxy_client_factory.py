@@ -393,7 +393,6 @@ class ProxyClientFactory:
         # skip_cache is a flag sent by the client, and can be used to force a new client to be created
         # it defaults to False
         if skip_cache:
-            logger.info(f"Client cache for {connection_type} skipped")
             try:
                 return cls._create_proxy_client(connection_type, credentials, platform)
             except Exception:
@@ -407,7 +406,9 @@ class ProxyClientFactory:
 
             # get a non expired client
             client = cls._get_cached_client(key)
-            if not client:
+            if client:
+                logger.info(f"Using cached client for {connection_type}")
+            else:
                 client = cls._create_proxy_client(
                     connection_type, credentials, platform
                 )
