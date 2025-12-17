@@ -3,15 +3,15 @@ from typing import Dict, Optional
 
 import logging
 
-from apollo.agent.constants import PLATFORM_AWS_GENERIC
-from apollo.agent.env_vars import (
+from apollo.common.agent.constants import PLATFORM_AWS_GENERIC
+from apollo.common.agent.env_vars import (
     STORAGE_BUCKET_NAME_ENV_VAR,
     GUNICORN_WORKERS_ENV_VAR,
     GUNICORN_THREADS_ENV_VAR,
     GUNICORN_TIMEOUT_ENV_VAR,
     MCD_AGENT_CLOUD_PLATFORM_ENV_VAR,
 )
-from apollo.agent.models import AgentConfigurationError
+from apollo.common.agent.models import AgentConfigurationError
 from apollo.interfaces.lambda_function.platform import AwsPlatformProvider
 
 logger = logging.getLogger(__name__)

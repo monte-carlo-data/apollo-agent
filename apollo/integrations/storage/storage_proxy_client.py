@@ -9,7 +9,7 @@ from typing import (
     Any,
 )
 
-from apollo.agent.constants import (
+from apollo.common.agent.constants import (
     PLATFORM_AZURE,
     PLATFORM_GCP,
     PLATFORM_AWS,
@@ -18,13 +18,13 @@ from apollo.agent.constants import (
     STORAGE_TYPE_GCS,
     STORAGE_TYPE_S3,
 )
-from apollo.agent.env_vars import (
+from apollo.common.agent.env_vars import (
     STORAGE_TYPE_ENV_VAR,
     STORAGE_PREFIX_ENV_VAR,
     STORAGE_PREFIX_DEFAULT_VALUE,
 )
-from apollo.agent.models import AgentConfigurationError, AgentOperation
-from apollo.agent.redact import AgentRedactUtilities
+from apollo.common.agent.models import AgentConfigurationError, AgentOperation
+from apollo.common.agent.redact import AgentRedactUtilities
 from apollo.agent.utils import AgentUtils
 from apollo.integrations.azure_blob.azure_blob_reader_writer import (
     AzureBlobReaderWriter,

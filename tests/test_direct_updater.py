@@ -2,7 +2,7 @@ import os
 from unittest import TestCase
 from unittest.mock import patch, Mock, call
 
-from apollo.agent.env_vars import AWS_LAMBDA_FUNCTION_NAME_ENV_VAR
+from apollo.common.agent.env_vars import AWS_LAMBDA_FUNCTION_NAME_ENV_VAR
 from apollo.interfaces.lambda_function.direct_updater import LambdaDirectUpdater
 
 

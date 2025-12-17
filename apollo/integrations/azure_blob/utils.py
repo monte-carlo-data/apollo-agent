@@ -2,7 +2,7 @@ import os
 
 from azure.identity import DefaultAzureCredential
 
-from apollo.agent.models import AgentConfigurationError
+from apollo.common.agent.models import AgentConfigurationError
 
 
 class AzureUtils:

@@ -12,7 +12,7 @@ from typing import (
 import oracledb
 from oracledb.base_impl import DbType
 
-from apollo.agent.serde import AgentSerializer
+from apollo.common.agent.serde import AgentSerializer
 from apollo.agent.utils import AgentUtils
 from apollo.integrations.db.base_db_proxy_client import BaseDbProxyClient, SslOptions
 
