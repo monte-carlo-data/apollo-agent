@@ -1,5 +1,6 @@
 import logging
 import os
+import sys
 from typing import Tuple, Dict, Optional, cast, Callable, Union
 
 from flask import request
@@ -24,6 +25,14 @@ from apollo.interfaces.generic.log_context import BaseLogContext
 # set the logger class before any other apollo code
 logging.setLoggerClass(ExtraLogger)
 
+is_debug = os.getenv(DEBUG_ENV_VAR, "false").lower() == "true"
+logging.basicConfig(
+    stream=sys.stdout,
+    level=logging.DEBUG if is_debug else logging.INFO,
+    format="[%(asctime)s] %(levelname)s:%(name)s: %(message)s",
+    datefmt="%Y-%m-%dT%H:%M:%SZ",
+)
+
 log_context = BaseLogContext()
 log_context.install()
 
@@ -31,9 +40,6 @@ formatter = JsonLogFormatter()
 root_logger = logging.getLogger()
 for h in root_logger.handlers:
     h.setFormatter(formatter)
-
-is_debug = os.getenv(DEBUG_ENV_VAR, "false").lower() == "true"
-root_logger.setLevel(logging.DEBUG if is_debug else logging.INFO)
 
 _DEFAULT_LOGS_LIMIT = 1000
 
