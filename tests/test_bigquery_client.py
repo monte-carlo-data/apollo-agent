@@ -17,7 +17,9 @@ _SERVICE_ACCOUNT_CREDENTIALS = {
 
 
 class BigQueryClientTests(TestCase):
-    @patch("apollo.integrations.bigquery.bq_proxy_client.googleapiclient.discovery.build")
+    @patch(
+        "apollo.integrations.bigquery.bq_proxy_client.googleapiclient.discovery.build"
+    )
     @patch(
         "apollo.integrations.bigquery.bq_proxy_client.Credentials.from_service_account_info"
     )
@@ -39,7 +41,9 @@ class BigQueryClientTests(TestCase):
             cache_discovery=False,
         )
 
-    @patch("apollo.integrations.bigquery.bq_proxy_client.googleapiclient.discovery.build")
+    @patch(
+        "apollo.integrations.bigquery.bq_proxy_client.googleapiclient.discovery.build"
+    )
     @patch(
         "apollo.integrations.bigquery.bq_proxy_client.Credentials.from_service_account_info"
     )
@@ -66,7 +70,9 @@ class BigQueryClientTests(TestCase):
             cache_discovery=False,
         )
 
-    @patch("apollo.integrations.bigquery.bq_proxy_client.googleapiclient.discovery.build")
+    @patch(
+        "apollo.integrations.bigquery.bq_proxy_client.googleapiclient.discovery.build"
+    )
     @patch(
         "apollo.integrations.bigquery.bq_proxy_client.Credentials.from_service_account_info"
     )
@@ -88,7 +94,9 @@ class BigQueryClientTests(TestCase):
             cache_discovery=False,
         )
 
-    @patch("apollo.integrations.bigquery.bq_proxy_client.googleapiclient.discovery.build")
+    @patch(
+        "apollo.integrations.bigquery.bq_proxy_client.googleapiclient.discovery.build"
+    )
     @patch(
         "apollo.integrations.bigquery.bq_proxy_client.Credentials.from_service_account_info"
     )
@@ -108,4 +116,3 @@ class BigQueryClientTests(TestCase):
             credentials=None,
             cache_discovery=False,
         )
-
