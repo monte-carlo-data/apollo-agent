@@ -5,7 +5,6 @@ from typing import Optional
 from azure.identity import DefaultAzureCredential
 
 from apollo.common.agent.models import AgentConfigurationError
-from azure.mgmt.resource import SubscriptionClient
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +53,9 @@ class AzureUtils:
 
     @staticmethod
     def _get_subscription_id_from_credentials() -> Optional[str]:
+        # imported here to prevent issues in other platforms
+        from azure.mgmt.resource import SubscriptionClient
+
         client = SubscriptionClient(AzureUtils.get_default_credential())
         subscriptions = list(client.subscriptions.list())
         if not subscriptions:
