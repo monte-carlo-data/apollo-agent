@@ -36,8 +36,6 @@ class AzureUtils:
 
     @staticmethod
     def get_subscription_id() -> str:
-        if subscription_id := os.getenv("AZURE_SUBSCRIPTION_ID"):
-            return subscription_id
         owner_name = os.getenv(
             "WEBSITE_OWNER_NAME"
         )  # subscription_id+resource_group_region_etc
