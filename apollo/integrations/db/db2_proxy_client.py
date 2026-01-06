@@ -1,12 +1,10 @@
 from typing import Any
 import logging
-import os
-import tempfile
 
 import ibm_db
 import ibm_db_dbi
 
-from apollo.integrations.db.base_db_proxy_client import BaseDbProxyClient, SslOptions
+from apollo.integrations.db.base_db_proxy_client import BaseDbProxyClient
 
 _ATTR_CONNECT_ARGS = "connect_args"
 
@@ -28,42 +26,14 @@ class Db2ProxyClient(BaseDbProxyClient):
                 f"DB2 agent client requires {_ATTR_CONNECT_ARGS} in credentials"
             )
 
-        connect_args = {**credentials[_ATTR_CONNECT_ARGS]}
+        connect_args = credentials[_ATTR_CONNECT_ARGS]
 
-        # Handle SSL options for DB2 connections
-        ssl_options = SslOptions(**(credentials.get("ssl_options") or {}))
-        temp_cert_file = None
+        # Build connection string from dictionary parameters
+        connection_string = ";".join(
+            "=".join([key, str(value)]) for key, value in connect_args.items()
+        )
 
         try:
-            # Add SSL parameters to connection args if SSL is configured
-            if not ssl_options.disabled and ssl_options.ca_data:
-                connect_args["SECURITY"] = "SSL"
-
-                # DB2 requires SSLServerCertificate to point to a certificate file
-                # Create a temporary file for the CA certificate
-                temp_cert_file = tempfile.NamedTemporaryFile(
-                    mode="w", suffix=".pem", delete=False
-                )
-                temp_cert_file.write(ssl_options.ca_data)
-                temp_cert_file.close()
-
-                connect_args["SSLServerCertificate"] = temp_cert_file.name
-
-                logger.info(
-                    "DB2 SSL configured",
-                    extra={
-                        "ssl_options": {
-                            "has_ca_data": bool(ssl_options.ca_data),
-                            "skip_cert_verification": ssl_options.skip_cert_verification,
-                        }
-                    },
-                )
-
-            # Build connection string from dictionary parameters
-            connection_string = ";".join(
-                "=".join([key, str(value)]) for key, value in connect_args.items()
-            )
-
             # Connect using ibm_db and create DBI connection wrapper
             # The DBI connection will manage the native connection lifecycle
             native_connection = ibm_db.connect(connection_string, "", "")
@@ -72,15 +42,6 @@ class Db2ProxyClient(BaseDbProxyClient):
         except Exception as e:
             logger.error(f"Failed to connect to DB2: {e}")
             raise
-        finally:
-            # Clean up temporary certificate file after connection is established
-            if temp_cert_file and os.path.exists(temp_cert_file.name):
-                try:
-                    os.unlink(temp_cert_file.name)
-                except Exception as cleanup_error:
-                    logger.warning(
-                        f"Failed to clean up temporary certificate file: {cleanup_error}"
-                    )
 
     @property
     def wrapped_client(self):
