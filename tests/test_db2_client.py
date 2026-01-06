@@ -108,3 +108,44 @@ class Db2ClientTests(TestCase):
         with self.assertRaises(ValueError) as context:
             Db2ProxyClient(credentials={})
         self.assertIn("DB2 agent client requires connect_args", str(context.exception))
+
+    @patch("ibm_db_dbi.Connection")
+    @patch("ibm_db.connect")
+    @patch("os.path.exists")
+    @patch("os.unlink")
+    def test_connect_with_ssl(
+        self, mock_unlink, mock_exists, mock_ibm_db_connect, mock_dbi_connection
+    ):
+        mock_ibm_db_connection = Mock()
+        mock_ibm_db_connect.return_value = mock_ibm_db_connection
+        mock_dbi_connection.return_value = self._mock_connection
+        mock_exists.return_value = True
+
+        ca_cert_data = (
+            "-----BEGIN CERTIFICATE-----\nCA_CERT_DATA\n-----END CERTIFICATE-----"
+        )
+        credentials = {
+            "connect_args": {
+                "DATABASE": "testdb",
+                "HOSTNAME": "localhost",
+                "PORT": "50001",  # SSL port
+                "PROTOCOL": "TCPIP",
+                "UID": "testuser",
+                "PWD": "testpass",
+            },
+            "ssl_options": {
+                "ca_data": ca_cert_data,
+                "disabled": False,
+            },
+        }
+
+        client = Db2ProxyClient(credentials)
+
+        # Verify ibm_db.connect was called with SSL parameters
+        mock_ibm_db_connect.assert_called_once()
+        connection_string = mock_ibm_db_connect.call_args[0][0]
+
+        # Verify SSL parameters are in connection string
+        self.assertIn("Security=SSL", connection_string)
+        self.assertIn("SSLServerCertificate=", connection_string)
+        self.assertIn("PORT=50001", connection_string)
