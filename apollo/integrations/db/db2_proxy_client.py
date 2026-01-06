@@ -1,10 +1,13 @@
+import hashlib
 from typing import Any
 import logging
+import os
+import tempfile
 
 import ibm_db
 import ibm_db_dbi
 
-from apollo.integrations.db.base_db_proxy_client import BaseDbProxyClient
+from apollo.integrations.db.base_db_proxy_client import BaseDbProxyClient, SslOptions
 
 _ATTR_CONNECT_ARGS = "connect_args"
 
@@ -26,7 +29,24 @@ class Db2ProxyClient(BaseDbProxyClient):
                 f"DB2 agent client requires {_ATTR_CONNECT_ARGS} in credentials"
             )
 
-        connect_args = credentials[_ATTR_CONNECT_ARGS]
+        connect_args = {**credentials[_ATTR_CONNECT_ARGS]}
+
+        # Handle SSL options for DB2 connections
+        ssl_options = SslOptions(**(credentials.get("ssl_options") or {}))
+
+        if ssl_options.ca_data and not ssl_options.disabled:
+            # DB2 requires SSLServerCertificate to point to a certificate file
+            # Create a temporary file for the CA certificate
+            host_hash = hashlib.sha256(
+                connect_args.get("hostname", "temp").encode()
+            ).hexdigest()[:12]
+            cert_file = f"/tmp/{host_hash}_db2_ca.pem"
+            ssl_options.write_ca_data_to_temp_file(cert_file, upsert=True)
+
+            connect_args["Security"] = "SSL"
+            connect_args["SSLServerCertificate"] = cert_file
+
+            logger.info("DB2 SSL configured")
 
         # Build connection string from dictionary parameters
         connection_string = ";".join(
