@@ -33,14 +33,19 @@ commands:
           VERSION=${TAG#v}
           echo "NEXT_VERSION=$(echo "$VERSION" | awk 'BEGIN{FS=OFS="."} {$3+=1} 1')rc${PIPELINE_NUMBER}" >> $BASH_ENV
           source $BASH_ENV
+          echo "Image version: ${NEXT_VERSION}"
+          echo "Code version: ${PIPELINE_NUMBER}"
         name: Generate dev version number
   generate-version-number-prod:
     steps:
     - run:
         command: |
+          PIPELINE_NUMBER=<< pipeline.number >>
           if git describe --tags --abbrev=0; then TAG=$(git describe --tags --abbrev=0); else exit 1; fi
           echo "VERSION_TAG=${TAG#v}" >> $BASH_ENV
           source $BASH_ENV
+          echo "Image version: ${VERSION_TAG}"
+          echo "Code version: ${PIPELINE_NUMBER}"
         name: Generate prod version number
 
 jobs:
