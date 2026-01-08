@@ -2,7 +2,7 @@ from typing import Optional, Dict, Any
 
 import trino
 
-from apollo.integrations.db.base_db_proxy_client import BaseDbProxyClient
+from apollo.integrations.db.base_db_proxy_client import BaseDbProxyClient, SslOptions
 
 _ATTR_CONNECT_ARGS = "connect_args"
 
@@ -23,6 +23,22 @@ class StarburstProxyClient(BaseDbProxyClient):
             )
 
         connect_args: Dict[str, Any] = {**credentials[_ATTR_CONNECT_ARGS]}
+
+        # Handle SSL options for DB2 connections
+        ssl_options = SslOptions(**(credentials.get("ssl_options") or {}))
+
+        if ssl_options.ca_data and not ssl_options.disabled:
+            # Trino requires verify to point to a certificate file
+            # Create a temporary file for the CA certificate
+            host_hash = hashlib.sha256(
+                connect_args.get("hostname", "temp").encode()
+            ).hexdigest()[:12]
+            cert_file = f"/tmp/{host_hash}_starburst_ca.pem"
+            ssl_options.write_ca_data_to_temp_file(cert_file, upsert=True)
+
+            connect_args["verify"] = cert_file
+
+            logger.info("Starburst SSL configured")
 
         # Extract user/password for BasicAuthentication
         if "user" not in connect_args or "password" not in connect_args:
