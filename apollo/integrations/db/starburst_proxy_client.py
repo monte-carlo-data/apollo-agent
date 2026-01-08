@@ -1,3 +1,5 @@
+import hashlib
+import logging
 from typing import Optional, Dict, Any
 
 import trino
@@ -5,6 +7,8 @@ import trino
 from apollo.integrations.db.base_db_proxy_client import BaseDbProxyClient, SslOptions
 
 _ATTR_CONNECT_ARGS = "connect_args"
+
+logger = logging.getLogger(__name__)
 
 
 class StarburstProxyClient(BaseDbProxyClient):
