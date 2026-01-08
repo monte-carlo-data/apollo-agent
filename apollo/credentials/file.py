@@ -1,6 +1,9 @@
 import json
+import logging
 
 from apollo.credentials.base import BaseCredentialsService
+
+logger = logging.getLogger(__name__)
 
 
 class FileCredentialsService(BaseCredentialsService):
@@ -13,4 +16,13 @@ class FileCredentialsService(BaseCredentialsService):
         if not file_path:
             raise ValueError("Missing expected file path in credentials")
         with open(file_path, "r") as f:
-            return json.load(f)
+            try:
+                return json.load(f)
+            except json.JSONDecodeError as je:
+                logger.error(f"Invalid JSON in file: {file_path}: {je}", exc_info=True)
+                raise ValueError(
+                    f"Invalid JSON in credentials file: {file_path} ({je})"
+                )
+            except Exception as e:
+                logger.error(f"Error reading file: {file_path}: {e}", exc_info=True)
+                raise ValueError(f"Error reading credentials file: {file_path} ({e})")
