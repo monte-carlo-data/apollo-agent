@@ -28,7 +28,7 @@ class StarburstProxyClient(BaseDbProxyClient):
 
         connect_args: Dict[str, Any] = {**credentials[_ATTR_CONNECT_ARGS]}
 
-        # Handle SSL options for DB2 connections
+        # Handle SSL options for Starburst connections
         ssl_options = SslOptions(**(credentials.get("ssl_options") or {}))
 
         if ssl_options.ca_data and not ssl_options.disabled:
