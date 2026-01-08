@@ -50,8 +50,9 @@ class TestFileCredentialsService(TestCase):
             credentials = {"file_path": "/path/to/credentials.json"}
 
             # Execute & Verify
-            with self.assertRaises(json.JSONDecodeError):
+            with self.assertRaises(ValueError) as exc:
                 self.service.get_credentials(credentials)
+            self.assertIn("Invalid JSON in credentials file", str(exc.exception))
 
     def test_get_credentials_merge_connect_args(self):
         # Setup
