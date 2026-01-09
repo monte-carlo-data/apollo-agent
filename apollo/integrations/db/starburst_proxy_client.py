@@ -35,7 +35,7 @@ class StarburstProxyClient(BaseDbProxyClient):
             # Trino requires verify to point to a certificate file
             # Create a temporary file for the CA certificate
             host_hash = hashlib.sha256(
-                connect_args.get("hostname", "temp").encode()
+                connect_args.get("host", "temp").encode()
             ).hexdigest()[:12]
             cert_file = f"/tmp/{host_hash}_starburst_ca.pem"
             ssl_options.write_ca_data_to_temp_file(cert_file, upsert=True)
