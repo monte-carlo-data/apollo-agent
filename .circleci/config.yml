@@ -95,17 +95,11 @@ jobs:
       - docker/check:
           use-docker-credentials-store: true
       - docker/build:
-          step-name: Build generic image
-          use-buildkit: true  # to build only the required stages
-          extra_build_args: --target generic --build-arg code_version=<< parameters.code_version >> --build-arg build_number=<< pipeline.number >>
-          image: montecarlodata/<< parameters.docker_hub_repository >>
-          tag: latest-generic,<< parameters.code_version >>-generic
-      - docker/build:
           step-name: Build AWS generic image
           use-buildkit: true  # to build only the required stages
-          extra_build_args: --target aws_generic --build-arg code_version=<< parameters.code_version >> --build-arg build_number=<< pipeline.number >>
+          extra_build_args: --target aws_proxied --build-arg code_version=<< parameters.code_version >> --build-arg build_number=<< pipeline.number >>
           image: montecarlodata/<< parameters.docker_hub_repository >>
-          tag: latest-aws-generic,<< parameters.code_version >>-aws-generic
+          tag: latest-aws-generic,<< parameters.code_version >>-aws-generic,latest-aws-proxied,<< parameters.code_version >>-aws-proxied
       - docker/build:
           step-name: Build cloudrun image
           use-buildkit: true # to build only the required stages
@@ -119,20 +113,17 @@ jobs:
           image: montecarlodata/<< parameters.docker_hub_repository >>
           tag: latest-azure,<< parameters.code_version >>-azure
       - verify-version-in-docker-image:
-          image: montecarlodata/<< parameters.docker_hub_repository >>:latest-generic
-          version: << parameters.code_version >>,<< pipeline.number >>
-      - verify-version-in-docker-image:
           image: montecarlodata/<< parameters.docker_hub_repository >>:latest-cloudrun
           version: << parameters.code_version >>,<< pipeline.number >>
       - verify-version-in-docker-image:
           image: montecarlodata/<< parameters.docker_hub_repository >>:latest-azure
           version: << parameters.code_version >>,<< pipeline.number >>
       - verify-version-in-docker-image:
-          image: montecarlodata/<< parameters.docker_hub_repository >>:latest-aws-generic
+          image: montecarlodata/<< parameters.docker_hub_repository >>:latest-aws-proxied
           version: << parameters.code_version >>,<< pipeline.number >>
       - docker/push:
           image: montecarlodata/<< parameters.docker_hub_repository >>
-          tag: latest-generic,<< parameters.code_version >>-generic,latest-cloudrun,<< parameters.code_version >>-cloudrun,latest-azure,<< parameters.code_version >>-azure,latest-aws-generic,<< parameters.code_version >>-aws-generic
+          tag: latest-cloudrun,<< parameters.code_version >>-cloudrun,latest-azure,<< parameters.code_version >>-azure,latest-aws-generic,<< parameters.code_version >>-aws-generic,latest-aws-proxied,<< parameters.code_version >>-aws-proxied
 
   build-and-push-lambda:
     machine:
