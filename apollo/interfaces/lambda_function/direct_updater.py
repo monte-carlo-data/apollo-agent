@@ -7,10 +7,10 @@ import boto3
 from botocore.client import BaseClient
 from botocore.exceptions import WaiterError
 
-from apollo.agent.env_vars import AWS_LAMBDA_FUNCTION_NAME_ENV_VAR
-from apollo.agent.models import AgentConfigurationError
+from apollo.common.agent.env_vars import AWS_LAMBDA_FUNCTION_NAME_ENV_VAR
+from apollo.common.agent.models import AgentConfigurationError
 from apollo.agent.updater import AgentUpdater
-from apollo.interfaces.lambda_function.aws_utils import get_boto_config
+from apollo.integrations.aws.aws_utils import get_boto_config
 
 logger = logging.getLogger(__name__)
 

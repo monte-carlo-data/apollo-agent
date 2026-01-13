@@ -5,8 +5,8 @@ import requests
 from requests import HTTPError
 from retry.api import retry_call
 
-from apollo.agent.models import AgentOperation
-from apollo.agent.redact import AgentRedactUtilities
+from apollo.common.agent.models import AgentOperation
+from apollo.common.agent.redact import AgentRedactUtilities
 from apollo.integrations.base_proxy_client import BaseProxyClient
 
 

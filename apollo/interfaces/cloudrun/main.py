@@ -5,11 +5,13 @@ from typing import Dict, Optional, Tuple
 import google.cloud.logging
 from flask import request
 
-from apollo.agent.constants import (
+from apollo.common.agent.constants import (
     LOG_ATTRIBUTE_OPERATION_NAME,
     LOG_ATTRIBUTE_TRACE_ID,
 )
-from apollo.agent.env_vars import DEBUG_LOG_ENV_VAR
+from apollo.common.agent.env_vars import DEBUG_LOG_ENV_VAR
+from apollo.common.agent.redact import AgentRedactUtilities
+from apollo.common.agent.redact_formatter import RedactFormatterWrapper
 from apollo.agent.utils import AgentUtils
 from apollo.interfaces.generic.log_context import BaseLogContext
 from apollo.interfaces.cloudrun.platform import CloudRunPlatformProvider
@@ -22,6 +24,11 @@ is_debug_log = os.getenv(DEBUG_LOG_ENV_VAR, "false").lower() == "true"
 gcp_logging_client.setup_logging(
     log_level=logging.DEBUG if is_debug_log else logging.INFO
 )
+
+root_logger = logging.getLogger()
+for h in root_logger.handlers:
+    # make sure we redact sensitive data
+    h.setFormatter(RedactFormatterWrapper(h.formatter))
 
 log_context = BaseLogContext(attr_name="json_fields")
 log_context.install()
@@ -46,7 +53,7 @@ def cloud_run_extra_builder(trace_id: Optional[str], operation_name: str, extra:
         json_fields[LOG_ATTRIBUTE_TRACE_ID] = trace_id
 
     return {
-        "json_fields": json_fields,
+        "json_fields": AgentRedactUtilities.standard_redact(json_fields),
     }
 
 

@@ -6,9 +6,9 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional, Dict
 
-from apollo.agent.env_vars import CLIENT_CACHE_EXPIRATION_SECONDS_ENV_VAR
-from apollo.agent.models import AgentError
-from apollo.agent.serde import decode_dictionary
+from apollo.common.agent.env_vars import CLIENT_CACHE_EXPIRATION_SECONDS_ENV_VAR
+from apollo.common.agent.models import AgentError
+from apollo.common.agent.serde import decode_dictionary
 from apollo.integrations.base_proxy_client import BaseProxyClient
 from apollo.integrations.db.salesforce_data_cloud_proxy_client import (
     SalesforceDataCloudProxyClient,
@@ -311,6 +311,16 @@ def _get_proxy_client_clickhouse(
     return ClickHouseProxyClient(credentials=credentials, platform=platform)
 
 
+def _get_proxy_client_starburst(
+    credentials: Optional[Dict], platform: str, **kwargs  # type: ignore
+) -> BaseProxyClient:
+    from apollo.integrations.db.starburst_proxy_client import (
+        StarburstProxyClient,
+    )
+
+    return StarburstProxyClient(credentials=credentials, platform=platform)
+
+
 def _get_proxy_client_db2(
     credentials: Optional[Dict], platform: str, **kwargs  # type: ignore
 ) -> BaseProxyClient:
@@ -357,6 +367,8 @@ _CLIENT_FACTORY_MAPPING = {
     "salesforce-crm": _get_proxy_client_salesforce_crm,
     "salesforce-data-cloud": _get_proxy_client_salesforce_data_cloud,
     "clickhouse": _get_proxy_client_clickhouse,
+    "starburst-galaxy": _get_proxy_client_starburst,
+    "starburst-enterprise": _get_proxy_client_starburst,
 }
 
 
@@ -381,7 +393,6 @@ class ProxyClientFactory:
         # skip_cache is a flag sent by the client, and can be used to force a new client to be created
         # it defaults to False
         if skip_cache:
-            logger.info(f"Client cache for {connection_type} skipped")
             try:
                 return cls._create_proxy_client(connection_type, credentials, platform)
             except Exception:
@@ -395,7 +406,9 @@ class ProxyClientFactory:
 
             # get a non expired client
             client = cls._get_cached_client(key)
-            if not client:
+            if client:
+                logger.info(f"Using cached client for {connection_type}")
+            else:
                 client = cls._create_proxy_client(
                     connection_type, credentials, platform
                 )

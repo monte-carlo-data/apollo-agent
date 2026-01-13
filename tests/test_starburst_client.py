@@ -1,64 +1,58 @@
-import base64
 import datetime
-from typing import List, Any, Optional, Dict
+from typing import (
+    List,
+    Any,
+    Optional,
+)
 from unittest import TestCase
-from unittest.mock import Mock, call, patch
-from snowflake.connector.errors import ProgrammingError
+from unittest.mock import (
+    ANY,
+    Mock,
+    call,
+    patch,
+)
 
 from apollo.agent.agent import Agent
 from apollo.common.agent.constants import (
     ATTRIBUTE_NAME_ERROR,
     ATTRIBUTE_NAME_RESULT,
     ATTRIBUTE_NAME_ERROR_TYPE,
-    ATTRIBUTE_NAME_ERROR_ATTRS,
 )
 from apollo.agent.logging_utils import LoggingUtils
-from apollo.agent.proxy_client_factory import ProxyClientFactory
 
-_SF_CREDENTIALS = {"user": "u", "password": "p", "account": "a", "warehouse": "w"}
+_STARBURST_CREDENTIALS = {
+    "host": "example.starburst.io",
+    "port": "443",
+    "http_scheme": "https",
+    "catalog": "fizz",
+    "schema": "buzz",
+    "user": "foo",
+    "password": "bar",
+}
+_EXPECTED_STARBURST_CREDENTIALS = {
+    "host": "example.starburst.io",
+    "port": "443",
+    "http_scheme": "https",
+    "catalog": "fizz",
+    "schema": "buzz",
+    "auth": ANY,
+}
 
 
-class SnowflakeClientTests(TestCase):
+class StarburstClientTests(TestCase):
     def setUp(self) -> None:
         self._agent = Agent(LoggingUtils())
         self._mock_connection = Mock()
         self._mock_cursor = Mock()
         self._mock_connection.cursor.return_value = self._mock_cursor
 
-    @patch("snowflake.connector.connect")
-    def test_private_key_auth(self, mock_connect):
-        mock_connect.return_value = self._mock_connection
-
-        private_key = b"abc"
-        credentials = {
-            "connect_args": {
-                "user": "u",
-                "private_key": {
-                    "__type__": "bytes",
-                    "__data__": base64.b64encode(private_key).decode("utf-8"),
-                },
-                "account": "a",
-                "warehouse": "w",
-            },
-        }
-        client = ProxyClientFactory.get_proxy_client(
-            "snowflake", credentials, True, "AWS"
-        )
-        self.assertIsNotNone(client)
-        mock_connect.assert_called_once_with(
-            **{
-                **credentials["connect_args"],
-                "private_key": private_key,
-            }
-        )
-
-    @patch("snowflake.connector.connect")
-    def test_query(self, mock_connect):
-        query = "SELECT name, value FROM table"  # noqa
+    @patch("trino.dbapi.connect")
+    def test_query_starburst_galaxy(self, mock_connect):
+        query = "SELECT idx, value FROM table"  # noqa
         expected_data = [
             [
                 "name_1",
-                11.1,
+                1,
             ],
             [
                 "name_2",
@@ -66,66 +60,94 @@ class SnowflakeClientTests(TestCase):
             ],
         ]
         expected_description = [
-            ["name", "string", None, None, None, None, None],
+            ["idx", "integer", None, None, None, None, None],
             ["value", "float", None, None, None, None, None],
         ]
-        self._test_run_query(mock_connect, query, expected_data, expected_description)
-
-    @patch("snowflake.connector.connect")
-    def test_query_bytearray(self, mock_connect):
-        query = "SELECT name, value FROM table"  # noqa
-        expected_data = [
-            [
-                bytearray(b"name_1"),
-                11.1,
-            ],
-            [
-                bytearray(b"name_1"),
-                22.2,
-            ],
-        ]
-        expected_description = [
-            ["name", "binary", None, None, None, None, None],
-            ["value", "float", None, None, None, None, None],
-        ]
-        self._test_run_query(mock_connect, query, expected_data, expected_description)
-
-    @patch("snowflake.connector.connect")
-    def test_query_time(self, mock_connect):
-        query = "SELECT name, value FROM table"  # noqa
-        expected_data = [
-            [
-                "name_1",
-                datetime.time.fromisoformat("14:23:10"),
-            ],
-            [
-                "name_2",
-                datetime.time.fromisoformat("14:23:12"),
-            ],
-        ]
-        expected_description = [
-            ["name", "string", None, None, None, None, None],
-            ["value", "time", None, None, None, None, None],
-        ]
-        self._test_run_query(mock_connect, query, expected_data, expected_description)
-
-    @patch("snowflake.connector.connect")
-    def test_programming_error(self, mock_connect):
-        query = ""
-        data = []
-        description = []
         self._test_run_query(
             mock_connect,
             query,
-            data,
-            description,
-            raise_exception=ProgrammingError("invalid sql", errno=123, sqlstate="abc"),
-            expected_error_type="ProgrammingError",
-            expected_error_attrs={
-                "errno": 123,
-                "sqlstate": "abc",
-            },
+            expected_data,
+            expected_description,
+            connection_type="starburst-galaxy",
         )
+
+    @patch("trino.dbapi.connect")
+    def test_query_starburst_enterprise(self, mock_connect):
+        query = "SELECT idx, value FROM table"  # noqa
+        expected_data = [
+            [
+                "name_1",
+                1,
+            ],
+            [
+                "name_2",
+                22.2,
+            ],
+        ]
+        expected_description = [
+            ["idx", "integer", None, None, None, None, None],
+            ["value", "float", None, None, None, None, None],
+        ]
+        self._test_run_query(
+            mock_connect,
+            query,
+            expected_data,
+            expected_description,
+            connection_type="starburst-enterprise",
+        )
+
+    @patch("trino.dbapi.connect")
+    def test_missing_credentials_raises_error(self, mock_connect):
+        """Test that missing user or password raises an error"""
+        operation_dict = {
+            "trace_id": "1234",
+            "skip_cache": True,
+            "commands": [
+                {"method": "cursor", "store": "_cursor"},
+            ],
+        }
+
+        # Credentials without password
+        credentials_no_password = {
+            "host": "example.starburst.io",
+            "port": "443",
+            "http_scheme": "https",
+            "catalog": "fizz",
+            "schema": "buzz",
+            "user": "foo",
+        }
+
+        response = self._agent.execute_operation(
+            "starburst-galaxy",
+            "run_query",
+            operation_dict,
+            {"connect_args": credentials_no_password},
+        )
+
+        self.assertIn("user", response.result.get(ATTRIBUTE_NAME_ERROR))
+        self.assertIn("password", response.result.get(ATTRIBUTE_NAME_ERROR))
+        mock_connect.assert_not_called()
+
+        # Credentials without user
+        credentials_no_user = {
+            "host": "example.starburst.io",
+            "port": "443",
+            "http_scheme": "https",
+            "catalog": "fizz",
+            "schema": "buzz",
+            "password": "bar",
+        }
+
+        response = self._agent.execute_operation(
+            "starburst-galaxy",
+            "run_query",
+            operation_dict,
+            {"connect_args": credentials_no_user},
+        )
+
+        self.assertIn("user", response.result.get(ATTRIBUTE_NAME_ERROR))
+        self.assertIn("password", response.result.get(ATTRIBUTE_NAME_ERROR))
+        mock_connect.assert_not_called()
 
     def _test_run_query(
         self,
@@ -135,7 +157,7 @@ class SnowflakeClientTests(TestCase):
         description: List,
         raise_exception: Optional[Exception] = None,
         expected_error_type: Optional[str] = None,
-        expected_error_attrs: Optional[Dict] = None,
+        connection_type: str = "starburst-galaxy",
     ):
         operation_dict = {
             "trace_id": "1234",
@@ -175,11 +197,11 @@ class SnowflakeClientTests(TestCase):
         self._mock_cursor.rowcount.return_value = expected_rows
 
         response = self._agent.execute_operation(
-            "snowflake",
+            connection_type,
             "run_query",
             operation_dict,
             {
-                "connect_args": _SF_CREDENTIALS,
+                "connect_args": _STARBURST_CREDENTIALS,
             },
         )
 
@@ -190,16 +212,13 @@ class SnowflakeClientTests(TestCase):
             self.assertEqual(
                 expected_error_type, response.result.get(ATTRIBUTE_NAME_ERROR_TYPE)
             )
-            self.assertEqual(
-                expected_error_attrs, response.result.get(ATTRIBUTE_NAME_ERROR_ATTRS)
-            )
             return
 
         self.assertIsNone(response.result.get(ATTRIBUTE_NAME_ERROR))
         self.assertTrue(ATTRIBUTE_NAME_RESULT in response.result)
         result = response.result.get(ATTRIBUTE_NAME_RESULT)
 
-        mock_connect.assert_called_with(**_SF_CREDENTIALS)
+        mock_connect.assert_called_with(**_EXPECTED_STARBURST_CREDENTIALS)
         self._mock_cursor.execute.assert_has_calls(
             [
                 call(query, None),
@@ -237,16 +256,6 @@ class SnowflakeClientTests(TestCase):
             return {
                 "__type__": "date",
                 "__data__": value.isoformat(),
-            }
-        elif isinstance(value, datetime.time):
-            return {
-                "__type__": "time",
-                "__data__": value.isoformat(),
-            }
-        elif isinstance(value, bytes) or isinstance(value, bytearray):
-            return {
-                "__type__": "bytes",
-                "__data__": base64.b64encode(value).decode("utf-8"),
             }
         else:
             return value

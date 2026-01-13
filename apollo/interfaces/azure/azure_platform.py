@@ -11,8 +11,8 @@ from azure.monitor.query import (
     LogsTableRow,
 )
 
-from apollo.agent.constants import PLATFORM_AZURE
-from apollo.agent.models import AgentConfigurationError
+from apollo.common.agent.constants import PLATFORM_AZURE
+from apollo.common.agent.models import AgentConfigurationError
 from apollo.agent.platform import AgentPlatformProvider
 from apollo.agent.updater import AgentUpdater
 from apollo.integrations.azure_blob.utils import AzureUtils

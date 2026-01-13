@@ -11,15 +11,18 @@ from azure.storage.blob import (
     BlobServiceClient,
 )
 
-from apollo.agent.env_vars import (
+from apollo.common.agent.env_vars import (
     STORAGE_BUCKET_NAME_ENV_VAR,
     STORAGE_ACCOUNT_NAME_ENV_VAR,
+    AGENT_WRAPPER_TYPE_ENV_VAR,
 )
-from apollo.agent.models import AgentConfigurationError
+from apollo.common.agent.models import AgentConfigurationError
 from apollo.integrations.azure_blob.azure_blob_base_reader_writer import (
     AzureBlobBaseReaderWriter,
 )
 from apollo.integrations.azure_blob.utils import AzureUtils
+
+_WRAPPER_TYPE_KUBERNETES = "KUBERNETES"
 
 
 class AzureBlobReaderWriter(AzureBlobBaseReaderWriter):
@@ -57,6 +60,13 @@ class AzureBlobReaderWriter(AzureBlobBaseReaderWriter):
             credential=AzureUtils.get_default_credential(),
             **kwargs,
         )
+
+    def is_bucket_private(self) -> bool:
+        # for Kubernetes deployments we don't have access to the storage account key, so we
+        # skip the check and assume the container is private
+        if os.getenv(AGENT_WRAPPER_TYPE_ENV_VAR) == _WRAPPER_TYPE_KUBERNETES:
+            return True
+        return super().is_bucket_private()
 
     def _generate_sas_token(
         self, blob_client: BlobClient, expiry: datetime, permission: BlobSasPermissions

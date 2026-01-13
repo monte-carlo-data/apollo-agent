@@ -5,7 +5,7 @@ from botocore.client import BaseClient
 from botocore.exceptions import WaiterError
 
 from apollo.agent.updater import AgentUpdater
-from apollo.interfaces.lambda_function.aws_utils import get_boto_config
+from apollo.integrations.aws.aws_utils import get_boto_config
 from apollo.interfaces.lambda_function.cf_utils import CloudFormationUtils
 from apollo.interfaces.lambda_function.direct_updater import LambdaDirectUpdater
 

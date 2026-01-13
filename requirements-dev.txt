@@ -58,7 +58,7 @@ markupsafe==2.1.5
     #   -c requirements.txt
     #   jinja2
     #   werkzeug
-mypy-extensions==1.0.0
+mypy-extensions==1.1.0
     # via
     #   -c requirements.txt
     #   black
@@ -82,7 +82,7 @@ pluggy==1.5.0
     # via pytest
 pre-commit==3.5.0
     # via -r requirements-dev.in
-pyright==1.1.337
+pyright==1.1.407
     # via -r requirements-dev.in
 pytest==7.4.2
     # via -r requirements-dev.in
@@ -101,6 +101,10 @@ responses==0.23.3
     # via -r requirements-dev.in
 types-pyyaml==6.0.12.20250516
     # via responses
+typing-extensions==4.12.2
+    # via
+    #   -c requirements.txt
+    #   pyright
 urllib3==2.5.0
     # via
     #   -c requirements.txt

@@ -3,9 +3,9 @@ from unittest.mock import patch, call
 
 from apollo.agent.agent import Agent
 from apollo.agent.logging_utils import LoggingUtils
-from apollo.agent.models import AgentCommands
+from apollo.common.agent.models import AgentCommands
 from apollo.agent.proxy_client_factory import ProxyClientFactory
-from apollo.interfaces.agent_response import AgentResponse
+from apollo.common.interfaces.agent_response import AgentResponse
 from apollo.interfaces.azure.azure_platform import AzurePlatformProvider
 from apollo.interfaces.lambda_function.platform import AwsPlatformProvider
 from tests.sample_proxy_client import SampleProxyClient

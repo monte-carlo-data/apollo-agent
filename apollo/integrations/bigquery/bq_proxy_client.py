@@ -1,4 +1,3 @@
-import os
 from typing import Optional, Dict
 
 import googleapiclient.discovery
@@ -8,6 +7,7 @@ from apollo.integrations.base_proxy_client import BaseProxyClient
 
 _API_SERVICE_NAME = "bigquery"
 _API_VERSION = "v2"
+_ATTR_CONNECT_ARGS = "connect_args"
 
 
 class BqProxyClient(BaseProxyClient):
@@ -19,12 +19,18 @@ class BqProxyClient(BaseProxyClient):
     Credentials) will be used.
     When running in a CloudRun environment, ADC is derived from the environment (the service account running the
     CloudRun service), in a local dev environment `gcloud` CLI can be used to set ADC.
+
+    Credentials can be provided in two formats:
+    1. Direct service account JSON (legacy format)
+    2. Wrapped in 'connect_args' (for self-hosted credentials)
     """
 
     def __init__(self, credentials: Optional[Dict], **kwargs):  # type: ignore
         bq_credentials: Optional[Credentials] = None
         if credentials:
-            bq_credentials = Credentials.from_service_account_info(credentials)
+            # Support both direct credentials and connect_args format (for self-hosted credentials)
+            service_account_info = credentials.get(_ATTR_CONNECT_ARGS, credentials)
+            bq_credentials = Credentials.from_service_account_info(service_account_info)
 
         # if no credentials are specified then ADC (app default credentials) will be used
         # in the context of Cloud Run it comes from the service account used to run the service

@@ -4,6 +4,8 @@
 #
 #    pip-compile --strip-extras requirements.in
 #
+agent-base @ git+https://github.com/monte-carlo-data/agent-base.git@v0.0.1
+    # via -r requirements.in
 asn1crypto==1.5.1
     # via
     #   oscrypto
@@ -18,9 +20,12 @@ azure-common==1.1.28
 azure-core==1.31.0
     # via
     #   azure-identity
+    #   azure-keyvault-secrets
     #   azure-mgmt-core
     #   azure-storage-blob
 azure-identity==1.18.0
+    # via -r requirements.in
+azure-keyvault-secrets==4.10.0
     # via -r requirements.in
 azure-mgmt-core==1.4.0
     # via azure-mgmt-storage
@@ -33,8 +38,8 @@ bitarray==3.0.0
 blinker==1.8.2
     # via flask
 boto3==1.34.151
-    # via -r requirements.in
-botocore==1.34.152
+    # via agent-base
+botocore==1.34.162
     # via
     #   boto3
     #   s3transfer
@@ -77,8 +82,8 @@ databricks-sdk==0.39.0
     # via -r requirements.in
 databricks-sql-connector==4.0.0
     # via -r requirements.in
-dataclasses-json==0.6.0
-    # via -r requirements.in
+dataclasses-json==0.6.7
+    # via agent-base
 decorator==5.1.1
     # via retry2
 defusedxml==0.7.1
@@ -99,6 +104,7 @@ google-api-core==2.19.1
     # via
     #   google-api-python-client
     #   google-cloud-core
+    #   google-cloud-secret-manager
     #   google-cloud-storage
 google-api-python-client==2.176.0
     # via -r requirements.in
@@ -109,11 +115,14 @@ google-auth==2.30.0
     #   google-api-python-client
     #   google-auth-httplib2
     #   google-cloud-core
+    #   google-cloud-secret-manager
     #   google-cloud-storage
 google-auth-httplib2==0.2.0
     # via google-api-python-client
 google-cloud-core==2.4.1
     # via google-cloud-storage
+google-cloud-secret-manager==2.25.0
+    # via -r requirements.in
 google-cloud-storage==2.10.0
     # via -r requirements.in
 google-crc32c==1.5.0
@@ -121,6 +130,20 @@ google-crc32c==1.5.0
 google-resumable-media==2.7.1
     # via google-cloud-storage
 googleapis-common-protos==1.63.2
+    # via
+    #   google-api-core
+    #   grpc-google-iam-v1
+    #   grpcio-status
+grpc-google-iam-v1==0.14.3
+    # via google-cloud-secret-manager
+grpcio==1.76.0
+    # via
+    #   google-api-core
+    #   google-cloud-secret-manager
+    #   googleapis-common-protos
+    #   grpc-google-iam-v1
+    #   grpcio-status
+grpcio-status==1.71.2
     # via google-api-core
 gunicorn==23.0.0
     # via -r requirements.in
@@ -140,6 +163,7 @@ impyla==0.20a1
     # via -r requirements.in
 isodate==0.6.1
     # via
+    #   azure-keyvault-secrets
     #   azure-mgmt-storage
     #   azure-storage-blob
     #   zeep
@@ -163,11 +187,12 @@ lz4==4.3.3
     # via
     #   clickhouse-connect
     #   databricks-sql-connector
+    #   trino
 markupsafe==2.1.5
     # via
     #   jinja2
     #   werkzeug
-marshmallow==3.21.3
+marshmallow==3.26.1
     # via dataclasses-json
 more-itertools==10.7.0
     # via simple-salesforce
@@ -178,7 +203,7 @@ msal==1.31.0
     #   msal-extensions
 msal-extensions==1.2.0
     # via azure-identity
-mypy-extensions==1.0.0
+mypy-extensions==1.1.0
     # via typing-inspect
 numpy==1.26.4
     # via
@@ -192,6 +217,8 @@ openpyxl==3.1.5
     # via databricks-sql-connector
 oracledb==2.5.1
     # via -r requirements.in
+orjson==3.11.4
+    # via trino
 oscrypto @ git+https://github.com/wbond/oscrypto@master
     # via -r requirements.in
 packaging==24.1
@@ -213,12 +240,17 @@ portalocker==2.10.1
 presto-python-client==0.8.3
     # via -r requirements.in
 proto-plus==1.24.0
-    # via google-api-core
+    # via
+    #   google-api-core
+    #   google-cloud-secret-manager
 protobuf==5.29.5
     # via
     #   -r requirements.in
     #   google-api-core
+    #   google-cloud-secret-manager
     #   googleapis-common-protos
+    #   grpc-google-iam-v1
+    #   grpcio-status
     #   proto-plus
 psycopg2-binary==2.9.9
     # via -r requirements.in
@@ -262,15 +294,17 @@ python-dateutil==2.9.0.post0
     #   botocore
     #   pandas
     #   salesforce-cdp-connector
+    #   trino
 pytz==2024.1
     # via
     #   clickhouse-connect
     #   pandas
     #   snowflake-connector-python
+    #   trino
     #   zeep
 requests==2.32.4
     # via
-    #   -r requirements.in
+    #   agent-base
     #   azure-core
     #   databricks-sdk
     #   databricks-sql-connector
@@ -285,6 +319,7 @@ requests==2.32.4
     #   simple-salesforce
     #   snowflake-connector-python
     #   tableauserverclient
+    #   trino
     #   zeep
 requests-file==2.1.0
     # via zeep
@@ -296,7 +331,7 @@ retry2==0.9.5
     # via -r requirements.in
 rsa==4.9
     # via google-auth
-s3transfer==0.10.2
+s3transfer==0.10.4
     # via boto3
 salesforce-cdp-connector==1.0.16
     # via -r requirements.in
@@ -328,11 +363,15 @@ thrift-sasl==0.4.3
     # via impyla
 tomlkit==0.13.2
     # via snowflake-connector-python
+trino==0.336.0
+    # via -r requirements.in
 typing-extensions==4.12.2
     # via
     #   azure-core
     #   azure-identity
+    #   azure-keyvault-secrets
     #   azure-storage-blob
+    #   grpcio
     #   looker-sdk
     #   simple-salesforce
     #   snowflake-connector-python
@@ -342,6 +381,8 @@ typing-inspect==0.9.0
     # via dataclasses-json
 tzdata==2024.1
     # via pandas
+tzlocal==5.3.1
+    # via trino
 uritemplate==4.1.1
     # via google-api-python-client
 urllib3==2.5.0
@@ -360,4 +401,6 @@ werkzeug==3.1.0
 zeep==4.3.1
     # via simple-salesforce
 zstandard==0.23.0
-    # via clickhouse-connect
+    # via
+    #   clickhouse-connect
+    #   trino
