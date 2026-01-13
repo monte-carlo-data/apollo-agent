@@ -29,7 +29,7 @@ class StarburstProxyClient(BaseDbProxyClient):
         connect_args: Dict[str, Any] = {**credentials[_ATTR_CONNECT_ARGS]}
 
         # Handle SSL options for Starburst connections
-        ssl_options = SslOptions(**(credentials.get("ssl_options") or {}))
+        ssl_options = SslOptions(**(connect_args.pop("ssl_options", {})))
 
         if ssl_options.ca_data and not ssl_options.disabled:
             # Trino requires verify to point to a certificate file
@@ -43,6 +43,9 @@ class StarburstProxyClient(BaseDbProxyClient):
             connect_args["verify"] = cert_file
 
             logger.info("Starburst SSL configured")
+
+        if ssl_options.disabled:
+            connect_args["verify"] = False
 
         # Extract user/password for BasicAuthentication
         if "user" not in connect_args or "password" not in connect_args:
