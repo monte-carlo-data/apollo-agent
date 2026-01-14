@@ -1,0 +1,74 @@
+# Default values for apollo-agent-minio
+
+minio:
+  image:
+    repository: minio/minio
+    tag: latest
+    pullPolicy: IfNotPresent
+  
+  rootUser: minioadmin
+  rootPassword: minioadmin
+  
+  persistence:
+    enabled: true
+    size: 10Gi
+    storageClass: ""  # Use default storage class
+  
+  service:
+    type: ClusterIP
+    apiPort: 9000
+    consolePort: 9001
+  
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+
+apolloAgent:
+  image:
+    repository: apollo-agent
+    tag: local
+    pullPolicy: IfNotPresent
+    # For local development, you may need to build and load the image into minikube:
+    # docker build -t apollo-agent:local --target generic -f Dockerfile ..
+    # minikube image load apollo-agent:local
+  
+  replicaCount: 1
+  
+  service:
+    type: NodePort
+    port: 8080
+    nodePort: 30080  # Access via minikube service or port-forward
+  
+  env:
+    port: 8080
+    platform: Generic
+    storage: S3_COMPATIBLE
+    storageBucketName: apollo-bucket
+    storagePrefix: mcd
+    storageEndpointUrl: ""  # Will be set automatically from service name
+    storageAccessKey: minioadmin
+    storageSecretKey: minioadmin
+    # Optional debug settings
+    # debug: "false"
+    # debugLog: "false"
+  
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "200m"
+    limits:
+      memory: "1Gi"
+      cpu: "1000m"
+
+bucketInit:
+  enabled: true
+  image:
+    repository: minio/mc
+    tag: latest
+    pullPolicy: IfNotPresent
+  bucketName: apollo-bucket
+
