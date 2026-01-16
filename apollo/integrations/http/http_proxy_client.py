@@ -66,11 +66,11 @@ class HttpProxyClient(BaseProxyClient):
                 ssl_options.write_ca_data_to_temp_file(cert_file, upsert=True)
 
                 self._ssl_verify = cert_file
-                _logger.info("HTTP SSL configured with custom CA certificate")
+                _logger.debug("HTTP SSL configured with custom CA certificate")
 
             if ssl_options.disabled:
                 self._ssl_verify = False
-                _logger.info("HTTP SSL verification disabled")
+                _logger.debug("HTTP SSL verification disabled")
 
     @property
     def wrapped_client(self):
