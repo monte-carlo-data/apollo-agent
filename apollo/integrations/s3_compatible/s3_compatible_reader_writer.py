@@ -95,6 +95,12 @@ class S3CompatibleReaderWriter(S3BaseReaderWriter):
             aws_secret_access_key=self._secret_key,
         )
 
+    def is_bucket_private(self) -> bool:
+        """
+        For S3-compatible storage, we skip the check and assume the bucket is private.
+        """
+        return True
+
     def _get_s3_client_with_config(self, config: Config):
         """
         Returns a client for S3-compatible storage with the provided configuration, used to create clients
