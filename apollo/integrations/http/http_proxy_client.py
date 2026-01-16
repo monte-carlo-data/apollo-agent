@@ -1,5 +1,6 @@
+import hashlib
 import logging
-from typing import Dict, Optional, List, Tuple
+from typing import Dict, Optional, List, Tuple, Union
 
 import requests
 from requests import HTTPError
@@ -8,6 +9,7 @@ from retry.api import retry_call
 from apollo.common.agent.models import AgentOperation
 from apollo.common.agent.redact import AgentRedactUtilities
 from apollo.integrations.base_proxy_client import BaseProxyClient
+from apollo.integrations.db.base_db_proxy_client import SslOptions
 
 
 _logger = logging.getLogger(__name__)
@@ -42,10 +44,33 @@ class HttpProxyClient(BaseProxyClient):
     """
     Proxy client class to perform HTTP requests from the agent.
     It supports simple no-retry requests and requests with retries for a subset of status codes.
+    SSL options can be configured via credentials using the `ssl_options` key, supporting:
+    - `ca_data`: CA certificate data for SSL verification
+    - `disabled`: Set to True to disable SSL verification
     """
 
     def __init__(self, credentials: Optional[Dict], **kwargs):  # type: ignore
         self._credentials = credentials
+        self._ssl_verify: Union[bool, str, None] = None
+
+        # Handle SSL options from credentials
+        if credentials:
+            ssl_options = SslOptions(**(credentials.get("ssl_options", {}) or {}))
+
+            if ssl_options.ca_data and not ssl_options.disabled:
+                # requests library accepts a path to a CA bundle file for verification
+                # Create a temporary file for the CA certificate
+                # Use a hash of the ca_data to create a unique filename
+                ca_hash = hashlib.sha256(ssl_options.ca_data.encode()).hexdigest()[:12]
+                cert_file = f"/tmp/{ca_hash}_http_ca.pem"
+                ssl_options.write_ca_data_to_temp_file(cert_file, upsert=True)
+
+                self._ssl_verify = cert_file
+                _logger.info("HTTP SSL configured with custom CA certificate")
+
+            if ssl_options.disabled:
+                self._ssl_verify = False
+                _logger.info("HTTP SSL verification disabled")
 
     @property
     def wrapped_client(self):
@@ -92,6 +117,7 @@ class HttpProxyClient(BaseProxyClient):
         :param additional_headers: optional headers
         :param params: optional parameters dictionary to include in the query string.
         :param verify_ssl: optional boolean which controls whether we verify the server's TLS certificate.
+            Takes precedence over ssl_options configured in credentials.
         :param retry_status_code_ranges: optional list of ranges specifying status code to raise `HttpRetryableError`.
             The ranges are expected to be specified in a list of tuples where each tuple includes two elements:
             inclusive from and exclusive to, for example: [(500, 600)] means: `500 <= status_code < 600`.
@@ -109,6 +135,8 @@ class HttpProxyClient(BaseProxyClient):
             request_args["params"] = params
         if verify_ssl is not None:
             request_args["verify"] = verify_ssl
+        elif self._ssl_verify is not None:
+            request_args["verify"] = self._ssl_verify
 
         headers = {**additional_headers} if additional_headers else {}
         if self._credentials and "token" in self._credentials:
