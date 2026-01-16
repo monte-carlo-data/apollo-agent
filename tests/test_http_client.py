@@ -422,7 +422,9 @@ class TestHttpClient(TestCase):
 
     @patch("requests.request")
     @patch("builtins.open", new_callable=mock_open)
-    def test_http_request_verify_ssl_overrides_ssl_options(self, mock_file, mock_request):
+    def test_http_request_verify_ssl_overrides_ssl_options(
+        self, mock_file, mock_request
+    ):
         """Test that verify_ssl parameter takes precedence over ssl_options"""
         mock_response = create_autospec(Response)
         mock_request.return_value = mock_response
