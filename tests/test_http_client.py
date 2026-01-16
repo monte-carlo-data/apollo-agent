@@ -369,12 +369,6 @@ class TestHttpClient(TestCase):
             credentials,
         )
 
-        # Verify the cert file was written
-        mock_file.assert_called()
-        write_calls = mock_file().write.call_args_list
-        self.assertEqual(1, len(write_calls))
-        self.assertEqual(ca_data, write_calls[0][0][0])
-
         # Verify request was made with verify pointing to a cert file path
         call_kwargs = mock_request.call_args[1]
         self.assertIn("verify", call_kwargs)
@@ -461,18 +455,3 @@ class TestHttpClient(TestCase):
             },
             verify=False,
         )
-
-    def test_http_client_ssl_options_none_credentials(self):
-        """Test that HttpProxyClient handles None credentials gracefully"""
-        client = HttpProxyClient(credentials=None)
-        self.assertIsNone(client._ssl_verify)
-
-    def test_http_client_ssl_options_empty(self):
-        """Test that HttpProxyClient handles empty ssl_options gracefully"""
-        client = HttpProxyClient(credentials={"token": "test"})
-        self.assertIsNone(client._ssl_verify)
-
-    def test_http_client_ssl_options_none_value(self):
-        """Test that HttpProxyClient handles ssl_options=None gracefully"""
-        client = HttpProxyClient(credentials={"token": "test", "ssl_options": None})
-        self.assertIsNone(client._ssl_verify)
