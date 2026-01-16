@@ -1,12 +1,8 @@
-import logging
 import os
-from typing import Optional
 
 from azure.identity import DefaultAzureCredential
 
 from apollo.common.agent.models import AgentConfigurationError
-
-logger = logging.getLogger(__name__)
 
 
 class AzureUtils:
