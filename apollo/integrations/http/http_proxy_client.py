@@ -31,6 +31,8 @@ _RRI = dict(
     max_delay=10,
 )
 
+_ATTR_CONNECT_ARGS = "connect_args"
+
 
 class HttpClientError(Exception):
     pass
@@ -53,9 +55,11 @@ class HttpProxyClient(BaseProxyClient):
         self._credentials = credentials
         self._ssl_verify: Union[bool, str, None] = None
 
+        connect_args: Dict[str, Any] = {**credentials.get(_ATTR_CONNECT_ARGS, {})}
+
         # Handle SSL options from credentials
-        if credentials:
-            ssl_options = SslOptions(**(credentials.get("ssl_options", {}) or {}))
+        if connect_args:
+            ssl_options = SslOptions(**(connect_args.get("ssl_options", {}) or {}))
 
             if ssl_options.ca_data and not ssl_options.disabled:
                 # requests library accepts a path to a CA bundle file for verification
