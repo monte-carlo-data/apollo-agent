@@ -1,6 +1,6 @@
 from copy import deepcopy
 from unittest import TestCase
-from unittest.mock import create_autospec, patch, call
+from unittest.mock import create_autospec, patch, call, mock_open
 
 from requests import Response, HTTPError
 
@@ -13,6 +13,7 @@ from apollo.common.agent.constants import (
     ATTRIBUTE_VALUE_REDACTED,
 )
 from apollo.agent.logging_utils import LoggingUtils
+from apollo.integrations.http.http_proxy_client import HttpProxyClient
 
 _HTTP_USER_AGENT = "TestUserAgent"
 
@@ -341,4 +342,116 @@ class TestHttpClient(TestCase):
                 "reason": mock_response.reason,
             },
             response.result.get(ATTRIBUTE_NAME_ERROR_ATTRS),
+        )
+
+    @patch("requests.request")
+    @patch("builtins.open", new_callable=mock_open)
+    def test_http_request_with_ssl_options_ca_data(self, mock_file, mock_request):
+        """Test that ssl_options with ca_data configures SSL verification with a cert file"""
+        mock_response = create_autospec(Response)
+        mock_request.return_value = mock_response
+        expected_result = {"ok": True}
+        mock_response.json.return_value = expected_result
+
+        ca_data = "-----BEGIN CERTIFICATE-----\nMIIDtest\n-----END CERTIFICATE-----"
+        credentials = {
+            "token": "test_token",
+            "ssl_options": {
+                "ca_data": ca_data,
+            },
+        }
+
+        operation = deepcopy(_HTTP_OPERATION)
+        response = self._agent.execute_operation(
+            "http",
+            "do_request",
+            operation,
+            credentials,
+        )
+
+        # Verify request was made with verify pointing to a cert file path
+        call_kwargs = mock_request.call_args[1]
+        self.assertIn("verify", call_kwargs)
+        self.assertTrue(call_kwargs["verify"].endswith("_http_ca.pem"))
+
+        self.assertTrue(ATTRIBUTE_NAME_RESULT in response.result)
+        self.assertEqual(expected_result, response.result.get(ATTRIBUTE_NAME_RESULT))
+
+    @patch("requests.request")
+    def test_http_request_with_ssl_options_disabled(self, mock_request):
+        """Test that ssl_options with disabled=True sets verify=False"""
+        mock_response = create_autospec(Response)
+        mock_request.return_value = mock_response
+        expected_result = {"ok": True}
+        mock_response.json.return_value = expected_result
+
+        credentials = {
+            "token": "test_token",
+            "ssl_options": {
+                "disabled": True,
+            },
+        }
+
+        operation = deepcopy(_HTTP_OPERATION)
+        response = self._agent.execute_operation(
+            "http",
+            "do_request",
+            operation,
+            credentials,
+        )
+
+        # Verify request was made with verify=False
+        mock_request.assert_called_with(
+            "GET",
+            "https://test.com/path",
+            headers={
+                "Authorization": "Bearer test_token",
+                "User-Agent": _HTTP_USER_AGENT,
+            },
+            verify=False,
+        )
+
+        self.assertTrue(ATTRIBUTE_NAME_RESULT in response.result)
+        self.assertEqual(expected_result, response.result.get(ATTRIBUTE_NAME_RESULT))
+
+    @patch("requests.request")
+    @patch("builtins.open", new_callable=mock_open)
+    def test_http_request_verify_ssl_overrides_ssl_options(
+        self, mock_file, mock_request
+    ):
+        """Test that verify_ssl parameter takes precedence over ssl_options"""
+        mock_response = create_autospec(Response)
+        mock_request.return_value = mock_response
+        expected_result = {"ok": True}
+        mock_response.json.return_value = expected_result
+
+        ca_data = "-----BEGIN CERTIFICATE-----\nMIIDtest\n-----END CERTIFICATE-----"
+        credentials = {
+            "token": "test_token",
+            "ssl_options": {
+                "ca_data": ca_data,
+            },
+        }
+
+        # Set verify_ssl=False to override the ssl_options ca_data
+        operation = deepcopy(_HTTP_OPERATION)
+        operation["commands"][0]["kwargs"]["verify_ssl"] = False
+
+        self._agent.execute_operation(
+            "http",
+            "do_request",
+            operation,
+            credentials,
+        )
+
+        # Verify request was made with verify=False (from verify_ssl param)
+        # instead of the cert file path (from ssl_options)
+        mock_request.assert_called_with(
+            "GET",
+            "https://test.com/path",
+            headers={
+                "Authorization": "Bearer test_token",
+                "User-Agent": _HTTP_USER_AGENT,
+            },
+            verify=False,
         )
