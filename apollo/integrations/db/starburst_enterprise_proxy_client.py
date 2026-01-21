@@ -164,4 +164,3 @@ class StarburstEnterpriseProxyClient(BaseDbProxyClient):
         if http_attrs:
             return http_attrs
         return super().get_error_extra_attributes(error=error)
-
