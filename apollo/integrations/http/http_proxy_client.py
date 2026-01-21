@@ -31,8 +31,6 @@ _RRI = dict(
     max_delay=10,
 )
 
-_ATTR_CONNECT_ARGS = "connect_args"
-
 
 class HttpClientError(Exception):
     pass
@@ -55,29 +53,24 @@ class HttpProxyClient(BaseProxyClient):
         self._credentials = credentials
         self._ssl_verify: Union[bool, str, None] = None
 
+        # Handle SSL options from credentials
         if credentials:
-            connect_args: Dict[str, Any] = {**credentials.get(_ATTR_CONNECT_ARGS, {})}
+            ssl_options = SslOptions(**(credentials.get("ssl_options", {}) or {}))
 
-            # Handle SSL options from credentials
-            if connect_args:
-                ssl_options = SslOptions(**(connect_args.get("ssl_options", {}) or {}))
+            if ssl_options.ca_data and not ssl_options.disabled:
+                # requests library accepts a path to a CA bundle file for verification
+                # Create a temporary file for the CA certificate
+                # Use a hash of the ca_data to create a unique filename
+                ca_hash = hashlib.sha256(ssl_options.ca_data.encode()).hexdigest()[:12]
+                cert_file = f"/tmp/{ca_hash}_http_ca.pem"
+                ssl_options.write_ca_data_to_temp_file(cert_file, upsert=True)
 
-                if ssl_options.ca_data and not ssl_options.disabled:
-                    # requests library accepts a path to a CA bundle file for verification
-                    # Create a temporary file for the CA certificate
-                    # Use a hash of the ca_data to create a unique filename
-                    ca_hash = hashlib.sha256(ssl_options.ca_data.encode()).hexdigest()[
-                        :12
-                    ]
-                    cert_file = f"/tmp/{ca_hash}_http_ca.pem"
-                    ssl_options.write_ca_data_to_temp_file(cert_file, upsert=True)
+                self._ssl_verify = cert_file
+                _logger.debug("HTTP SSL configured with custom CA certificate")
 
-                    self._ssl_verify = cert_file
-                    _logger.debug("HTTP SSL configured with custom CA certificate")
-
-                if ssl_options.disabled:
-                    self._ssl_verify = False
-                    _logger.debug("HTTP SSL verification disabled")
+            if ssl_options.disabled:
+                self._ssl_verify = False
+                _logger.debug("HTTP SSL verification disabled")
 
     @property
     def wrapped_client(self):
@@ -107,7 +100,7 @@ class HttpProxyClient(BaseProxyClient):
         user_agent: Optional[str] = None,
         additional_headers: Optional[Dict] = None,
         params: Optional[Dict] = None,
-        verify_ssl: Optional[bool] = None,
+        verify_ssl: Optional[Union[bool, str]] = None,
         retry_status_code_ranges: Optional[List[Tuple]] = None,
         data: Optional[str] = None,
     ) -> Dict:

@@ -62,7 +62,8 @@ class StarburstEnterpriseProxyClient(BaseDbProxyClient):
         if ssl_options.disabled:
             self._ssl_verify = False
 
-        connect_args["verify"] = self._ssl_verify
+        if self._ssl_verify is not None:
+            connect_args["verify"] = self._ssl_verify
 
         # Setup Trino connection (same as base StarburstProxyClient)
         if "user" not in connect_args or "password" not in connect_args:
@@ -163,3 +164,4 @@ class StarburstEnterpriseProxyClient(BaseDbProxyClient):
         if http_attrs:
             return http_attrs
         return super().get_error_extra_attributes(error=error)
+
