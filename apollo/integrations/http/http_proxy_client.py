@@ -66,7 +66,9 @@ class HttpProxyClient(BaseProxyClient):
                     # requests library accepts a path to a CA bundle file for verification
                     # Create a temporary file for the CA certificate
                     # Use a hash of the ca_data to create a unique filename
-                    ca_hash = hashlib.sha256(ssl_options.ca_data.encode()).hexdigest()[:12]
+                    ca_hash = hashlib.sha256(ssl_options.ca_data.encode()).hexdigest()[
+                        :12
+                    ]
                     cert_file = f"/tmp/{ca_hash}_http_ca.pem"
                     ssl_options.write_ca_data_to_temp_file(cert_file, upsert=True)
 
