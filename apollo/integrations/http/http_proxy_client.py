@@ -100,7 +100,7 @@ class HttpProxyClient(BaseProxyClient):
         user_agent: Optional[str] = None,
         additional_headers: Optional[Dict] = None,
         params: Optional[Dict] = None,
-        verify_ssl: Optional[bool] = None,
+        verify_ssl: Optional[Union[bool, str]] = None,
         retry_status_code_ranges: Optional[List[Tuple]] = None,
         data: Optional[str] = None,
     ) -> Dict:
