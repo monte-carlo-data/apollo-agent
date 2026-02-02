@@ -43,8 +43,10 @@ botocore==1.34.162
     # via
     #   boto3
     #   s3transfer
-brotli==1.1.0
-    # via flask-compress
+brotli==1.2.0
+    # via
+    #   -r requirements.in
+    #   flask-compress
 cachetools==5.3.3
     # via google-auth
 cattrs==23.2.3

@@ -4,6 +4,7 @@ azure-identity==1.18.0
 azure-keyvault-secrets==4.10.0
 azure-mgmt-storage==21.2.1
 azure-storage-blob==12.23.0
+brotli==1.2.0  # Upgrade transient dependency of flask-compress to address SEC-1143 (CVE-2025-6176)
 clickhouse-connect==0.8.18
 cryptography>=44.0.1
 databricks-sql-connector==4.0.0
