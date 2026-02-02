@@ -40,9 +40,8 @@ simple-salesforce==1.12.6
 snowflake-connector-python>=3.13.1
 # python_version conditions below to resolve urllib3 compatibility issues with snowflake-connector-python
 tableauserverclient==0.25 ; python_version < "3.10"
-# using master branch to get urllib3 dependency updated to ==2.2.2, switch to v0.32 when released
-tableauserverclient @ git+https://github.com/tableau/server-client-python.git@master ; python_version >= "3.10"
-urllib3==2.5.0 # Upgraded in VULN-621
+tableauserverclient==0.38 ; python_version >= "3.10"
+urllib3==2.6.0
 
 teradatasql>=20.0.0.43
 oscrypto @ git+https://github.com/wbond/oscrypto@master
