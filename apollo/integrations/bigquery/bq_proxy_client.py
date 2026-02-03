@@ -1,5 +1,5 @@
-from typing import Optional, Dict
-
+import socket
+from typing import Optional, Dict, Any
 import googleapiclient.discovery
 from google.oauth2.service_account import Credentials
 
@@ -8,6 +8,7 @@ from apollo.integrations.base_proxy_client import BaseProxyClient
 _API_SERVICE_NAME = "bigquery"
 _API_VERSION = "v2"
 _ATTR_CONNECT_ARGS = "connect_args"
+_ATTR_SOCKET_TIMEOUT = "socket_timeout_in_seconds"
 
 
 class BqProxyClient(BaseProxyClient):
@@ -23,25 +24,50 @@ class BqProxyClient(BaseProxyClient):
     Credentials can be provided in two formats:
     1. Direct service account JSON (legacy format)
     2. Wrapped in 'connect_args' (for self-hosted credentials)
+    Optional timeout can be set via "socket_timeout_in_seconds".
     """
 
     def __init__(self, credentials: Optional[Dict], **kwargs):  # type: ignore
         bq_credentials: Optional[Credentials] = None
+        socket_timeout_in_seconds: Optional[float] = None
         if credentials:
             # Support both direct credentials and connect_args format (for self-hosted credentials)
-            service_account_info = credentials.get(_ATTR_CONNECT_ARGS, credentials)
-            bq_credentials = Credentials.from_service_account_info(service_account_info)
+            service_account_info: Dict[str, Any] = dict(
+                credentials.get(_ATTR_CONNECT_ARGS, credentials)
+            )
+            socket_timeout_in_seconds = service_account_info.pop(
+                _ATTR_SOCKET_TIMEOUT, None
+            )
+            if service_account_info:
+                bq_credentials = Credentials.from_service_account_info(
+                    service_account_info
+                )
 
         # if no credentials are specified then ADC (app default credentials) will be used
         # in the context of Cloud Run it comes from the service account used to run the service
         # in local dev environments you can use gcloud CLI to set ADC.
-        self._client = googleapiclient.discovery.build(
-            _API_SERVICE_NAME,
-            _API_VERSION,
-            credentials=bq_credentials,
-            cache_discovery=False,
-        )
+        http_timeout = self._resolve_socket_timeout(socket_timeout_in_seconds)
+        previous_timeout = socket.getdefaulttimeout()
+        if http_timeout is not None:
+            socket.setdefaulttimeout(http_timeout)
+        try:
+            self._client = googleapiclient.discovery.build(
+                _API_SERVICE_NAME,
+                _API_VERSION,
+                credentials=bq_credentials,
+                cache_discovery=False,
+            )
+        finally:
+            if http_timeout is not None:
+                socket.setdefaulttimeout(previous_timeout)
 
     @property
     def wrapped_client(self):
         return self._client
+
+    def _resolve_socket_timeout(
+        self, socket_timeout_in_seconds: Optional[float]
+    ) -> Optional[float]:
+        if socket_timeout_in_seconds is not None:
+            return float(socket_timeout_in_seconds)
+        return socket.getdefaulttimeout()
