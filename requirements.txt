@@ -43,8 +43,10 @@ botocore==1.34.162
     # via
     #   boto3
     #   s3transfer
-brotli==1.1.0
-    # via flask-compress
+brotli==1.2.0
+    # via
+    #   -r requirements.in
+    #   flask-compress
 cachetools==5.3.3
     # via google-auth
 cattrs==23.2.3
@@ -350,7 +352,7 @@ snowflake-connector-python==3.13.2
     # via -r requirements.in
 sortedcontainers==2.4.0
     # via snowflake-connector-python
-tableauserverclient @ git+https://github.com/tableau/server-client-python.git@master ; python_version >= "3.10"
+tableauserverclient==0.38 ; python_version >= "3.10"
     # via -r requirements.in
 teradatasql==20.0.0.43
     # via -r requirements.in
@@ -385,7 +387,7 @@ tzlocal==5.3.1
     # via trino
 uritemplate==4.1.1
     # via google-api-python-client
-urllib3==2.5.0
+urllib3==2.6.3
     # via
     #   -r requirements.in
     #   botocore
