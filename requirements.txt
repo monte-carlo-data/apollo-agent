@@ -161,7 +161,7 @@ idna==3.7
     # via
     #   requests
     #   snowflake-connector-python
-impyla==0.20a1
+impyla==0.22.0
     # via -r requirements.in
 isodate==0.6.1
     # via
