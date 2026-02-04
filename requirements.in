@@ -47,7 +47,5 @@ urllib3==2.6.3
 teradatasql>=20.0.0.43
 oscrypto @ git+https://github.com/wbond/oscrypto@master
 
-# Note this is a beta version of impyla that is needed in order to support HTTPS connections on python 3.12.
-# It should be updated to stable version 0.20.0 once that is released.
-impyla==0.20a1
+impyla==0.22.0
 werkzeug==3.1.0
