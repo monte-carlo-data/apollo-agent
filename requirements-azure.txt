@@ -18,11 +18,7 @@ attrs==23.2.0
     # via
     #   -c requirements.txt
     #   aiohttp
-azure-common==1.1.28
-    # via
-    #   -c requirements.txt
-    #   azure-mgmt-resource
-azure-core==1.31.0
+azure-core==1.38.0
     # via
     #   -c requirements.txt
     #   azure-core-tracing-opentelemetry
@@ -34,27 +30,27 @@ azure-core==1.31.0
     #   msrest
 azure-core-tracing-opentelemetry==1.0.0b12
     # via azure-monitor-opentelemetry
-azure-functions==1.18.0
+azure-functions==1.24.0
     # via
     #   -r requirements-azure.in
     #   azure-functions-durable
-azure-functions-durable==1.2.9
+azure-functions-durable==1.5.0
     # via -r requirements-azure.in
 azure-identity==1.18.0
     # via
     #   -c requirements.txt
     #   azure-monitor-opentelemetry-exporter
-azure-mgmt-core==1.4.0
+azure-mgmt-core==1.6.0
     # via
     #   -c requirements.txt
     #   azure-mgmt-resource
-azure-mgmt-resource==23.0.1
+azure-mgmt-resource==25.0.0
     # via -r requirements-azure.in
 azure-monitor-opentelemetry==1.8.6
     # via -r requirements-azure.in
 azure-monitor-opentelemetry-exporter==1.0.0b48
     # via azure-monitor-opentelemetry
-azure-monitor-query==1.2.1
+azure-monitor-query==1.4.1
     # via -r requirements-azure.in
 certifi==2024.8.30
     # via
@@ -96,6 +92,10 @@ isodate==0.6.1
     #   azure-mgmt-resource
     #   azure-monitor-query
     #   msrest
+markupsafe==2.1.5
+    # via
+    #   -c requirements.txt
+    #   werkzeug
 msal==1.31.0
     # via
     #   -c requirements.txt
@@ -106,7 +106,9 @@ msal-extensions==1.2.0
     #   -c requirements.txt
     #   azure-identity
 msrest==0.7.1
-    # via azure-monitor-opentelemetry-exporter
+    # via
+    #   -c requirements.txt
+    #   azure-monitor-opentelemetry-exporter
 multidict==6.7.1
     # via
     #   aiohttp
@@ -121,6 +123,7 @@ opentelemetry-api==1.39.0
     # via
     #   -r requirements-azure.in
     #   azure-core-tracing-opentelemetry
+    #   azure-functions-durable
     #   azure-monitor-opentelemetry-exporter
     #   opentelemetry-instrumentation
     #   opentelemetry-instrumentation-asgi
@@ -173,6 +176,7 @@ opentelemetry-resource-detector-azure==0.1.5
     # via azure-monitor-opentelemetry
 opentelemetry-sdk==1.39.0
     # via
+    #   azure-functions-durable
     #   azure-monitor-opentelemetry
     #   azure-monitor-opentelemetry-exporter
     #   opentelemetry-resource-detector-azure
@@ -238,11 +242,12 @@ requests==2.32.4
     #   msrest
     #   requests-oauthlib
 requests-oauthlib==2.0.0
-    # via msrest
+    # via
+    #   -c requirements.txt
+    #   msrest
 six==1.16.0
     # via
     #   -c requirements.txt
-    #   azure-core
     #   furl
     #   isodate
     #   orderedmultidict
@@ -253,6 +258,7 @@ typing-extensions==4.12.2
     #   aiosignal
     #   azure-core
     #   azure-identity
+    #   azure-mgmt-resource
     #   azure-monitor-query
     #   opentelemetry-api
     #   opentelemetry-sdk
@@ -263,6 +269,10 @@ urllib3==2.6.3
     #   requests
 viztracer==0.17.1
     # via -r requirements-azure.in
+werkzeug==3.1.3
+    # via
+    #   -c requirements.txt
+    #   azure-functions
 wrapt==1.17.2
     # via
     #   -r requirements-azure.in
