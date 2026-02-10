@@ -25,7 +25,7 @@ class AzureLogContext(BaseLogContext):
     def filter_log_context(context: Dict) -> Dict:
         # open telemetry supports only: str, float, int and bool
         # we're converting list and dictionaries to json and anything else to str.
-        context = AgentRedactUtilities.standard_redact(context)
+        # context = AgentRedactUtilities.standard_redact(context)
         return {
             key: (
                 value
