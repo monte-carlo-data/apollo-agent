@@ -22,7 +22,7 @@ azure-core==1.38.0
     #   azure-mgmt-core
     #   azure-storage-blob
     #   msrest
-azure-identity==1.18.0
+azure-identity==1.25.1
     # via -r requirements.in
 azure-keyvault-secrets==4.10.0
     # via -r requirements.in
