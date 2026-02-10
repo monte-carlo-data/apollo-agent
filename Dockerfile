@@ -158,6 +158,7 @@ RUN rm -rf /opt/startupcmdgen/
 COPY requirements.txt /
 COPY requirements-azure.txt /
 RUN pip install --no-cache-dir -r /requirements.txt -r /requirements-azure.txt && rm -rf /opt/python/3.12.12/_manifest
+RUN pip install --no-cache-dir -U setuptools==80.10.2  # INC-265 - opentelemetry requires pkg_resources that was removed in setuptools 81
 
 COPY apollo /home/site/wwwroot/apollo
 
