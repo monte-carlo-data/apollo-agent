@@ -165,7 +165,7 @@ class BaseDbProxyClient(BaseProxyClient, ABC):
         """
         if isinstance(value, Dict):
             if "description" in value:
-                description = value["description"]
+                description = value["description"] or []
                 value["description"] = [
                     self._process_description(
                         [col[0], col[1], col[2], col[3], col[4], col[5], col[6]]
@@ -173,7 +173,7 @@ class BaseDbProxyClient(BaseProxyClient, ABC):
                     for col in description
                 ]
             if "all_results" in value:
-                all_results: List = value["all_results"]
+                all_results: List = value["all_results"] or []
                 value["all_results"] = [self._process_row(r) for r in all_results]
 
         return value
