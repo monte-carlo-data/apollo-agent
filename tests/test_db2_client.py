@@ -104,6 +104,61 @@ class Db2ClientTests(TestCase):
         expected_connection_string = "DATABASE=testdb;HOSTNAME=localhost;PORT=50000;PROTOCOL=TCPIP;UID=testuser;PWD=testpass"
         mock_ibm_db_connect.assert_called_once_with(expected_connection_string, "", "")
 
+    @patch("ibm_db_dbi.Connection")
+    @patch("ibm_db.connect")
+    def test_run_query_empty_result(self, mock_ibm_db_connect, mock_dbi_connection):
+        """When the query returns no rows, DB2 cursor can return None from fetchall/description."""
+        mock_ibm_db_connection = Mock()
+        mock_ibm_db_connect.return_value = mock_ibm_db_connection
+        mock_dbi_connection.return_value = self._mock_connection
+
+        query = "SELECT name FROM table WHERE 1=0"
+        # DB2 (ibm_db_dbi) can return None for fetchall() and description when no rows
+        self._mock_cursor.fetchall.return_value = None
+        self._mock_cursor.description = None
+        self._mock_cursor.rowcount = 0
+
+        operation_dict = {
+            "trace_id": "1234",
+            "skip_cache": True,
+            "commands": [
+                {"method": "cursor", "store": "_cursor"},
+                {
+                    "target": "_cursor",
+                    "method": "execute",
+                    "args": [query, None],
+                },
+                {"target": "_cursor", "method": "fetchall", "store": "tmp_1"},
+                {"target": "_cursor", "method": "description", "store": "tmp_2"},
+                {"target": "_cursor", "method": "rowcount", "store": "tmp_3"},
+                {
+                    "target": "__utils",
+                    "method": "build_dict",
+                    "kwargs": {
+                        "all_results": {"__reference__": "tmp_1"},
+                        "description": {"__reference__": "tmp_2"},
+                        "rowcount": {"__reference__": "tmp_3"},
+                    },
+                },
+            ],
+        }
+
+        result = self._agent.execute_operation(
+            connection_type="db2",
+            operation_name="test_operation",
+            operation_dict=operation_dict,
+            credentials=_DB2_CREDENTIALS,
+        )
+
+        self.assertIn(ATTRIBUTE_NAME_RESULT, result.result)
+        self.assertIsNone(result.result.get("error"))
+        expected_result = {
+            "all_results": [],
+            "description": [],
+            "rowcount": 0,
+        }
+        self.assertEqual(result.result[ATTRIBUTE_NAME_RESULT], expected_result)
+
     def test_invalid_credentials(self):
         with self.assertRaises(ValueError) as context:
             Db2ProxyClient(credentials={})
