@@ -22,7 +22,7 @@ azure-common==1.1.28
     # via
     #   -c requirements.txt
     #   azure-mgmt-resource
-azure-core==1.31.0
+azure-core==1.38.2
     # via
     #   -c requirements.txt
     #   azure-core-tracing-opentelemetry
@@ -207,7 +207,6 @@ requests-oauthlib==2.0.0
 six==1.16.0
     # via
     #   -c requirements.txt
-    #   azure-core
     #   furl
     #   isodate
     #   orderedmultidict
