@@ -24,6 +24,7 @@ looker-sdk==24.2.0
 msal==1.31.0
 numpy<2.0.0  # prevent "numpy.dtype size changed" errors: https://github.com/numpy/numpy/issues/26710
 oracledb>=2.4.1
+orjson>=3.11.6  # CVE-2025-67221: recursion DoS in orjson.dumps thru 3.11.4
 presto-python-client==0.8.3
 trino==0.336.0
 protobuf==5.29.5  # from google-cloud-logging in requirements-cloudrun - Upgraded in VULN-620

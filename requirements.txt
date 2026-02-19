@@ -219,8 +219,10 @@ openpyxl==3.1.5
     # via databricks-sql-connector
 oracledb==2.5.1
     # via -r requirements.in
-orjson==3.11.4
-    # via trino
+orjson==3.11.7
+    # via
+    #   -r requirements.in
+    #   trino
 oscrypto @ git+https://github.com/wbond/oscrypto@master
     # via -r requirements.in
 packaging==24.1
