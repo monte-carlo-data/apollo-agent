@@ -10,71 +10,71 @@ asn1crypto==1.5.1
     # via
     #   oscrypto
     #   snowflake-connector-python
-attrs==25.4.0
+attrs==23.2.0
     # via
     #   cattrs
     #   looker-sdk
     #   zeep
-azure-core==1.38.2
+azure-common==1.1.28
+    # via azure-mgmt-storage
+azure-core==1.31.0
     # via
     #   azure-identity
     #   azure-keyvault-secrets
     #   azure-mgmt-core
     #   azure-storage-blob
-    #   msrest
 azure-identity==1.18.0
     # via -r requirements.in
 azure-keyvault-secrets==4.10.0
     # via -r requirements.in
-azure-mgmt-core==1.6.0
+azure-mgmt-core==1.4.0
     # via azure-mgmt-storage
-azure-mgmt-storage==24.0.0
+azure-mgmt-storage==21.2.1
     # via -r requirements.in
-azure-storage-blob==12.28.0
+azure-storage-blob==12.23.0
     # via -r requirements.in
-bitarray==3.8.0
+bitarray==3.0.0
     # via impyla
-blinker==1.9.0
+blinker==1.8.2
     # via flask
 boto3==1.34.151
-    # via
-    #   agent-base
-    #   snowflake-connector-python
+    # via agent-base
 botocore==1.34.162
     # via
     #   boto3
     #   s3transfer
-    #   snowflake-connector-python
 brotli==1.2.0
     # via
     #   -r requirements.in
     #   flask-compress
-cattrs==26.1.0
+cachetools==5.3.3
+    # via google-auth
+cattrs==23.2.3
     # via looker-sdk
-certifi==2026.1.4
+certifi==2024.8.30
     # via
     #   clickhouse-connect
-    #   msrest
     #   requests
     #   snowflake-connector-python
-cffi==2.0.0
-    # via cryptography
-charset-normalizer==3.4.4
+cffi==1.16.0
+    # via
+    #   cryptography
+    #   snowflake-connector-python
+charset-normalizer==3.3.2
     # via
     #   requests
     #   snowflake-connector-python
-click==8.3.1
+click==8.1.7
     # via
     #   flask
     #   presto-python-client
 clickhouse-connect==0.8.18
     # via -r requirements.in
-cryptography==46.0.5
+cryptography==44.0.1
     # via
     #   -r requirements.in
     #   azure-identity
     #   azure-storage-blob
-    #   google-auth
     #   msal
     #   oracledb
     #   pyjwt
@@ -86,15 +86,15 @@ databricks-sql-connector==4.0.0
     # via -r requirements.in
 dataclasses-json==0.6.7
     # via agent-base
-decorator==5.2.1
+decorator==5.1.1
     # via retry2
 defusedxml==0.7.1
     # via tableauserverclient
 duckdb==1.1.0
     # via -r requirements.in
-et-xmlfile==2.0.0
+et-xmlfile==1.1.0
     # via openpyxl
-filelock==3.24.3
+filelock==3.17.0
     # via snowflake-connector-python
 flask==2.3.3
     # via
@@ -102,7 +102,7 @@ flask==2.3.3
     #   flask-compress
 flask-compress==1.14
     # via -r requirements.in
-google-api-core==2.30.0
+google-api-core==2.19.1
     # via
     #   google-api-python-client
     #   google-cloud-core
@@ -110,7 +110,7 @@ google-api-core==2.30.0
     #   google-cloud-storage
 google-api-python-client==2.176.0
     # via -r requirements.in
-google-auth==2.49.0.dev0
+google-auth==2.30.0
     # via
     #   databricks-sdk
     #   google-api-core
@@ -119,26 +119,26 @@ google-auth==2.49.0.dev0
     #   google-cloud-core
     #   google-cloud-secret-manager
     #   google-cloud-storage
-google-auth-httplib2==0.3.0
+google-auth-httplib2==0.2.0
     # via google-api-python-client
-google-cloud-core==2.5.0
+google-cloud-core==2.4.1
     # via google-cloud-storage
 google-cloud-secret-manager==2.25.0
     # via -r requirements.in
 google-cloud-storage==2.10.0
     # via -r requirements.in
-google-crc32c==1.8.0
+google-crc32c==1.5.0
     # via google-resumable-media
-google-resumable-media==2.8.0
+google-resumable-media==2.7.1
     # via google-cloud-storage
-googleapis-common-protos==1.72.0
+googleapis-common-protos==1.63.2
     # via
     #   google-api-core
     #   grpc-google-iam-v1
     #   grpcio-status
 grpc-google-iam-v1==0.14.3
     # via google-cloud-secret-manager
-grpcio==1.78.0
+grpcio==1.76.0
     # via
     #   google-api-core
     #   google-cloud-secret-manager
@@ -151,23 +151,23 @@ gunicorn==23.0.0
     # via -r requirements.in
 hdbcli==2.18.27
     # via -r requirements.in
-httplib2==0.31.2
+httplib2==0.22.0
     # via
     #   google-api-python-client
     #   google-auth-httplib2
 ibm-db==3.2.7
     # via -r requirements.in
-idna==3.11
+idna==3.7
     # via
     #   requests
     #   snowflake-connector-python
 impyla==0.22.0
     # via -r requirements.in
-isodate==0.7.2
+isodate==0.6.1
     # via
     #   azure-keyvault-secrets
+    #   azure-mgmt-storage
     #   azure-storage-blob
-    #   msrest
     #   zeep
 itsdangerous==2.2.0
     # via flask
@@ -175,7 +175,7 @@ jinja2==3.1.6
     # via
     #   -r requirements.in
     #   flask
-jmespath==1.1.0
+jmespath==1.0.1
     # via
     #   boto3
     #   botocore
@@ -183,29 +183,28 @@ lambda-git==0.1.1
     # via -r requirements.in
 looker-sdk==24.2.0
     # via -r requirements.in
-lxml==6.0.2
+lxml==5.4.0
     # via zeep
-lz4==4.4.5
+lz4==4.3.3
     # via
     #   clickhouse-connect
     #   databricks-sql-connector
     #   trino
-markupsafe==3.0.3
+markupsafe==2.1.5
     # via
     #   jinja2
     #   werkzeug
-marshmallow==3.26.2
+marshmallow==3.26.1
     # via dataclasses-json
-more-itertools==10.8.0
+more-itertools==10.7.0
     # via simple-salesforce
-msal==1.34.0
+msal==1.31.0
     # via
+    #   -r requirements.in
     #   azure-identity
     #   msal-extensions
-msal-extensions==1.3.1
+msal-extensions==1.2.0
     # via azure-identity
-msrest==0.7.1
-    # via azure-mgmt-storage
 mypy-extensions==1.1.0
     # via typing-inspect
 numpy==1.26.4
@@ -214,13 +213,11 @@ numpy==1.26.4
     #   databricks-sql-connector
     #   pandas
     #   pyarrow
-oauthlib==3.3.1
-    # via
-    #   databricks-sql-connector
-    #   requests-oauthlib
+oauthlib==3.2.2
+    # via databricks-sql-connector
 openpyxl==3.1.5
     # via databricks-sql-connector
-oracledb==3.4.2
+oracledb==2.5.1
     # via -r requirements.in
 orjson==3.11.7
     # via
@@ -228,23 +225,25 @@ orjson==3.11.7
     #   trino
 oscrypto @ git+https://github.com/wbond/oscrypto@master
     # via -r requirements.in
-packaging==26.0
+packaging==24.1
     # via
     #   gunicorn
     #   marshmallow
     #   snowflake-connector-python
     #   tableauserverclient
-pandas==2.2.3
+pandas==2.1.1
     # via
     #   databricks-sql-connector
     #   salesforce-cdp-connector
-platformdirs==4.9.2
+platformdirs==4.3.6
     # via
     #   snowflake-connector-python
     #   zeep
+portalocker==2.10.1
+    # via msal-extensions
 presto-python-client==0.8.3
     # via -r requirements.in
-proto-plus==1.27.1
+proto-plus==1.24.0
     # via
     #   google-api-core
     #   google-cloud-secret-manager
@@ -265,32 +264,34 @@ pyarrow==17.0.0
     # via
     #   -r requirements.in
     #   salesforce-cdp-connector
-pyasn1==0.6.2
-    # via pyasn1-modules
-pyasn1-modules==0.4.2
+pyasn1==0.6.0
+    # via
+    #   pyasn1-modules
+    #   rsa
+pyasn1-modules==0.4.0
     # via google-auth
-pycparser==3.0
+pycparser==2.22
     # via cffi
-pycryptodome==3.23.0
+pycryptodome==3.21.0
     # via
     #   -r requirements.in
     #   teradatasql
-pyjwt==2.11.0
+pyjwt==2.10.1
     # via
     #   -r requirements.in
     #   msal
     #   salesforce-cdp-connector
     #   simple-salesforce
     #   snowflake-connector-python
-pymysql==1.1.2
+pymysql==1.1.1
     # via -r requirements.in
 pyodbc==5.0.1
     # via -r requirements.in
-pyopenssl==25.3.0
+pyopenssl==24.3.0
     # via
     #   -r requirements.in
     #   snowflake-connector-python
-pyparsing==3.3.2
+pyparsing==3.1.2
     # via httplib2
 python-dateutil==2.9.0.post0
     # via
@@ -298,14 +299,14 @@ python-dateutil==2.9.0.post0
     #   pandas
     #   salesforce-cdp-connector
     #   trino
-pytz==2025.2
+pytz==2024.1
     # via
     #   clickhouse-connect
     #   pandas
     #   snowflake-connector-python
     #   trino
     #   zeep
-requests==2.32.5
+requests==2.32.4
     # via
     #   agent-base
     #   azure-core
@@ -315,10 +316,8 @@ requests==2.32.5
     #   google-cloud-storage
     #   looker-sdk
     #   msal
-    #   msrest
     #   presto-python-client
     #   requests-file
-    #   requests-oauthlib
     #   requests-toolbelt
     #   salesforce-cdp-connector
     #   simple-salesforce
@@ -326,36 +325,38 @@ requests==2.32.5
     #   tableauserverclient
     #   trino
     #   zeep
-requests-file==3.0.1
+requests-file==2.1.0
     # via zeep
-requests-oauthlib==2.0.0
-    # via msrest
 requests-toolbelt==1.0.0
     # via zeep
 restrictedpython==8.0
     # via -r requirements.in
 retry2==0.9.5
     # via -r requirements.in
+rsa==4.9
+    # via google-auth
 s3transfer==0.10.4
     # via boto3
 salesforce-cdp-connector==1.0.16
     # via -r requirements.in
 simple-salesforce==1.12.6
     # via -r requirements.in
-six==1.17.0
+six==1.16.0
     # via
+    #   azure-core
     #   impyla
+    #   isodate
     #   presto-python-client
     #   python-dateutil
     #   thrift
     #   thrift-sasl
-snowflake-connector-python==4.3.0
+snowflake-connector-python==3.13.2
     # via -r requirements.in
 sortedcontainers==2.4.0
     # via snowflake-connector-python
 tableauserverclient==0.38 ; python_version >= "3.10"
     # via -r requirements.in
-teradatasql==20.0.0.52
+teradatasql==20.0.0.43
     # via -r requirements.in
 thrift==0.16.0
     # via
@@ -364,33 +365,29 @@ thrift==0.16.0
     #   thrift-sasl
 thrift-sasl==0.4.3
     # via impyla
-tomlkit==0.14.0
+tomlkit==0.13.2
     # via snowflake-connector-python
 trino==0.336.0
     # via -r requirements.in
-typing-extensions==4.15.0
+typing-extensions==4.12.2
     # via
     #   azure-core
     #   azure-identity
     #   azure-keyvault-secrets
-    #   azure-mgmt-storage
     #   azure-storage-blob
-    #   cattrs
     #   grpcio
     #   looker-sdk
-    #   oracledb
-    #   pyopenssl
     #   simple-salesforce
     #   snowflake-connector-python
     #   tableauserverclient
     #   typing-inspect
 typing-inspect==0.9.0
     # via dataclasses-json
-tzdata==2025.3
+tzdata==2024.1
     # via pandas
 tzlocal==5.3.1
     # via trino
-uritemplate==4.2.0
+uritemplate==4.1.1
     # via google-api-python-client
 urllib3==2.6.3
     # via
@@ -401,13 +398,13 @@ urllib3==2.6.3
     #   requests
     #   salesforce-cdp-connector
     #   tableauserverclient
-werkzeug==3.1.3
+werkzeug==3.1.0
     # via
     #   -r requirements.in
     #   flask
-zeep==4.3.2
+zeep==4.3.1
     # via simple-salesforce
-zstandard==0.25.0
+zstandard==0.23.0
     # via
     #   clickhouse-connect
     #   trino
