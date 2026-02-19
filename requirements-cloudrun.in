@@ -1,5 +1,5 @@
 -c requirements.txt
 google-cloud-logging==3.12.1 # Upgraded in VULN-620
 google-cloud-run==0.10.18 # Upgraded in VULN-620
-importlib-metadata==8.7.1 # INC-265
-opentelemetry-api==1.39.0 # INC-265
+importlib-metadata==7.1.0 # Added VULN-620
+opentelemetry-api==1.25.0 # Added VULN-620

@@ -4,30 +4,28 @@
 #
 #    pip-compile --strip-extras requirements-cloudrun.in
 #
-certifi==2026.1.4
-    # via
-    #   -c requirements.txt
-    #   requests
-cffi==2.0.0
-    # via
-    #   -c requirements.txt
-    #   cryptography
-charset-normalizer==3.4.4
-    # via
-    #   -c requirements.txt
-    #   requests
-cryptography==46.0.5
+cachetools==5.3.3
     # via
     #   -c requirements.txt
     #   google-auth
-google-api-core==2.30.0
+certifi==2024.8.30
+    # via
+    #   -c requirements.txt
+    #   requests
+charset-normalizer==3.3.2
+    # via
+    #   -c requirements.txt
+    #   requests
+deprecated==1.2.18
+    # via opentelemetry-api
+google-api-core==2.19.1
     # via
     #   -c requirements.txt
     #   google-cloud-appengine-logging
     #   google-cloud-core
     #   google-cloud-logging
     #   google-cloud-run
-google-auth==2.49.0.dev0
+google-auth==2.30.0
     # via
     #   -c requirements.txt
     #   google-api-core
@@ -39,7 +37,7 @@ google-cloud-appengine-logging==1.4.5
     # via google-cloud-logging
 google-cloud-audit-log==0.3.2
     # via google-cloud-logging
-google-cloud-core==2.5.0
+google-cloud-core==2.4.1
     # via
     #   -c requirements.txt
     #   google-cloud-logging
@@ -47,7 +45,7 @@ google-cloud-logging==3.12.1
     # via -r requirements-cloudrun.in
 google-cloud-run==0.10.18
     # via -r requirements-cloudrun.in
-googleapis-common-protos==1.72.0
+googleapis-common-protos==1.63.2
     # via
     #   -c requirements.txt
     #   google-api-core
@@ -59,7 +57,7 @@ grpc-google-iam-v1==0.14.3
     #   -c requirements.txt
     #   google-cloud-logging
     #   google-cloud-run
-grpcio==1.78.0
+grpcio==1.76.0
     # via
     #   -c requirements.txt
     #   google-api-core
@@ -70,19 +68,19 @@ grpcio-status==1.71.2
     # via
     #   -c requirements.txt
     #   google-api-core
-idna==3.11
+idna==3.7
     # via
     #   -c requirements.txt
     #   requests
-importlib-metadata==8.7.1
+importlib-metadata==7.1.0
     # via
     #   -r requirements-cloudrun.in
     #   opentelemetry-api
-opentelemetry-api==1.39.0
+opentelemetry-api==1.25.0
     # via
     #   -r requirements-cloudrun.in
     #   google-cloud-logging
-proto-plus==1.27.1
+proto-plus==1.24.0
     # via
     #   -c requirements.txt
     #   google-api-core
@@ -101,30 +99,32 @@ protobuf==5.29.5
     #   grpc-google-iam-v1
     #   grpcio-status
     #   proto-plus
-pyasn1==0.6.2
+pyasn1==0.6.0
     # via
     #   -c requirements.txt
     #   pyasn1-modules
-pyasn1-modules==0.4.2
+    #   rsa
+pyasn1-modules==0.4.0
     # via
     #   -c requirements.txt
     #   google-auth
-pycparser==3.0
-    # via
-    #   -c requirements.txt
-    #   cffi
-requests==2.32.5
+requests==2.32.4
     # via
     #   -c requirements.txt
     #   google-api-core
-typing-extensions==4.15.0
+rsa==4.9
+    # via
+    #   -c requirements.txt
+    #   google-auth
+typing-extensions==4.12.2
     # via
     #   -c requirements.txt
     #   grpcio
-    #   opentelemetry-api
 urllib3==2.6.3
     # via
     #   -c requirements.txt
     #   requests
+wrapt==1.17.2
+    # via deprecated
 zipp==3.23.0
     # via importlib-metadata
