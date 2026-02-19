@@ -12,84 +12,104 @@ aiohttp==3.13.3
     #   azure-functions-durable
 aiosignal==1.4.0
     # via aiohttp
-asgiref==3.8.1
+asgiref==3.11.1
     # via opentelemetry-instrumentation-asgi
 attrs==23.2.0
     # via
     #   -c requirements.txt
     #   aiohttp
-azure-common==1.1.28
-    # via
-    #   -c requirements.txt
-    #   azure-mgmt-resource
-azure-core==1.31.0
+azure-core==1.38.0
     # via
     #   -c requirements.txt
     #   azure-core-tracing-opentelemetry
+    #   azure-identity
     #   azure-mgmt-core
     #   azure-monitor-opentelemetry
     #   azure-monitor-opentelemetry-exporter
     #   azure-monitor-query
     #   msrest
-azure-core-tracing-opentelemetry==1.0.0b11
+azure-core-tracing-opentelemetry==1.0.0b12
     # via azure-monitor-opentelemetry
-azure-functions==1.18.0
+azure-functions==1.24.0
     # via
     #   -r requirements-azure.in
     #   azure-functions-durable
-azure-functions-durable==1.2.9
+azure-functions-durable==1.5.0
     # via -r requirements-azure.in
-azure-mgmt-core==1.4.0
+azure-identity==1.25.1
+    # via
+    #   -c requirements.txt
+    #   azure-monitor-opentelemetry-exporter
+azure-mgmt-core==1.6.0
     # via
     #   -c requirements.txt
     #   azure-mgmt-resource
-azure-mgmt-resource==23.0.1
+azure-mgmt-resource==25.0.0
     # via -r requirements-azure.in
-azure-monitor-opentelemetry==1.3.0
+azure-monitor-opentelemetry==1.8.6
     # via -r requirements-azure.in
-azure-monitor-opentelemetry-exporter==1.0.0b27
+azure-monitor-opentelemetry-exporter==1.0.0b48
     # via azure-monitor-opentelemetry
-azure-monitor-query==1.2.1
+azure-monitor-query==1.4.1
     # via -r requirements-azure.in
 certifi==2024.8.30
     # via
     #   -c requirements.txt
     #   msrest
     #   requests
+cffi==1.16.0
+    # via
+    #   -c requirements.txt
+    #   cryptography
 charset-normalizer==3.3.2
     # via
     #   -c requirements.txt
     #   requests
-deprecated==1.2.18
+cryptography==44.0.1
     # via
-    #   -r requirements-azure.in
-    #   opentelemetry-api
-fixedint==0.1.6
-    # via azure-monitor-opentelemetry-exporter
-frozenlist==1.4.1
+    #   -c requirements.txt
+    #   azure-identity
+    #   msal
+    #   pyjwt
+deprecated==1.2.18
+    # via -r requirements-azure.in
+frozenlist==1.8.0
     # via
     #   aiohttp
     #   aiosignal
-furl==2.1.3
+furl==2.1.4
     # via azure-functions-durable
 idna==3.7
     # via
     #   -c requirements.txt
     #   requests
     #   yarl
-importlib-metadata==7.1.0
-    # via
-    #   opentelemetry-api
-    #   opentelemetry-instrumentation-flask
+importlib-metadata==8.7.1
+    # via opentelemetry-api
 isodate==0.6.1
     # via
     #   -c requirements.txt
     #   azure-mgmt-resource
     #   azure-monitor-query
     #   msrest
+markupsafe==2.1.5
+    # via
+    #   -c requirements.txt
+    #   werkzeug
+msal==1.31.0
+    # via
+    #   -c requirements.txt
+    #   azure-identity
+    #   msal-extensions
+msal-extensions==1.2.0
+    # via
+    #   -c requirements.txt
+    #   azure-identity
 msrest==0.7.1
-    # via azure-monitor-opentelemetry-exporter
-multidict==6.0.5
+    # via
+    #   -c requirements.txt
+    #   azure-monitor-opentelemetry-exporter
+multidict==6.7.1
     # via
     #   aiohttp
     #   yarl
@@ -99,10 +119,11 @@ oauthlib==3.2.2
     #   requests-oauthlib
 objprint==0.3.0
     # via viztracer
-opentelemetry-api==1.25.0
+opentelemetry-api==1.39.0
     # via
     #   -r requirements-azure.in
     #   azure-core-tracing-opentelemetry
+    #   azure-functions-durable
     #   azure-monitor-opentelemetry-exporter
     #   opentelemetry-instrumentation
     #   opentelemetry-instrumentation-asgi
@@ -117,7 +138,7 @@ opentelemetry-api==1.25.0
     #   opentelemetry-instrumentation-wsgi
     #   opentelemetry-sdk
     #   opentelemetry-semantic-conventions
-opentelemetry-instrumentation==0.46b0
+opentelemetry-instrumentation==0.60b0
     # via
     #   opentelemetry-instrumentation-asgi
     #   opentelemetry-instrumentation-dbapi
@@ -129,36 +150,39 @@ opentelemetry-instrumentation==0.46b0
     #   opentelemetry-instrumentation-urllib
     #   opentelemetry-instrumentation-urllib3
     #   opentelemetry-instrumentation-wsgi
-opentelemetry-instrumentation-asgi==0.46b0
+opentelemetry-instrumentation-asgi==0.60b0
     # via opentelemetry-instrumentation-fastapi
-opentelemetry-instrumentation-dbapi==0.46b0
+opentelemetry-instrumentation-dbapi==0.60b0
     # via opentelemetry-instrumentation-psycopg2
-opentelemetry-instrumentation-django==0.46b0
+opentelemetry-instrumentation-django==0.60b0
     # via azure-monitor-opentelemetry
-opentelemetry-instrumentation-fastapi==0.46b0
+opentelemetry-instrumentation-fastapi==0.60b0
     # via azure-monitor-opentelemetry
-opentelemetry-instrumentation-flask==0.46b0
+opentelemetry-instrumentation-flask==0.60b0
     # via azure-monitor-opentelemetry
-opentelemetry-instrumentation-psycopg2==0.46b0
+opentelemetry-instrumentation-psycopg2==0.60b0
     # via azure-monitor-opentelemetry
-opentelemetry-instrumentation-requests==0.46b0
+opentelemetry-instrumentation-requests==0.60b0
     # via azure-monitor-opentelemetry
-opentelemetry-instrumentation-urllib==0.46b0
+opentelemetry-instrumentation-urllib==0.60b0
     # via azure-monitor-opentelemetry
-opentelemetry-instrumentation-urllib3==0.46b0
+opentelemetry-instrumentation-urllib3==0.60b0
     # via azure-monitor-opentelemetry
-opentelemetry-instrumentation-wsgi==0.46b0
+opentelemetry-instrumentation-wsgi==0.60b0
     # via
     #   opentelemetry-instrumentation-django
     #   opentelemetry-instrumentation-flask
 opentelemetry-resource-detector-azure==0.1.5
     # via azure-monitor-opentelemetry
-opentelemetry-sdk==1.25.0
+opentelemetry-sdk==1.39.0
     # via
+    #   azure-functions-durable
+    #   azure-monitor-opentelemetry
     #   azure-monitor-opentelemetry-exporter
     #   opentelemetry-resource-detector-azure
-opentelemetry-semantic-conventions==0.46b0
+opentelemetry-semantic-conventions==0.60b0
     # via
+    #   opentelemetry-instrumentation
     #   opentelemetry-instrumentation-asgi
     #   opentelemetry-instrumentation-dbapi
     #   opentelemetry-instrumentation-django
@@ -169,7 +193,7 @@ opentelemetry-semantic-conventions==0.46b0
     #   opentelemetry-instrumentation-urllib3
     #   opentelemetry-instrumentation-wsgi
     #   opentelemetry-sdk
-opentelemetry-util-http==0.46b0
+opentelemetry-util-http==0.60b0
     # via
     #   opentelemetry-instrumentation-asgi
     #   opentelemetry-instrumentation-django
@@ -179,18 +203,32 @@ opentelemetry-util-http==0.46b0
     #   opentelemetry-instrumentation-urllib
     #   opentelemetry-instrumentation-urllib3
     #   opentelemetry-instrumentation-wsgi
-orderedmultidict==1.0.1
+orderedmultidict==1.0.2
     # via furl
 packaging==24.1
     # via
     #   -c requirements.txt
+    #   opentelemetry-instrumentation
     #   opentelemetry-instrumentation-flask
+portalocker==2.10.1
+    # via
+    #   -c requirements.txt
+    #   msal-extensions
 propcache==0.4.1
     # via
     #   aiohttp
     #   yarl
-psutil==5.9.8
+psutil==7.2.2
     # via azure-monitor-opentelemetry-exporter
+pycparser==2.22
+    # via
+    #   -c requirements.txt
+    #   cffi
+pyjwt==2.10.1
+    # via
+    #   -c requirements.txt
+    #   msal
+    #   pyjwt
 python-dateutil==2.9.0.post0
     # via
     #   -c requirements.txt
@@ -200,14 +238,16 @@ requests==2.32.4
     #   -c requirements.txt
     #   azure-core
     #   azure-functions-durable
+    #   msal
     #   msrest
     #   requests-oauthlib
 requests-oauthlib==2.0.0
-    # via msrest
+    # via
+    #   -c requirements.txt
+    #   msrest
 six==1.16.0
     # via
     #   -c requirements.txt
-    #   azure-core
     #   furl
     #   isodate
     #   orderedmultidict
@@ -217,14 +257,22 @@ typing-extensions==4.12.2
     #   -c requirements.txt
     #   aiosignal
     #   azure-core
+    #   azure-identity
+    #   azure-mgmt-resource
     #   azure-monitor-query
+    #   opentelemetry-api
     #   opentelemetry-sdk
+    #   opentelemetry-semantic-conventions
 urllib3==2.6.3
     # via
     #   -c requirements.txt
     #   requests
 viztracer==0.17.1
     # via -r requirements-azure.in
+werkzeug==3.1.3
+    # via
+    #   -c requirements.txt
+    #   azure-functions
 wrapt==1.17.2
     # via
     #   -r requirements-azure.in
@@ -238,6 +286,3 @@ zipp==3.23.0
     # via
     #   -r requirements-azure.in
     #   importlib-metadata
-
-# The following packages are considered to be unsafe in a requirements file:
-# setuptools

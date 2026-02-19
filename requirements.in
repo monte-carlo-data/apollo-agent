@@ -1,9 +1,9 @@
 agent-base @ git+https://github.com/monte-carlo-data/agent-base.git@v0.0.2
 
-azure-identity==1.18.0
+azure-identity==1.25.1
 azure-keyvault-secrets==4.10.0
-azure-mgmt-storage==21.2.1
-azure-storage-blob==12.23.0
+azure-mgmt-storage==24.0.0
+azure-storage-blob==12.28.0
 brotli==1.2.0  # Upgrade transient dependency of flask-compress to address SEC-1143 (CVE-2025-6176)
 clickhouse-connect==0.8.18
 cryptography>=44.0.1
@@ -49,4 +49,4 @@ teradatasql>=20.0.0.43
 oscrypto @ git+https://github.com/wbond/oscrypto@master
 
 impyla==0.22.0
-werkzeug==3.1.0
+werkzeug==3.1.3
