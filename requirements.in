@@ -1,6 +1,6 @@
 agent-base @ git+https://github.com/monte-carlo-data/agent-base.git@v0.0.2
 
-azure-identity==1.24.0
+azure-identity==1.18.0
 azure-keyvault-secrets==4.10.0
 azure-mgmt-storage==24.0.0
 azure-storage-blob==12.28.0
@@ -21,7 +21,6 @@ ibm-db==3.2.7
 jinja2>=3.1.6
 lambda-git==0.1.1
 looker-sdk==24.2.0
-msal==1.31.0
 numpy<2.0.0  # prevent "numpy.dtype size changed" errors: https://github.com/numpy/numpy/issues/26710
 oracledb>=2.4.1
 orjson>=3.11.6  # CVE-2025-67221: recursion DoS in orjson.dumps thru 3.11.4

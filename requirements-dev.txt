@@ -6,28 +6,28 @@
 #
 black==24.3.0
     # via -r requirements-dev.in
-blinker==1.8.2
+blinker==1.9.0
     # via
     #   -c requirements.txt
     #   flask
-certifi==2024.8.30
+certifi==2026.1.4
     # via
     #   -c requirements.txt
     #   requests
 cfgv==3.4.0
     # via pre-commit
-charset-normalizer==3.3.2
+charset-normalizer==3.4.4
     # via
     #   -c requirements.txt
     #   requests
-click==8.1.7
+click==8.3.1
     # via
     #   -c requirements.txt
     #   black
     #   flask
 distlib==0.3.8
     # via virtualenv
-filelock==3.17.0
+filelock==3.24.3
     # via
     #   -c requirements.txt
     #   virtualenv
@@ -39,7 +39,7 @@ flask-swagger==0.2.14
     # via -r requirements-dev.in
 identify==2.5.36
     # via pre-commit
-idna==3.7
+idna==3.11
     # via
     #   -c requirements.txt
     #   requests
@@ -53,7 +53,7 @@ jinja2==3.1.6
     # via
     #   -c requirements.txt
     #   flask
-markupsafe==2.1.5
+markupsafe==3.0.3
     # via
     #   -c requirements.txt
     #   jinja2
@@ -66,14 +66,14 @@ nodeenv==1.9.1
     # via
     #   pre-commit
     #   pyright
-packaging==24.1
+packaging==26.0
     # via
     #   -c requirements.txt
     #   black
     #   pytest
 pathspec==0.12.1
     # via black
-platformdirs==4.3.6
+platformdirs==4.9.2
     # via
     #   -c requirements.txt
     #   black
@@ -93,7 +93,7 @@ pyyaml==6.0.1
     #   flask-swagger
     #   pre-commit
     #   responses
-requests==2.32.4
+requests==2.32.5
     # via
     #   -c requirements.txt
     #   responses
@@ -101,7 +101,7 @@ responses==0.23.3
     # via -r requirements-dev.in
 types-pyyaml==6.0.12.20250516
     # via responses
-typing-extensions==4.12.2
+typing-extensions==4.15.0
     # via
     #   -c requirements.txt
     #   pyright
