@@ -1,6 +1,7 @@
 agent-base @ git+https://github.com/monte-carlo-data/agent-base.git@v0.0.2
 
 azure-identity==1.18.0
+azure-core==1.38.2  # YET-463
 azure-keyvault-secrets==4.10.0
 azure-mgmt-storage==21.2.1
 azure-storage-blob==12.23.0

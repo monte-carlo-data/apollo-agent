@@ -17,8 +17,9 @@ attrs==23.2.0
     #   zeep
 azure-common==1.1.28
     # via azure-mgmt-storage
-azure-core==1.31.0
+azure-core==1.38.2
     # via
+    #   -r requirements.in
     #   azure-identity
     #   azure-keyvault-secrets
     #   azure-mgmt-core
@@ -343,7 +344,6 @@ simple-salesforce==1.12.6
     # via -r requirements.in
 six==1.16.0
     # via
-    #   azure-core
     #   impyla
     #   isodate
     #   presto-python-client
