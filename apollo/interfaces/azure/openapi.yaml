@@ -1,0 +1,1184 @@
+openapi: "3.0.3"
+info:
+  title: Monte Carlo - Apollo Agent API (Azure)
+  description: |
+    REST API for the Monte Carlo Apollo Agent deployed on Azure Functions.
+
+    The agent exposes two categories of endpoints:
+    - **Synchronous** routes (under `/api/`) handled by the Flask WSGI app.
+    - **Asynchronous** routes (under `/async/api/`) handled by Azure Durable Functions.
+      These return a `__mcd_request_id__` that can be polled via
+      `GET /async/api/v1/status/{instance_id}`.
+
+    All successful responses wrap their payload in `__mcd_result__`.
+    All error responses include `__mcd_error__` (and optionally `__mcd_stack_trace__`).
+  version: "1.0"
+  license:
+    name: Monte Carlo Data, Inc. License
+    url: https://github.com/monte-carlo-data/apollo-agent/blob/main/LICENSE.md
+externalDocs:
+  url: https://docs.getmontecarlo.com
+
+tags:
+  - name: Troubleshooting
+    description: Health checks and network connectivity tests.
+  - name: Upgrading
+    description: Agent self-upgrade and upgrade log endpoints.
+  - name: Infrastructure
+    description: Infrastructure detail retrieval.
+  - name: Azure Logs
+    description: Query Azure Application Insights log events.
+  - name: Azure Async Operations
+    description: Asynchronous operation execution via Azure Durable Functions.
+
+paths:
+
+  # ---------------------------------------------------------------------------
+  # Basic health checks
+  # ---------------------------------------------------------------------------
+
+  /:
+    get:
+      summary: Basic health check (root)
+      description: 'Returns `{"status": "up"}`. Used by container orchestration platforms.'
+      tags: [Troubleshooting]
+      responses:
+        "200":
+          description: Agent is up.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicHealthResponse"
+
+  /health:
+    get:
+      summary: Basic health check
+      description: 'Returns `{"status": "up"}`. Used by container orchestration platforms.'
+      tags: [Troubleshooting]
+      responses:
+        "200":
+          description: Agent is up.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicHealthResponse"
+
+  # ---------------------------------------------------------------------------
+  # Agent health information
+  # ---------------------------------------------------------------------------
+
+  /api/v1/test/health:
+    get:
+      summary: Agent health information (GET)
+      description: >
+        Returns detailed health information about the agent: version, build,
+        platform name, environment variables, and optional platform-specific info.
+        Pass `full=true` to include the outbound IP address.
+      tags: [Troubleshooting]
+      parameters:
+        - $ref: "#/components/parameters/trace_id_query"
+        - name: full
+          in: query
+          description: Include extra information such as `outbound_ip_address`.
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: Health information for this agent.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthInformationResponse"
+
+    post:
+      summary: Agent health information (POST)
+      description: >
+        Same as the GET variant but accepts parameters in a JSON body.
+      tags: [Troubleshooting]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TestHealthRequest"
+      responses:
+        "200":
+          description: Health information for this agent.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthInformationResponse"
+
+  # ---------------------------------------------------------------------------
+  # Network tests
+  # ---------------------------------------------------------------------------
+
+  /api/v1/test/network/open:
+    get:
+      summary: TCP open-port test (GET)
+      description: Tests whether a TCP connection can be established to `host:port`.
+      tags: [Troubleshooting]
+      parameters:
+        - $ref: "#/components/parameters/host_query_required"
+        - $ref: "#/components/parameters/port_query_required"
+        - $ref: "#/components/parameters/timeout_query"
+        - $ref: "#/components/parameters/trace_id_query"
+      responses:
+        "200":
+          description: Result of the TCP connection attempt.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NetworkTestResponse"
+
+    post:
+      summary: TCP open-port test (POST)
+      tags: [Troubleshooting]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NetworkTestRequest"
+      responses:
+        "200":
+          description: Result of the TCP connection attempt.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NetworkTestResponse"
+
+  /api/v1/test/network/telnet:
+    get:
+      summary: Telnet connection test (GET)
+      description: Tests network connectivity using a Telnet connection to `host:port`.
+      tags: [Troubleshooting]
+      parameters:
+        - $ref: "#/components/parameters/host_query_required"
+        - $ref: "#/components/parameters/port_query_required"
+        - $ref: "#/components/parameters/timeout_query"
+        - $ref: "#/components/parameters/trace_id_query"
+      responses:
+        "200":
+          description: Result of the Telnet connection attempt.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NetworkTestResponse"
+
+    post:
+      summary: Telnet connection test (POST)
+      tags: [Troubleshooting]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NetworkTestRequest"
+      responses:
+        "200":
+          description: Result of the Telnet connection attempt.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NetworkTestResponse"
+
+  /api/v1/test/network/dns:
+    get:
+      summary: DNS lookup (GET)
+      description: Performs a DNS lookup for the specified host name.
+      tags: [Troubleshooting]
+      parameters:
+        - $ref: "#/components/parameters/host_query_required"
+        - $ref: "#/components/parameters/port_query_optional"
+        - $ref: "#/components/parameters/trace_id_query"
+      responses:
+        "200":
+          description: DNS lookup result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NetworkTestResponse"
+
+    post:
+      summary: DNS lookup (POST)
+      tags: [Troubleshooting]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DnsLookupRequest"
+      responses:
+        "200":
+          description: DNS lookup result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NetworkTestResponse"
+
+  /api/v1/test/network/http:
+    get:
+      summary: HTTP connectivity test (GET)
+      description: Performs a GET request to the provided URL and returns the HTTP status code.
+      tags: [Troubleshooting]
+      parameters:
+        - name: url
+          in: query
+          required: true
+          description: The URL to test.
+          schema:
+            type: string
+            example: "https://getmontecarlo.com"
+        - name: include_response
+          in: query
+          required: false
+          description: Whether to include the response body from the URL.
+          schema:
+            type: boolean
+            default: false
+        - $ref: "#/components/parameters/timeout_query"
+        - $ref: "#/components/parameters/trace_id_query"
+      responses:
+        "200":
+          description: HTTP connectivity test result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NetworkTestResponse"
+
+    post:
+      summary: HTTP connectivity test (POST)
+      tags: [Troubleshooting]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HttpConnectionTestRequest"
+      responses:
+        "200":
+          description: HTTP connectivity test result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NetworkTestResponse"
+
+  /api/v1/test/network/outbound_ip_address:
+    get:
+      summary: Get outbound IP address
+      description: Returns the public IP address used by the agent for outbound connections.
+      tags: [Troubleshooting]
+      parameters:
+        - $ref: "#/components/parameters/trace_id_query"
+      responses:
+        "200":
+          description: Outbound IP address for this agent.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OutboundIpResponse"
+
+  # ---------------------------------------------------------------------------
+  # Upgrade
+  # ---------------------------------------------------------------------------
+
+  /api/v1/upgrade:
+    post:
+      summary: Upgrade the agent
+      description: Requests the agent to upgrade to a specified image version.
+      tags: [Upgrading]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpgradeRequest"
+      responses:
+        "200":
+          description: Result from the platform-specific updater.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UpgradeResponse"
+
+  /api/v1/upgrade/logs:
+    get:
+      summary: Get upgrade logs (GET)
+      description: Returns a list of upgrade log events after the given start time.
+      tags: [Upgrading]
+      parameters:
+        - $ref: "#/components/parameters/trace_id_query"
+        - $ref: "#/components/parameters/start_time_query"
+        - name: limit
+          in: query
+          description: Maximum number of events to return.
+          schema:
+            type: integer
+            default: 100
+      responses:
+        "200":
+          description: List of upgrade log events.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UpgradeLogsResponse"
+
+    post:
+      summary: Get upgrade logs (POST)
+      tags: [Upgrading]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpgradeLogsRequest"
+      responses:
+        "200":
+          description: List of upgrade log events.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UpgradeLogsResponse"
+
+  # ---------------------------------------------------------------------------
+  # Infrastructure
+  # ---------------------------------------------------------------------------
+
+  /api/v1/infra/details:
+    get:
+      summary: Get infrastructure details (GET)
+      description: >
+        Returns infrastructure details from the platform-specific infra provider.
+        The shape of `__mcd_result__` depends on the platform.
+      tags: [Infrastructure]
+      parameters:
+        - $ref: "#/components/parameters/trace_id_query"
+      responses:
+        "200":
+          description: Infrastructure details for this agent.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InfraDetailsResponse"
+
+    post:
+      summary: Get infrastructure details (POST)
+      tags: [Infrastructure]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InfraDetailsRequest"
+      responses:
+        "200":
+          description: Infrastructure details for this agent.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InfraDetailsResponse"
+
+  # ---------------------------------------------------------------------------
+  # Azure-specific: Application Insights logs
+  # ---------------------------------------------------------------------------
+
+  /api/v1/azure/logs/query:
+    get:
+      summary: Query Azure Application Insights logs (GET)
+      description: >
+        Returns log events from Azure Application Insights using the Azure Monitor
+        Query client library. Supports optional KQL filtering.
+      tags: [Azure Logs]
+      parameters:
+        - $ref: "#/components/parameters/trace_id_query"
+        - $ref: "#/components/parameters/start_time_query"
+        - $ref: "#/components/parameters/end_time_query"
+        - name: limit
+          in: query
+          description: Maximum number of log events to return.
+          schema:
+            type: integer
+            default: 1000
+        - name: query
+          in: query
+          description: >
+            Optional KQL query expression.
+            If it starts with `traces` or `requests` it is sent as-is to Azure Monitor;
+            otherwise it is treated as a filter clause (e.g. `where message has "pattern"`)
+            appended to the default traces query sorted by timestamp descending.
+          schema:
+            type: string
+            example: "where message has 'execute'"
+      responses:
+        "200":
+          description: List of Azure log events for the requested time range.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AzureLogsResponse"
+
+    post:
+      summary: Query Azure Application Insights logs (POST)
+      description: Same as the GET variant but accepts parameters in a JSON body.
+      tags: [Azure Logs]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AzureLogsRequest"
+      responses:
+        "200":
+          description: List of Azure log events for the requested time range.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AzureLogsResponse"
+
+  # ---------------------------------------------------------------------------
+  # Azure Durable Functions – async operations
+  # ---------------------------------------------------------------------------
+
+  /async/api/v1/agent/execute/{connection_type}/{operation_name}:
+    post:
+      summary: Trigger an async agent operation
+      description: >
+        Starts an asynchronous agent operation via Azure Durable Functions.
+        Returns immediately with a `__mcd_request_id__` that should be passed to
+        `GET /async/api/v1/status/{instance_id}` to poll for the result.
+
+        The activity is abandoned after the configured timeout (default 14m 45s) so
+        it is not automatically retried by the Durable Functions framework.
+      tags: [Azure Async Operations]
+      parameters:
+        - name: connection_type
+          in: path
+          required: true
+          description: >
+            The integration type. One of: `bigquery`, `databricks`, `http`, `storage`,
+            `looker`, `git`, `redshift`, `postgres`, `sql-server`, `snowflake`, `mysql`,
+            `oracle`, `teradata`, `azure-dedicated-sql-pool`, `azure-sql-database`,
+            `tableau`, `sap-hana`, `power-bi`.
+          schema:
+            type: string
+            example: snowflake
+        - name: operation_name
+          in: path
+          required: true
+          description: >
+            Name of the operation, used for logging only. The actual commands are
+            defined in the `operation` body field.
+          schema:
+            type: string
+            example: execute_query
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExecuteOperationRequest"
+            example:
+              credentials:
+                connect_args:
+                  user: user_name
+                  password: password
+                  account: account
+                  warehouse: warehouse
+              operation:
+                trace_id: "324986b4-b185-4187-b4af-b0c2cd60f7a0"
+                commands:
+                  - method: cursor
+                    store: _cursor
+                  - target: _cursor
+                    method: execute
+                    args:
+                      - "select database_name from snowflake.information_schema.databases"
+                  - target: _cursor
+                    method: fetchall
+      responses:
+        "202":
+          description: Async operation accepted. Poll for results using the returned request ID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AsyncOperationAcceptedResponse"
+
+  /async/api/v1/status/{instance_id}:
+    get:
+      summary: Get async operation status
+      description: >
+        Returns the current status of an asynchronous operation started with
+        `POST /async/api/v1/agent/execute/{connection_type}/{operation_name}`.
+        When the operation has completed, `__mcd_result__` is included in the response.
+      tags: [Azure Async Operations]
+      parameters:
+        - name: instance_id
+          in: path
+          required: true
+          description: The `__mcd_request_id__` returned by the async execute endpoint.
+          schema:
+            type: string
+            example: "abc123def456"
+      responses:
+        "200":
+          description: Current status of the async operation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AsyncOperationStatusResponse"
+
+  /async/api/v1/cleanup:
+    post:
+      summary: Clean up Durable Functions instances
+      description: >
+        Purges completed (and optionally pending) Durable Functions orchestration
+        instances within the specified time range. Also runs automatically on a
+        schedule (daily at 03:00 and 15:00 UTC).
+      tags: [Azure Async Operations]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DurableFunctionsCleanupRequest"
+      responses:
+        "200":
+          description: Number of deleted orchestration instances.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DurableFunctionsCleanupResponse"
+
+  /async/api/v1/queue/info:
+    post:
+      summary: Get Durable Functions queue info
+      description: >
+        Returns the count of pending and completed orchestration instances
+        within the specified time range.
+      tags: [Azure Async Operations]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DurableFunctionsInfoRequest"
+      responses:
+        "200":
+          description: Pending and completed instance counts.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DurableFunctionsInfoResponse"
+
+# =============================================================================
+# Components
+# =============================================================================
+
+components:
+
+  headers:
+    x-mcd-trace-id:
+      description: Echo of the `trace_id` supplied in the request (when provided).
+      schema:
+        type: string
+        example: "324986b4-b185-4187-b4af-b0c2cd60f7a0"
+
+  parameters:
+    trace_id_query:
+      name: trace_id
+      in: query
+      required: false
+      description: An optional trace ID for correlating log events.
+      schema:
+        type: string
+        example: "324986b4-b185-4187-b4af-b0c2cd60f7a0"
+
+    host_query_required:
+      name: host
+      in: query
+      required: true
+      description: The host name to test.
+      schema:
+        type: string
+        example: getmontecarlo.com
+
+    port_query_required:
+      name: port
+      in: query
+      required: true
+      description: The port number to test.
+      schema:
+        type: integer
+        example: 443
+
+    port_query_optional:
+      name: port
+      in: query
+      required: false
+      description: The port number.
+      schema:
+        type: integer
+        example: 443
+
+    timeout_query:
+      name: timeout
+      in: query
+      required: false
+      description: Timeout in seconds.
+      schema:
+        type: integer
+        default: 5
+
+    start_time_query:
+      name: start_time
+      in: query
+      required: false
+      description: Start of the time range as an ISO 8601 datetime. Defaults to 10 minutes ago.
+      schema:
+        type: string
+        format: date-time
+        example: "2023-12-25T12:31:45+00:00"
+
+    end_time_query:
+      name: end_time
+      in: query
+      required: false
+      description: End of the time range as an ISO 8601 datetime. Defaults to now.
+      schema:
+        type: string
+        format: date-time
+        example: "2023-12-26T13:00:00+00:00"
+
+  schemas:
+
+    # -------------------------------------------------------------------------
+    # Shared response shapes
+    # -------------------------------------------------------------------------
+
+    BasicHealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: up
+      required: [status]
+
+    AgentOperationResponse:
+      type: object
+      description: >
+        Standard agent response envelope. On success `__mcd_result__` is present.
+        On error `__mcd_error__` is present (and `__mcd_result__` is absent).
+      properties:
+        __mcd_result__:
+          description: The operation result when execution was successful.
+        __mcd_error__:
+          type: string
+          description: Error message (present only on failure).
+        __mcd_exception__:
+          type: string
+          description: Additional exception detail (present only on failure).
+        __mcd_stack_trace__:
+          type: array
+          description: Stack trace frames (present only on failure).
+          items:
+            type: string
+      example:
+        __mcd_result__:
+          - ["database_1"]
+          - ["database_2"]
+
+    NetworkTestResponse:
+      type: object
+      properties:
+        __mcd_result__:
+          type: object
+          properties:
+            message:
+              type: string
+              description: Human-readable result of the network test.
+        __mcd_trace_id__:
+          type: string
+          description: Echo of the supplied trace_id.
+      example:
+        __mcd_result__:
+          message: "Port 443 is open on getmontecarlo.com"
+        __mcd_trace_id__: "324986b4-b185-4187-b4af-b0c2cd60f7a0"
+
+    HealthInformationResponse:
+      type: object
+      properties:
+        __mcd_result__:
+          type: object
+          properties:
+            build:
+              type: string
+              description: Current build number.
+              example: "698"
+            version:
+              type: string
+              description: Current agent version.
+              example: "1.0.1"
+            platform:
+              type: string
+              description: Platform name (e.g. AWS, GCP, Azure).
+              example: Azure
+            env:
+              type: object
+              description: Platform-specific environment variables.
+              additionalProperties:
+                type: string
+            platform_info:
+              type: object
+              description: Platform-specific metadata.
+              additionalProperties: {}
+            trace_id:
+              type: string
+              description: Echo of the supplied trace_id.
+              example: "324986b4-b185-4187-b4af-b0c2cd60f7a0"
+            outbound_ip_address:
+              type: string
+              description: Outbound public IP (only when `full=true`).
+              example: "12.34.5.255"
+      example:
+        __mcd_result__:
+          build: "698"
+          version: "1.0.1"
+          platform: Azure
+          env:
+            AZURE_REGION: eastus
+          platform_info:
+            image: montecarlodata/agent:1.0.1-azure
+          trace_id: "324986b4-b185-4187-b4af-b0c2cd60f7a0"
+
+    OutboundIpResponse:
+      type: object
+      properties:
+        __mcd_result__:
+          type: object
+          properties:
+            outbound_ip_address:
+              type: string
+              example: "12.34.5.255"
+      example:
+        __mcd_result__:
+          outbound_ip_address: "12.34.5.255"
+
+    UpgradeResponse:
+      type: object
+      properties:
+        __mcd_result__:
+          type: object
+          description: Platform-specific updater output.
+          additionalProperties: {}
+        __mcd_trace_id__:
+          type: string
+          description: Echo of the supplied trace_id.
+      example:
+        __mcd_result__:
+          revision: some-azure-revision
+          service-name: my-function-app
+        __mcd_trace_id__: "324986b4-b185-4187-b4af-b0c2cd60f7a0"
+
+    UpgradeLogsResponse:
+      type: object
+      properties:
+        __mcd_result__:
+          type: object
+          properties:
+            events:
+              type: array
+              items:
+                type: object
+                properties:
+                  timestamp:
+                    type: string
+                    format: date-time
+                  logicalResourceId:
+                    type: string
+                  resourceType:
+                    type: string
+                  resourceStatus:
+                    type: string
+                  resourceStatusReason:
+                    type: string
+                    nullable: true
+      example:
+        __mcd_result__:
+          events:
+            - timestamp: "2023-12-28T14:13:48.445000+00:00"
+              logicalResourceId: Storage
+              resourceType: Azure::Storage
+              resourceStatus: UPDATE_COMPLETE
+              resourceStatusReason: null
+
+    InfraDetailsResponse:
+      type: object
+      properties:
+        __mcd_result__:
+          type: object
+          description: Platform-specific infrastructure details.
+          additionalProperties: {}
+      example:
+        __mcd_result__:
+          subscription_id: "00000000-0000-0000-0000-000000000000"
+          resource_group: my-resource-group
+          function_app: my-function-app
+
+    AzureLogEvent:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp of the log event.
+          example: "2023-12-28T14:13:48.445000+00:00"
+        message:
+          type: string
+          description: Log message.
+          example: "Executing operation: snowflake/query"
+        customDimensions:
+          type: object
+          nullable: true
+          description: Structured log context attributes.
+          additionalProperties: {}
+          example:
+            mcd_operation_name: snowflake/query
+            commands:
+              - method: cursor
+                store: _cursor
+              - target: _cursor
+                method: execute
+                args: ["SELECT DATABASE_NAME FROM SNOWFLAKE.INFORMATION_SCHEMA.DATABASES"]
+
+    AzureLogsResponse:
+      type: object
+      properties:
+        __mcd_result__:
+          type: object
+          properties:
+            events:
+              type: array
+              items:
+                $ref: "#/components/schemas/AzureLogEvent"
+      example:
+        __mcd_result__:
+          events:
+            - timestamp: "2023-12-28T14:13:48.445000+00:00"
+              message: "Executing operation: snowflake/query"
+              customDimensions:
+                mcd_operation_name: snowflake/query
+            - timestamp: "2023-12-28T14:13:47.445000+00:00"
+              message: "Log message"
+              customDimensions: null
+
+    AsyncOperationAcceptedResponse:
+      type: object
+      properties:
+        __mcd_request_id__:
+          type: string
+          description: >
+            Durable Functions instance ID. Pass this to
+            `GET /async/api/v1/status/{instance_id}` to poll for the result.
+          example: "abc123def456"
+      required: [__mcd_request_id__]
+
+    AsyncOperationStatusResponse:
+      type: object
+      properties:
+        __mcd_status__:
+          type: string
+          description: >
+            Durable Functions runtime status. One of:
+            `Pending`, `Running`, `Completed`, `Failed`, `Canceled`, `Terminated`, `unknown`.
+          example: Completed
+        __mcd_created__:
+          type: string
+          format: date-time
+          description: ISO 8601 datetime when the orchestration was created.
+          nullable: true
+        __mcd_last_updated__:
+          type: string
+          format: date-time
+          description: ISO 8601 datetime when the orchestration was last updated.
+          nullable: true
+        __mcd_result__:
+          description: >
+            Operation result (present only when `__mcd_status__` is `Completed` and the
+            output is not a dictionary merged at the top level).
+        __mcd_error__:
+          type: string
+          description: Error message when the operation failed or timed out.
+      example:
+        __mcd_status__: Completed
+        __mcd_created__: "2023-12-28T14:13:40.000000+00:00"
+        __mcd_last_updated__: "2023-12-28T14:13:48.000000+00:00"
+        __mcd_result__:
+          - ["database_1"]
+          - ["database_2"]
+
+    DurableFunctionsCleanupResponse:
+      type: object
+      properties:
+        deleted_instances:
+          type: integer
+          description: >
+            Total number of instances deleted (terminated + purged).
+            Returns -1 if the purge operation failed.
+          example: 42
+      required: [deleted_instances]
+
+    DurableFunctionsInfoResponse:
+      type: object
+      properties:
+        pending_instances:
+          type: integer
+          description: Number of pending (not yet executed) orchestration instances.
+          example: 3
+        completed_instances:
+          type: integer
+          description: Number of completed orchestration instances.
+          example: 150
+      required: [pending_instances, completed_instances]
+
+    # -------------------------------------------------------------------------
+    # Request bodies
+    # -------------------------------------------------------------------------
+
+    Command:
+      type: object
+      description: A single command in an agent operation.
+      properties:
+        target:
+          type: string
+          description: >
+            Name of the context variable to use as the call target.
+            Defaults to `_client` (the connection client).
+          default: _client
+          example: _cursor
+        method:
+          type: string
+          description: Method to invoke on `target`.
+          example: execute
+        store:
+          type: string
+          description: Name of a context variable to store the return value in.
+          example: _cursor
+        args:
+          type: array
+          description: Positional arguments for the method.
+          items: {}
+        kwargs:
+          type: object
+          description: Keyword arguments for the method.
+          additionalProperties: {}
+      required: [method]
+
+    ExecuteOperationRequest:
+      type: object
+      description: >
+        Request body for executing an agent operation. See the
+        [README](https://github.com/monte-carlo-data/apollo-agent/blob/main/examples/README.md)
+        for the full command DSL.
+      properties:
+        credentials:
+          type: object
+          description: Authentication information for establishing the connection.
+          additionalProperties: {}
+          example:
+            connect_args:
+              user: user_name
+              password: password
+              account: account
+              warehouse: warehouse
+        operation:
+          type: object
+          description: Operation definition.
+          properties:
+            trace_id:
+              type: string
+              description: Optional trace ID for log correlation.
+              example: "324986b4-b185-4187-b4af-b0c2cd60f7a0"
+            commands:
+              type: array
+              description: Ordered list of commands to execute.
+              items:
+                $ref: "#/components/schemas/Command"
+
+    TestHealthRequest:
+      type: object
+      properties:
+        trace_id:
+          type: string
+          description: Optional trace ID.
+          example: "324986b4-b185-4187-b4af-b0c2cd60f7a0"
+        full:
+          type: boolean
+          default: false
+          description: Include extra information such as `outbound_ip_address`.
+
+    NetworkTestRequest:
+      type: object
+      properties:
+        host:
+          type: string
+          description: The host name to test.
+          example: getmontecarlo.com
+        port:
+          type: integer
+          description: The port number to test.
+          example: 443
+        timeout:
+          type: integer
+          default: 5
+          description: Timeout in seconds.
+        trace_id:
+          type: string
+          description: Optional trace ID.
+          example: "324986b4-b185-4187-b4af-b0c2cd60f7a0"
+      required: [host, port]
+
+    DnsLookupRequest:
+      type: object
+      properties:
+        host:
+          type: string
+          description: The host name to look up.
+          example: getmontecarlo.com
+        port:
+          type: integer
+          description: Optional port hint.
+          example: 443
+        trace_id:
+          type: string
+          description: Optional trace ID.
+          example: "324986b4-b185-4187-b4af-b0c2cd60f7a0"
+      required: [host]
+
+    HttpConnectionTestRequest:
+      type: object
+      properties:
+        url:
+          type: string
+          description: The URL to test with a GET request.
+          example: "https://getmontecarlo.com"
+        include_response:
+          type: boolean
+          default: false
+          description: Whether to include the response body.
+        timeout:
+          type: integer
+          default: 10
+          description: Timeout in seconds.
+        trace_id:
+          type: string
+          description: Optional trace ID.
+          example: "324986b4-b185-4187-b4af-b0c2cd60f7a0"
+      required: [url]
+
+    UpgradeRequest:
+      type: object
+      properties:
+        trace_id:
+          type: string
+          description: Optional trace ID.
+          example: "324986b4-b185-4187-b4af-b0c2cd60f7a0"
+        image:
+          type: string
+          description: Image URI to upgrade to.
+          example: "montecarlodata/agent:1.0.1-azure"
+        timeout:
+          type: integer
+          description: Optional timeout in seconds (GCP updater only).
+          example: 30
+        parameters:
+          type: object
+          description: Optional platform-specific parameters (AWS only).
+          additionalProperties: {}
+          example:
+            ConcurrentExecutions: 20
+            MemorySize: 1024
+        wait_for_completion:
+          type: boolean
+          default: false
+          description: Wait for the upgrade to finish before returning (AWS only).
+      required: [image]
+
+    UpgradeLogsRequest:
+      type: object
+      properties:
+        trace_id:
+          type: string
+          description: Optional trace ID.
+          example: "324986b4-b185-4187-b4af-b0c2cd60f7a0"
+        start_time:
+          type: string
+          format: date-time
+          description: Start of the time range. Defaults to 10 minutes ago.
+          example: "2023-12-25T12:31:45+00:00"
+        limit:
+          type: integer
+          default: 100
+          description: Maximum number of events to return.
+
+    InfraDetailsRequest:
+      type: object
+      properties:
+        trace_id:
+          type: string
+          description: Optional trace ID.
+          example: "324986b4-b185-4187-b4af-b0c2cd60f7a0"
+
+    AzureLogsRequest:
+      type: object
+      properties:
+        trace_id:
+          type: string
+          description: Optional trace ID.
+          example: "324986b4-b185-4187-b4af-b0c2cd60f7a0"
+        start_time:
+          type: string
+          format: date-time
+          description: Start of the log query range. Defaults to 10 minutes ago.
+          example: "2023-12-25T12:31:45+00:00"
+        end_time:
+          type: string
+          format: date-time
+          description: End of the log query range. Defaults to now.
+          example: "2023-12-26T13:00:00+00:00"
+        limit:
+          type: integer
+          default: 1000
+          description: Maximum number of log events to return.
+        query:
+          type: string
+          description: >
+            Optional KQL expression. If it starts with `traces` or `requests` it is
+            sent as-is to Azure Monitor; otherwise it is treated as a filter clause
+            (e.g. `where message has "pattern"`) appended to the default query.
+          example: "where message has 'execute'"
+
+    DurableFunctionsInfoRequest:
+      type: object
+      properties:
+        created_time_from:
+          type: string
+          format: date-time
+          description: Oldest instance creation time to include. Defaults to 1 day ago.
+          example: "2023-12-27T00:00:00+00:00"
+        created_time_to:
+          type: string
+          format: date-time
+          description: Newest instance creation time to include. Defaults to now.
+          example: "2023-12-28T00:00:00+00:00"
+
+    DurableFunctionsCleanupRequest:
+      type: object
+      properties:
+        created_time_from:
+          type: string
+          format: date-time
+          description: Oldest instance creation time to purge. Defaults to 10 years ago.
+          example: "2013-12-28T00:00:00+00:00"
+        created_time_to:
+          type: string
+          format: date-time
+          description: Newest instance creation time to purge. Defaults to 10 minutes ago.
+          example: "2023-12-28T13:50:00+00:00"
+        include_pending:
+          type: boolean
+          default: false
+          description: >
+            Whether to terminate and purge pending (not yet executed) instances.
+            Use with caution — terminates in-progress work.
