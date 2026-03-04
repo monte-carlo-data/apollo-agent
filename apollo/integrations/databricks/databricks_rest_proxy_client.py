@@ -3,6 +3,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from databricks.sdk.core import Config, azure_service_principal, oauth_service_principal
 
+from apollo.agent.utils import AgentUtils
 from apollo.integrations.base_proxy_client import BaseProxyClient
 from apollo.integrations.http.http_proxy_client import HttpProxyClient
 
@@ -44,8 +45,10 @@ class DatabricksRestProxyClient(BaseProxyClient):
 
         token = self._get_token(creds)
         self._http_client = HttpProxyClient(credentials={"token": token})
+        self._databricks_workspace_url: Optional[str] = creds.get(_WORKSPACE_URL_KEY)
 
-    def _authentication_mode(self, creds: Dict) -> AuthenticationMode:
+    @staticmethod
+    def _authentication_mode(creds: Dict) -> AuthenticationMode:
         # IMPORTANT: check for OAuth related creds first. Customers
         # who migrated from PAT to OAuth might have the old PAT
         # in the credentials dict still.
@@ -103,6 +106,11 @@ class DatabricksRestProxyClient(BaseProxyClient):
         retry_status_code_ranges: Optional[List[Tuple]] = None,
         **kwargs: Any,
     ) -> Dict:
+        if not self._databricks_workspace_url:
+            raise ValueError(f"Databricks workspace URL not found in credentials")
+        url = AgentUtils.normalize_url(
+            self._databricks_workspace_url, url
+        )  # url is actually the path
         return self._http_client.do_request(
             url=url,
             http_method=http_method,

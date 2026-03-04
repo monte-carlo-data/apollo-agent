@@ -1,6 +1,7 @@
 import sys
 import traceback
 from typing import Optional, Dict, Tuple
+from urllib.parse import SplitResult, urlunsplit, urlparse
 
 from apollo.common.agent.utils import AgentUtils as BaseAgentUtils
 from apollo.integrations.base_proxy_client import BaseProxyClient
@@ -46,6 +47,34 @@ class AgentUtils(BaseAgentUtils):
             error_type=error_type,
             error_attrs=error_attrs,
         )
+
+    @staticmethod
+    def normalize_url(
+        url: str,
+        path: str = "",
+        with_scheme: bool = True,
+        scheme: str = "https",
+        keep_scheme: bool = False,
+    ) -> str:
+        # Removes any trailing slashes
+        url_parts = urlparse(url.rstrip("/"))
+        path = "/" + path.lstrip("/") if path else ""
+        if with_scheme:
+            # Adds scheme if missing
+            return urlunsplit(
+                SplitResult(
+                    scheme=(
+                        url_parts.scheme if keep_scheme and url_parts.scheme else scheme
+                    ),
+                    netloc=url_parts.netloc if url_parts.netloc else url_parts.path,
+                    path=path,
+                    query="",
+                    fragment="",
+                )
+            )
+        else:
+            # Removes scheme if provided
+            return (url_parts.netloc if url_parts.netloc else url_parts.path) + path
 
     @staticmethod
     def _get_error_details(
