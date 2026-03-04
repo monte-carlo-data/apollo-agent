@@ -3,6 +3,7 @@ from typing import Dict, Optional, Callable
 from databricks import sql
 from databricks.sdk.core import oauth_service_principal, azure_service_principal, Config
 
+from apollo.agent.utils import AgentUtils
 from apollo.integrations.db.base_db_proxy_client import BaseDbProxyClient
 
 _ATTR_CONNECT_ARGS = "connect_args"
@@ -13,6 +14,7 @@ CLIENT_ID_KEY = "databricks_client_id"
 CLIENT_SECRET_KEY = "databricks_client_secret"
 AZURE_TENANT_ID = "azure_tenant_id"
 AZURE_WORKSPACE_RESOURCE_ID = "azure_workspace_resource_id"
+HTTP_PATH = "http_path"
 
 
 class DatabricksSqlWarehouseProxyClient(BaseDbProxyClient):
@@ -29,12 +31,21 @@ class DatabricksSqlWarehouseProxyClient(BaseDbProxyClient):
                 f"Databricks agent client requires {_ATTR_CONNECT_ARGS} in credentials"
             )
 
-        if self._credentials_use_oauth(credentials[_ATTR_CONNECT_ARGS]):
-            credentials[_ATTR_CONNECT_ARGS][_ATTR_CREDENTIALS_PROVIDER] = (
-                self._oauth_credentials_provider(credentials[_ATTR_CONNECT_ARGS])
+        connect_args = credentials[_ATTR_CONNECT_ARGS]
+        if SERVER_HOSTNAME not in connect_args:
+            connect_args[SERVER_HOSTNAME] = AgentUtils.normalize_url(
+                connect_args.get("databricks_workspace_url"), with_scheme=False
+            )
+        if HTTP_PATH not in connect_args:
+            connect_args[HTTP_PATH] = (
+                f'/sql/1.0/warehouses/{connect_args.get("databricks_warehouse_id")}'
+            )
+        if self._credentials_use_oauth(connect_args):
+            connect_args[_ATTR_CREDENTIALS_PROVIDER] = self._oauth_credentials_provider(
+                connect_args
             )
 
-        self._connection = sql.connect(**credentials[_ATTR_CONNECT_ARGS])
+        self._connection = sql.connect(**connect_args)
 
     def _credentials_use_oauth(self, connect_args: Dict) -> bool:
         return CLIENT_ID_KEY in connect_args and CLIENT_SECRET_KEY in connect_args
