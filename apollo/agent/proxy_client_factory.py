@@ -45,6 +45,16 @@ def _get_proxy_client_databricks(
     return DatabricksSqlWarehouseProxyClient(credentials=credentials)
 
 
+def _get_proxy_client_databricks_rest(
+    credentials: Optional[Dict], **kwargs  # type: ignore
+) -> BaseProxyClient:
+    from apollo.integrations.databricks.databricks_rest_proxy_client import (
+        DatabricksRestProxyClient,
+    )
+
+    return DatabricksRestProxyClient(credentials=credentials)
+
+
 def _get_proxy_client_http(credentials: Optional[Dict], **kwargs) -> BaseProxyClient:  # type: ignore
     from apollo.integrations.http.http_proxy_client import HttpProxyClient
 
@@ -348,6 +358,7 @@ class ProxyClientCacheEntry:
 _CLIENT_FACTORY_MAPPING = {
     "bigquery": _get_proxy_client_bigquery,
     "databricks": _get_proxy_client_databricks,
+    "databricks-rest": _get_proxy_client_databricks_rest,
     "db2": _get_proxy_client_db2,
     "http": _get_proxy_client_http,
     "s3": _get_proxy_client_s3,

@@ -3,6 +3,7 @@ from typing import Dict, Optional, Callable
 from databricks import sql
 from databricks.sdk.core import oauth_service_principal, azure_service_principal, Config
 
+from apollo.agent.utils import AgentUtils
 from apollo.integrations.db.base_db_proxy_client import BaseDbProxyClient
 
 _ATTR_CONNECT_ARGS = "connect_args"
@@ -29,12 +30,17 @@ class DatabricksSqlWarehouseProxyClient(BaseDbProxyClient):
                 f"Databricks agent client requires {_ATTR_CONNECT_ARGS} in credentials"
             )
 
-        if self._credentials_use_oauth(credentials[_ATTR_CONNECT_ARGS]):
-            credentials[_ATTR_CONNECT_ARGS][_ATTR_CREDENTIALS_PROVIDER] = (
-                self._oauth_credentials_provider(credentials[_ATTR_CONNECT_ARGS])
+        connect_args = credentials[_ATTR_CONNECT_ARGS]
+        if SERVER_HOSTNAME not in connect_args:
+            connect_args[SERVER_HOSTNAME] = AgentUtils.normalize_url(
+                connect_args.get("databricks_workspace_url"), with_scheme=False
+            )
+        if self._credentials_use_oauth(connect_args):
+            connect_args[_ATTR_CREDENTIALS_PROVIDER] = self._oauth_credentials_provider(
+                connect_args
             )
 
-        self._connection = sql.connect(**credentials[_ATTR_CONNECT_ARGS])
+        self._connection = sql.connect(**connect_args)
 
     def _credentials_use_oauth(self, connect_args: Dict) -> bool:
         return CLIENT_ID_KEY in connect_args and CLIENT_SECRET_KEY in connect_args
