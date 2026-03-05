@@ -7,7 +7,7 @@ azure-mgmt-storage==21.2.1
 azure-storage-blob==12.23.0
 brotli==1.2.0  # Upgrade transient dependency of flask-compress to address SEC-1143 (CVE-2025-6176)
 clickhouse-connect==0.8.18
-cryptography>=44.0.1
+cryptography>=46.0.0  # CVE-2025-15467: ensure linkage against patched OpenSSL 3.5.4+
 databricks-sql-connector==4.0.0
 databricks-sdk==0.39.0
 duckdb==1.1.0
@@ -35,7 +35,7 @@ pycryptodome>=3.21.0
 pyjwt>=2.8.0
 PyMySQL>=1.1.1
 pyodbc==5.0.1
-pyOpenSSL>=24.2.1
+pyOpenSSL>=25.3.0  # CVE-2025-15467: supports cryptography 46.x
 RestrictedPython==8.0
 retry2==0.9.5
 salesforce-cdp-connector==1.0.16  # For Salesforce Data Cloud integration
