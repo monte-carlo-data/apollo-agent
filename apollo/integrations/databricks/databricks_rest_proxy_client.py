@@ -38,7 +38,7 @@ class DatabricksRestProxyClient(BaseProxyClient):
     """
 
     def __init__(self, credentials: Optional[Dict], **kwargs: Any):
-        # Support both flat and connect_args-wrapped formats, matching BqProxyClient pattern
+        # Support both flat and connect_args-wrapped formats
         creds: Dict = {}
         if credentials:
             creds = dict(credentials.get(_ATTR_CONNECT_ARGS, credentials))

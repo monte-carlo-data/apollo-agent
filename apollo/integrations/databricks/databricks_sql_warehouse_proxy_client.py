@@ -14,7 +14,6 @@ CLIENT_ID_KEY = "databricks_client_id"
 CLIENT_SECRET_KEY = "databricks_client_secret"
 AZURE_TENANT_ID = "azure_tenant_id"
 AZURE_WORKSPACE_RESOURCE_ID = "azure_workspace_resource_id"
-HTTP_PATH = "http_path"
 
 
 class DatabricksSqlWarehouseProxyClient(BaseDbProxyClient):
@@ -35,10 +34,6 @@ class DatabricksSqlWarehouseProxyClient(BaseDbProxyClient):
         if SERVER_HOSTNAME not in connect_args:
             connect_args[SERVER_HOSTNAME] = AgentUtils.normalize_url(
                 connect_args.get("databricks_workspace_url"), with_scheme=False
-            )
-        if HTTP_PATH not in connect_args:
-            connect_args[HTTP_PATH] = (
-                f'/sql/1.0/warehouses/{connect_args.get("databricks_warehouse_id")}'
             )
         if self._credentials_use_oauth(connect_args):
             connect_args[_ATTR_CREDENTIALS_PROVIDER] = self._oauth_credentials_provider(
