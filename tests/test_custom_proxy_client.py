@@ -390,7 +390,7 @@ class TestCustomProxyClient(TestCase):
         mock_load_module.return_value = self._mock_module
 
         client = CustomProxyClient(
-            credentials=None,
+            credentials={"connect_args": {}},
             integration_dir="/opt/custom-integrations/mydb",
         )
         result = client.get_templates()
@@ -412,7 +412,7 @@ class TestCustomProxyClient(TestCase):
         mock_load_module.return_value = self._mock_module
 
         client = CustomProxyClient(
-            credentials=None,
+            credentials={"connect_args": {}},
             integration_dir="/opt/custom-integrations/mydb",
         )
         result = client.get_capabilities()
@@ -434,7 +434,7 @@ class TestCustomProxyClient(TestCase):
         mock_load_module.return_value = self._mock_module
 
         client = CustomProxyClient(
-            credentials=None,
+            credentials={"connect_args": {}},
             integration_dir="/opt/custom-integrations/mydb",
         )
 
@@ -455,7 +455,7 @@ class TestCustomProxyClient(TestCase):
         mock_load_module.return_value = self._mock_module
 
         client = CustomProxyClient(
-            credentials=None,
+            credentials={"connect_args": {}},
             integration_dir="/opt/custom-integrations/mydb",
         )
         client.close()
@@ -479,7 +479,7 @@ class TestCustomProxyClient(TestCase):
         self._mock_integration.create_connection.return_value = mock_conn
 
         client = CustomProxyClient(
-            credentials=None,
+            credentials={"connect_args": {}},
             integration_dir="/opt/custom-integrations/mydb",
         )
 
