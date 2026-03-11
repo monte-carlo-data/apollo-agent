@@ -339,6 +339,14 @@ def _get_proxy_client_db2(
     return Db2ProxyClient(credentials=credentials, platform=platform)
 
 
+def _get_proxy_client_custom(
+    credentials: Optional[Dict], integration_dir: str, **kwargs  # type: ignore
+) -> BaseProxyClient:
+    from apollo.integrations.custom.custom_proxy_client import CustomProxyClient
+
+    return CustomProxyClient(credentials=credentials, integration_dir=integration_dir)
+
+
 @dataclass
 class ProxyClientCacheEntry:
     created_time: datetime
@@ -451,10 +459,24 @@ class ProxyClientFactory:
             if credentials:
                 credentials = decode_dictionary(credentials)
             return factory_method(credentials, platform=platform)
-        else:
-            raise AgentError(
-                f"Connection type not supported by this agent: {connection_type}"
+
+        # Check custom integrations before raising an error
+        from apollo.integrations.custom.custom_integration_loader import (
+            get_custom_integration_registry,
+        )
+
+        custom_registry = get_custom_integration_registry()
+        integration_dir = custom_registry.get(connection_type)
+        if integration_dir:
+            if credentials:
+                credentials = decode_dictionary(credentials)
+            return _get_proxy_client_custom(
+                credentials, integration_dir=integration_dir
             )
+
+        raise AgentError(
+            f"Connection type not supported by this agent: {connection_type}"
+        )
 
     @staticmethod
     def _get_cache_key(connection_type: str, credentials: Optional[Dict]) -> str:
