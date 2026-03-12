@@ -460,19 +460,20 @@ class ProxyClientFactory:
                 credentials = decode_dictionary(credentials)
             return factory_method(credentials, platform=platform)
 
-        # Check custom integrations before raising an error
-        from apollo.integrations.custom.custom_integration_loader import (
-            get_custom_integration_registry,
-        )
-
-        custom_registry = get_custom_integration_registry()
-        integration_dir = custom_registry.get(connection_type)
-        if integration_dir:
-            if credentials:
-                credentials = decode_dictionary(credentials)
-            return _get_proxy_client_custom(
-                credentials, integration_dir=integration_dir
+        # Check custom integrations before raising an error (opt-in via env var)
+        if os.getenv("MCD_CUSTOM_INTEGRATIONS_ENABLED", "false").lower() == "true":
+            from apollo.integrations.custom.custom_integration_loader import (
+                get_custom_integration_registry,
             )
+
+            custom_registry = get_custom_integration_registry()
+            integration_dir = custom_registry.get(connection_type)
+            if integration_dir:
+                if credentials:
+                    credentials = decode_dictionary(credentials)
+                return _get_proxy_client_custom(
+                    credentials, integration_dir=integration_dir
+                )
 
         raise AgentError(
             f"Connection type not supported by this agent: {connection_type}"

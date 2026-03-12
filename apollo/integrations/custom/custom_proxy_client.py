@@ -1,6 +1,7 @@
 import logging
 from typing import Any, Dict, Optional
 
+from jinja2 import Template
 from jinja2.sandbox import ImmutableSandboxedEnvironment
 
 from apollo.integrations.base_proxy_client import BaseProxyClient
@@ -13,6 +14,18 @@ from apollo.integrations.custom.custom_integration_loader import (
 logger = logging.getLogger(__name__)
 
 _ATTR_CONNECT_ARGS = "connect_args"
+
+# Templates used by CustomProxyClient methods — only these are compiled at init
+# time to avoid parsing all ~100 templates. The full set is still available as
+# raw strings via get_templates().
+_COMPILED_TEMPLATE_NAMES = frozenset(
+    {
+        "get_databases_query_template.j2",
+        "get_schemas_query_template.j2",
+        "get_tables_query_template.j2",
+        "get_query_logs_query_template.j2",
+    }
+)
 
 
 class CustomProxyClient(BaseProxyClient):
@@ -43,11 +56,17 @@ class CustomProxyClient(BaseProxyClient):
         self._integration.connection = self._integration.create_connection()
         self._integration.cursor = self._integration.create_cursor()
 
-        self._jinja_env = ImmutableSandboxedEnvironment(
+        jinja_env = ImmutableSandboxedEnvironment(
             trim_blocks=True,
             lstrip_blocks=True,
         )
-        self._templates = load_templates(integration_dir)
+        raw_templates = load_templates(integration_dir)
+        self._templates = raw_templates
+        self._compiled_templates: Dict[str, Template] = {
+            name: jinja_env.from_string(content)
+            for name, content in raw_templates.items()
+            if name in _COMPILED_TEMPLATE_NAMES
+        }
         self._capabilities = load_capabilities(integration_dir)
 
         logger.info("Opened custom integration connection from %s", integration_dir)
@@ -110,13 +129,12 @@ class CustomProxyClient(BaseProxyClient):
         self, template_name: str, **template_vars: Any
     ) -> Dict[str, Any]:
         """Render a named .j2 template and execute the resulting SQL."""
-        template_content = self._templates.get(template_name)
-        if template_content is None:
+        template = self._compiled_templates.get(template_name)
+        if template is None:
             raise ValueError(
                 f"Unknown template: {template_name}. "
-                f"Available: {list(self._templates.keys())}"
+                f"Available: {list(self._compiled_templates.keys())}"
             )
-        template = self._jinja_env.from_string(template_content)
         query = template.render(**template_vars)
         return self._execute_and_collect(query)
 

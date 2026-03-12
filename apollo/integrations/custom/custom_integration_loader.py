@@ -2,6 +2,7 @@ import importlib.util
 import json
 import logging
 import os
+import types
 from typing import Dict, Optional
 
 logger = logging.getLogger(__name__)
@@ -67,7 +68,7 @@ def get_custom_integration_registry() -> Dict[str, str]:
     return _custom_integration_registry
 
 
-def load_integration_module(integration_dir: str):
+def load_integration_module(integration_dir: str) -> types.ModuleType:
     """
     Dynamically load integration.py from the given directory.
     Uses a unique module name per integration to avoid namespace collisions.
