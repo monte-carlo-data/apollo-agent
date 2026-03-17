@@ -123,3 +123,59 @@ class TestCcpPipeline(TestCase):
         )
         result = self._pipeline.execute(config, {"host": "localhost"})  # no ca_pem
         self.assertNotIn("sslrootcert", result)
+
+
+class TestPostgresDefaultCcp(TestCase):
+    def setUp(self):
+        self._pipeline = CcpPipeline()
+
+    def test_basic_connection_args(self):
+        from apollo.integrations.ccp.defaults.postgres import POSTGRES_DEFAULT_CCP
+
+        result = self._pipeline.execute(
+            POSTGRES_DEFAULT_CCP,
+            {
+                "host": "db.example.com",
+                "port": 5432,
+                "database": "mydb",
+                "user": "admin",
+                "password": "secret",
+            },
+        )
+        self.assertEqual("db.example.com", result["host"])
+        self.assertEqual(5432, result["port"])
+        self.assertEqual("mydb", result["dbname"])
+        self.assertEqual("admin", result["user"])
+        self.assertEqual("secret", result["password"])
+        self.assertEqual("require", result["sslmode"])  # default
+        self.assertNotIn("sslrootcert", result)
+
+    def test_ssl_ca_pem_materialized(self):
+        from apollo.integrations.ccp.defaults.postgres import POSTGRES_DEFAULT_CCP
+
+        result = self._pipeline.execute(
+            POSTGRES_DEFAULT_CCP,
+            {
+                "host": "db.example.com",
+                "port": 5432,
+                "database": "mydb",
+                "user": "admin",
+                "password": "secret",
+                "ssl_ca_pem": "-----BEGIN CERTIFICATE-----\nFAKE\n-----END CERTIFICATE-----",
+            },
+        )
+        self.assertIn("sslrootcert", result)
+        path = result["sslrootcert"]
+        self.assertTrue(os.path.exists(path))
+        with open(path) as f:
+            self.assertIn("FAKE", f.read())
+        os.unlink(path)
+
+    def test_ssl_mode_override(self):
+        from apollo.integrations.ccp.defaults.postgres import POSTGRES_DEFAULT_CCP
+
+        result = self._pipeline.execute(
+            POSTGRES_DEFAULT_CCP,
+            {"host": "h", "port": 5432, "database": "d", "user": "u", "password": "p", "ssl_mode": "verify-full"},
+        )
+        self.assertEqual("verify-full", result["sslmode"])
