@@ -1,0 +1,63 @@
+# apollo/integrations/ccp/template.py
+from typing import Any
+
+from jinja2 import StrictUndefined, Undefined
+from jinja2.nativetypes import NativeEnvironment
+
+from apollo.integrations.ccp.models import PipelineState
+
+_ENV = NativeEnvironment(undefined=StrictUndefined)
+
+
+class _StrictDict(dict):
+    """Dict subclass whose attribute access returns Undefined (not raises) so
+    Jinja2 filters like ``default()`` and tests like ``is defined`` work
+    correctly, while bare references to missing keys ultimately raise
+    UndefinedError after render() post-processing."""
+
+    def __getattr__(self, key: str) -> Any:
+        try:
+            return self[key]
+        except KeyError:
+            return _ENV.undefined(f"{key!r} is undefined", name=key)
+
+
+class TemplateEngine:
+    @classmethod
+    def render(cls, value: Any, state: PipelineState) -> Any:
+        """
+        Render a value against pipeline state.
+        Non-string values are returned as-is.
+        Strings without Jinja2 markers are returned as-is.
+        Template strings are rendered using NativeEnvironment so the returned
+        type matches the actual Python type (int, bool, None, etc.).
+        """
+        if not isinstance(value, str):
+            return value
+        if "{{" not in value and "{%" not in value:
+            return value
+        template = _ENV.from_string(value)
+        result = template.render(
+            raw=_StrictDict(state.raw),
+            derived=_StrictDict(state.derived),
+            context=state.context,
+        )
+        # NativeEnvironment returns Undefined objects as-is rather than
+        # stringifying them (which would trigger StrictUndefined.__str__).
+        # Explicitly fail here so callers see UndefinedError for missing refs.
+        if isinstance(result, Undefined):
+            result._fail_with_undefined_error()
+        return result
+
+    @classmethod
+    def evaluate_condition(cls, expression: str, state: PipelineState) -> bool:
+        """Evaluate a Jinja2 boolean condition expression (no braces needed)."""
+        template = _ENV.from_string(
+            f"{{% if {expression} %}}True{{% else %}}False{{% endif %}}"
+        )
+        result = template.render(
+            raw=_StrictDict(state.raw),
+            derived=_StrictDict(state.derived),
+            context=state.context,
+        )
+        return result is True
