@@ -1,4 +1,33 @@
+from typing import TypedDict, Required, NotRequired
+
 from apollo.integrations.ccp.models import CcpConfig, MapperConfig, TransformStep
+
+
+class PostgresClientArgs(TypedDict):
+    # Required connection identifiers
+    host: Required[str]
+    port: Required[int]
+    dbname: Required[str]
+    user: Required[str]
+    password: Required[str]
+    # SSL
+    sslmode: NotRequired[str]
+    sslrootcert: NotRequired[str]
+    sslcert: NotRequired[str]
+    sslkey: NotRequired[str]
+    sslcrl: NotRequired[str]
+    # Connection behavior
+    connect_timeout: NotRequired[int]
+    application_name: NotRequired[str]
+    options: NotRequired[str]
+    # TCP keepalives
+    keepalives: NotRequired[int]
+    keepalives_idle: NotRequired[int]
+    keepalives_interval: NotRequired[int]
+    keepalives_count: NotRequired[int]
+    # Multi-host / HA
+    target_session_attrs: NotRequired[str]
+
 
 POSTGRES_DEFAULT_CCP = CcpConfig(
     name="postgres-default",
@@ -17,7 +46,7 @@ POSTGRES_DEFAULT_CCP = CcpConfig(
     ],
     mapper=MapperConfig(
         name="postgres_client_args",
-        output_schema="PostgresClientArgs",
+        schema=PostgresClientArgs,
         field_map={
             "host": "{{ raw.host }}",
             "port": "{{ raw.port }}",

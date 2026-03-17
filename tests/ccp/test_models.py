@@ -31,7 +31,6 @@ class TestCcpModels(TestCase):
         )
         mapper = MapperConfig(
             name="pg_args",
-            output_schema="PostgresClientArgs",
             field_map={"host": "{{ raw.host }}"},
         )
         config = CcpConfig(name="pg-default", steps=[step], mapper=mapper)

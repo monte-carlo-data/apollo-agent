@@ -14,8 +14,8 @@ class TransformStep:
 @dataclass
 class MapperConfig:
     name: str
-    output_schema: str
     field_map: dict[str, Any]
+    schema: type | None = None
     passthrough: bool = False
 
 

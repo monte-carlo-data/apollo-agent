@@ -14,7 +14,6 @@ def _minimal_config(field_map=None, steps=None):
         steps=steps or [],
         mapper=MapperConfig(
             name="test_mapper",
-            output_schema="TestArgs",
             field_map=field_map or {},
             passthrough=False,
         ),
