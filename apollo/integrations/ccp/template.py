@@ -13,7 +13,13 @@ class _StrictDict(dict):
     """Dict subclass whose attribute access returns Undefined (not raises) so
     Jinja2 filters like ``default()`` and tests like ``is defined`` work
     correctly, while bare references to missing keys ultimately raise
-    UndefinedError after render() post-processing."""
+    UndefinedError after render() post-processing.
+
+    Note: soft-Undefined behavior applies only to attribute (dot-notation) access
+    (e.g. ``raw.key``). Subscript access (e.g. ``raw['key']``) bypasses this and
+    will raise immediately if the key is missing — don't combine bracket notation
+    with ``default()`` or ``is defined`` in templates.
+    """
 
     def __getattr__(self, key: str) -> Any:
         try:
@@ -40,7 +46,7 @@ class TemplateEngine:
         result = template.render(
             raw=_StrictDict(state.raw),
             derived=_StrictDict(state.derived),
-            context=state.context,
+            context=_StrictDict(state.context),
         )
         # NativeEnvironment returns Undefined objects as-is rather than
         # stringifying them (which would trigger StrictUndefined.__str__).
@@ -58,6 +64,6 @@ class TemplateEngine:
         result = template.render(
             raw=_StrictDict(state.raw),
             derived=_StrictDict(state.derived),
-            context=state.context,
+            context=_StrictDict(state.context),
         )
-        return result is True
+        return bool(result)
