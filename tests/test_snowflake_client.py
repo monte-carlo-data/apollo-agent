@@ -14,6 +14,7 @@ from apollo.common.agent.constants import (
 )
 from apollo.agent.logging_utils import LoggingUtils
 from apollo.agent.proxy_client_factory import ProxyClientFactory
+from apollo.interfaces.generic.main import _extract_credentials_in_request
 
 _SF_CREDENTIALS = {"user": "u", "password": "p", "account": "a", "warehouse": "w"}
 
@@ -41,8 +42,10 @@ class SnowflakeClientTests(TestCase):
                 "warehouse": "w",
             },
         }
+        # decode_dictionary now runs in the credentials layer — pre-resolve before calling get_proxy_client
+        resolved = _extract_credentials_in_request(credentials)
         client = ProxyClientFactory.get_proxy_client(
-            "snowflake", credentials, True, "AWS"
+            "snowflake", resolved, True, "AWS"
         )
         self.assertIsNotNone(client)
         mock_connect.assert_called_once_with(
