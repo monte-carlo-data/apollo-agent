@@ -462,7 +462,7 @@ class ProxyClientFactory:
             if credentials:
                 credentials = decode_dictionary(credentials)
                 from apollo.integrations.ccp.registry import CcpRegistry
-                import apollo.integrations.ccp.defaults.postgres  # noqa: F401 — triggers registration
+                import apollo.integrations.ccp.defaults.postgres  # noqa: F401 — triggers registration; TODO: replace with a single bootstrap import once more connectors adopt CCP
                 credentials = CcpRegistry.resolve(connection_type, credentials)
             return factory_method(credentials, platform=platform)
         else:

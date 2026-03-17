@@ -20,6 +20,12 @@ class TmpFileWriteTransform(Transform):
         contents = TemplateEngine.render(step.input["contents"], state)
         file_suffix = step.input.get("file_suffix", "")
         mode_str = step.input.get("mode", "0600")
+        if "path" not in step.output:
+            raise CcpPipelineError(
+                stage="transform_output",
+                step_name=step.type,
+                message="'path' is required in tmp_file_write output",
+            )
         output_key = step.output["path"]
 
         with tempfile.NamedTemporaryFile(

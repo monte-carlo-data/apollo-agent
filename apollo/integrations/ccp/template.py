@@ -22,6 +22,8 @@ class _StrictDict(dict):
     """
 
     def __getattr__(self, key: str) -> Any:
+        if key.startswith("__") and key.endswith("__"):
+            raise AttributeError(key)
         try:
             return self[key]
         except KeyError:
@@ -66,4 +68,6 @@ class TemplateEngine:
             derived=_StrictDict(state.derived),
             context=_StrictDict(state.context),
         )
+        # NativeEnvironment evaluates `True`/`False` identifiers as Python bool literals,
+        # so result is genuinely bool True/False (not the strings "True"/"False").
         return bool(result)
