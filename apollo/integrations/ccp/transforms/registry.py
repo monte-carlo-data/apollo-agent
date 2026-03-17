@@ -23,3 +23,4 @@ class TransformRegistry:
 
 # Self-registration: import all known primitives so they register themselves
 from apollo.integrations.ccp.transforms import tmp_file_write as _  # noqa: F401, E402
+from apollo.integrations.ccp.transforms import decode_bytes as _  # noqa: F401, E402

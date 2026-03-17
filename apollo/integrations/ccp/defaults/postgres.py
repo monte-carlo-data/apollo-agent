@@ -33,6 +33,11 @@ POSTGRES_DEFAULT_CCP = CcpConfig(
     name="postgres-default",
     steps=[
         TransformStep(
+            type="decode_bytes",
+            input={},
+            output={},
+        ),
+        TransformStep(
             type="tmp_file_write",
             when="raw.ssl_ca_pem is defined",
             input={

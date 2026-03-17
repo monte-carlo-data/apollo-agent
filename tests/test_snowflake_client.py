@@ -14,7 +14,6 @@ from apollo.common.agent.constants import (
 )
 from apollo.agent.logging_utils import LoggingUtils
 from apollo.agent.proxy_client_factory import ProxyClientFactory
-from apollo.interfaces.generic.main import _extract_credentials_in_request
 
 _SF_CREDENTIALS = {"user": "u", "password": "p", "account": "a", "warehouse": "w"}
 
@@ -30,30 +29,19 @@ class SnowflakeClientTests(TestCase):
     def test_private_key_auth(self, mock_connect):
         mock_connect.return_value = self._mock_connection
 
-        private_key = b"abc"
-        credentials = {
-            "connect_args": {
-                "user": "u",
-                "private_key": {
-                    "__type__": "bytes",
-                    "__data__": base64.b64encode(private_key).decode("utf-8"),
-                },
-                "account": "a",
-                "warehouse": "w",
-            },
+        # Pass actual bytes directly — wire format decoding is now a CCP transform concern.
+        # Snowflake migration to CCP is a follow-up task.
+        connect_args = {
+            "user": "u",
+            "private_key": b"abc",
+            "account": "a",
+            "warehouse": "w",
         }
-        # decode_dictionary now runs in the credentials layer — pre-resolve before calling get_proxy_client
-        resolved = _extract_credentials_in_request(credentials)
         client = ProxyClientFactory.get_proxy_client(
-            "snowflake", resolved, True, "AWS"
+            "snowflake", {"connect_args": connect_args}, True, "AWS"
         )
         self.assertIsNotNone(client)
-        mock_connect.assert_called_once_with(
-            **{
-                **credentials["connect_args"],
-                "private_key": private_key,
-            }
-        )
+        mock_connect.assert_called_once_with(**connect_args)
 
     @patch("snowflake.connector.connect")
     def test_query(self, mock_connect):

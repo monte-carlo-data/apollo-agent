@@ -66,3 +66,34 @@ class TestTmpFileWriteTransform(TestCase):
         )
         with self.assertRaises(CcpPipelineError):
             TmpFileWriteTransform().execute(step, state)
+
+
+import base64
+import apollo.integrations.ccp.transforms.decode_bytes  # noqa: F401 — triggers registration
+from apollo.integrations.ccp.transforms.decode_bytes import DecodeBytesTransform
+
+
+class TestDecodeBytesTransform(TestCase):
+    def _make_step(self):
+        return TransformStep(type="decode_bytes", input={}, output={})
+
+    def test_plain_values_unchanged(self):
+        state = PipelineState(raw={"host": "h", "port": 5432})
+        DecodeBytesTransform().execute(self._make_step(), state)
+        self.assertEqual({"host": "h", "port": 5432}, state.raw)
+
+    def test_encoded_bytes_decoded(self):
+        encoded = {"__type__": "bytes", "__data__": base64.b64encode(b"cert-data").decode()}
+        state = PipelineState(raw={"ssl_cert": encoded})
+        DecodeBytesTransform().execute(self._make_step(), state)
+        self.assertEqual(b"cert-data", state.raw["ssl_cert"])
+
+    def test_nested_encoded_bytes_decoded(self):
+        encoded = {"__type__": "bytes", "__data__": base64.b64encode(b"nested").decode()}
+        state = PipelineState(raw={"config": {"key": encoded}})
+        DecodeBytesTransform().execute(self._make_step(), state)
+        self.assertEqual(b"nested", state.raw["config"]["key"])
+
+    def test_registered_in_registry(self):
+        transform = TransformRegistry.get("decode_bytes")
+        self.assertIsNotNone(transform)
