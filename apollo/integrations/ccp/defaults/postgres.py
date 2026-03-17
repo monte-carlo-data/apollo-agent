@@ -28,3 +28,7 @@ POSTGRES_DEFAULT_CCP = CcpConfig(
         },
     ),
 )
+
+from apollo.integrations.ccp.registry import CcpRegistry
+
+CcpRegistry.register("postgres", POSTGRES_DEFAULT_CCP)
