@@ -97,3 +97,10 @@ class TestDecodeBytesTransform(TestCase):
     def test_registered_in_registry(self):
         transform = TransformRegistry.get("decode_bytes")
         self.assertIsNotNone(transform)
+
+    def test_non_bytes_type_sentinel_unchanged(self):
+        # A dict with __type__ != "bytes" should pass through unchanged
+        sentinel = {"__type__": "datetime", "__data__": "2024-01-01T00:00:00"}
+        state = PipelineState(raw={"created_at": sentinel})
+        DecodeBytesTransform().execute(self._make_step(), state)
+        self.assertEqual(sentinel, state.raw["created_at"])

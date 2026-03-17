@@ -5,7 +5,7 @@ from apollo.credentials.base import BaseCredentialsService
 
 
 class TestBaseCredentialsServiceDecode(TestCase):
-    """Verify decode_dictionary runs after _merge_connect_args."""
+    """Verify that plain credentials pass through get_credentials unchanged."""
 
     def test_plain_credentials_returned_unchanged(self):
         svc = BaseCredentialsService()
