@@ -19,3 +19,7 @@ class TransformRegistry:
                 message=f"Unknown transform type: '{type_name}'. Registered types: {sorted(cls._registry.keys())}",
             )
         return cls._registry[type_name]()
+
+
+# Self-registration: import all known primitives so they register themselves
+from apollo.integrations.ccp.transforms import tmp_file_write as _  # noqa: F401, E402
