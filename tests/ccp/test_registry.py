@@ -9,9 +9,10 @@ class TestCcpRegistry(TestCase):
     def test_unknown_type_returns_none(self):
         self.assertIsNone(CcpRegistry.get("not_a_real_type"))
 
-    def test_resolve_unknown_type_returns_credentials_unchanged(self):
+    def test_resolve_unknown_type_applies_passthrough(self):
         creds = {"host": "db.example.com"}
-        self.assertEqual(creds, CcpRegistry.resolve("unknown_type", creds))
+        result = CcpRegistry.resolve("unknown_type", creds)
+        self.assertEqual({"connect_args": {"host": "db.example.com"}}, result)
 
     def test_resolve_legacy_credentials_returned_unchanged(self):
         # import to trigger registration

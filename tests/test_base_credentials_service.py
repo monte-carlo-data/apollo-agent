@@ -57,8 +57,35 @@ class TestBaseCredentialsServiceCcp(TestCase):
         result = svc.get_credentials(legacy, connection_type="postgres")
         self.assertEqual(legacy, result)
 
-    def test_unknown_connection_type_returns_credentials_unchanged(self):
+    def test_unknown_connection_type_wraps_in_connect_args(self):
         svc = BaseCredentialsService()
         flat = {"host": "h", "database": "d"}
         result = svc.get_credentials(flat, connection_type="not_a_real_type")
-        self.assertEqual(flat, result)
+        self.assertIn("connect_args", result)
+        self.assertEqual("h", result["connect_args"]["host"])
+        self.assertEqual("d", result["connect_args"]["database"])
+
+    def test_legacy_connect_args_not_double_wrapped(self):
+        svc = BaseCredentialsService()
+        legacy = {"connect_args": {"host": "h"}}
+        result = svc.get_credentials(legacy, connection_type="not_a_real_type")
+        self.assertEqual(legacy, result)
+
+
+class TestPassthroughCcp(TestCase):
+    def test_passthrough_pipeline_returns_raw(self):
+        from apollo.integrations.ccp.defaults.passthrough import PASSTHROUGH_CCP
+        from apollo.integrations.ccp.pipeline import CcpPipeline
+
+        raw = {"host": "h", "port": 5432, "user": "u", "password": "p"}
+        result = CcpPipeline().execute(PASSTHROUGH_CCP, raw)
+        self.assertEqual(raw, result)
+
+    def test_passthrough_registered_connector_wraps_in_connect_args(self):
+        from apollo.integrations.ccp.defaults.passthrough import PASSTHROUGH_CCP
+        from apollo.integrations.ccp.registry import CcpRegistry
+
+        CcpRegistry.register("_test_passthrough", PASSTHROUGH_CCP)
+        result = CcpRegistry.resolve("_test_passthrough", {"host": "h", "port": 5432})
+        self.assertIn("connect_args", result)
+        self.assertEqual("h", result["connect_args"]["host"])

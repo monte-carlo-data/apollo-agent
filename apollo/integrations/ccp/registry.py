@@ -20,13 +20,17 @@ class CcpRegistry:
     @classmethod
     def resolve(cls, connection_type: str, credentials: dict[str, Any]) -> dict[str, Any]:
         """
-        If a CCP config is registered for this connection type and credentials are in the
-        flat shape (no connect_args key), run the CCP pipeline and return
-        {"connect_args": <pipeline output>}. Otherwise return credentials unchanged.
+        If credentials are in the flat shape (no connect_args key), run the CCP pipeline
+        and return {"connect_args": <pipeline output>}. Uses the registered config for
+        connection_type, or passthrough if none is registered.
+        If credentials already have connect_args, returns unchanged (legacy path).
         """
-        if _ATTR_CONNECT_ARGS not in credentials:
-            config = cls.get(connection_type)
-            if config:
-                from apollo.integrations.ccp.pipeline import CcpPipeline
-                return {_ATTR_CONNECT_ARGS: CcpPipeline().execute(config, credentials)}
-        return credentials
+        if _ATTR_CONNECT_ARGS in credentials:
+            return credentials
+
+        config = cls.get(connection_type)
+        if config is None:
+            from apollo.integrations.ccp.defaults.passthrough import PASSTHROUGH_CCP
+            config = PASSTHROUGH_CCP
+        from apollo.integrations.ccp.pipeline import CcpPipeline
+        return {_ATTR_CONNECT_ARGS: CcpPipeline().execute(config, credentials)}
