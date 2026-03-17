@@ -5,13 +5,19 @@ from apollo.credentials.base import BaseCredentialsService
 
 
 class TestBaseCredentialsServiceDecode(TestCase):
-    """Verify that plain credentials pass through get_credentials unchanged."""
+    """Verify decode_dictionary runs after _merge_connect_args."""
 
     def test_plain_credentials_returned_unchanged(self):
         svc = BaseCredentialsService()
         creds = {"connect_args": {"host": "h", "port": 5432}}
         result = svc.get_credentials(creds)
         self.assertEqual({"connect_args": {"host": "h", "port": 5432}}, result)
+
+    def test_binary_value_decoded(self):
+        encoded = {"__type__": "bytes", "__data__": base64.b64encode(b"raw-cert").decode()}
+        svc = BaseCredentialsService()
+        result = svc.get_credentials({"connect_args": {"cert": encoded}})
+        self.assertEqual(b"raw-cert", result["connect_args"]["cert"])
 
 
 class TestBaseCredentialsServiceCcp(TestCase):
@@ -56,23 +62,3 @@ class TestBaseCredentialsServiceCcp(TestCase):
         flat = {"host": "h", "database": "d"}
         result = svc.get_credentials(flat, connection_type="not_a_real_type")
         self.assertEqual(flat, result)
-
-    def test_encoded_bytes_decoded_before_ccp_runs(self):
-        """decode_bytes transform runs before other CCP steps, so encoded values are resolved."""
-        import apollo.integrations.ccp.defaults.postgres  # noqa: F401
-        encoded_pem = {"__type__": "bytes", "__data__": base64.b64encode(b"PEM_CONTENT").decode()}
-        svc = BaseCredentialsService()
-        result = svc.get_credentials(
-            {
-                "host": "db.example.com",
-                "port": 5432,
-                "database": "mydb",
-                "user": "admin",
-                "password": "secret",
-                "ssl_ca_pem": encoded_pem,
-            },
-            connection_type="postgres",
-        )
-        self.assertIn("connect_args", result)
-        # tmp_file_write ran — the decoded PEM was written to a temp file
-        self.assertIn("sslrootcert", result["connect_args"])
