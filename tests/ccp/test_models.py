@@ -36,7 +36,9 @@ class TestCcpModels(TestCase):
         config = CcpConfig(name="pg-default", steps=[step], mapper=mapper)
         self.assertEqual("pg-default", config.name)
         self.assertEqual(1, len(config.steps))
-        self.assertEqual({"sslrootcert": "{{ derived.ssl_ca_path }}"}, config.steps[0].field_map)
+        self.assertEqual(
+            {"sslrootcert": "{{ derived.ssl_ca_path }}"}, config.steps[0].field_map
+        )
         self.assertFalse(config.mapper.passthrough)
 
     def test_transform_step_field_map_defaults_empty(self):

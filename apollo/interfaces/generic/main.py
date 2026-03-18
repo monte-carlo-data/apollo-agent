@@ -1264,9 +1264,13 @@ def _execute_http_connection_test() -> Tuple[Dict, int]:
     return response.result, response.status_code
 
 
-def _extract_credentials_in_request(credentials: Dict, connection_type: str | None = None) -> Dict:
+def _extract_credentials_in_request(
+    credentials: Dict, connection_type: str | None = None
+) -> Dict:
     credential_service = CredentialsFactory.get_credentials_service(credentials)
-    return credential_service.get_credentials(credentials, connection_type=connection_type)
+    return credential_service.get_credentials(
+        credentials, connection_type=connection_type
+    )
 
 
 if __name__ == "__main__":

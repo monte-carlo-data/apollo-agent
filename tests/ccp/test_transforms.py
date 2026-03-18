@@ -25,7 +25,11 @@ class TestTmpFileWriteTransform(TestCase):
     def _make_step(self, contents_template, when=None, file_suffix=".pem"):
         return TransformStep(
             type="tmp_file_write",
-            input={"contents": contents_template, "file_suffix": file_suffix, "mode": "0600"},
+            input={
+                "contents": contents_template,
+                "file_suffix": file_suffix,
+                "mode": "0600",
+            },
             output={"path": "ssl_ca_path"},
             when=when,
         )
@@ -70,6 +74,7 @@ class TestTmpFileWriteTransform(TestCase):
 
     def test_missing_contents_raises(self):
         from apollo.integrations.ccp.errors import CcpPipelineError
+
         state = PipelineState(raw={})
         step = TransformStep(
             type="tmp_file_write",

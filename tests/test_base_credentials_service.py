@@ -14,7 +14,10 @@ class TestBaseCredentialsServiceDecode(TestCase):
         self.assertEqual({"connect_args": {"host": "h", "port": 5432}}, result)
 
     def test_binary_value_decoded(self):
-        encoded = {"__type__": "bytes", "__data__": base64.b64encode(b"raw-cert").decode()}
+        encoded = {
+            "__type__": "bytes",
+            "__data__": base64.b64encode(b"raw-cert").decode(),
+        }
         svc = BaseCredentialsService()
         result = svc.get_credentials({"connect_args": {"cert": encoded}})
         self.assertEqual(b"raw-cert", result["connect_args"]["cert"])
@@ -25,13 +28,20 @@ class TestBaseCredentialsServiceCcp(TestCase):
 
     def test_no_connection_type_skips_ccp(self):
         svc = BaseCredentialsService()
-        flat = {"host": "h", "database": "d", "user": "u", "password": "p", "port": 5432}
+        flat = {
+            "host": "h",
+            "database": "d",
+            "user": "u",
+            "password": "p",
+            "port": 5432,
+        }
         result = svc.get_credentials(flat)
         # No connection_type — CCP does not run, flat creds returned unchanged
         self.assertNotIn("connect_args", result)
 
     def test_postgres_flat_credentials_resolved(self):
         import apollo.integrations.ccp.defaults.postgres  # noqa: F401
+
         svc = BaseCredentialsService()
         result = svc.get_credentials(
             {
@@ -51,6 +61,7 @@ class TestBaseCredentialsServiceCcp(TestCase):
 
     def test_legacy_connect_args_not_overwritten_by_ccp(self):
         import apollo.integrations.ccp.defaults.postgres  # noqa: F401
+
         svc = BaseCredentialsService()
         # Legacy shape: connect_args already present — CCP is a no-op
         legacy = {"connect_args": {"host": "h", "dbname": "d"}}

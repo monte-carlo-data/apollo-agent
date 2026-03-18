@@ -53,12 +53,20 @@ class TestTemplateEngine(TestCase):
 
     def test_evaluate_condition_true(self):
         state = self._state(raw={"ssl_ca_pem": "cert-data"})
-        self.assertTrue(TemplateEngine.evaluate_condition("raw.ssl_ca_pem is defined", state))
+        self.assertTrue(
+            TemplateEngine.evaluate_condition("raw.ssl_ca_pem is defined", state)
+        )
 
     def test_evaluate_condition_false(self):
         state = self._state(raw={})
-        self.assertFalse(TemplateEngine.evaluate_condition("raw.ssl_ca_pem is defined", state))
+        self.assertFalse(
+            TemplateEngine.evaluate_condition("raw.ssl_ca_pem is defined", state)
+        )
 
     def test_evaluate_condition_with_and(self):
         state = self._state(raw={"a": 1, "b": 2})
-        self.assertTrue(TemplateEngine.evaluate_condition("raw.a is defined and raw.b is defined", state))
+        self.assertTrue(
+            TemplateEngine.evaluate_condition(
+                "raw.a is defined and raw.b is defined", state
+            )
+        )

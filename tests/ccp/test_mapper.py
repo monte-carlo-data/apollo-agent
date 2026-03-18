@@ -17,13 +17,17 @@ class TestMapper(TestCase):
         )
 
     def test_renders_simple_field_map(self):
-        mapper, config = self._mapper({"host": "{{ raw.host }}", "port": "{{ raw.port }}"})
+        mapper, config = self._mapper(
+            {"host": "{{ raw.host }}", "port": "{{ raw.port }}"}
+        )
         state = PipelineState(raw={"host": "db.example.com", "port": 5432})
         result = mapper.execute(config, state)
         self.assertEqual({"host": "db.example.com", "port": 5432}, result)
 
     def test_none_values_omitted(self):
-        mapper, config = self._mapper({"host": "{{ raw.host }}", "optional": "{{ raw.missing | default(none) }}"})
+        mapper, config = self._mapper(
+            {"host": "{{ raw.host }}", "optional": "{{ raw.missing | default(none) }}"}
+        )
         state = PipelineState(raw={"host": "localhost"})
         result = mapper.execute(config, state)
         self.assertIn("host", result)
@@ -49,8 +53,12 @@ class TestMapper(TestCase):
 
     def test_step_field_map_contributions_merged(self):
         mapper, config = self._mapper({"host": "{{ raw.host }}"})
-        state = PipelineState(raw={"host": "localhost"}, derived={"ssl_ca_path": "/tmp/ca.pem"})
-        result = mapper.execute(config, state, step_field_maps={"sslrootcert": "{{ derived.ssl_ca_path }}"})
+        state = PipelineState(
+            raw={"host": "localhost"}, derived={"ssl_ca_path": "/tmp/ca.pem"}
+        )
+        result = mapper.execute(
+            config, state, step_field_maps={"sslrootcert": "{{ derived.ssl_ca_path }}"}
+        )
         self.assertEqual("localhost", result["host"])
         self.assertEqual("/tmp/ca.pem", result["sslrootcert"])
 
@@ -84,7 +92,9 @@ class TestMapperSchemaValidation(TestCase):
         )
 
     def test_no_schema_no_validation(self):
-        mapper, config = self._mapper({"unknown_key": "value", "another_unknown": "value2"})
+        mapper, config = self._mapper(
+            {"unknown_key": "value", "another_unknown": "value2"}
+        )
         state = PipelineState(raw={})
         # No schema set — unknown keys should be fine, no exception
         result = mapper.execute(config, state)
@@ -104,10 +114,16 @@ class TestMapperSchemaValidation(TestCase):
 
     def test_optional_field_accepted(self):
         mapper, config = self._mapper(
-            {"host": "{{ raw.host }}", "port": "{{ raw.port }}", "sslmode": "{{ raw.sslmode }}"},
+            {
+                "host": "{{ raw.host }}",
+                "port": "{{ raw.port }}",
+                "sslmode": "{{ raw.sslmode }}",
+            },
             schema=_MinimalSchema,
         )
-        state = PipelineState(raw={"host": "localhost", "port": 5432, "sslmode": "require"})
+        state = PipelineState(
+            raw={"host": "localhost", "port": 5432, "sslmode": "require"}
+        )
         # Required keys + optional key present — no exception
         result = mapper.execute(config, state)
         self.assertEqual("require", result["sslmode"])

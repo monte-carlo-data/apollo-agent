@@ -4,7 +4,12 @@ from unittest import TestCase
 from unittest.mock import patch, MagicMock
 
 from apollo.integrations.ccp.errors import CcpPipelineError
-from apollo.integrations.ccp.models import CcpConfig, MapperConfig, PipelineState, TransformStep
+from apollo.integrations.ccp.models import (
+    CcpConfig,
+    MapperConfig,
+    PipelineState,
+    TransformStep,
+)
 from apollo.integrations.ccp.pipeline import CcpPipeline
 
 
@@ -78,9 +83,7 @@ class TestCcpPipeline(TestCase):
 
     def test_unknown_transform_raises(self):
         config = _minimal_config(
-            steps=[
-                TransformStep(type="not_a_transform", input={}, output={})
-            ]
+            steps=[TransformStep(type="not_a_transform", input={}, output={})]
         )
         with self.assertRaises(CcpPipelineError):
             self._pipeline.execute(config, {})
@@ -175,6 +178,13 @@ class TestPostgresDefaultCcp(TestCase):
 
         result = self._pipeline.execute(
             POSTGRES_DEFAULT_CCP,
-            {"host": "h", "port": 5432, "database": "d", "user": "u", "password": "p", "ssl_mode": "verify-full"},
+            {
+                "host": "h",
+                "port": 5432,
+                "database": "d",
+                "user": "u",
+                "password": "p",
+                "ssl_mode": "verify-full",
+            },
         )
         self.assertEqual("verify-full", result["sslmode"])

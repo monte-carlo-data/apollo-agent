@@ -228,14 +228,21 @@ class PostgresCcpPathTests(TestCase):
                 {"target": "_cursor", "method": "fetchall", "store": "tmp_1"},
                 {"target": "_cursor", "method": "description", "store": "tmp_2"},
                 {"target": "_cursor", "method": "rowcount", "store": "tmp_3"},
-                {"target": "__utils", "method": "build_dict",
-                 "kwargs": {"all_results": {"__reference__": "tmp_1"},
-                            "description": {"__reference__": "tmp_2"},
-                            "rowcount": {"__reference__": "tmp_3"}}},
+                {
+                    "target": "__utils",
+                    "method": "build_dict",
+                    "kwargs": {
+                        "all_results": {"__reference__": "tmp_1"},
+                        "description": {"__reference__": "tmp_2"},
+                        "rowcount": {"__reference__": "tmp_3"},
+                    },
+                },
             ],
         }
         # CCP now runs in the credentials layer — pre-resolve before calling execute_operation
-        resolved = _extract_credentials_in_request(_POSTGRES_FLAT_CREDENTIALS, connection_type="postgres")
+        resolved = _extract_credentials_in_request(
+            _POSTGRES_FLAT_CREDENTIALS, connection_type="postgres"
+        )
         self._agent.execute_operation("postgres", "run_query", operation_dict, resolved)
 
         mock_connect.assert_called_once()

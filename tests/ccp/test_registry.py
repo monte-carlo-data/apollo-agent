@@ -17,24 +17,30 @@ class TestCcpRegistry(TestCase):
     def test_resolve_legacy_credentials_returned_unchanged(self):
         # import to trigger registration
         import apollo.integrations.ccp.defaults.postgres  # noqa
+
         legacy = {"connect_args": {"host": "db.example.com", "dbname": "mydb"}}
         self.assertEqual(legacy, CcpRegistry.resolve("postgres", legacy))
 
     def test_postgres_registered(self):
         import apollo.integrations.ccp.defaults.postgres  # noqa
+
         config = CcpRegistry.get("postgres")
         self.assertIsNotNone(config)
         self.assertEqual("postgres-default", config.name)
 
     def test_resolve_flat_postgres_credentials_applies_ccp(self):
         import apollo.integrations.ccp.defaults.postgres  # noqa
-        result = CcpRegistry.resolve("postgres", {
-            "host": "db.example.com",
-            "port": 5432,
-            "database": "mydb",
-            "user": "admin",
-            "password": "secret",
-        })
+
+        result = CcpRegistry.resolve(
+            "postgres",
+            {
+                "host": "db.example.com",
+                "port": 5432,
+                "database": "mydb",
+                "user": "admin",
+                "password": "secret",
+            },
+        )
         self.assertIn("connect_args", result)
         self.assertEqual("db.example.com", result["connect_args"]["host"])
         self.assertEqual("mydb", result["connect_args"]["dbname"])
@@ -43,26 +49,34 @@ class TestCcpRegistry(TestCase):
 
     def test_resolve_flat_postgres_with_explicit_ssl_mode(self):
         import apollo.integrations.ccp.defaults.postgres  # noqa
-        result = CcpRegistry.resolve("postgres", {
-            "host": "db.example.com",
-            "port": 5432,
-            "database": "mydb",
-            "user": "admin",
-            "password": "secret",
-            "ssl_mode": "verify-full",
-        })
+
+        result = CcpRegistry.resolve(
+            "postgres",
+            {
+                "host": "db.example.com",
+                "port": 5432,
+                "database": "mydb",
+                "user": "admin",
+                "password": "secret",
+                "ssl_mode": "verify-full",
+            },
+        )
         self.assertEqual("verify-full", result["connect_args"]["sslmode"])
 
     def test_resolve_flat_postgres_with_ssl_ca_pem(self):
         import apollo.integrations.ccp.defaults.postgres  # noqa
-        result = CcpRegistry.resolve("postgres", {
-            "host": "db.example.com",
-            "port": 5432,
-            "database": "mydb",
-            "user": "admin",
-            "password": "secret",
-            "ssl_ca_pem": "-----BEGIN CERTIFICATE-----\nFAKE\n-----END CERTIFICATE-----",
-        })
+
+        result = CcpRegistry.resolve(
+            "postgres",
+            {
+                "host": "db.example.com",
+                "port": 5432,
+                "database": "mydb",
+                "user": "admin",
+                "password": "secret",
+                "ssl_ca_pem": "-----BEGIN CERTIFICATE-----\nFAKE\n-----END CERTIFICATE-----",
+            },
+        )
         path = result["connect_args"]["sslrootcert"]
         self.assertTrue(os.path.exists(path))
         self.assertEqual("require", result["connect_args"]["sslmode"])
