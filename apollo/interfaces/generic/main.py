@@ -208,7 +208,8 @@ def execute_agent_operation(
 ) -> AgentResponse:
     try:
         credentials = _extract_credentials_in_request(
-            json_request.get("credentials", {})
+            json_request.get("credentials", {}),
+            connection_type=connection_type,
         )
     except Exception:  # noqa
         logger.exception("Failed to read self-hosted credentials")
@@ -336,7 +337,10 @@ def agent_execute_script(
 
 def execute_agent_script(connection_type: str, json_request: Dict) -> AgentResponse:
     script = json_request.get("operation")
-    credentials = _extract_credentials_in_request(json_request.get("credentials", {}))
+    credentials = _extract_credentials_in_request(
+        json_request.get("credentials", {}),
+        connection_type=connection_type,
+    )
     return agent.execute_script(connection_type, script, credentials)
 
 
@@ -1260,9 +1264,13 @@ def _execute_http_connection_test() -> Tuple[Dict, int]:
     return response.result, response.status_code
 
 
-def _extract_credentials_in_request(credentials: Dict) -> Dict:
+def _extract_credentials_in_request(
+    credentials: Dict, connection_type: str | None = None
+) -> Dict:
     credential_service = CredentialsFactory.get_credentials_service(credentials)
-    return credential_service.get_credentials(credentials)
+    return credential_service.get_credentials(
+        credentials, connection_type=connection_type
+    )
 
 
 if __name__ == "__main__":

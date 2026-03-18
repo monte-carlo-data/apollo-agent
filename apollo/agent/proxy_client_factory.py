@@ -8,7 +8,6 @@ from typing import Optional, Dict
 
 from apollo.common.agent.env_vars import CLIENT_CACHE_EXPIRATION_SECONDS_ENV_VAR
 from apollo.common.agent.models import AgentError
-from apollo.common.agent.serde import decode_dictionary
 from apollo.integrations.base_proxy_client import BaseProxyClient
 from apollo.integrations.db.salesforce_data_cloud_proxy_client import (
     SalesforceDataCloudProxyClient,
@@ -459,8 +458,6 @@ class ProxyClientFactory:
     ) -> BaseProxyClient:
         factory_method = _CLIENT_FACTORY_MAPPING.get(connection_type)
         if factory_method:
-            if credentials:
-                credentials = decode_dictionary(credentials)
             return factory_method(credentials, platform=platform)
         else:
             raise AgentError(

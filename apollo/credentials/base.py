@@ -1,15 +1,27 @@
+from apollo.common.agent.serde import decode_dictionary
+
+
 class BaseCredentialsService:
     """
     Base class for credentials services, provides default behavior of
     expecting warehouse credentials to be included in the request.
     """
 
-    def get_credentials(self, credentials: dict) -> dict:
+    def get_credentials(
+        self, credentials: dict, connection_type: str | None = None
+    ) -> dict:
         external_credentials = self._load_external_credentials(credentials)
-        return self._merge_connect_args(
+        merged = self._merge_connect_args(
             incoming_credentials=credentials,
             external_credentials=external_credentials,
         )
+        merged = decode_dictionary(merged)
+        if connection_type:
+            import apollo.integrations.ccp.defaults.postgres  # noqa: F401 — triggers registration; TODO: replace with single bootstrap import once more connectors adopt CCP
+            from apollo.integrations.ccp.registry import CcpRegistry
+
+            merged = CcpRegistry.resolve(connection_type, merged)
+        return merged
 
     def _load_external_credentials(self, credentials: dict) -> dict:
         return credentials
