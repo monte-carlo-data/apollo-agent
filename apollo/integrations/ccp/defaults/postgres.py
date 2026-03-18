@@ -37,7 +37,10 @@ POSTGRES_DEFAULT_CCP = CcpConfig(
             when="raw.ssl_ca_pem is defined",
             input={"contents": "{{ raw.ssl_ca_pem }}", "file_suffix": ".pem", "mode": "0400"},
             output={"path": "ssl_ca_path"},
-            field_map={"sslrootcert": "{{ derived.ssl_ca_path }}"},
+            field_map={
+                "sslrootcert": "{{ derived.ssl_ca_path }}",
+                "sslmode": "{{ raw.ssl_mode | default('require') }}",
+            },
         )
     ],
     mapper=MapperConfig(
@@ -49,7 +52,7 @@ POSTGRES_DEFAULT_CCP = CcpConfig(
             "dbname": "{{ raw.database }}",
             "user": "{{ raw.user }}",
             "password": "{{ raw.password }}",
-            "sslmode": "{{ raw.ssl_mode | default('require') }}",
+            "sslmode": "{{ raw.ssl_mode | default(none) }}",
         },
     ),
 )

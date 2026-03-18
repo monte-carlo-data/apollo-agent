@@ -38,8 +38,20 @@ class TestCcpRegistry(TestCase):
         self.assertIn("connect_args", result)
         self.assertEqual("db.example.com", result["connect_args"]["host"])
         self.assertEqual("mydb", result["connect_args"]["dbname"])
-        self.assertEqual("require", result["connect_args"]["sslmode"])
+        self.assertNotIn("sslmode", result["connect_args"])
         self.assertNotIn("sslrootcert", result["connect_args"])
+
+    def test_resolve_flat_postgres_with_explicit_ssl_mode(self):
+        import apollo.integrations.ccp.defaults.postgres  # noqa
+        result = CcpRegistry.resolve("postgres", {
+            "host": "db.example.com",
+            "port": 5432,
+            "database": "mydb",
+            "user": "admin",
+            "password": "secret",
+            "ssl_mode": "verify-full",
+        })
+        self.assertEqual("verify-full", result["connect_args"]["sslmode"])
 
     def test_resolve_flat_postgres_with_ssl_ca_pem(self):
         import apollo.integrations.ccp.defaults.postgres  # noqa
@@ -53,4 +65,5 @@ class TestCcpRegistry(TestCase):
         })
         path = result["connect_args"]["sslrootcert"]
         self.assertTrue(os.path.exists(path))
+        self.assertEqual("require", result["connect_args"]["sslmode"])
         os.unlink(path)

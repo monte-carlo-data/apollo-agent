@@ -146,7 +146,7 @@ class TestPostgresDefaultCcp(TestCase):
         self.assertEqual("mydb", result["dbname"])
         self.assertEqual("admin", result["user"])
         self.assertEqual("secret", result["password"])
-        self.assertEqual("require", result["sslmode"])  # default
+        self.assertNotIn("sslmode", result)  # no SSL cert, no sslmode emitted
         self.assertNotIn("sslrootcert", result)
 
     def test_ssl_ca_pem_materialized(self):
