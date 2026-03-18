@@ -56,6 +56,18 @@ class TestTmpFileWriteTransform(TestCase):
         self.assertNotIn("ssl_ca_path", state.raw)
         os.unlink(state.derived["ssl_ca_path"])
 
+    def test_writes_bytes_content_to_temp_file(self):
+        pem_bytes = b"-----BEGIN CERTIFICATE-----\nFAKE\n-----END CERTIFICATE-----\n"
+        state = PipelineState(raw={"ca_data": pem_bytes})
+        step = self._make_step("{{ raw.ca_data }}")
+        TmpFileWriteTransform().execute(step, state)
+
+        path = state.derived.get("ssl_ca_path")
+        self.assertIsNotNone(path)
+        with open(path, "rb") as f:
+            self.assertEqual(pem_bytes, f.read())
+        os.unlink(path)
+
     def test_missing_contents_raises(self):
         from apollo.integrations.ccp.errors import CcpPipelineError
         state = PipelineState(raw={})
