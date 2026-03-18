@@ -28,4 +28,6 @@ class CcpPipeline:
             transform.execute(step, state)
             step_field_maps.update(step.field_map)
 
-        return self._mapper.execute(config.mapper, state, step_field_maps=step_field_maps)
+        return self._mapper.execute(
+            config.mapper, state, step_field_maps=step_field_maps
+        )

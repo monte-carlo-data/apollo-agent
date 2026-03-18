@@ -18,7 +18,9 @@ class CcpRegistry:
         return cls._registry.get(connection_type)
 
     @classmethod
-    def resolve(cls, connection_type: str, credentials: dict[str, Any]) -> dict[str, Any]:
+    def resolve(
+        cls, connection_type: str, credentials: dict[str, Any]
+    ) -> dict[str, Any]:
         """
         If credentials are in the flat shape (no connect_args key), run the CCP pipeline
         and return {"connect_args": <pipeline output>}. Uses the registered config for
@@ -31,6 +33,8 @@ class CcpRegistry:
         config = cls.get(connection_type)
         if config is None:
             from apollo.integrations.ccp.defaults.passthrough import PASSTHROUGH_CCP
+
             config = PASSTHROUGH_CCP
         from apollo.integrations.ccp.pipeline import CcpPipeline
+
         return {_ATTR_CONNECT_ARGS: CcpPipeline().execute(config, credentials)}

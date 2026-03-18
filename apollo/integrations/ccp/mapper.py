@@ -20,12 +20,18 @@ class Mapper:
         combined = {**config.field_map, **(step_field_maps or {})}
         result = {}
         for key, template in combined.items():
-            value = TemplateEngine.render(template, state) if isinstance(template, str) else template
+            value = (
+                TemplateEngine.render(template, state)
+                if isinstance(template, str)
+                else template
+            )
             if value is not None:
                 result[key] = value
 
         if config.schema is not None:
-            allowed_keys = config.schema.__required_keys__ | config.schema.__optional_keys__
+            allowed_keys = (
+                config.schema.__required_keys__ | config.schema.__optional_keys__
+            )
             missing = config.schema.__required_keys__ - result.keys()
             if missing:
                 raise CcpPipelineError(

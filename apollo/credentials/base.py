@@ -7,7 +7,9 @@ class BaseCredentialsService:
     expecting warehouse credentials to be included in the request.
     """
 
-    def get_credentials(self, credentials: dict, connection_type: str | None = None) -> dict:
+    def get_credentials(
+        self, credentials: dict, connection_type: str | None = None
+    ) -> dict:
         external_credentials = self._load_external_credentials(credentials)
         merged = self._merge_connect_args(
             incoming_credentials=credentials,
@@ -17,6 +19,7 @@ class BaseCredentialsService:
         if connection_type:
             import apollo.integrations.ccp.defaults.postgres  # noqa: F401 — triggers registration; TODO: replace with single bootstrap import once more connectors adopt CCP
             from apollo.integrations.ccp.registry import CcpRegistry
+
             merged = CcpRegistry.resolve(connection_type, merged)
         return merged
 

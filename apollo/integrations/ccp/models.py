@@ -7,8 +7,12 @@ class TransformStep:
     type: str
     input: dict[str, Any]
     output: dict[str, str]
-    when: str | None = None  # Jinja2 boolean expression over raw/derived/context (e.g. "raw.ssl_ca_pem is defined")
-    field_map: dict[str, Any] = field(default_factory=dict)  # contributed to client_args only if this step executes
+    when: str | None = (
+        None  # Jinja2 boolean expression over raw/derived/context (e.g. "raw.ssl_ca_pem is defined")
+    )
+    field_map: dict[str, Any] = field(
+        default_factory=dict
+    )  # contributed to client_args only if this step executes
 
 
 @dataclass
