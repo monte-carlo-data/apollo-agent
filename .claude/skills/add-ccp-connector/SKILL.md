@@ -63,6 +63,19 @@ That's it. `_create_proxy_client` in `proxy_client_factory.py` checks `CcpRegist
 
 ---
 
+## Handling both raw and driver-native key names
+
+Self-hosted customers may store credentials using either the flat/raw key name (`database`) or the driver-native key name (`dbname`). Use `default()` chaining to accept both without a separate code path:
+
+```python
+"dbname": "{{ raw.database | default(raw.dbname) }}",
+"user":   "{{ raw.user | default(raw.username) }}",
+```
+
+The first arm matches flat credentials; the `default()` arm matches credentials already in driver-native form. Missing keys return `Undefined`, which `default()` handles cleanly.
+
+---
+
 ## Jinja2 template rules
 
 **Always use dot-notation (`raw.field`), never bracket notation (`raw['field']`)**
