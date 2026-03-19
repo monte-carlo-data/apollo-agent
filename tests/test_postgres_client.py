@@ -11,7 +11,6 @@ from apollo.common.agent.constants import (
     ATTRIBUTE_NAME_ERROR_TYPE,
 )
 from apollo.agent.logging_utils import LoggingUtils
-from apollo.interfaces.generic.main import _extract_credentials_in_request
 
 _POSTGRES_CREDENTIALS = {
     "host": "www.test.com",
@@ -213,7 +212,7 @@ class PostgresCcpPathTests(TestCase):
 
     @patch("psycopg2.connect")
     def test_ccp_path_resolves_flat_credentials(self, mock_connect):
-        """Flat credentials are resolved by BaseCredentialsService before reaching PostgresProxyClient."""
+        """Flat credentials are resolved by CCP inside _create_proxy_client before reaching PostgresProxyClient."""
         mock_connect.return_value = self._mock_connection
         self._mock_cursor.fetchall.return_value = []
         self._mock_cursor.description.return_value = []
@@ -239,11 +238,10 @@ class PostgresCcpPathTests(TestCase):
                 },
             ],
         }
-        # CCP now runs in the credentials layer — pre-resolve before calling execute_operation
-        resolved = _extract_credentials_in_request(
-            _POSTGRES_FLAT_CREDENTIALS, connection_type="postgres"
+        # CCP runs inside _create_proxy_client — pass flat credentials directly
+        self._agent.execute_operation(
+            "postgres", "run_query", operation_dict, _POSTGRES_FLAT_CREDENTIALS
         )
-        self._agent.execute_operation("postgres", "run_query", operation_dict, resolved)
 
         mock_connect.assert_called_once()
         call_kwargs = mock_connect.call_args.kwargs

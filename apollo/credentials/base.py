@@ -1,5 +1,4 @@
 from apollo.common.agent.serde import decode_dictionary
-from apollo.integrations.ccp.registry import CcpRegistry
 
 
 class BaseCredentialsService:
@@ -8,18 +7,13 @@ class BaseCredentialsService:
     expecting warehouse credentials to be included in the request.
     """
 
-    def get_credentials(
-        self, credentials: dict, connection_type: str | None = None
-    ) -> dict:
+    def get_credentials(self, credentials: dict) -> dict:
         external_credentials = self._load_external_credentials(credentials)
         merged = self._merge_connect_args(
             incoming_credentials=credentials,
             external_credentials=external_credentials,
         )
-        merged = decode_dictionary(merged)
-        if connection_type:
-            merged = CcpRegistry.resolve(connection_type, merged)
-        return merged
+        return decode_dictionary(merged)
 
     def _load_external_credentials(self, credentials: dict) -> dict:
         return credentials
