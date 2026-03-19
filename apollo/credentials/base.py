@@ -17,7 +17,7 @@ class BaseCredentialsService:
             external_credentials=external_credentials,
         )
         merged = decode_dictionary(merged)
-        if connection_type:
+        if connection_type and CcpRegistry.get(connection_type):
             merged = CcpRegistry.resolve(connection_type, merged)
         return merged
 

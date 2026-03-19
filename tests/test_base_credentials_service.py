@@ -64,13 +64,13 @@ class TestBaseCredentialsServiceCcp(TestCase):
         result = svc.get_credentials(legacy, connection_type="postgres")
         self.assertEqual(legacy, result)
 
-    def test_unknown_connection_type_wraps_in_connect_args(self):
+    def test_unknown_connection_type_skips_ccp(self):
         svc = BaseCredentialsService()
         flat = {"host": "h", "database": "d"}
         result = svc.get_credentials(flat, connection_type="not_a_real_type")
-        self.assertIn("connect_args", result)
-        self.assertEqual("h", result["connect_args"]["host"])
-        self.assertEqual("d", result["connect_args"]["database"])
+        # Unregistered connection type — CCP does not run, flat creds returned unchanged
+        self.assertNotIn("connect_args", result)
+        self.assertEqual(flat, result)
 
     def test_legacy_connect_args_not_double_wrapped(self):
         svc = BaseCredentialsService()
