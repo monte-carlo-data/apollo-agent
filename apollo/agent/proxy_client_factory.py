@@ -456,6 +456,10 @@ class ProxyClientFactory:
     def _create_proxy_client(
         cls, connection_type: str, credentials: Optional[Dict], platform: str
     ) -> BaseProxyClient:
+        from apollo.integrations.ccp.registry import CcpRegistry
+
+        if credentials and CcpRegistry.get(connection_type):
+            credentials = CcpRegistry.resolve(connection_type, credentials)
         factory_method = _CLIENT_FACTORY_MAPPING.get(connection_type)
         if factory_method:
             return factory_method(credentials, platform=platform)
