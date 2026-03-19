@@ -40,8 +40,6 @@ class TestBaseCredentialsServiceCcp(TestCase):
         self.assertNotIn("connect_args", result)
 
     def test_postgres_flat_credentials_resolved(self):
-        import apollo.integrations.ccp.defaults.postgres  # noqa: F401
-
         svc = BaseCredentialsService()
         result = svc.get_credentials(
             {
@@ -60,8 +58,6 @@ class TestBaseCredentialsServiceCcp(TestCase):
         self.assertNotIn("sslrootcert", result["connect_args"])
 
     def test_legacy_connect_args_not_overwritten_by_ccp(self):
-        import apollo.integrations.ccp.defaults.postgres  # noqa: F401
-
         svc = BaseCredentialsService()
         # Legacy shape: connect_args already present — CCP is a no-op
         legacy = {"connect_args": {"host": "h", "dbname": "d"}}
