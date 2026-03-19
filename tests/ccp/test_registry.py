@@ -2,6 +2,7 @@
 import os
 from unittest import TestCase
 
+from apollo.integrations.ccp.errors import CcpPipelineError
 from apollo.integrations.ccp.registry import CcpRegistry
 
 
@@ -10,8 +11,6 @@ class TestCcpRegistry(TestCase):
         self.assertIsNone(CcpRegistry.get("not_a_real_type"))
 
     def test_resolve_unknown_type_raises(self):
-        from apollo.integrations.ccp.errors import CcpPipelineError
-
         with self.assertRaises(CcpPipelineError):
             CcpRegistry.resolve("unknown_type", {"host": "db.example.com"})
 

@@ -14,6 +14,7 @@ from apollo.common.agent.constants import (
 )
 from apollo.agent.logging_utils import LoggingUtils
 from apollo.agent.proxy_client_factory import ProxyClientFactory
+from apollo.credentials.base import BaseCredentialsService
 
 _SF_CREDENTIALS = {"user": "u", "password": "p", "account": "a", "warehouse": "w"}
 
@@ -32,8 +33,6 @@ class SnowflakeClientTests(TestCase):
         private_key = b"abc"
         # Credentials arrive from the wire in encoded form; BaseCredentialsService
         # decodes them before they reach the factory.
-        from apollo.credentials.base import BaseCredentialsService
-
         raw_credentials = {
             "connect_args": {
                 "user": "u",
