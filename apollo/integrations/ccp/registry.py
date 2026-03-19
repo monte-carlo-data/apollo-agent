@@ -1,7 +1,7 @@
 # apollo/integrations/ccp/registry.py
 from typing import Any
 
-from apollo.integrations.ccp.defaults.passthrough import PASSTHROUGH_CCP
+from apollo.integrations.ccp.errors import CcpPipelineError
 from apollo.integrations.ccp.models import CcpConfig
 from apollo.integrations.ccp.pipeline import CcpPipeline
 
@@ -42,14 +42,19 @@ class CcpRegistry:
         cls, connection_type: str, credentials: dict[str, Any]
     ) -> dict[str, Any]:
         """
-        If credentials are in the flat shape (no connect_args key), run the CCP pipeline
-        and return {"connect_args": <pipeline output>}. Uses the registered config for
-        connection_type, or passthrough if none is registered.
+        Run the registered CCP pipeline for connection_type and return
+        {"connect_args": <pipeline output>}.
         If credentials already have connect_args, returns unchanged (legacy path).
+        Raises CcpPipelineError if connection_type is not registered.
         """
         _ensure_initialized()
         if _ATTR_CONNECT_ARGS in credentials:
             return credentials
 
-        config = cls.get(connection_type) or PASSTHROUGH_CCP
+        config = cls.get(connection_type)
+        if config is None:
+            raise CcpPipelineError(
+                stage="registry",
+                message=f"No CCP config registered for '{connection_type}'. Call CcpRegistry.get() before resolve().",
+            )
         return {_ATTR_CONNECT_ARGS: CcpPipeline().execute(config, credentials)}

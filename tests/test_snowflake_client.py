@@ -29,19 +29,30 @@ class SnowflakeClientTests(TestCase):
     def test_private_key_auth(self, mock_connect):
         mock_connect.return_value = self._mock_connection
 
-        # Pass actual bytes directly — wire format decoding is now a CCP transform concern.
-        # Snowflake migration to CCP is a follow-up task.
-        connect_args = {
-            "user": "u",
-            "private_key": b"abc",
-            "account": "a",
-            "warehouse": "w",
+        private_key = b"abc"
+        # Credentials arrive from the wire in encoded form; BaseCredentialsService
+        # decodes them before they reach the factory.
+        from apollo.credentials.base import BaseCredentialsService
+
+        raw_credentials = {
+            "connect_args": {
+                "user": "u",
+                "private_key": {
+                    "__type__": "bytes",
+                    "__data__": base64.b64encode(private_key).decode("utf-8"),
+                },
+                "account": "a",
+                "warehouse": "w",
+            },
         }
+        credentials = BaseCredentialsService().get_credentials(raw_credentials)
         client = ProxyClientFactory.get_proxy_client(
-            "snowflake", {"connect_args": connect_args}, True, "AWS"
+            "snowflake", credentials, True, "AWS"
         )
         self.assertIsNotNone(client)
-        mock_connect.assert_called_once_with(**connect_args)
+        mock_connect.assert_called_once_with(
+            user="u", private_key=private_key, account="a", warehouse="w"
+        )
 
     @patch("snowflake.connector.connect")
     def test_query(self, mock_connect):

@@ -9,10 +9,11 @@ class TestCcpRegistry(TestCase):
     def test_unknown_type_returns_none(self):
         self.assertIsNone(CcpRegistry.get("not_a_real_type"))
 
-    def test_resolve_unknown_type_applies_passthrough(self):
-        creds = {"host": "db.example.com"}
-        result = CcpRegistry.resolve("unknown_type", creds)
-        self.assertEqual({"connect_args": {"host": "db.example.com"}}, result)
+    def test_resolve_unknown_type_raises(self):
+        from apollo.integrations.ccp.errors import CcpPipelineError
+
+        with self.assertRaises(CcpPipelineError):
+            CcpRegistry.resolve("unknown_type", {"host": "db.example.com"})
 
     def test_resolve_legacy_credentials_returned_unchanged(self):
         legacy = {"connect_args": {"host": "db.example.com", "dbname": "mydb"}}
