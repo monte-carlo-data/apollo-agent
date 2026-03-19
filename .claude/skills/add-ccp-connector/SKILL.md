@@ -74,6 +74,8 @@ Self-hosted customers may store credentials using either the flat/raw key name (
 
 The first arm matches flat credentials; the `default()` arm matches credentials already in driver-native form. Missing keys return `Undefined`, which `default()` handles cleanly.
 
+`connect_args`-wrapped credentials are treated the same as flat — `resolve` unwraps the inner dict before running the pipeline. Templates always see `raw.field`, never `raw.connect_args.field`.
+
 ---
 
 ## Jinja2 template rules
