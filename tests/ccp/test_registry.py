@@ -15,22 +15,15 @@ class TestCcpRegistry(TestCase):
         self.assertEqual({"connect_args": {"host": "db.example.com"}}, result)
 
     def test_resolve_legacy_credentials_returned_unchanged(self):
-        # import to trigger registration
-        import apollo.integrations.ccp.defaults.postgres  # noqa
-
         legacy = {"connect_args": {"host": "db.example.com", "dbname": "mydb"}}
         self.assertEqual(legacy, CcpRegistry.resolve("postgres", legacy))
 
     def test_postgres_registered(self):
-        import apollo.integrations.ccp.defaults.postgres  # noqa
-
         config = CcpRegistry.get("postgres")
         self.assertIsNotNone(config)
         self.assertEqual("postgres-default", config.name)
 
     def test_resolve_flat_postgres_credentials_applies_ccp(self):
-        import apollo.integrations.ccp.defaults.postgres  # noqa
-
         result = CcpRegistry.resolve(
             "postgres",
             {
@@ -48,8 +41,6 @@ class TestCcpRegistry(TestCase):
         self.assertNotIn("sslrootcert", result["connect_args"])
 
     def test_resolve_flat_postgres_with_explicit_ssl_mode(self):
-        import apollo.integrations.ccp.defaults.postgres  # noqa
-
         result = CcpRegistry.resolve(
             "postgres",
             {
@@ -64,8 +55,6 @@ class TestCcpRegistry(TestCase):
         self.assertEqual("verify-full", result["connect_args"]["sslmode"])
 
     def test_resolve_flat_postgres_with_ssl_ca_pem(self):
-        import apollo.integrations.ccp.defaults.postgres  # noqa
-
         result = CcpRegistry.resolve(
             "postgres",
             {
