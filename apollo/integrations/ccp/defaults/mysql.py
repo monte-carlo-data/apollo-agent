@@ -4,13 +4,52 @@ from apollo.integrations.ccp.models import CcpConfig, MapperConfig, TransformSte
 
 
 class MysqlClientArgs(TypedDict):
-    host: Required[str]
-    port: Required[str]
-    user: Required[str]
-    password: Required[str]
-    ssl: NotRequired[
-        Any
-    ]  # dict {"ca": path} for remote cert, or ssl.SSLContext for inline data
+    # Network
+    host: NotRequired[str]
+    port: NotRequired[int]  # default 3306
+    unix_socket: NotRequired[str]
+    bind_address: NotRequired[str]
+    # Auth
+    user: NotRequired[str]
+    password: NotRequired[str]
+    server_public_key: NotRequired[bytes]
+    auth_plugin_map: NotRequired[dict]
+    # Database
+    database: NotRequired[str]
+    sql_mode: NotRequired[str]
+    # Charset
+    charset: NotRequired[str]  # default "utf8mb4"
+    collation: NotRequired[str]
+    use_unicode: NotRequired[bool]  # default True
+    # Timeouts
+    connect_timeout: NotRequired[int]  # default 10 seconds
+    read_timeout: NotRequired[int]
+    write_timeout: NotRequired[int]
+    # SSL — CCP resolves ssl_options into this field via transform steps;
+    # native ssl_* fields below are valid if passed directly in connect_args
+    ssl: NotRequired[Any]  # dict {"ca": path} or ssl.SSLContext
+    ssl_ca: NotRequired[str]
+    ssl_cert: NotRequired[str]
+    ssl_key: NotRequired[str]
+    ssl_key_password: NotRequired[str]
+    ssl_disabled: NotRequired[bool]
+    ssl_verify_cert: NotRequired[bool]
+    ssl_verify_identity: NotRequired[bool]
+    # Session
+    autocommit: NotRequired[bool]  # default False
+    init_command: NotRequired[str]
+    # Packets / connection options
+    max_allowed_packet: NotRequired[int]  # default 16 MB
+    local_infile: NotRequired[bool]
+    client_flag: NotRequired[int]
+    program_name: NotRequired[str]
+    defer_connect: NotRequired[bool]
+    # Config file
+    read_default_file: NotRequired[str]
+    read_default_group: NotRequired[str]
+    # Cursor / data handling
+    conv: NotRequired[dict]
+    binary_prefix: NotRequired[bool]
 
 
 MYSQL_DEFAULT_CCP = CcpConfig(
@@ -43,10 +82,18 @@ MYSQL_DEFAULT_CCP = CcpConfig(
         name="mysql_client_args",
         schema=MysqlClientArgs,
         field_map={
-            "host": "{{ raw.host }}",
-            "port": "{{ raw.port }}",
-            "user": "{{ raw.user }}",
-            "password": "{{ raw.password }}",
+            "host": "{{ raw.host | default(none) }}",
+            "port": "{{ raw.port | default(none) }}",
+            "user": "{{ raw.user | default(none) }}",
+            "password": "{{ raw.password | default(none) }}",
+            "database": "{{ raw.database | default(none) }}",
+            "unix_socket": "{{ raw.unix_socket | default(none) }}",
+            "charset": "{{ raw.charset | default(none) }}",
+            "connect_timeout": "{{ raw.connect_timeout | default(none) }}",
+            "read_timeout": "{{ raw.read_timeout | default(none) }}",
+            "write_timeout": "{{ raw.write_timeout | default(none) }}",
+            "autocommit": "{{ raw.autocommit | default(none) }}",
+            "ssl_disabled": "{{ raw.ssl_disabled | default(none) }}",
         },
     ),
 )

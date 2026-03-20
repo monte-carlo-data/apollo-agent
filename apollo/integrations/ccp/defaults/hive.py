@@ -1,16 +1,36 @@
-from typing import NotRequired, Required, TypedDict
+from typing import Any, NotRequired, Required, TypedDict
 
 from apollo.integrations.ccp.models import CcpConfig, MapperConfig
 
 
 class HiveClientArgs(TypedDict):
+    # Network
     host: Required[str]
-    port: Required[str]
-    user: NotRequired[str]
-    database: NotRequired[str]
-    auth_mechanism: NotRequired[str]
+    port: NotRequired[int]  # default 21050
     timeout: NotRequired[int]
+    # Database
+    database: NotRequired[str]
+    # Auth
+    auth_mechanism: NotRequired[str]  # NOSASL | PLAIN | GSSAPI | LDAP | JWT
+    user: NotRequired[str]
+    password: NotRequired[str]
+    # Kerberos
+    kerberos_service_name: NotRequired[str]  # default "impala"
+    krb_host: NotRequired[str]
+    # SSL
     use_ssl: NotRequired[bool]
+    ca_cert: NotRequired[str]  # path to CA cert file
+    # HTTP transport
+    use_http_transport: NotRequired[bool]
+    http_path: NotRequired[str]
+    http_cookie_names: NotRequired[list]
+    user_agent: NotRequired[str]
+    # JWT
+    jwt: NotRequired[str]
+    # Retry
+    retries: NotRequired[int]  # default 3
+    # Extensibility
+    get_user_custom_headers_func: NotRequired[Any]
 
 
 HIVE_DEFAULT_CCP = CcpConfig(
@@ -21,12 +41,20 @@ HIVE_DEFAULT_CCP = CcpConfig(
         schema=HiveClientArgs,
         field_map={
             "host": "{{ raw.host }}",
-            "port": "{{ raw.port }}",
-            "user": "{{ raw.user | default(none) }}",
+            "port": "{{ raw.port | default(none) }}",
             "database": "{{ raw.database | default(none) }}",
-            "auth_mechanism": "{{ raw.auth_mechanism | default(none) }}",
             "timeout": "{{ raw.timeout | default(none) }}",
+            "auth_mechanism": "{{ raw.auth_mechanism | default(none) }}",
+            "user": "{{ raw.user | default(none) }}",
+            "password": "{{ raw.password | default(none) }}",
+            "kerberos_service_name": "{{ raw.kerberos_service_name | default(none) }}",
+            "krb_host": "{{ raw.krb_host | default(none) }}",
             "use_ssl": "{{ raw.use_ssl | default(none) }}",
+            "ca_cert": "{{ raw.ca_cert | default(none) }}",
+            "use_http_transport": "{{ raw.use_http_transport | default(none) }}",
+            "http_path": "{{ raw.http_path | default(none) }}",
+            "jwt": "{{ raw.jwt | default(none) }}",
+            "retries": "{{ raw.retries | default(none) }}",
         },
     ),
 )
