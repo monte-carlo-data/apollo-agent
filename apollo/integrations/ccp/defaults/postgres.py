@@ -33,13 +33,9 @@ POSTGRES_DEFAULT_CCP = CcpConfig(
     name="postgres-default",
     steps=[
         TransformStep(
-            type="tmp_file_write",
+            type="write_ssl_ca_to_file",
             when="raw.ssl_ca_pem is defined",
-            input={
-                "contents": "{{ raw.ssl_ca_pem }}",
-                "file_suffix": ".pem",
-                "mode": "0400",
-            },
+            input={"ca_data": "{{ raw.ssl_ca_pem }}"},
             output={"path": "ssl_ca_path"},
             field_map={
                 "sslrootcert": "{{ derived.ssl_ca_path }}",

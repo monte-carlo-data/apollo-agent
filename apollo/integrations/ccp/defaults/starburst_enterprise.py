@@ -18,7 +18,7 @@ STARBURST_ENTERPRISE_DEFAULT_CCP = CcpConfig(
         TransformStep(
             type="write_ssl_ca_to_file",
             when="raw.ssl_options is defined and raw.ssl_options.ca_data is defined",
-            input={"ssl_options": "{{ raw.ssl_options }}"},
+            input={"ca_data": "{{ raw.ssl_options.ca_data }}"},
             output={"path": "ssl_ca_path"},
             field_map={"verify": "{{ derived.ssl_ca_path }}"},
         )
