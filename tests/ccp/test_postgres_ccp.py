@@ -42,7 +42,7 @@ class TestPostgresCcp(TestCase):
         )
         self.assertEqual("verify-full", result["connect_args"]["sslmode"])
 
-    def test_resolve_flat_postgres_with_ssl_ca_pem(self):
+    def test_resolve_flat_postgres_with_ssl_ca_data(self):
         result = CcpRegistry.resolve(
             "postgres",
             {
@@ -51,7 +51,9 @@ class TestPostgresCcp(TestCase):
                 "database": "mydb",
                 "user": "admin",
                 "password": "secret",
-                "ssl_ca_pem": "-----BEGIN CERTIFICATE-----\nFAKE\n-----END CERTIFICATE-----",
+                "ssl_options": {
+                    "ca_data": "-----BEGIN CERTIFICATE-----\nFAKE\n-----END CERTIFICATE-----"
+                },
             },
         )
         path = result["connect_args"]["sslrootcert"]
