@@ -10,6 +10,7 @@ def _discover() -> None:
     Called once on first registry access. Add new transform imports here.
     """
     import apollo.integrations.ccp.transforms.tmp_file_write  # noqa: F401
+    import apollo.integrations.ccp.transforms.write_ssl_ca_to_file  # noqa: F401
 
 
 def _ensure_initialized() -> None:

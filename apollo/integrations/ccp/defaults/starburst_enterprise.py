@@ -1,6 +1,6 @@
-from typing import TypedDict, Required, NotRequired
+from typing import Any, NotRequired, Required, TypedDict
 
-from apollo.integrations.ccp.models import CcpConfig, MapperConfig
+from apollo.integrations.ccp.models import CcpConfig, MapperConfig, TransformStep
 
 
 class StarburstEnterpriseClientArgs(TypedDict):
@@ -9,12 +9,20 @@ class StarburstEnterpriseClientArgs(TypedDict):
     user: Required[str]
     password: Required[str]
     http_scheme: Required[str]
-    ssl_options: NotRequired[dict]
+    verify: NotRequired[Any]  # str (cert path) or False
 
 
 STARBURST_ENTERPRISE_DEFAULT_CCP = CcpConfig(
     name="starburst-enterprise-default",
-    steps=[],
+    steps=[
+        TransformStep(
+            type="write_ssl_ca_to_file",
+            when="raw.ssl_options is defined and raw.ssl_options.ca_data is defined",
+            input={"ssl_options": "{{ raw.ssl_options }}"},
+            output={"path": "ssl_ca_path"},
+            field_map={"verify": "{{ derived.ssl_ca_path }}"},
+        )
+    ],
     mapper=MapperConfig(
         name="starburst_enterprise_client_args",
         schema=StarburstEnterpriseClientArgs,
@@ -24,7 +32,8 @@ STARBURST_ENTERPRISE_DEFAULT_CCP = CcpConfig(
             "user": "{{ raw.user }}",
             "password": "{{ raw.password }}",
             "http_scheme": "https",
-            "ssl_options": "{{ raw.ssl_options | default(none) }}",
+            # verify=False when SSL disabled; step field_map overrides this when ca_data is present
+            "verify": "{{ false if (raw.ssl_options is defined and raw.ssl_options.disabled) else none }}",
         },
     ),
 )
