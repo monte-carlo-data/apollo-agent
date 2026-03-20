@@ -30,6 +30,8 @@ class SnowflakeClientTests(TestCase):
         mock_connect.return_value = self._mock_connection
 
         private_key = b"abc"
+        # Credentials arrive from the wire in encoded form; the factory decodes
+        # them via decode_dictionary before creating the proxy client.
         credentials = {
             "connect_args": {
                 "user": "u",
@@ -46,10 +48,7 @@ class SnowflakeClientTests(TestCase):
         )
         self.assertIsNotNone(client)
         mock_connect.assert_called_once_with(
-            **{
-                **credentials["connect_args"],
-                "private_key": private_key,
-            }
+            user="u", private_key=private_key, account="a", warehouse="w"
         )
 
     @patch("snowflake.connector.connect")

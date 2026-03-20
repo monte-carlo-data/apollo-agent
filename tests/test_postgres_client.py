@@ -20,6 +20,14 @@ _POSTGRES_CREDENTIALS = {
     "db_name": "db1",
 }
 
+_POSTGRES_FLAT_CREDENTIALS = {
+    "host": "www.test.com",
+    "user": "u",
+    "password": "p",
+    "port": "5432",
+    "database": "db1",
+}
+
 
 class PostgresClientTests(TestCase):
     def setUp(self) -> None:
@@ -193,3 +201,51 @@ class PostgresClientTests(TestCase):
             }
         else:
             return value
+
+
+class PostgresCcpPathTests(TestCase):
+    def setUp(self) -> None:
+        self._agent = Agent(LoggingUtils())
+        self._mock_connection = Mock()
+        self._mock_cursor = Mock()
+        self._mock_connection.cursor.return_value = self._mock_cursor
+
+    @patch("psycopg2.connect")
+    def test_ccp_path_resolves_flat_credentials(self, mock_connect):
+        """Flat credentials are resolved by CCP inside _create_proxy_client before reaching PostgresProxyClient."""
+        mock_connect.return_value = self._mock_connection
+        self._mock_cursor.fetchall.return_value = []
+        self._mock_cursor.description.return_value = []
+        self._mock_cursor.rowcount.return_value = 0
+
+        operation_dict = {
+            "trace_id": "ccp-test",
+            "skip_cache": True,
+            "commands": [
+                {"method": "cursor", "store": "_cursor"},
+                {"target": "_cursor", "method": "execute", "args": ["SELECT 1", None]},
+                {"target": "_cursor", "method": "fetchall", "store": "tmp_1"},
+                {"target": "_cursor", "method": "description", "store": "tmp_2"},
+                {"target": "_cursor", "method": "rowcount", "store": "tmp_3"},
+                {
+                    "target": "__utils",
+                    "method": "build_dict",
+                    "kwargs": {
+                        "all_results": {"__reference__": "tmp_1"},
+                        "description": {"__reference__": "tmp_2"},
+                        "rowcount": {"__reference__": "tmp_3"},
+                    },
+                },
+            ],
+        }
+        # CCP runs inside _create_proxy_client — pass flat credentials directly
+        self._agent.execute_operation(
+            "postgres", "run_query", operation_dict, _POSTGRES_FLAT_CREDENTIALS
+        )
+
+        mock_connect.assert_called_once()
+        call_kwargs = mock_connect.call_args.kwargs
+        self.assertEqual("www.test.com", call_kwargs["host"])
+        self.assertEqual("u", call_kwargs["user"])
+        self.assertEqual("db1", call_kwargs["dbname"])  # CCP mapped database → dbname
+        self.assertEqual(1, call_kwargs["keepalives"])
