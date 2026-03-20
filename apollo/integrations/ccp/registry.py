@@ -17,6 +17,9 @@ def _discover() -> None:
     # ── Relational ────────────────────────────────────────────────────
     import apollo.integrations.ccp.defaults.postgres  # noqa: F401
 
+    # ── Distributed query engines ─────────────────────────────────────
+    import apollo.integrations.ccp.defaults.starburst_galaxy  # noqa: F401
+
 
 def _ensure_initialized() -> None:
     global _initialized
