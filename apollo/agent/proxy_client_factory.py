@@ -458,7 +458,9 @@ class ProxyClientFactory:
         cls, connection_type: str, credentials: Optional[Dict], platform: str
     ) -> BaseProxyClient:
         if credentials and CcpRegistry.get(connection_type):
-            credentials = CcpRegistry.resolve(connection_type, credentials)
+            credentials = CcpRegistry.resolve(
+                connection_type, credentials, context={"platform": platform}
+            )
         factory_method = _CLIENT_FACTORY_MAPPING.get(connection_type)
         if factory_method:
             return factory_method(credentials, platform=platform)

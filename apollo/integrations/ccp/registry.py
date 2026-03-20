@@ -16,8 +16,11 @@ def _discover() -> None:
     """
     # ── Relational ────────────────────────────────────────────────────
     import apollo.integrations.ccp.defaults.postgres  # noqa: F401
+    import apollo.integrations.ccp.defaults.mysql  # noqa: F401
+    import apollo.integrations.ccp.defaults.oracle  # noqa: F401
 
     # ── Distributed query engines ─────────────────────────────────────
+    import apollo.integrations.ccp.defaults.hive  # noqa: F401
     import apollo.integrations.ccp.defaults.starburst_galaxy  # noqa: F401
     import apollo.integrations.ccp.defaults.starburst_enterprise  # noqa: F401
 
@@ -43,7 +46,10 @@ class CcpRegistry:
 
     @classmethod
     def resolve(
-        cls, connection_type: str, credentials: dict[str, Any]
+        cls,
+        connection_type: str,
+        credentials: dict[str, Any],
+        context: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """
         Run the registered CCP pipeline for connection_type and return
@@ -61,4 +67,8 @@ class CcpRegistry:
                 stage="registry",
                 message=f"No CCP config registered for '{connection_type}'. Call CcpRegistry.get() before resolve().",
             )
-        return {_ATTR_CONNECT_ARGS: CcpPipeline().execute(config, credentials)}
+        return {
+            _ATTR_CONNECT_ARGS: CcpPipeline().execute(
+                config, credentials, context=context or {}
+            )
+        }
