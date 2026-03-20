@@ -63,24 +63,11 @@ ORACLE_DEFAULT_CCP = CcpConfig(
         name="oracle_client_args",
         schema=OracleClientArgs,
         field_map={
-            # DSN string takes precedence; fall back to individual params
             "dsn": "{{ raw.dsn | default(none) }}",
-            "host": "{{ raw.host | default(none) }}",
-            "port": "{{ raw.port | default(none) }}",
-            "service_name": "{{ raw.service_name | default(none) }}",
-            "sid": "{{ raw.sid | default(none) }}",
-            "protocol": "{{ raw.protocol | default(none) }}",
             "user": "{{ raw.user | default(none) }}",
             "password": "{{ raw.password | default(none) }}",
-            "proxy_user": "{{ raw.proxy_user | default(none) }}",
             # Proxy client default is 1 (keepalive every minute); CCP matches that behaviour
             "expire_time": "{{ raw.expire_time | default(1) }}",
-            "tcp_connect_timeout": "{{ raw.tcp_connect_timeout | default(none) }}",
-            "retry_count": "{{ raw.retry_count | default(none) }}",
-            "retry_delay": "{{ raw.retry_delay | default(none) }}",
-            "ssl_server_dn_match": "{{ raw.ssl_server_dn_match | default(none) }}",
-            "ssl_server_cert_dn": "{{ raw.ssl_server_cert_dn | default(none) }}",
-            "wallet_location": "{{ raw.wallet_location | default(none) }}",
         },
     ),
 )

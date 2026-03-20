@@ -64,13 +64,6 @@ STARBURST_ENTERPRISE_DEFAULT_CCP = CcpConfig(
             "user": "{{ raw.user }}",
             "password": "{{ raw.password }}",
             "http_scheme": "https",
-            "catalog": "{{ raw.catalog | default(none) }}",
-            "schema": "{{ raw.schema | default(none) }}",
-            "source": "{{ raw.source | default(none) }}",
-            "session_properties": "{{ raw.session_properties | default(none) }}",
-            "client_tags": "{{ raw.client_tags | default(none) }}",
-            "request_timeout": "{{ raw.request_timeout | default(none) }}",
-            "max_attempts": "{{ raw.max_attempts | default(none) }}",
         },
     ),
 )
