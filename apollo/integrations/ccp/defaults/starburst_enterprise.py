@@ -16,11 +16,17 @@ STARBURST_ENTERPRISE_DEFAULT_CCP = CcpConfig(
     name="starburst-enterprise-default",
     steps=[
         TransformStep(
-            type="write_ssl_ca_to_file",
-            when="raw.ssl_options is defined and raw.ssl_options.ca_data is defined",
-            input={"ca_data": "{{ raw.ssl_options.ca_data }}"},
-            output={"path": "ssl_ca_path"},
-            field_map={"verify": "{{ derived.ssl_ca_path }}"},
+            type="resolve_ssl_options",
+            when="raw.ssl_options is defined",
+            input={"ssl_options": "{{ raw.ssl_options }}"},
+            output={
+                "ssl_options": "ssl_options",  # derived.ssl_options for condition access
+                "ca_path": "ssl_ca_path",  # derived.ssl_ca_path if ca_data written
+            },
+            field_map={
+                # cert path if ca_data was written, False if disabled, absent otherwise
+                "verify": "{{ derived.ssl_ca_path if derived.ssl_ca_path is defined else (false if derived.ssl_options.disabled else none) }}",
+            },
         )
     ],
     mapper=MapperConfig(
@@ -32,8 +38,6 @@ STARBURST_ENTERPRISE_DEFAULT_CCP = CcpConfig(
             "user": "{{ raw.user }}",
             "password": "{{ raw.password }}",
             "http_scheme": "https",
-            # verify=False when SSL disabled; step field_map overrides this when ca_data is present
-            "verify": "{{ false if (raw.ssl_options is defined and raw.ssl_options.disabled) else none }}",
         },
     ),
 )

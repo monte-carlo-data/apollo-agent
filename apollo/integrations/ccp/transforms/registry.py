@@ -11,6 +11,7 @@ def _discover() -> None:
     """
     import apollo.integrations.ccp.transforms.tmp_file_write  # noqa: F401
     import apollo.integrations.ccp.transforms.write_ssl_ca_to_file  # noqa: F401
+    import apollo.integrations.ccp.transforms.resolve_ssl_options  # noqa: F401
 
 
 def _ensure_initialized() -> None:
