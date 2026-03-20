@@ -19,6 +19,7 @@ def _discover() -> None:
 
     # ── Distributed query engines ─────────────────────────────────────
     import apollo.integrations.ccp.defaults.starburst_galaxy  # noqa: F401
+    import apollo.integrations.ccp.defaults.starburst_enterprise  # noqa: F401
 
 
 def _ensure_initialized() -> None:
