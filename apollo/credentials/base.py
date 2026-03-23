@@ -1,6 +1,3 @@
-from apollo.common.agent.serde import decode_dictionary
-
-
 class BaseCredentialsService:
     """
     Base class for credentials services, provides default behavior of
@@ -9,11 +6,10 @@ class BaseCredentialsService:
 
     def get_credentials(self, credentials: dict) -> dict:
         external_credentials = self._load_external_credentials(credentials)
-        merged = self._merge_connect_args(
+        return self._merge_connect_args(
             incoming_credentials=credentials,
             external_credentials=external_credentials,
         )
-        return decode_dictionary(merged)
 
     def _load_external_credentials(self, credentials: dict) -> dict:
         return credentials
