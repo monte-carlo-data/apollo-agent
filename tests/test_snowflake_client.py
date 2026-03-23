@@ -14,7 +14,6 @@ from apollo.common.agent.constants import (
 )
 from apollo.agent.logging_utils import LoggingUtils
 from apollo.agent.proxy_client_factory import ProxyClientFactory
-from apollo.credentials.base import BaseCredentialsService
 
 _SF_CREDENTIALS = {"user": "u", "password": "p", "account": "a", "warehouse": "w"}
 
@@ -31,9 +30,9 @@ class SnowflakeClientTests(TestCase):
         mock_connect.return_value = self._mock_connection
 
         private_key = b"abc"
-        # Credentials arrive from the wire in encoded form; BaseCredentialsService
-        # decodes them before they reach the factory.
-        raw_credentials = {
+        # Credentials arrive from the wire in encoded form; the factory decodes
+        # them via decode_dictionary before creating the proxy client.
+        credentials = {
             "connect_args": {
                 "user": "u",
                 "private_key": {
@@ -44,7 +43,6 @@ class SnowflakeClientTests(TestCase):
                 "warehouse": "w",
             },
         }
-        credentials = BaseCredentialsService().get_credentials(raw_credentials)
         client = ProxyClientFactory.get_proxy_client(
             "snowflake", credentials, True, "AWS"
         )

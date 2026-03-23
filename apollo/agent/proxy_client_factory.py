@@ -8,6 +8,7 @@ from typing import Optional, Dict
 
 from apollo.common.agent.env_vars import CLIENT_CACHE_EXPIRATION_SECONDS_ENV_VAR
 from apollo.common.agent.models import AgentError
+from apollo.common.agent.serde import decode_dictionary
 from apollo.integrations.base_proxy_client import BaseProxyClient
 from apollo.integrations.ccp.registry import CcpRegistry
 from apollo.integrations.db.salesforce_data_cloud_proxy_client import (
@@ -457,6 +458,8 @@ class ProxyClientFactory:
     def _create_proxy_client(
         cls, connection_type: str, credentials: Optional[Dict], platform: str
     ) -> BaseProxyClient:
+        if credentials:
+            credentials = decode_dictionary(credentials)
         if credentials and CcpRegistry.get(connection_type):
             credentials = CcpRegistry.resolve(
                 connection_type, credentials, context={"platform": platform}
