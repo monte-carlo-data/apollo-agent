@@ -17,10 +17,10 @@
 ```
 ~/.claude/skills/research-integration/
   SKILL.md          # Main skill: frontmatter, flow, constants, synthesis + writer instructions
-  subagents.md      # Heavy reference: full web research + codebase agent prompt templates
+  subagents.md      # Heavy reference: web research + codebase + prototype agent prompt templates
 ```
 
-**Why split?** The two research agent prompts each contain full instructions + output schemas (~80–100 lines each). Keeping them in a separate file respects the superpowers skill token budget (<500 words for SKILL.md) while keeping the full detail available for subagent dispatch. The synthesis and writer agent instructions are shorter (<60 lines each) and stay inline in SKILL.md.
+**Why split?** The three research/prototype agent prompts each contain full instructions + output schemas (~80–100 lines each). Keeping them in a separate file respects the superpowers skill token budget (<500 words for SKILL.md) while keeping the full detail available for subagent dispatch. The synthesis and writer agent instructions are shorter (<60 lines each) and stay inline in SKILL.md.
 
 ---
 
@@ -178,11 +178,20 @@ Do not proceed without the template.
 
 Store the template's section list and table schemas — you will include it in the writer briefing.
 
+**Credential collection:** Ask the user for connection credentials before dispatching research subagents:
+
+> "To run a live prototype connection test, please provide credentials for [Integration Name].
+> You can paste them here (e.g., `host=foo user=bar password=xxx`) or type `skip` to proceed without a live test.
+> If skipped, the prototype will write client code conceptually and mark all live results [PROTOTYPE NOT TESTED]."
+
+Credentials can also be passed inline at invocation: `/research-integration Firebolt -- host=foo user=bar`.
+Store credentials for use by the Prototype Agent in Step 2b. If skipped, store `credentials: null`.
+
 ---
 
 ## Step 2: Dispatch parallel research subagents
 
-After template fetch succeeds, dispatch both research subagents simultaneously.
+After template fetch and credential collection, dispatch both research subagents simultaneously.
 **REQUIRED SUB-SKILL:** Use superpowers:dispatching-parallel-agents.
 
 Full subagent prompt templates are in `subagents.md` (same directory as this skill file).
@@ -190,7 +199,17 @@ Full subagent prompt templates are in `subagents.md` (same directory as this ski
 - **Web Research Agent** — use the "Web Research Agent Prompt" template from subagents.md
 - **Codebase Pattern Agent** — use the "Codebase Pattern Agent Prompt" template from subagents.md
 
-Wait for both to return before proceeding.
+Wait for both to return before proceeding to Step 2b.
+
+---
+
+## Step 2b: Dispatch Prototype Agent
+
+After both research subagents return, dispatch the Prototype Agent (sequentially — it needs their findings).
+Use the "Prototype Agent Prompt" template from subagents.md.
+Pass: web findings, codebase findings, credentials (or null).
+
+Wait for the Prototype Agent to return before proceeding to Step 3.
 ```
 
 - [ ] **Step 2: Verify the flow section reads cleanly**
@@ -374,6 +393,114 @@ Expected: `2`
 
 ---
 
+## Task 4.5: Write subagents.md — prototype agent prompt template
+
+**Files:**
+- Modify: `~/.claude/skills/research-integration/subagents.md`
+
+- [ ] **Step 1: Append the prototype agent prompt to subagents.md**
+
+```markdown
+---
+
+## Prototype Agent Prompt
+
+Use this as the complete prompt when dispatching the Prototype Agent.
+Replace all `{{VARIABLE}}` placeholders before dispatching.
+
+---
+
+You are building a feasibility prototype for a new **{{INTEGRATION_NAME}}** integration
+in the Monte Carlo apollo-agent.
+
+**Web research findings:**
+```json
+{{WEB_FINDINGS_JSON}}
+```
+
+**Codebase pattern findings (closest analog):**
+```json
+{{CODEBASE_FINDINGS_JSON}}
+```
+
+**Credentials provided:** {{CREDENTIALS_OR_NULL}}
+
+---
+
+## Your tasks
+
+### 1. Write the prototype client
+
+Create `{{APOLLO_AGENT_ROOT}}/docs/superpowers/prototypes/{{DATE}}-{{INTEGRATION_SLUG}}-prototype.py`
+
+Write a minimal `{{IntegrationName}}ProxyClient` class following the closest analog's pattern
+from the codebase findings. Use the driver identified in the web research findings.
+
+The file should contain:
+- The import statements needed
+- A minimal class with `__init__` that accepts `connect_args: dict`
+- A `test_connection()` method that opens a connection
+- A method for each metadata query below
+
+Use Python. Follow the patterns from the analog integration exactly where possible.
+
+### 2. Live connection test (skip if credentials is null)
+
+If credentials were provided, attempt a live connection using them.
+Record: success or failure, and the exact error if failed.
+
+### 3. Metadata query tests (skip individual queries if connection failed)
+
+For each metadata type below, run the query proposed in the web research findings.
+If no query was proposed, write the most reasonable query based on vendor docs and try it.
+
+Run each query and record:
+- The exact SQL or API call used
+- Status: success / failed / skipped
+- Sample output: first 3–5 rows (or the error message)
+
+Metadata types to test:
+- **tables**: list of accessible tables/schemas/databases
+- **columns**: column names, types, nullable for a sample table
+- **query_logs**: recent queries if a log source was identified
+- **volume**: approximate row count for a sample table
+- **freshness**: last modified timestamp for a sample table
+
+### 4. Return findings
+
+Return a JSON object:
+
+```json
+{
+  "connection_status": "success|failed|skipped",
+  "connection_error": "... or null",
+  "prototype_file_path": "...",
+  "credential_shape_validated": {"key": "type"},
+  "driver_used": "...",
+  "metadata_query_results": {
+    "tables":     {"query": "...", "status": "success|failed|skipped", "sample": [...], "error": "... or null"},
+    "columns":    {"query": "...", "status": "success|failed|skipped", "sample": [...], "error": "... or null"},
+    "query_logs": {"query": "...", "status": "success|failed|skipped", "sample": [...], "error": "... or null"},
+    "volume":     {"query": "...", "status": "success|failed|skipped", "sample": [...], "error": "... or null"},
+    "freshness":  {"query": "...", "status": "success|failed|skipped", "sample": [...], "error": "... or null"}
+  },
+  "issues_discovered": ["..."]
+}
+```
+
+Also ensure the prototype file was written to disk at `prototype_file_path`.
+```
+
+- [ ] **Step 2: Verify all three agent prompts are present**
+
+```bash
+grep -c "Agent Prompt" ~/.claude/skills/research-integration/subagents.md
+```
+
+Expected: `3`
+
+---
+
 ## Task 5: Write SKILL.md — synthesis agent instructions
 
 **Files:**
@@ -386,12 +513,12 @@ Expected: `2`
 
 ## Step 3: Synthesis agent
 
-You (the synthesis agent) now hold all research findings. Own this context — do not
-dispatch another subagent just to distill or summarize.
+You (the synthesis agent) now hold all research findings including prototype results.
+Own this context — do not dispatch another subagent just to distill or summarize.
 
 ### Distill
 
-Compress both agent findings into a working brief. Use this conflict priority rule:
+Compress web, codebase, and prototype findings into a working brief. Use this conflict priority rule:
 - **Web research governs** what the vendor supports (auth, APIs, system views)
 - **Codebase patterns govern** how Monte Carlo implements it (proxy client shape, CCP config, DC plugin layout)
 - **Conflicts that span both** (e.g., a vendor auth type no analog uses) → surface as a question in the next step
@@ -421,8 +548,9 @@ Present a human-readable summary then ask targeted questions ONLY for things you
 >
 > - **Drivers:** [summary]
 > - **Auth:** [summary]
-> - **Metadata available:** tables ✓, columns ✓, query logs [yes/no/partial], lineage [yes/no], volume ✓, freshness [yes/no]
-> - **Estimated tier:** [Bronze/Silver/Gold/Platinum] — [one-line rationale]
+> - **Prototype:** [connection succeeded/failed/skipped] — [one-line summary of metadata query results]
+> - **Metadata confirmed:** tables ✓/✗, columns ✓/✗, query logs ✓/✗/skipped, lineage ✓/✗, volume ✓/✗, freshness ✓/✗
+> - **Estimated tier:** [Bronze/Silver/Gold/Platinum] — [one-line rationale based on confirmed metadata]
 > - **Closest analog:** [integration name] ([similarity reason])
 >
 > **Questions before I write the SDD (max 5):**
@@ -455,6 +583,7 @@ Assemble the complete briefing for the writer agent:
   "tier_rationale": "...",
   "web_findings": { ...web agent output... },
   "codebase_findings": { ...codebase agent output... },
+  "prototype_results": { ...prototype agent output... },
   "human_answers": [{"question": "...", "answer": "..."}],
   "follow_up_findings": { ...or null... },
   "template_structure": { ...sections from initialization... },
@@ -506,10 +635,13 @@ The Notion template is authoritative — follow its section list and order exact
 **For each section:**
 - Write concrete, specific content based on the briefing. No placeholder text.
 - Fill all tables with real data from the findings.
+- Use `prototype_results` as ground truth: confirmed queries get real example SQL
+  and sample output; failed/skipped queries are flagged accurately.
 - If the briefing has an `unresolved_gaps` entry that affects a section,
   mark that content: `[NEEDS REVIEW: <reason from gap>]`
 - Cross-reference prior sections naturally (e.g., normalization should reference
   the exact extraction sources identified in the Data Extraction section).
+- In the Architecture section, reference the prototype file path as a starting point.
 
 **Effort and tier estimation (Rollout section):**
 - Use `briefing.estimated_tier` as the starting point

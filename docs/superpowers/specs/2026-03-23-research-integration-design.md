@@ -40,6 +40,7 @@ Examples:
  │  Skill (orchestrator prompt)                        │
  │  • Parses input                                     │
  │  • Fetches Notion SDD template (initialization)     │
+ │  • Asks user for credentials (optional)             │
  │  • Dispatches 2 parallel research subagents         │
  └─────────────┬───────────────────┬───────────────────┘
                │                   │
@@ -51,6 +52,14 @@ Examples:
             └────────────────────┘
                         │
                         ▼
+           ┌────────────────────────┐
+           │  Prototype Agent       │
+           │  write client code +   │
+           │  live connection test  │
+           │  + metadata queries    │
+           └──────────┬─────────────┘
+                      │
+                      ▼
            ┌────────────────────────┐
            │   Synthesis Agent      │
            │  distill → Q&A →       │
@@ -85,6 +94,8 @@ Examples:
 **Failure behavior:** If the template fetch fails (API error, auth failure, page unavailable), the skill halts immediately with a clear error message. Do not proceed to research with no template — the writer agent cannot produce a valid SDD without it.
 
 The fetched template structure (sections, table schemas, section prompts) is held by the orchestrator and included in the writer briefing compiled in Phase 2 Step 4.
+
+**Credential collection:** After the template fetch, the skill asks the user for connection credentials before dispatching research subagents. Credentials can also be passed inline: `/research-integration Firebolt -- host=foo user=bar password=xxx`. If the user has no test credentials, they can skip — the prototype agent will write client code conceptually and mark all live test results `[PROTOTYPE NOT TESTED]`.
 
 ---
 
@@ -163,9 +174,55 @@ Two subagents are dispatched simultaneously after the template is successfully f
 
 ---
 
+## Phase 1.5: Prototype Agent
+
+Runs sequentially after Phase 1 (needs driver and auth findings from web research), before synthesis. Builds a minimal working client and validates connectivity and metadata queries against the real data source.
+
+**Input:** Web research findings (drivers, auth, metadata sources) + codebase findings (analog proxy client structure) + credentials (if provided).
+
+**Outputs:**
+1. A prototype client file written to `<APOLLO_AGENT_ROOT>/docs/superpowers/prototypes/YYYY-MM-DD-<name>-prototype.py`
+2. Structured test results
+
+**If no credentials provided:** Writes the client code conceptually (following the closest analog pattern), marks all live test results `[PROTOTYPE NOT TESTED]`, and returns immediately.
+
+**If credentials provided, the agent:**
+1. Writes a minimal `<Name>ProxyClient` class following the closest analog's pattern (e.g., `DatabaseProxyClient` subclass for SQL sources), using the driver identified by web research
+2. Attempts live connection using provided credentials
+3. Runs each proposed metadata query from web research findings:
+   - Tables (list of accessible tables/schemas)
+   - Columns (column metadata for a sample table)
+   - Query logs (if a source was identified)
+   - Volume (row count for a sample table)
+   - Freshness (last modified time for a sample table)
+4. For each query: records the exact SQL/API call used, whether it succeeded, a sample of the result (first 3–5 rows), and any error message
+
+**Returns structured findings:**
+```json
+{
+  "connection_status": "success|failed|skipped",
+  "connection_error": "... or null",
+  "prototype_file_path": "...",
+  "credential_shape_validated": {"key": "type"},
+  "metadata_query_results": {
+    "tables":    {"query": "...", "status": "success|failed|skipped", "sample": [...], "error": "..."},
+    "columns":   {"query": "...", "status": "success|failed|skipped", "sample": [...], "error": "..."},
+    "query_logs":{"query": "...", "status": "success|failed|skipped", "sample": [...], "error": "..."},
+    "volume":    {"query": "...", "status": "success|failed|skipped", "sample": [...], "error": "..."},
+    "freshness": {"query": "...", "status": "success|failed|skipped", "sample": [...], "error": "..."}
+  },
+  "issues_discovered": ["..."],
+  "driver_used": "..."
+}
+```
+
+**Failure behavior:** If connection fails (wrong credentials, network error, unsupported driver), the agent records the error, marks all query results as `failed`, and returns. The synthesis agent surfaces the failure to the user at the Q&A checkpoint rather than halting.
+
+---
+
 ## Phase 2: Synthesis Agent
 
-Receives findings from both research agents plus the template structure fetched during initialization. Owns the complete context from this point forward.
+Receives findings from both research agents, the prototype agent results, and the template structure fetched during initialization. Owns the complete context from this point forward.
 
 ### Step 1: Distill
 
@@ -179,7 +236,8 @@ Compresses research into a working brief. Resolves conflicts between web finding
 
 Presents a human-readable summary to the user:
 - What it found: connection options, auth methods, available metadata sources, nearest analog integration
-- Estimated integration tier (Bronze/Silver/Gold/Platinum) based on available metadata APIs
+- Prototype results summary: which metadata queries succeeded/failed, any connection issues
+- Estimated integration tier (Bronze/Silver/Gold/Platinum) based on confirmed (not just documented) metadata availability
 - A short list of **targeted questions** — maximum 5, prioritized as follows:
   1. Questions that would change the tier estimate
   2. Questions that affect connection/auth (the most implementation-critical section)
@@ -209,6 +267,7 @@ Assembles the complete structured document passed to the writer agent:
   "tier_rationale": "...",
   "web_findings": { ...Agent 1 output... },
   "codebase_findings": { ...Agent 2 output... },
+  "prototype_results": { ...Prototype Agent output... },
   "human_answers": [
     {"question": "...", "answer": "..."}
   ],
@@ -235,7 +294,9 @@ For each section:
 - Fills content with concrete, specific findings — no placeholder text
 - Populates structured tables (data extraction, component summary, design decisions, integration tiers) with real data
 - Marks uncertain or unresolved content with `[NEEDS REVIEW: <reason>]` rather than guessing
+- Uses prototype results as ground truth: confirmed queries get real example SQL and sample output; failed queries are noted accurately rather than assumed to work
 - Cross-references prior sections where relevant (e.g., normalization references extraction sources identified earlier)
+- Includes the prototype client code path in the Architecture section as a starting point reference
 
 ### Effort and tier estimation
 
@@ -269,6 +330,8 @@ Estimates expressed as ranges with explicit assumptions stated, not point estima
 - `APOLLO_AGENT_ROOT` — Absolute path to the local apollo-agent repo checkout
 - `DATA_COLLECTOR_ROOT` — Absolute path to the local data-collector repo checkout
 - `MONOLITH_ROOT` — Absolute path to the local monolith-django repo checkout
+
+Prototype files are written to `<APOLLO_AGENT_ROOT>/docs/superpowers/prototypes/` (directory created on first use).
 
 **Skill file contains:**
 - Trigger pattern and input parsing instructions
