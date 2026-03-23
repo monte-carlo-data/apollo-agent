@@ -65,7 +65,9 @@ MYSQL_DEFAULT_CCP = CcpConfig(
                 "mechanism": "{{ raw.ssl_options.mechanism | default('url') }}",
             },
             output={"path": "ssl_ca_path"},
-            field_map={"ssl": "{{ {'ca': derived.ssl_ca_path} }}"},
+            field_map={
+                "ssl": "{{ {'ca': derived.ssl_ca_path} if derived.ssl_ca_path is defined else none }}"
+            },
         ),
         # Inline cert data: build SSLContext from ca_data / cert_data / key_data
         TransformStep(

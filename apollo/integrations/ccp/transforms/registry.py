@@ -12,6 +12,13 @@ def _discover() -> None:
     import apollo.integrations.ccp.transforms.tmp_file_write  # noqa: F401
     import apollo.integrations.ccp.transforms.resolve_ssl_options  # noqa: F401
     import apollo.integrations.ccp.transforms.fetch_remote_file  # noqa: F401
+    import apollo.integrations.ccp.transforms.load_private_key  # noqa: F401
+    import apollo.integrations.ccp.transforms.oauth  # noqa: F401
+    import apollo.integrations.ccp.transforms.resolve_presto_auth  # noqa: F401
+    import apollo.integrations.ccp.transforms.write_ini_file  # noqa: F401
+    import apollo.integrations.ccp.transforms.generate_jwt  # noqa: F401
+    import apollo.integrations.ccp.transforms.resolve_msal_token  # noqa: F401
+    import apollo.integrations.ccp.transforms.resolve_databricks_oauth  # noqa: F401
 
 
 def _ensure_initialized() -> None:

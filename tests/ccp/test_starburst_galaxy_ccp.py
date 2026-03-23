@@ -28,6 +28,54 @@ class TestStarburstGalaxyCcp(TestCase):
         self.assertEqual("secret", ca["password"])
         self.assertEqual("https", ca["http_scheme"])
 
+    def test_resolve_flat_no_ssl_options(self):
+        result = CcpRegistry.resolve(
+            "starburst-galaxy",
+            {
+                "host": "example.trino.galaxy.starburst.io",
+                "port": "443",
+                "user": "service@example.galaxy.starburst.io",
+                "password": "secret",
+            },
+        )
+        ca = result["connect_args"]
+        self.assertNotIn("verify", ca)
+        self.assertNotIn("ssl_options", ca)
+
+    def test_resolve_flat_ssl_disabled(self):
+        result = CcpRegistry.resolve(
+            "starburst-galaxy",
+            {
+                "host": "example.trino.galaxy.starburst.io",
+                "port": "443",
+                "user": "service@example.galaxy.starburst.io",
+                "password": "secret",
+                "ssl_options": {"disabled": True},
+            },
+        )
+        ca = result["connect_args"]
+        self.assertIs(False, ca["verify"])
+        self.assertNotIn("ssl_options", ca)
+
+    def test_resolve_flat_ssl_ca_data(self):
+        result = CcpRegistry.resolve(
+            "starburst-galaxy",
+            {
+                "host": "example.trino.galaxy.starburst.io",
+                "port": "443",
+                "user": "service@example.galaxy.starburst.io",
+                "password": "secret",
+                "ssl_options": {
+                    "ca_data": "-----BEGIN CERTIFICATE-----\nFAKE\n-----END CERTIFICATE-----\n"
+                },
+            },
+        )
+        ca = result["connect_args"]
+        self.assertIn("verify", ca)
+        self.assertIsInstance(ca["verify"], str)
+        self.assertTrue(ca["verify"].endswith("_ssl_ca.pem"))
+        self.assertNotIn("ssl_options", ca)
+
     def test_resolve_legacy_starburst_galaxy_credentials_unchanged(self):
         legacy = {
             "connect_args": {

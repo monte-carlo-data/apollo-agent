@@ -60,10 +60,12 @@ STARBURST_ENTERPRISE_DEFAULT_CCP = CcpConfig(
         schema=StarburstEnterpriseClientArgs,
         field_map={
             "host": "{{ raw.host }}",
-            "port": "{{ raw.port | int }}",  # DC input has port as string e.g. "8443"
+            "port": "{{ raw.port }}",  # DC input has port as string e.g. "8443"; mapper coerces str→int
             "user": "{{ raw.user }}",
             "password": "{{ raw.password }}",
             "http_scheme": "https",
+            "catalog": "{{ raw.catalog | default(none) }}",
+            "schema": "{{ raw.schema | default(none) }}",
         },
     ),
 )
