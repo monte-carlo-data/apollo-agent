@@ -94,8 +94,14 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
             tables = [
                 GenieTable(
                     name=table["name"],
+                    display_name=table.get("displayName"),
+                    category=table.get("category"),
                     fields=[
-                        Field(name=field["name"], type=field["type"])
+                        Field(
+                            name=field["name"],
+                            display_name=field.get("displayName", field["name"]),
+                            type=field["type"],
+                        )
                         for field in table.get("fields", [])
                     ],
                 )

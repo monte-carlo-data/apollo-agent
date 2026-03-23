@@ -260,6 +260,22 @@ class SalesforceDataCloudProxyClientTests(TestCase):
         query_params = parse_qs(urlparse(request.url).query)
         self.assertEqual(query_params.get("dataspace"), [dataspace_name])
 
+        # Verify the serialized schema matches the non-dataspace path (display_name,
+        # category on tables; displayName on fields) so both paths return consistent data.
+        for mock_table in self.metadata_response:
+            table = next(t for t in tables if t.get("name") == mock_table["name"])
+            self.assertEqual(table.get("display_name"), mock_table.get("displayName"))
+            self.assertEqual(table.get("category"), mock_table.get("category"))
+            for mock_field in mock_table["fields"]:
+                field = next(
+                    f for f in table["fields"] if f.get("name") == mock_field["name"]
+                )
+                self.assertEqual(field.get("type"), mock_field["type"])
+                self.assertEqual(
+                    field.get("displayName"),
+                    mock_field.get("displayName", mock_field["name"]),
+                )
+
     def test_sql_query_execution(self):
         sql_query = "SELECT Name, Status, CreatedDate FROM Account LIMIT 10"
         commands = [
