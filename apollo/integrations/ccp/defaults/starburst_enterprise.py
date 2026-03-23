@@ -70,6 +70,3 @@ STARBURST_ENTERPRISE_DEFAULT_CCP = CcpConfig(
     ),
 )
 
-from apollo.integrations.ccp.registry import CcpRegistry  # noqa: E402
-
-CcpRegistry.register("starburst-enterprise", STARBURST_ENTERPRISE_DEFAULT_CCP)

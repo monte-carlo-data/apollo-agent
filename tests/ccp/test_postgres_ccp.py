@@ -2,18 +2,18 @@
 import os
 from unittest import TestCase
 
+from apollo.integrations.ccp.defaults.postgres import POSTGRES_DEFAULT_CCP
+from apollo.integrations.ccp.pipeline import CcpPipeline
 from apollo.integrations.ccp.registry import CcpRegistry
 
 
 class TestPostgresCcp(TestCase):
-    def test_postgres_registered(self):
-        config = CcpRegistry.get("postgres")
-        self.assertIsNotNone(config)
-        self.assertEqual("postgres-default", config.name)
+    def test_not_registered(self):
+        self.assertIsNone(CcpRegistry.get("postgres"))
 
     def test_resolve_flat_postgres_credentials_applies_ccp(self):
-        result = CcpRegistry.resolve(
-            "postgres",
+        result = CcpPipeline().execute(
+            POSTGRES_DEFAULT_CCP,
             {
                 "host": "db.example.com",
                 "port": 5432,
@@ -22,15 +22,14 @@ class TestPostgresCcp(TestCase):
                 "password": "secret",
             },
         )
-        self.assertIn("connect_args", result)
-        self.assertEqual("db.example.com", result["connect_args"]["host"])
-        self.assertEqual("mydb", result["connect_args"]["dbname"])
-        self.assertNotIn("sslmode", result["connect_args"])
-        self.assertNotIn("sslrootcert", result["connect_args"])
+        self.assertEqual("db.example.com", result["host"])
+        self.assertEqual("mydb", result["dbname"])
+        self.assertNotIn("sslmode", result)
+        self.assertNotIn("sslrootcert", result)
 
     def test_resolve_flat_postgres_with_explicit_ssl_mode(self):
-        result = CcpRegistry.resolve(
-            "postgres",
+        result = CcpPipeline().execute(
+            POSTGRES_DEFAULT_CCP,
             {
                 "host": "db.example.com",
                 "port": 5432,
@@ -40,11 +39,11 @@ class TestPostgresCcp(TestCase):
                 "ssl_mode": "verify-full",
             },
         )
-        self.assertEqual("verify-full", result["connect_args"]["sslmode"])
+        self.assertEqual("verify-full", result["sslmode"])
 
     def test_resolve_flat_postgres_with_ssl_ca_data(self):
-        result = CcpRegistry.resolve(
-            "postgres",
+        result = CcpPipeline().execute(
+            POSTGRES_DEFAULT_CCP,
             {
                 "host": "db.example.com",
                 "port": 5432,
@@ -56,7 +55,7 @@ class TestPostgresCcp(TestCase):
                 },
             },
         )
-        path = result["connect_args"]["sslrootcert"]
+        path = result["sslrootcert"]
         self.assertTrue(os.path.exists(path))
-        self.assertEqual("require", result["connect_args"]["sslmode"])
+        self.assertEqual("require", result["sslmode"])
         os.unlink(path)

@@ -64,6 +64,3 @@ DB2_DEFAULT_CCP = CcpConfig(
     ),
 )
 
-from apollo.integrations.ccp.registry import CcpRegistry  # noqa: E402
-
-CcpRegistry.register("db2", DB2_DEFAULT_CCP)

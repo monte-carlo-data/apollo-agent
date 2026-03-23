@@ -44,6 +44,3 @@ SALESFORCE_CRM_DEFAULT_CCP = CcpConfig(
     ),
 )
 
-from apollo.integrations.ccp.registry import CcpRegistry  # noqa: E402
-
-CcpRegistry.register("salesforce-crm", SALESFORCE_CRM_DEFAULT_CCP)

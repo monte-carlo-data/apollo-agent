@@ -12,28 +12,10 @@ _initialized: bool = False
 def _discover() -> None:
     """Import all CCP default modules to trigger registration.
 
-    Called once on first registry access. Add new connector imports here.
+    Called once on first registry access. Add new connector imports here as
+    their proxy clients are updated in Phase 2 to read from connect_args.
     """
-    # ── Relational ────────────────────────────────────────────────────
-    import apollo.integrations.ccp.defaults.postgres  # noqa: F401
-    import apollo.integrations.ccp.defaults.redshift  # noqa: F401
-    import apollo.integrations.ccp.defaults.mysql  # noqa: F401
-    import apollo.integrations.ccp.defaults.sap_hana  # noqa: F401
-    import apollo.integrations.ccp.defaults.salesforce_crm  # noqa: F401
-    import apollo.integrations.ccp.defaults.dremio  # noqa: F401
-    import apollo.integrations.ccp.defaults.oracle  # noqa: F401
-    import apollo.integrations.ccp.defaults.snowflake  # noqa: F401
-    import apollo.integrations.ccp.defaults.teradata  # noqa: F401
-    import apollo.integrations.ccp.defaults.db2  # noqa: F401
-    import apollo.integrations.ccp.defaults.bigquery  # noqa: F401
-
-    # ── Distributed query engines ─────────────────────────────────────
-    import apollo.integrations.ccp.defaults.hive  # noqa: F401
-    import apollo.integrations.ccp.defaults.starburst_galaxy  # noqa: F401
-    import apollo.integrations.ccp.defaults.starburst_enterprise  # noqa: F401
-
-    # ── Databricks ────────────────────────────────────────────────────
-    import apollo.integrations.ccp.defaults.databricks  # noqa: F401
+    pass
 
 
 def _ensure_initialized() -> None:

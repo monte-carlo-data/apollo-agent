@@ -85,6 +85,3 @@ SNOWFLAKE_DEFAULT_CCP = CcpConfig(
     ),
 )
 
-from apollo.integrations.ccp.registry import CcpRegistry  # noqa: E402
-
-CcpRegistry.register("snowflake", SNOWFLAKE_DEFAULT_CCP)

@@ -52,6 +52,3 @@ HIVE_DEFAULT_CCP = CcpConfig(
     ),
 )
 
-from apollo.integrations.ccp.registry import CcpRegistry  # noqa: E402
-
-CcpRegistry.register("hive", HIVE_DEFAULT_CCP)

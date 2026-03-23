@@ -55,9 +55,8 @@ DATABRICKS_DEFAULT_CCP = CcpConfig(
     ),
 )
 
-from apollo.integrations.ccp.registry import CcpRegistry  # noqa: E402
-
-CcpRegistry.register("databricks", DATABRICKS_DEFAULT_CCP)
+# Not registered: proxy client reads credentials flat and calls the SDK itself.
+# Phase 2 will register when DatabricksSqlWarehouseProxyClient reads from connect_args.
 
 
 class DatabricksRestClientArgs(TypedDict):
@@ -92,4 +91,5 @@ DATABRICKS_REST_DEFAULT_CCP = CcpConfig(
     ),
 )
 
-CcpRegistry.register("databricks-rest", DATABRICKS_REST_DEFAULT_CCP)
+# Not registered: proxy client reads credentials flat and resolves the token internally.
+# Phase 2 will register when DatabricksRestProxyClient reads from connect_args.

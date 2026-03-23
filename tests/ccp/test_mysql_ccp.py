@@ -2,18 +2,18 @@ import os
 from unittest import TestCase
 from unittest.mock import patch
 
+from apollo.integrations.ccp.defaults.mysql import MYSQL_DEFAULT_CCP
+from apollo.integrations.ccp.pipeline import CcpPipeline
 from apollo.integrations.ccp.registry import CcpRegistry
 
 
 class TestMysqlCcp(TestCase):
-    def test_mysql_registered(self):
-        config = CcpRegistry.get("mysql")
-        self.assertIsNotNone(config)
-        self.assertEqual("mysql-default", config.name)
+    def test_not_registered(self):
+        self.assertIsNone(CcpRegistry.get("mysql"))
 
     def test_resolve_flat_mysql_no_ssl(self):
-        result = CcpRegistry.resolve(
-            "mysql",
+        result = CcpPipeline().execute(
+            MYSQL_DEFAULT_CCP,
             {
                 "host": "db.example.com",
                 "port": "3306",
@@ -21,13 +21,11 @@ class TestMysqlCcp(TestCase):
                 "password": "secret",
             },
         )
-        self.assertIn("connect_args", result)
-        args = result["connect_args"]
-        self.assertEqual("db.example.com", args["host"])
-        self.assertEqual(3306, args["port"])  # NativeEnvironment coerces "3306" → int
-        self.assertEqual("admin", args["user"])
-        self.assertEqual("secret", args["password"])
-        self.assertNotIn("ssl", args)
+        self.assertEqual("db.example.com", result["host"])
+        self.assertEqual(3306, result["port"])  # NativeEnvironment coerces "3306" → int
+        self.assertEqual("admin", result["user"])
+        self.assertEqual("secret", result["password"])
+        self.assertNotIn("ssl", result)
 
     @patch("apollo.integrations.ccp.transforms.fetch_remote_file.urlretrieve")
     def test_resolve_mysql_remote_ca_url(self, mock_urlretrieve):
@@ -39,8 +37,8 @@ class TestMysqlCcp(TestCase):
 
         mock_urlretrieve.side_effect = fake_retrieve
 
-        result = CcpRegistry.resolve(
-            "mysql",
+        result = CcpPipeline().execute(
+            MYSQL_DEFAULT_CCP,
             {
                 "host": "db.example.com",
                 "port": "3306",
@@ -50,9 +48,8 @@ class TestMysqlCcp(TestCase):
             },
         )
 
-        args = result["connect_args"]
-        self.assertIn("ssl", args)
-        ssl_arg = args["ssl"]
+        self.assertIn("ssl", result)
+        ssl_arg = result["ssl"]
         self.assertIsInstance(ssl_arg, dict)
         self.assertIn("ca", ssl_arg)
         cert_path = ssl_arg["ca"]
@@ -66,8 +63,8 @@ class TestMysqlCcp(TestCase):
         """ssl_options with ca_data (no ca URL) triggers resolve_ssl_options; ssl=SSLContext."""
         import ssl
 
-        result = CcpRegistry.resolve(
-            "mysql",
+        result = CcpPipeline().execute(
+            MYSQL_DEFAULT_CCP,
             {
                 "host": "db.example.com",
                 "port": "3306",
@@ -79,12 +76,5 @@ class TestMysqlCcp(TestCase):
             },
         )
 
-        args = result["connect_args"]
-        self.assertIn("ssl", args)
-        self.assertIsInstance(args["ssl"], ssl.SSLContext)
-
-    def test_resolve_legacy_mysql_credentials_unchanged(self):
-        legacy = {
-            "connect_args": {"host": "h", "port": "3306", "user": "u", "password": "p"}
-        }
-        self.assertEqual(legacy, CcpRegistry.resolve("mysql", legacy))
+        self.assertIn("ssl", result)
+        self.assertIsInstance(result["ssl"], ssl.SSLContext)

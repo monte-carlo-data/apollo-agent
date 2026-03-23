@@ -39,8 +39,8 @@ _SQL_AZURE_OAUTH_CREDS = {
 
 
 class TestDatabricksSqlCcp(TestCase):
-    def test_registered(self):
-        self.assertIsNotNone(CcpRegistry.get("databricks"))
+    def test_not_registered(self):
+        self.assertIsNone(CcpRegistry.get("databricks"))
 
     # ── PAT auth ──────────────────────────────────────────────────────
 
@@ -111,22 +111,10 @@ class TestDatabricksSqlCcp(TestCase):
         self.assertIn("credentials_provider", args)
         self.assertTrue(callable(args["credentials_provider"]))
 
-    # ── Legacy passthrough ────────────────────────────────────────────
-
-    def test_legacy_connect_args_passthrough(self):
-        legacy = {
-            "connect_args": {
-                "server_hostname": "h",
-                "http_path": "/p",
-                "access_token": "t",
-            }
-        }
-        self.assertEqual(legacy, CcpRegistry.resolve("databricks", legacy))
-
 
 class TestDatabricksRestCcp(TestCase):
-    def test_registered(self):
-        self.assertIsNotNone(CcpRegistry.get("databricks-rest"))
+    def test_not_registered(self):
+        self.assertIsNone(CcpRegistry.get("databricks-rest"))
 
     # ── PAT auth ──────────────────────────────────────────────────────
 
@@ -187,14 +175,3 @@ class TestDatabricksRestCcp(TestCase):
             "azure_workspace_resource_id",
         ):
             self.assertNotIn(field, args, f"expected {field!r} absent")
-
-    # ── Legacy passthrough ────────────────────────────────────────────
-
-    def test_legacy_connect_args_passthrough(self):
-        legacy = {
-            "connect_args": {
-                "databricks_workspace_url": "https://w",
-                "databricks_token": "t",
-            }
-        }
-        self.assertEqual(legacy, CcpRegistry.resolve("databricks-rest", legacy))

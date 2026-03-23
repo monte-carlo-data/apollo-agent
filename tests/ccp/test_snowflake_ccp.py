@@ -8,15 +8,13 @@ from cryptography.hazmat.primitives.serialization import (
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
+from apollo.integrations.ccp.defaults.snowflake import SNOWFLAKE_DEFAULT_CCP
+from apollo.integrations.ccp.pipeline import CcpPipeline
 from apollo.integrations.ccp.registry import CcpRegistry
 
 
 def _resolve(credentials: dict) -> dict:
-    return CcpRegistry.resolve("snowflake", credentials)
-
-
-def _connect_args(credentials: dict) -> dict:
-    return _resolve(credentials)["connect_args"]
+    return CcpPipeline().execute(SNOWFLAKE_DEFAULT_CCP, credentials)
 
 
 def _generate_pem(passphrase: bytes | None = None) -> bytes:
@@ -30,19 +28,13 @@ def _generate_pem(passphrase: bytes | None = None) -> bytes:
 
 
 class TestSnowflakeCcp(TestCase):
-    def test_snowflake_registered(self):
-        config = CcpRegistry.get("snowflake")
-        self.assertIsNotNone(config)
-        self.assertEqual("snowflake-default", config.name)
-
-    def test_resolve_wraps_in_connect_args(self):
-        result = _resolve({"user": "u", "account": "a", "password": "p"})
-        self.assertIn("connect_args", result)
+    def test_not_registered(self):
+        self.assertIsNone(CcpRegistry.get("snowflake"))
 
     # ── Password auth ─────────────────────────────────────────────────
 
     def test_password_auth(self):
-        args = _connect_args(
+        args = _resolve(
             {"user": "alice", "account": "myorg-myaccount", "password": "hunter2"}
         )
         self.assertEqual("alice", args["user"])
@@ -52,7 +44,7 @@ class TestSnowflakeCcp(TestCase):
         self.assertNotIn("token", args)
 
     def test_password_auth_with_warehouse_and_database(self):
-        args = _connect_args(
+        args = _resolve(
             {
                 "user": "u",
                 "account": "a",
@@ -69,14 +61,14 @@ class TestSnowflakeCcp(TestCase):
         self.assertEqual("SYSADMIN", args["role"])
 
     def test_password_auth_with_login_timeout(self):
-        args = _connect_args(
+        args = _resolve(
             {"user": "u", "account": "a", "password": "p", "login_timeout": 30}
         )
         self.assertEqual(30, args["login_timeout"])
         self.assertIsInstance(args["login_timeout"], int)
 
     def test_password_auth_with_application(self):
-        args = _connect_args(
+        args = _resolve(
             {
                 "user": "u",
                 "account": "a",
@@ -88,7 +80,7 @@ class TestSnowflakeCcp(TestCase):
 
     def test_password_auth_with_session_parameters(self):
         params = {"QUERY_TAG": "ccp", "TIMEZONE": "UTC"}
-        args = _connect_args(
+        args = _resolve(
             {"user": "u", "account": "a", "password": "p", "session_parameters": params}
         )
         self.assertEqual(params, args["session_parameters"])
@@ -97,9 +89,7 @@ class TestSnowflakeCcp(TestCase):
 
     def test_keypair_auth_pem_string(self):
         pem = _generate_pem()
-        args = _connect_args(
-            {"user": "u", "account": "a", "private_key_pem": pem.decode()}
-        )
+        args = _resolve({"user": "u", "account": "a", "private_key_pem": pem.decode()})
         self.assertIn("private_key", args)
         self.assertIsInstance(args["private_key"], bytes)
         self.assertNotIn("private_key_pem", args)
@@ -108,7 +98,7 @@ class TestSnowflakeCcp(TestCase):
     def test_keypair_auth_encrypted_pem(self):
         passphrase = b"my-passphrase"
         pem = _generate_pem(passphrase=passphrase)
-        args = _connect_args(
+        args = _resolve(
             {
                 "user": "u",
                 "account": "a",
@@ -123,13 +113,13 @@ class TestSnowflakeCcp(TestCase):
     def test_keypair_private_key_not_in_raw(self):
         # private_key must never appear in the output when the user provides raw bytes
         # directly (not via private_key_pem) — the step only fires on private_key_pem.
-        args = _connect_args({"user": "u", "account": "a", "password": "p"})
+        args = _resolve({"user": "u", "account": "a", "password": "p"})
         self.assertNotIn("private_key", args)
 
     # ── OAuth auth ────────────────────────────────────────────────────
 
     def test_oauth_auth(self):
-        args = _connect_args(
+        args = _resolve(
             {
                 "user": "u",
                 "account": "a",
@@ -145,7 +135,7 @@ class TestSnowflakeCcp(TestCase):
     # ── Optional field omission ───────────────────────────────────────
 
     def test_omits_absent_optional_fields(self):
-        args = _connect_args({"user": "u", "account": "a", "password": "p"})
+        args = _resolve({"user": "u", "account": "a", "password": "p"})
         for field in (
             "warehouse",
             "database",
@@ -159,10 +149,6 @@ class TestSnowflakeCcp(TestCase):
         ):
             self.assertNotIn(field, args, f"expected {field!r} to be absent")
 
-    def test_legacy_connect_args_passthrough(self):
-        legacy = {"connect_args": {"user": "u", "account": "a", "password": "p"}}
-        self.assertEqual(legacy, _resolve(legacy))
-
     # ── OAuth via token acquisition ───────────────────────────────────
 
     @patch("apollo.integrations.ccp.transforms.oauth.requests.post")
@@ -172,7 +158,7 @@ class TestSnowflakeCcp(TestCase):
         mock_resp.raise_for_status.return_value = None
         mock_post.return_value = mock_resp
 
-        args = _connect_args(
+        args = _resolve(
             {
                 "user": "u",
                 "account": "a",
@@ -197,7 +183,7 @@ class TestSnowflakeCcp(TestCase):
         mock_resp.raise_for_status.return_value = None
         mock_post.return_value = mock_resp
 
-        args = _connect_args(
+        args = _resolve(
             {
                 "user": "u",
                 "account": "a",
@@ -223,7 +209,7 @@ class TestSnowflakeCcp(TestCase):
         mock_resp.raise_for_status.return_value = None
         mock_post.return_value = mock_resp
 
-        args = _connect_args(
+        args = _resolve(
             {
                 "user": "u",
                 "account": "a",

@@ -1,18 +1,18 @@
 # tests/ccp/test_redshift_ccp.py
 from unittest import TestCase
 
+from apollo.integrations.ccp.defaults.redshift import REDSHIFT_DEFAULT_CCP
+from apollo.integrations.ccp.pipeline import CcpPipeline
 from apollo.integrations.ccp.registry import CcpRegistry
 
 
 class TestRedshiftCcp(TestCase):
-    def test_redshift_registered(self):
-        config = CcpRegistry.get("redshift")
-        self.assertIsNotNone(config)
-        self.assertEqual("redshift-default", config.name)
+    def test_not_registered(self):
+        self.assertIsNone(CcpRegistry.get("redshift"))
 
     def test_resolve_flat_credentials(self):
-        result = CcpRegistry.resolve(
-            "redshift",
+        result = CcpPipeline().execute(
+            REDSHIFT_DEFAULT_CCP,
             {
                 "host": "cluster.abc123.us-east-1.redshift.amazonaws.com",
                 "port": "5439",
@@ -21,43 +21,43 @@ class TestRedshiftCcp(TestCase):
                 "password": "secret",
             },
         )
-        self.assertIn("connect_args", result)
-        ca = result["connect_args"]
-        self.assertEqual("cluster.abc123.us-east-1.redshift.amazonaws.com", ca["host"])
-        self.assertEqual(5439, ca["port"])
-        self.assertEqual("dev", ca["dbname"])
-        self.assertEqual("admin", ca["user"])
-        self.assertEqual("secret", ca["password"])
+        self.assertEqual(
+            "cluster.abc123.us-east-1.redshift.amazonaws.com", result["host"]
+        )
+        self.assertEqual(5439, result["port"])
+        self.assertEqual("dev", result["dbname"])
+        self.assertEqual("admin", result["user"])
+        self.assertEqual("secret", result["password"])
         # DC hardcoded keepalives
-        self.assertEqual(1, ca["keepalives"])
-        self.assertEqual(30, ca["keepalives_idle"])
-        self.assertEqual(10, ca["keepalives_interval"])
-        self.assertEqual(5, ca["keepalives_count"])
+        self.assertEqual(1, result["keepalives"])
+        self.assertEqual(30, result["keepalives_idle"])
+        self.assertEqual(10, result["keepalives_interval"])
+        self.assertEqual(5, result["keepalives_count"])
 
     def test_port_coerced_to_int(self):
-        result = CcpRegistry.resolve(
-            "redshift",
+        result = CcpPipeline().execute(
+            REDSHIFT_DEFAULT_CCP,
             {"host": "h", "port": "5439", "db_name": "d", "user": "u", "password": "p"},
         )
-        self.assertIsInstance(result["connect_args"]["port"], int)
+        self.assertIsInstance(result["port"], int)
 
     def test_default_user_awsuser(self):
-        result = CcpRegistry.resolve(
-            "redshift",
+        result = CcpPipeline().execute(
+            REDSHIFT_DEFAULT_CCP,
             {"host": "h", "port": 5439, "db_name": "d", "password": "p"},
         )
-        self.assertEqual("awsuser", result["connect_args"]["user"])
+        self.assertEqual("awsuser", result["user"])
 
     def test_default_port_5439(self):
-        result = CcpRegistry.resolve(
-            "redshift",
+        result = CcpPipeline().execute(
+            REDSHIFT_DEFAULT_CCP,
             {"host": "h", "db_name": "d", "user": "u", "password": "p"},
         )
-        self.assertEqual(5439, result["connect_args"]["port"])
+        self.assertEqual(5439, result["port"])
 
     def test_statement_timeout_from_query_timeout(self):
-        result = CcpRegistry.resolve(
-            "redshift",
+        result = CcpPipeline().execute(
+            REDSHIFT_DEFAULT_CCP,
             {
                 "host": "h",
                 "db_name": "d",
@@ -66,28 +66,20 @@ class TestRedshiftCcp(TestCase):
                 "query_timeout_in_seconds": 30,
             },
         )
-        self.assertEqual(
-            "-c statement_timeout=30000", result["connect_args"]["options"]
-        )
+        self.assertEqual("-c statement_timeout=30000", result["options"])
 
     def test_no_options_without_query_timeout(self):
-        result = CcpRegistry.resolve(
-            "redshift",
+        result = CcpPipeline().execute(
+            REDSHIFT_DEFAULT_CCP,
             {"host": "h", "db_name": "d", "user": "u", "password": "p"},
         )
-        self.assertNotIn("options", result["connect_args"])
+        self.assertNotIn("options", result)
 
     def test_dbname_fallback_variants(self):
         # Accepts db_name, dbname, or database
         for key in ("db_name", "dbname", "database"):
-            result = CcpRegistry.resolve(
-                "redshift",
+            result = CcpPipeline().execute(
+                REDSHIFT_DEFAULT_CCP,
                 {"host": "h", "port": 5439, key: "mydb", "user": "u", "password": "p"},
             )
-            self.assertEqual(
-                "mydb", result["connect_args"]["dbname"], f"failed for key={key}"
-            )
-
-    def test_resolve_legacy_credentials_unchanged(self):
-        legacy = {"connect_args": {"host": "h", "port": 5439, "dbname": "d"}}
-        self.assertEqual(legacy, CcpRegistry.resolve("redshift", legacy))
+            self.assertEqual("mydb", result["dbname"], f"failed for key={key}")

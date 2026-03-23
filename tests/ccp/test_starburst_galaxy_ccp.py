@@ -1,18 +1,20 @@
 # tests/ccp/test_starburst_galaxy_ccp.py
 from unittest import TestCase
 
+from apollo.integrations.ccp.defaults.starburst_galaxy import (
+    STARBURST_GALAXY_DEFAULT_CCP,
+)
+from apollo.integrations.ccp.pipeline import CcpPipeline
 from apollo.integrations.ccp.registry import CcpRegistry
 
 
 class TestStarburstGalaxyCcp(TestCase):
-    def test_starburst_galaxy_registered(self):
-        config = CcpRegistry.get("starburst-galaxy")
-        self.assertIsNotNone(config)
-        self.assertEqual("starburst-galaxy-default", config.name)
+    def test_not_registered(self):
+        self.assertIsNone(CcpRegistry.get("starburst-galaxy"))
 
     def test_resolve_flat_starburst_galaxy_credentials(self):
-        result = CcpRegistry.resolve(
-            "starburst-galaxy",
+        result = CcpPipeline().execute(
+            STARBURST_GALAXY_DEFAULT_CCP,
             {
                 "host": "example.trino.galaxy.starburst.io",
                 "port": "443",
@@ -20,17 +22,15 @@ class TestStarburstGalaxyCcp(TestCase):
                 "password": "secret",
             },
         )
-        self.assertIn("connect_args", result)
-        ca = result["connect_args"]
-        self.assertEqual("example.trino.galaxy.starburst.io", ca["host"])
-        self.assertEqual(443, ca["port"])
-        self.assertEqual("service@example.galaxy.starburst.io", ca["user"])
-        self.assertEqual("secret", ca["password"])
-        self.assertEqual("https", ca["http_scheme"])
+        self.assertEqual("example.trino.galaxy.starburst.io", result["host"])
+        self.assertEqual(443, result["port"])
+        self.assertEqual("service@example.galaxy.starburst.io", result["user"])
+        self.assertEqual("secret", result["password"])
+        self.assertEqual("https", result["http_scheme"])
 
     def test_resolve_flat_no_ssl_options(self):
-        result = CcpRegistry.resolve(
-            "starburst-galaxy",
+        result = CcpPipeline().execute(
+            STARBURST_GALAXY_DEFAULT_CCP,
             {
                 "host": "example.trino.galaxy.starburst.io",
                 "port": "443",
@@ -38,13 +38,12 @@ class TestStarburstGalaxyCcp(TestCase):
                 "password": "secret",
             },
         )
-        ca = result["connect_args"]
-        self.assertNotIn("verify", ca)
-        self.assertNotIn("ssl_options", ca)
+        self.assertNotIn("verify", result)
+        self.assertNotIn("ssl_options", result)
 
     def test_resolve_flat_ssl_disabled(self):
-        result = CcpRegistry.resolve(
-            "starburst-galaxy",
+        result = CcpPipeline().execute(
+            STARBURST_GALAXY_DEFAULT_CCP,
             {
                 "host": "example.trino.galaxy.starburst.io",
                 "port": "443",
@@ -53,13 +52,12 @@ class TestStarburstGalaxyCcp(TestCase):
                 "ssl_options": {"disabled": True},
             },
         )
-        ca = result["connect_args"]
-        self.assertIs(False, ca["verify"])
-        self.assertNotIn("ssl_options", ca)
+        self.assertIs(False, result["verify"])
+        self.assertNotIn("ssl_options", result)
 
     def test_resolve_flat_ssl_ca_data(self):
-        result = CcpRegistry.resolve(
-            "starburst-galaxy",
+        result = CcpPipeline().execute(
+            STARBURST_GALAXY_DEFAULT_CCP,
             {
                 "host": "example.trino.galaxy.starburst.io",
                 "port": "443",
@@ -70,20 +68,7 @@ class TestStarburstGalaxyCcp(TestCase):
                 },
             },
         )
-        ca = result["connect_args"]
-        self.assertIn("verify", ca)
-        self.assertIsInstance(ca["verify"], str)
-        self.assertTrue(ca["verify"].endswith("_ssl_ca.pem"))
-        self.assertNotIn("ssl_options", ca)
-
-    def test_resolve_legacy_starburst_galaxy_credentials_unchanged(self):
-        legacy = {
-            "connect_args": {
-                "host": "h",
-                "port": 443,
-                "user": "u",
-                "password": "p",
-                "http_scheme": "https",
-            }
-        }
-        self.assertEqual(legacy, CcpRegistry.resolve("starburst-galaxy", legacy))
+        self.assertIn("verify", result)
+        self.assertIsInstance(result["verify"], str)
+        self.assertTrue(result["verify"].endswith("_ssl_ca.pem"))
+        self.assertNotIn("ssl_options", result)

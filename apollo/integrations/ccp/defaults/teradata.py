@@ -78,6 +78,3 @@ TERADATA_DEFAULT_CCP = CcpConfig(
     ),
 )
 
-from apollo.integrations.ccp.registry import CcpRegistry  # noqa: E402
-
-CcpRegistry.register("teradata", TERADATA_DEFAULT_CCP)

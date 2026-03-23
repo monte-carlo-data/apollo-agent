@@ -2,20 +2,22 @@
 import os
 from unittest import TestCase
 
+from apollo.integrations.ccp.defaults.starburst_enterprise import (
+    STARBURST_ENTERPRISE_DEFAULT_CCP,
+)
+from apollo.integrations.ccp.pipeline import CcpPipeline
 from apollo.integrations.ccp.registry import CcpRegistry
 
 _CA_PEM = "-----BEGIN CERTIFICATE-----\nMIID...\n-----END CERTIFICATE-----"
 
 
 class TestStarburstEnterpriseCcp(TestCase):
-    def test_starburst_enterprise_registered(self):
-        config = CcpRegistry.get("starburst-enterprise")
-        self.assertIsNotNone(config)
-        self.assertEqual("starburst-enterprise-default", config.name)
+    def test_not_registered(self):
+        self.assertIsNone(CcpRegistry.get("starburst-enterprise"))
 
     def test_resolve_flat_no_ssl_options(self):
-        result = CcpRegistry.resolve(
-            "starburst-enterprise",
+        result = CcpPipeline().execute(
+            STARBURST_ENTERPRISE_DEFAULT_CCP,
             {
                 "host": "ec2-3-88-168-18.compute-1.amazonaws.com",
                 "port": "8443",
@@ -23,19 +25,17 @@ class TestStarburstEnterpriseCcp(TestCase):
                 "password": "secret",
             },
         )
-        self.assertIn("connect_args", result)
-        ca = result["connect_args"]
-        self.assertEqual("ec2-3-88-168-18.compute-1.amazonaws.com", ca["host"])
-        self.assertEqual(8443, ca["port"])
-        self.assertEqual("admin", ca["user"])
-        self.assertEqual("secret", ca["password"])
-        self.assertEqual("https", ca["http_scheme"])
-        self.assertNotIn("verify", ca)
-        self.assertNotIn("ssl_options", ca)
+        self.assertEqual("ec2-3-88-168-18.compute-1.amazonaws.com", result["host"])
+        self.assertEqual(8443, result["port"])
+        self.assertEqual("admin", result["user"])
+        self.assertEqual("secret", result["password"])
+        self.assertEqual("https", result["http_scheme"])
+        self.assertNotIn("verify", result)
+        self.assertNotIn("ssl_options", result)
 
     def test_resolve_flat_ssl_disabled(self):
-        result = CcpRegistry.resolve(
-            "starburst-enterprise",
+        result = CcpPipeline().execute(
+            STARBURST_ENTERPRISE_DEFAULT_CCP,
             {
                 "host": "ec2-3-88-168-18.compute-1.amazonaws.com",
                 "port": "8443",
@@ -44,15 +44,13 @@ class TestStarburstEnterpriseCcp(TestCase):
                 "ssl_options": {"disabled": True},
             },
         )
-        self.assertIn("connect_args", result)
-        ca = result["connect_args"]
-        self.assertEqual("https", ca["http_scheme"])
-        self.assertIs(False, ca["verify"])
-        self.assertNotIn("ssl_options", ca)
+        self.assertEqual("https", result["http_scheme"])
+        self.assertIs(False, result["verify"])
+        self.assertNotIn("ssl_options", result)
 
     def test_resolve_flat_ssl_ca_data(self):
-        result = CcpRegistry.resolve(
-            "starburst-enterprise",
+        result = CcpPipeline().execute(
+            STARBURST_ENTERPRISE_DEFAULT_CCP,
             {
                 "host": "ec2-3-88-168-18.compute-1.amazonaws.com",
                 "port": "8443",
@@ -61,11 +59,9 @@ class TestStarburstEnterpriseCcp(TestCase):
                 "ssl_options": {"ca_data": _CA_PEM},
             },
         )
-        self.assertIn("connect_args", result)
-        ca = result["connect_args"]
-        self.assertEqual("https", ca["http_scheme"])
-        self.assertNotIn("ssl_options", ca)
-        cert_path = ca["verify"]
+        self.assertEqual("https", result["http_scheme"])
+        self.assertNotIn("ssl_options", result)
+        cert_path = result["verify"]
         self.assertIsInstance(cert_path, str)
         self.assertTrue(os.path.exists(cert_path))
         with open(cert_path) as f:
@@ -81,24 +77,7 @@ class TestStarburstEnterpriseCcp(TestCase):
             "password": "p",
             "ssl_options": {"ca_data": _CA_PEM},
         }
-        path1 = CcpRegistry.resolve("starburst-enterprise", creds)["connect_args"][
-            "verify"
-        ]
-        path2 = CcpRegistry.resolve("starburst-enterprise", creds)["connect_args"][
-            "verify"
-        ]
+        path1 = CcpPipeline().execute(STARBURST_ENTERPRISE_DEFAULT_CCP, creds)["verify"]
+        path2 = CcpPipeline().execute(STARBURST_ENTERPRISE_DEFAULT_CCP, creds)["verify"]
         self.assertEqual(path1, path2)
         os.unlink(path1)
-
-    def test_resolve_legacy_credentials_unchanged(self):
-        legacy = {
-            "connect_args": {
-                "host": "h",
-                "port": 8443,
-                "user": "u",
-                "password": "p",
-                "http_scheme": "https",
-                "ssl_options": {"disabled": True},
-            }
-        }
-        self.assertEqual(legacy, CcpRegistry.resolve("starburst-enterprise", legacy))
