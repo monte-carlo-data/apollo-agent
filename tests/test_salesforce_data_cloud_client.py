@@ -238,7 +238,9 @@ class SalesforceDataCloudProxyClientTests(TestCase):
         operation = {
             "trace_id": "test-trace-id",
             "skip_cache": True,
-            "commands": [{"method": "list_tables", "kwargs": {"dataspace": dataspace_name}}],
+            "commands": [
+                {"method": "list_tables", "kwargs": {"dataspace": dataspace_name}}
+            ],
         }
 
         response = self.agent.execute_operation(
