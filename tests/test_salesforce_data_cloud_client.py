@@ -2,6 +2,7 @@ import json
 import uuid
 from unittest import TestCase
 from unittest.mock import Mock
+from urllib.parse import parse_qs, urlparse
 
 import responses
 
@@ -229,6 +230,33 @@ class SalesforceDataCloudProxyClientTests(TestCase):
 
         # Verify that the metadata was cached and not re-fetched for fetch_columns
         self.metadata_endpoint.assert_called_once()
+
+    def test_list_tables_with_dataspace(self):
+        """When list_tables is called with a dataspace kwarg, it should call
+        QuerySubmitter.get_metadata() directly with the dataspace query param."""
+        dataspace_name = "Unified Knowledge"
+        operation = {
+            "trace_id": "test-trace-id",
+            "skip_cache": True,
+            "commands": [{"method": "list_tables", "kwargs": {"dataspace": dataspace_name}}],
+        }
+
+        response = self.agent.execute_operation(
+            connection_type="salesforce-data-cloud",
+            operation_name="test_list_tables_with_dataspace",
+            operation_dict=operation,
+            credentials=self.credentials,
+        )
+
+        self.assertFalse(response.is_error)
+        tables = response.result[ATTRIBUTE_NAME_RESULT]
+        self.assertEqual(len(tables), len(self.metadata_response))
+
+        # Verify the metadata endpoint was called with the dataspace query param
+        self.metadata_endpoint.assert_called_once()
+        request = self.metadata_endpoint.call_args[0][0]
+        query_params = parse_qs(urlparse(request.url).query)
+        self.assertEqual(query_params.get("dataspace"), [dataspace_name])
 
     def test_sql_query_execution(self):
         sql_query = "SELECT Name, Status, CreatedDate FROM Account LIMIT 10"
