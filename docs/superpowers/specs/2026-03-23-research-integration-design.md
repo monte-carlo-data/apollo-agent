@@ -22,7 +22,9 @@ Examples:
 /research-integration Teradata -- self-hosted, private link required
 ```
 
-**Output:** A Notion SDD page (status: Draft) created under the existing SDDs parent, with the URL returned to the user on completion.
+**Output:** A Notion SDD page (status: Draft) created as a child of the SDDs parent page, with the URL returned to the user on completion.
+
+**SDD template:** The Notion template is the authoritative source for section structure. The section list in this spec is illustrative; the template governs what sections appear and in what order.
 
 ---
 
@@ -37,44 +39,58 @@ Examples:
  ┌─────────────────────────────────────────────────────┐
  │  Skill (orchestrator prompt)                        │
  │  • Parses input                                     │
- │  • Dispatches 3 parallel research subagents         │
+ │  • Fetches Notion SDD template (initialization)     │
+ │  • Dispatches 2 parallel research subagents         │
  └─────────────┬───────────────────┬───────────────────┘
-               │                   │                   │
-               ▼                   ▼                   ▼
-     ┌──────────────┐   ┌──────────────────┐  ┌─────────────────┐
-     │  Web Research │   │ Codebase Pattern │  │  Notion Fetcher │
-     │  Agent        │   │ Agent            │  │  Agent          │
-     └──────┬───────┘   └────────┬─────────┘  └──────┬──────────┘
-            └────────────────────┴────────────────────┘
-                                 │
-                                 ▼
-                    ┌────────────────────────┐
-                    │   Synthesis Agent      │
-                    │  distill → Q&A →       │
-                    │  compile briefing      │
-                    └──────────┬─────────────┘
-                               │
-                               ▼
-                    ┌────────────────────────┐
-                    │   SDD Writer Agent     │
-                    │  section-by-section →  │
-                    │  Notion page           │
-                    └────────────────────────┘
+               │                   │
+               ▼                   ▼
+     ┌──────────────┐   ┌──────────────────┐
+     │  Web Research │   │ Codebase Pattern │
+     │  Agent        │   │ Agent            │
+     └──────┬───────┘   └────────┬─────────┘
+            └────────────────────┘
+                        │
+                        ▼
+           ┌────────────────────────┐
+           │   Synthesis Agent      │
+           │  distill → Q&A →       │
+           │  compile briefing      │
+           └──────────┬─────────────┘
+                      │
+                      ▼
+           ┌────────────────────────┐
+           │   SDD Writer Agent     │
+           │  section-by-section →  │
+           │  Notion page           │
+           └────────────────────────┘
 ```
 
 ### Design Principles
 
 - **Stateless workers, stateful orchestrator.** Research subagents are disposable and return structured findings. The synthesis agent owns the complete picture from the moment research completes.
-- **One human checkpoint.** After research, before writing. Targeted questions only — things the agent genuinely could not determine.
+- **One human checkpoint.** After research, before writing. Targeted questions only — things the agent genuinely could not determine. Maximum 5 questions per run; questions that would change the tier estimate or affect connection/auth take priority. Remaining gaps are marked `[NEEDS REVIEW]` in the final document rather than held for more questions.
 - **One writer.** A single SDD writer agent (not parallel section writers) ensures cross-section coherence. Decisions made in "Connection & Authentication" carry naturally into "Normalization" and "Rollout Estimates."
-- **Structured subagent output.** All subagents return structured findings (not prose) so the synthesis agent can distill them compactly and pass clean briefings to follow-up agents if needed.
-- **Rigid skill.** The parallel dispatch pattern and single human checkpoint are load-bearing. The skill must be followed exactly.
+- **Structured subagent output.** All subagents return structured findings (not prose) so the synthesis agent can distill them compactly and pass complete briefings to follow-up agents if needed.
+- **Rigid skill.** This skill must be followed exactly — the template-first initialization, parallel research dispatch, and single human checkpoint are load-bearing. "Rigid" means: do not adapt away from the defined flow, skip phases, or inline work that is assigned to a subagent. See [Skill Types in the superpowers guide](../../../README.md) for the rigid vs. flexible distinction.
+
+---
+
+## Initialization: Fetch SDD Template
+
+**Before any research subagents are launched**, the skill fetches the Notion SDD template:
+
+- **Template URL:** `NOTION_SDD_TEMPLATE_URL` (configured constant — see Skill File section)
+- **SDDs parent page:** The parent page under which new SDD pages are created. Its ID is `NOTION_SDD_PARENT_PAGE_ID` (configured constant — see Skill File section).
+
+**Failure behavior:** If the template fetch fails (API error, auth failure, page unavailable), the skill halts immediately with a clear error message. Do not proceed to research with no template — the writer agent cannot produce a valid SDD without it.
+
+The fetched template structure (sections, table schemas, section prompts) is held by the orchestrator and included in the writer briefing compiled in Phase 2 Step 4.
 
 ---
 
 ## Phase 1: Parallel Research Subagents
 
-Three subagents are dispatched simultaneously when the skill is invoked.
+Two subagents are dispatched simultaneously after the template is successfully fetched.
 
 ### Agent 1: Web Research Agent
 
@@ -89,14 +105,34 @@ Three subagents are dispatched simultaneously when the skill is invoked.
 - Private Link support (AWS and Azure)
 - Any existing Monte Carlo public documentation or customer-facing references
 
-**Returns:** Structured findings object with one section per SDD area (connection, auth, data extraction, known limitations).
+**Returns structured findings:**
+```
+{
+  "drivers": [...],
+  "auth_methods": [...],
+  "ssl_requirements": "...",
+  "metadata_sources": {
+    "tables": {"source": "...", "notes": "..."},
+    "columns": {"source": "...", "notes": "..."},
+    "query_logs": {"source": "...", "notes": "..."},
+    "lineage": {"source": "...", "notes": "..."},
+    "volume": {"source": "...", "notes": "..."},
+    "freshness": {"source": "...", "notes": "..."}
+  },
+  "known_limitations": [...],
+  "private_link_support": {"aws": bool, "azure": bool, "notes": "..."},
+  "monte_carlo_existing_docs": "..."
+}
+```
 
 ### Agent 2: Codebase Pattern Agent
 
-**Input:** Integration name. Searches the following canonical paths:
-- `apollo-agent/apollo/integrations/` — proxy client structure, CCP config, credential shape, transport handling
-- `data-collector/` — DC plugin structure, metadata extraction implementation for analogous sources, credential model shape
-- `monolith/` — connection model fields, warehouse model, GraphQL mutations for onboarding
+**Input:** Integration name. Searches the following canonical absolute paths (configured in skill file):
+- `<APOLLO_AGENT_ROOT>/apollo/integrations/` — proxy client structure, CCP config, credential shape, transport handling
+- `<DATA_COLLECTOR_ROOT>/` — DC plugin structure, metadata extraction implementation for analogous sources, credential model shape
+- `<MONOLITH_ROOT>/` — connection model fields, warehouse model, GraphQL mutations for onboarding
+
+**Failure behavior:** If a configured path does not resolve, the agent proceeds with degraded output, explicitly flagging which repos were unreachable in the `unreachable_repos` field. The synthesis agent **must notify the user at the Q&A checkpoint** (Step 2) if any repo was unreachable — before the user answers questions — so they can decide whether to proceed or fix the path configuration first. Unreachable repos also produce `[NEEDS REVIEW]` markers in the final document.
 
 **Identifies:** The 1–2 closest analogous existing integrations and extracts:
 - Proxy client structure and credential shape
@@ -104,82 +140,102 @@ Three subagents are dispatched simultaneously when the skill is invoked.
 - DC plugin layout and metadata extraction approach
 - Monolith connection/warehouse model fields
 
-**Returns:** Named analog integrations, reusable patterns, and structural gaps where the new integration will differ.
-
-### Agent 3: Notion Template Agent
-
-**Input:** SDD template URL (`https://www.notion.so/montecarlodata/Integration-SDD-Template-2aa334399e65801c8b5fe48f1448b22d`)
-
-**Fetches:** The template page and returns a structured list of sections with their descriptions, embedded table schemas, and section prompts.
-
-**Returns:** Clean template scaffold for the writer agent.
+**Returns structured findings:**
+```
+{
+  "analog_integrations": [
+    {
+      "name": "...",
+      "similarity_reason": "...",
+      "proxy_client_path": "...",
+      "ccp_config_path": "...",
+      "dc_plugin_path": "...",
+      "monolith_model_path": "...",
+      "credential_shape": {...},
+      "notable_patterns": [...]
+    }
+  ],
+  "reusable_patterns": [...],
+  "structural_gaps": [...],
+  "unreachable_repos": [...]
+}
+```
 
 ---
 
 ## Phase 2: Synthesis Agent
 
-Receives all three sets of structured findings. Owns the complete context from this point forward.
+Receives findings from both research agents plus the template structure fetched during initialization. Owns the complete context from this point forward.
 
 ### Step 1: Distill
 
-Compresses research into a working brief. Resolves conflicts between web findings and codebase patterns (e.g., if two driver options exist but Monte Carlo already uses one for a similar integration, notes the preferred path).
+Compresses research into a working brief. Resolves conflicts between web findings and codebase patterns using the following priority rule:
+
+- **Web research governs** findings about the external system (what the vendor supports, what APIs exist, what the auth flow looks like).
+- **Codebase patterns govern** findings about Monte Carlo's implementation approach (how to structure the proxy client, what CCP config shape to use, what monolith model fields are needed).
+- **Conflicts that span both** (e.g., a vendor auth mechanism that no existing analog uses) are not silently resolved — they are surfaced as targeted questions in Step 2.
 
 ### Step 2: Surface findings + targeted Q&A
 
 Presents a human-readable summary to the user:
 - What it found: connection options, auth methods, available metadata sources, nearest analog integration
 - Estimated integration tier (Bronze/Silver/Gold/Platinum) based on available metadata APIs
-- A short list of targeted questions — only things it could not determine from research
+- A short list of **targeted questions** — maximum 5, prioritized as follows:
+  1. Questions that would change the tier estimate
+  2. Questions that affect connection/auth (the most implementation-critical section)
+  3. Questions that affect data extraction coverage
+  4. Everything else → marked `[NEEDS REVIEW]` in the document instead
 
-Example questions:
-- "The vendor docs show both OAuth and API key auth — does the customer require a specific one?"
-- "No system view for query logs was found in public docs — do you have access to internal docs or a test environment?"
-- "The onboarding UI flow isn't clear from docs — should this follow the same pattern as Databricks or Snowflake?"
+This is the **single human checkpoint**. Once the user responds, the skill proceeds to Step 3 or Step 4 — it does not loop back for more questions.
 
-This is the **single human checkpoint**.
+### Step 3: Handle follow-up research (one round maximum)
 
-### Step 3: Handle follow-up research
+If human feedback reveals something that requires additional investigation (e.g., "the customer uses a custom auth mechanism not in the public docs"), the synthesis agent dispatches **one** targeted follow-up subagent with a complete briefing:
+- Original research findings (both agents)
+- Human feedback verbatim
+- The specific question to investigate
 
-If human feedback requires additional investigation, the synthesis agent dispatches a targeted follow-up subagent with a complete briefing: original findings + human feedback + specific question. The synthesis agent waits for results before continuing.
+After the follow-up subagent returns, the synthesis agent proceeds to Step 4 regardless of whether the follow-up was conclusive. Any remaining unknowns become `[NEEDS REVIEW]` markers. There is no second follow-up round.
 
 ### Step 4: Compile writer briefing
 
-Assembles a single structured document containing:
-- All research findings (web + codebase patterns)
-- Human-provided context and decisions
-- Notion template structure (from Agent 3)
-- Named analog integrations to reference for code structure
+Assembles the complete structured document passed to the writer agent:
 
-This briefing is the sole input to the writer agent.
+```
+{
+  "integration_name": "...",
+  "user_notes": "...",
+  "estimated_tier": "Bronze|Silver|Gold|Platinum",
+  "tier_rationale": "...",
+  "web_findings": { ...Agent 1 output... },
+  "codebase_findings": { ...Agent 2 output... },
+  "human_answers": [
+    {"question": "...", "answer": "..."}
+  ],
+  "follow_up_findings": { ...follow-up agent output, or null... },
+  "template_structure": { ...sections, table schemas, prompts from initialization... },
+  "analog_integrations": [...],
+  "unresolved_gaps": [...]
+}
+```
+
+This briefing is the **sole input** to the writer agent.
 
 ---
 
 ## Phase 3: SDD Writer Agent
 
-Receives the complete briefing. Produces the finished SDD in Notion.
+Receives the complete writer briefing. Produces the finished SDD in Notion.
 
 ### Writing approach
 
-Works through SDD sections in order, using each prior section as context for the next. This is how cross-section coherence is maintained.
-
-Sections covered (in order):
-1. Context
-2. Architecture Overview (component table + description)
-3. Connection & Authentication (protocols, auth, SSL, timeouts, Private Link, self-hosted credentials)
-4. Data Extraction (extraction details table: tables, columns, query logs, lineage, volume, freshness, metric monitors, raw SQL)
-5. Normalization (mapping to Monte Carlo internal models)
-6. Scalability
-7. Risks and Assumptions
-8. Design Rationale & Decision Points (table)
-9. Frontend / Onboarding (connection arguments, conditional params, UI/UX, validations)
-10. API, UI, CLI notes
-11. Rollout Plan and Estimates (testing, tier classification, effort ranges)
-12. References
+Works through SDD template sections in order, using each prior section as context for the next. The Notion template is authoritative for section list and order — the writer follows the template structure, not a hardcoded list.
 
 For each section:
 - Fills content with concrete, specific findings — no placeholder text
-- Populates structured tables with real data
-- Marks uncertain content with `[NEEDS REVIEW: <reason>]` rather than guessing
+- Populates structured tables (data extraction, component summary, design decisions, integration tiers) with real data
+- Marks uncertain or unresolved content with `[NEEDS REVIEW: <reason>]` rather than guessing
+- Cross-references prior sections where relevant (e.g., normalization references extraction sources identified earlier)
 
 ### Effort and tier estimation
 
@@ -189,14 +245,14 @@ Derives tier classification from:
 - Auth and credential complexity relative to existing integrations
 - Whether a new proxy client type is needed or an existing one can be extended
 
-Estimates expressed as ranges with explicit assumptions, not point estimates.
+Estimates expressed as ranges with explicit assumptions stated, not point estimates.
 
 ### Notion output
 
-- Creates a new Notion page as a child of the existing SDDs parent page
-- Uses the SDD template structure
-- Sets: Author = invoking user, Status = "Draft", PRD/Feasibility links left blank
-- Returns the direct Notion URL as the final output
+- Creates a new Notion page as a child of the SDDs parent page (ID from skill file constant)
+- Uses the fetched template structure
+- Sets: Author = the value of `NOTION_SDD_AUTHOR` (configured constant in skill file — set to your name at install time), Status = "Draft", PRD/Feasibility links left blank
+- Returns the direct Notion URL as the final message to the user
 
 ---
 
@@ -204,15 +260,23 @@ Estimates expressed as ranges with explicit assumptions, not point estimates.
 
 **Location:** `~/.claude/skills/research-integration.md`
 
-**Skill type:** Rigid — the parallel dispatch pattern and single human checkpoint are load-bearing and must not be adapted away.
+**Skill type:** Rigid — the template-first initialization, parallel dispatch pattern, and single human checkpoint are load-bearing and must not be adapted away.
+
+**Required constants (configured at install time):**
+- `NOTION_SDD_TEMPLATE_URL` — `https://www.notion.so/montecarlodata/Integration-SDD-Template-2aa334399e65801c8b5fe48f1448b22d`
+- `NOTION_SDD_PARENT_PAGE_ID` — The Notion page ID of the parent page under which new SDD drafts are created
+- `NOTION_SDD_AUTHOR` — Your name as it should appear in the SDD Author field (e.g. "swaller")
+- `APOLLO_AGENT_ROOT` — Absolute path to the local apollo-agent repo checkout
+- `DATA_COLLECTOR_ROOT` — Absolute path to the local data-collector repo checkout
+- `MONOLITH_ROOT` — Absolute path to the local monolith-django repo checkout
 
 **Skill file contains:**
 - Trigger pattern and input parsing instructions
-- Parallel subagent dispatch instructions with explicit output schemas
-- Synthesis agent instructions (distill → Q&A → compile briefing)
-- Writer agent instructions (section order, uncertainty handling, Notion output)
-- Notion SDD template URL as a reference constant
-- Canonical codebase paths to search
+- Initialization step (template fetch, hard-stop on failure)
+- Parallel research subagent dispatch instructions with output schemas (as defined above)
+- Synthesis agent instructions (distill with conflict priority rule → Q&A with 5-question budget → one-round follow-up → compile briefing)
+- Writer agent instructions (template-driven section order, uncertainty handling, Notion output)
+- All required constants
 
 ---
 
