@@ -14,6 +14,10 @@ from apollo.common.agent.constants import (
     ATTRIBUTE_NAME_ERROR_TYPE,
 )
 from apollo.agent.logging_utils import LoggingUtils
+from apollo.integrations.ccp.defaults.starburst_enterprise import (
+    STARBURST_ENTERPRISE_DEFAULT_CCP,
+)
+from apollo.integrations.ccp.registry import CcpRegistry
 
 _STARBURST_CREDENTIALS = {
     "host": "example.starburst.io",
@@ -231,6 +235,12 @@ class StarburstEnterpriseCredentialShapeTests(TestCase):
     _PASSWORD = "secret"
     _CA_PEM = "-----BEGIN CERTIFICATE-----\nFAKE\n-----END CERTIFICATE-----"
 
+    def setUp(self) -> None:
+        CcpRegistry.register("starburst-enterprise", STARBURST_ENTERPRISE_DEFAULT_CCP)
+
+    def tearDown(self) -> None:
+        CcpRegistry._registry.pop("starburst-enterprise", None)
+
     def _dc_creds(self, **ssl_kwargs):
         """Build DC-style credentials: connect_args with ssl_options not yet resolved."""
         return {
@@ -246,8 +256,6 @@ class StarburstEnterpriseCredentialShapeTests(TestCase):
 
     def _ccp_creds(self, **flat_kwargs):
         """Build CCP-resolved credentials from flat input via the registry."""
-        from apollo.integrations.ccp.registry import CcpRegistry
-
         return CcpRegistry.resolve(
             "starburst-enterprise",
             {

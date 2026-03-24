@@ -63,4 +63,3 @@ DB2_DEFAULT_CCP = CcpConfig(
         },
     ),
 )
-

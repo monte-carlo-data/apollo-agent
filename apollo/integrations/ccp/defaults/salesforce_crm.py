@@ -43,4 +43,3 @@ SALESFORCE_CRM_DEFAULT_CCP = CcpConfig(
         },
     ),
 )
-

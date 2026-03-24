@@ -77,4 +77,3 @@ TERADATA_DEFAULT_CCP = CcpConfig(
         },
     ),
 )
-

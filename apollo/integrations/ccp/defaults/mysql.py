@@ -91,4 +91,3 @@ MYSQL_DEFAULT_CCP = CcpConfig(
         },
     ),
 )
-

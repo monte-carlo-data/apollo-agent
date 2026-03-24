@@ -84,4 +84,3 @@ SNOWFLAKE_DEFAULT_CCP = CcpConfig(
         },
     ),
 )
-

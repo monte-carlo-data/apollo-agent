@@ -13,6 +13,7 @@ from apollo.common.agent.constants import (
     ATTRIBUTE_NAME_ERROR_TYPE,
 )
 from apollo.agent.logging_utils import LoggingUtils
+from apollo.integrations.ccp.defaults.postgres import POSTGRES_DEFAULT_CCP
 from apollo.integrations.ccp.registry import CcpRegistry
 from apollo.integrations.db.postgres_proxy_client import PostgresProxyClient
 
@@ -209,7 +210,14 @@ class PostgresClientTests(TestCase):
 
 class PostgresCcpPathTests(TestCase):
     def setUp(self) -> None:
+        CcpRegistry.register("postgres", POSTGRES_DEFAULT_CCP)
         self._agent = Agent(LoggingUtils())
+        self._mock_connection = Mock()
+        self._mock_cursor = Mock()
+        self._mock_connection.cursor.return_value = self._mock_cursor
+
+    def tearDown(self) -> None:
+        CcpRegistry._registry.pop("postgres", None)
         self._mock_connection = Mock()
         self._mock_cursor = Mock()
         self._mock_connection.cursor.return_value = self._mock_cursor
@@ -258,6 +266,9 @@ class PostgresCcpPathTests(TestCase):
 class PostgresCredentialShapeTests(TestCase):
     """Verify PostgresProxyClient __init__ accepts both DC-style and CCP-resolved credentials.
 
+    setUp/tearDown register and unregister the postgres CCP config so _ccp_creds() can
+    call CcpRegistry.resolve() without depending on Phase 2 registration.
+
     DC path (today): DC plugin writes SSL cert files and builds connect_args with driver-native
     key names (dbname, sslrootcert, sslmode), then sends them to the agent.
 
@@ -272,6 +283,12 @@ class PostgresCredentialShapeTests(TestCase):
     _USER = "admin"
     _PASSWORD = "secret"
     _CA_PEM = "-----BEGIN CERTIFICATE-----\nFAKE\n-----END CERTIFICATE-----"
+
+    def setUp(self) -> None:
+        CcpRegistry.register("postgres", POSTGRES_DEFAULT_CCP)
+
+    def tearDown(self) -> None:
+        CcpRegistry._registry.pop("postgres", None)
 
     def _dc_creds(self, **extra_connect_args):
         """Build DC-style credentials: connect_args with driver-native key names."""

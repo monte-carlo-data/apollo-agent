@@ -71,4 +71,3 @@ ORACLE_DEFAULT_CCP = CcpConfig(
         },
     ),
 )
-
