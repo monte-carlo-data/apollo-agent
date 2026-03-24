@@ -163,7 +163,9 @@ class TestPostgresDefaultCcp(TestCase):
                 "database": "mydb",
                 "user": "admin",
                 "password": "secret",
-                "ssl_ca_pem": "-----BEGIN CERTIFICATE-----\nFAKE\n-----END CERTIFICATE-----",
+                "ssl_options": {
+                    "ca_data": "-----BEGIN CERTIFICATE-----\nFAKE\n-----END CERTIFICATE-----"
+                },
             },
         )
         self.assertIn("sslrootcert", result)

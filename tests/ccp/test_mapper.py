@@ -139,16 +139,56 @@ class TestMapperSchemaValidation(TestCase):
         self.assertEqual("mapper_validation", ctx.exception.stage)
         self.assertIn("port", str(ctx.exception))
 
-    def test_unknown_field_raises(self):
+    def test_unknown_field_passes_through(self):
+        # Fields not in the schema are not coerced but are allowed through — driver catches any error.
         mapper, config = self._mapper(
             {"host": "{{ raw.host }}", "port": "{{ raw.port }}", "bad_key": "value"},
             schema=_MinimalSchema,
         )
         state = PipelineState(raw={"host": "localhost", "port": 5432})
-        with self.assertRaises(CcpPipelineError) as ctx:
-            mapper.execute(config, state)
-        self.assertEqual("mapper_validation", ctx.exception.stage)
-        self.assertIn("bad_key", str(ctx.exception))
+        result = mapper.execute(config, state)
+        self.assertEqual("value", result["bad_key"])
+
+    def test_string_port_coerced_to_int(self):
+        # Port arrives as string (DC-style); schema says int → mapper coerces.
+        mapper, config = self._mapper(
+            {"host": "{{ raw.host }}", "port": "{{ raw.port }}"},
+            schema=_MinimalSchema,
+        )
+        state = PipelineState(raw={"host": "localhost", "port": "5432"})
+        result = mapper.execute(config, state)
+        self.assertEqual(
+            443,
+            mapper.execute(config, PipelineState(raw={"host": "h", "port": "443"}))[
+                "port"
+            ],
+        )
+        self.assertIsInstance(result["port"], int)
+        self.assertEqual(5432, result["port"])
+
+    def test_already_correct_type_unchanged(self):
+        mapper, config = self._mapper(
+            {"host": "{{ raw.host }}", "port": "{{ raw.port }}"},
+            schema=_MinimalSchema,
+        )
+        state = PipelineState(raw={"host": "localhost", "port": 5432})
+        result = mapper.execute(config, state)
+        self.assertIsInstance(result["port"], int)
+        self.assertEqual(5432, result["port"])
+
+    def test_unknown_field_not_coerced(self):
+        # Unknown fields are passed through as-is without type coercion.
+        mapper, config = self._mapper(
+            {
+                "host": "{{ raw.host }}",
+                "port": "{{ raw.port }}",
+                "extra": "{{ raw.extra }}",
+            },
+            schema=_MinimalSchema,
+        )
+        state = PipelineState(raw={"host": "h", "port": 5432, "extra": "some_string"})
+        result = mapper.execute(config, state)
+        self.assertEqual("some_string", result["extra"])
 
     def test_passthrough_skips_schema_validation(self):
         # passthrough=True with a schema that would fail (missing required keys)

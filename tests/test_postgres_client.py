@@ -1,4 +1,6 @@
 import datetime
+import os
+import tempfile
 from typing import List, Any, Optional
 from unittest import TestCase
 from unittest.mock import Mock, call, patch
@@ -11,6 +13,9 @@ from apollo.common.agent.constants import (
     ATTRIBUTE_NAME_ERROR_TYPE,
 )
 from apollo.agent.logging_utils import LoggingUtils
+from apollo.integrations.ccp.defaults.postgres import POSTGRES_DEFAULT_CCP
+from apollo.integrations.ccp.registry import CcpRegistry
+from apollo.integrations.db.postgres_proxy_client import PostgresProxyClient
 
 _POSTGRES_CREDENTIALS = {
     "host": "www.test.com",
@@ -205,7 +210,14 @@ class PostgresClientTests(TestCase):
 
 class PostgresCcpPathTests(TestCase):
     def setUp(self) -> None:
+        CcpRegistry.register("postgres", POSTGRES_DEFAULT_CCP)
         self._agent = Agent(LoggingUtils())
+        self._mock_connection = Mock()
+        self._mock_cursor = Mock()
+        self._mock_connection.cursor.return_value = self._mock_cursor
+
+    def tearDown(self) -> None:
+        CcpRegistry._registry.pop("postgres", None)
         self._mock_connection = Mock()
         self._mock_cursor = Mock()
         self._mock_connection.cursor.return_value = self._mock_cursor
@@ -249,3 +261,124 @@ class PostgresCcpPathTests(TestCase):
         self.assertEqual("u", call_kwargs["user"])
         self.assertEqual("db1", call_kwargs["dbname"])  # CCP mapped database → dbname
         self.assertEqual(1, call_kwargs["keepalives"])
+
+
+class PostgresCredentialShapeTests(TestCase):
+    """Verify PostgresProxyClient __init__ accepts both DC-style and CCP-resolved credentials.
+
+    setUp/tearDown register and unregister the postgres CCP config so _ccp_creds() can
+    call CcpRegistry.resolve() without depending on Phase 2 registration.
+
+    DC path (today): DC plugin writes SSL cert files and builds connect_args with driver-native
+    key names (dbname, sslrootcert, sslmode), then sends them to the agent.
+
+    CCP path (after Phase 2): flat credentials go through CCP, which maps field names and
+    materialises SSL certs before PostgresProxyClient is created.
+
+    In both paths psycopg2.connect must receive the same effective arguments.
+    """
+
+    _HOST = "db.example.com"
+    _PORT_STR = "5432"
+    _USER = "admin"
+    _PASSWORD = "secret"
+    _CA_PEM = "-----BEGIN CERTIFICATE-----\nFAKE\n-----END CERTIFICATE-----"
+
+    def setUp(self) -> None:
+        CcpRegistry.register("postgres", POSTGRES_DEFAULT_CCP)
+
+    def tearDown(self) -> None:
+        CcpRegistry._registry.pop("postgres", None)
+
+    def _dc_creds(self, **extra_connect_args):
+        """Build DC-style credentials: connect_args with driver-native key names."""
+        return {
+            "connect_args": {
+                "host": self._HOST,
+                "port": self._PORT_STR,
+                "dbname": "mydb",
+                "user": self._USER,
+                "password": self._PASSWORD,
+                **extra_connect_args,
+            }
+        }
+
+    def _ccp_creds(self, **flat_kwargs):
+        """Build CCP-resolved credentials from flat input via the registry."""
+        return CcpRegistry.resolve(
+            "postgres",
+            {
+                "host": self._HOST,
+                "port": self._PORT_STR,
+                "database": "mydb",
+                "user": self._USER,
+                "password": self._PASSWORD,
+                **flat_kwargs,
+            },
+        )
+
+    # ------------------------------------------------------------------
+    # No SSL
+    # ------------------------------------------------------------------
+
+    @patch("psycopg2.connect")
+    def test_dc_no_ssl(self, mock_connect):
+        """DC sends connect_args without SSL — passed through to psycopg2 with keepalives."""
+        mock_connect.return_value = Mock()
+        PostgresProxyClient(credentials=self._dc_creds(), client_type="postgres")
+
+        kwargs = mock_connect.call_args.kwargs
+        self.assertEqual(self._HOST, kwargs["host"])
+        self.assertEqual("mydb", kwargs["dbname"])
+        self.assertNotIn("sslmode", kwargs)
+        self.assertNotIn("sslrootcert", kwargs)
+        self.assertEqual(1, kwargs["keepalives"])
+
+    @patch("psycopg2.connect")
+    def test_ccp_no_ssl(self, mock_connect):
+        """CCP with no ssl_options — no SSL fields passed to psycopg2."""
+        mock_connect.return_value = Mock()
+        PostgresProxyClient(credentials=self._ccp_creds(), client_type="postgres")
+
+        kwargs = mock_connect.call_args.kwargs
+        self.assertEqual(self._HOST, kwargs["host"])
+        self.assertEqual("mydb", kwargs["dbname"])
+        self.assertNotIn("sslmode", kwargs)
+        self.assertNotIn("sslrootcert", kwargs)
+
+    # ------------------------------------------------------------------
+    # CA data — cert written to file, sslrootcert=<path>
+    # ------------------------------------------------------------------
+
+    @patch("psycopg2.connect")
+    def test_dc_ca_data(self, mock_connect):
+        """DC writes cert to a path and sends sslrootcert + sslmode in connect_args."""
+        with tempfile.NamedTemporaryFile(suffix=".pem", delete=False, mode="w") as f:
+            f.write(self._CA_PEM)
+            cert_path = f.name
+        try:
+            mock_connect.return_value = Mock()
+            PostgresProxyClient(
+                credentials=self._dc_creds(sslrootcert=cert_path, sslmode="require"),
+                client_type="postgres",
+            )
+            kwargs = mock_connect.call_args.kwargs
+            self.assertEqual(cert_path, kwargs["sslrootcert"])
+            self.assertEqual("require", kwargs["sslmode"])
+        finally:
+            os.unlink(cert_path)
+
+    @patch("psycopg2.connect")
+    def test_ccp_ca_data(self, mock_connect):
+        """CCP resolves ssl_options ca_data to sslrootcert=<path> and sslmode=require."""
+        mock_connect.return_value = Mock()
+        PostgresProxyClient(
+            credentials=self._ccp_creds(ssl_options={"ca_data": self._CA_PEM}),
+            client_type="postgres",
+        )
+        kwargs = mock_connect.call_args.kwargs
+        cert_path = kwargs.get("sslrootcert")
+        self.assertIsInstance(cert_path, str)
+        self.assertTrue(os.path.exists(cert_path))
+        self.assertEqual("require", kwargs["sslmode"])
+        os.unlink(cert_path)

@@ -12,10 +12,10 @@ _initialized: bool = False
 def _discover() -> None:
     """Import all CCP default modules to trigger registration.
 
-    Called once on first registry access. Add new connector imports here.
+    Called once on first registry access. Add new connector imports here as
+    their proxy clients are updated in Phase 2 to read from connect_args.
     """
-    # ── Relational ────────────────────────────────────────────────────
-    import apollo.integrations.ccp.defaults.postgres  # noqa: F401
+    pass
 
 
 def _ensure_initialized() -> None:
@@ -39,7 +39,10 @@ class CcpRegistry:
 
     @classmethod
     def resolve(
-        cls, connection_type: str, credentials: dict[str, Any]
+        cls,
+        connection_type: str,
+        credentials: dict[str, Any],
+        context: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """
         Run the registered CCP pipeline for connection_type and return
@@ -57,4 +60,8 @@ class CcpRegistry:
                 stage="registry",
                 message=f"No CCP config registered for '{connection_type}'. Call CcpRegistry.get() before resolve().",
             )
-        return {_ATTR_CONNECT_ARGS: CcpPipeline().execute(config, credentials)}
+        return {
+            _ATTR_CONNECT_ARGS: CcpPipeline().execute(
+                config, credentials, context=context or {}
+            )
+        }

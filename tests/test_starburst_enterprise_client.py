@@ -1,4 +1,5 @@
 import base64
+import os
 from unittest import TestCase
 from unittest.mock import (
     Mock,
@@ -13,6 +14,10 @@ from apollo.common.agent.constants import (
     ATTRIBUTE_NAME_ERROR_TYPE,
 )
 from apollo.agent.logging_utils import LoggingUtils
+from apollo.integrations.ccp.defaults.starburst_enterprise import (
+    STARBURST_ENTERPRISE_DEFAULT_CCP,
+)
+from apollo.integrations.ccp.registry import CcpRegistry
 
 _STARBURST_CREDENTIALS = {
     "host": "example.starburst.io",
@@ -208,3 +213,157 @@ class StarburstEnterpriseHttpTests(TestCase):
 
         self.assertIn("Not Found", response.result.get(ATTRIBUTE_NAME_ERROR))
         self.assertEqual("HTTPError", response.result.get(ATTRIBUTE_NAME_ERROR_TYPE))
+
+
+class StarburstEnterpriseCredentialShapeTests(TestCase):
+    """Verify the proxy client init accepts both DC-style and CCP-resolved credentials.
+
+    DC path (today): DC plugin builds connect_args including ssl_options (unresolved)
+    and sends them to the agent. The proxy client pops ssl_options and handles SSL itself.
+
+    CCP path (after Phase 2): flat credentials go through CCP, which resolves ssl_options
+    into a verify value before the proxy client is created. The proxy client receives
+    clean connect_args with no ssl_options.
+
+    In both paths trino.dbapi.connect must receive the same effective arguments.
+    """
+
+    _HOST = "example.starburst.io"
+    _PORT_INT = 8443
+    _PORT_STR = "8443"
+    _USER = "admin"
+    _PASSWORD = "secret"
+    _CA_PEM = "-----BEGIN CERTIFICATE-----\nFAKE\n-----END CERTIFICATE-----"
+
+    def setUp(self) -> None:
+        CcpRegistry.register("starburst-enterprise", STARBURST_ENTERPRISE_DEFAULT_CCP)
+
+    def tearDown(self) -> None:
+        CcpRegistry._registry.pop("starburst-enterprise", None)
+
+    def _dc_creds(self, **ssl_kwargs):
+        """Build DC-style credentials: connect_args with ssl_options not yet resolved."""
+        return {
+            "connect_args": {
+                "host": self._HOST,
+                "port": self._PORT_INT,
+                "user": self._USER,
+                "password": self._PASSWORD,
+                "http_scheme": "https",
+                **ssl_kwargs,
+            }
+        }
+
+    def _ccp_creds(self, **flat_kwargs):
+        """Build CCP-resolved credentials from flat input via the registry."""
+        return CcpRegistry.resolve(
+            "starburst-enterprise",
+            {
+                "host": self._HOST,
+                "port": self._PORT_STR,
+                "user": self._USER,
+                "password": self._PASSWORD,
+                **flat_kwargs,
+            },
+        )
+
+    # ------------------------------------------------------------------
+    # No SSL
+    # ------------------------------------------------------------------
+
+    @patch("trino.dbapi.connect")
+    def test_dc_no_ssl(self, mock_connect):
+        """DC sends empty ssl_options — no verify passed to trino."""
+        from apollo.integrations.db.starburst_enterprise_proxy_client import (
+            StarburstEnterpriseProxyClient,
+        )
+
+        mock_connect.return_value = Mock()
+        StarburstEnterpriseProxyClient(
+            credentials=self._dc_creds(ssl_options={}), platform="test"
+        )
+        self.assertNotIn("verify", mock_connect.call_args.kwargs)
+        self.assertNotIn("ssl_options", mock_connect.call_args.kwargs)
+
+    @patch("trino.dbapi.connect")
+    def test_ccp_no_ssl(self, mock_connect):
+        """CCP with no ssl_options — no verify passed to trino."""
+        from apollo.integrations.db.starburst_enterprise_proxy_client import (
+            StarburstEnterpriseProxyClient,
+        )
+
+        mock_connect.return_value = Mock()
+        StarburstEnterpriseProxyClient(credentials=self._ccp_creds(), platform="test")
+        self.assertNotIn("verify", mock_connect.call_args.kwargs)
+        self.assertNotIn("ssl_options", mock_connect.call_args.kwargs)
+
+    # ------------------------------------------------------------------
+    # CA data — cert written to file, verify=<path>
+    # ------------------------------------------------------------------
+
+    @patch("trino.dbapi.connect")
+    def test_dc_ca_data(self, mock_connect):
+        """DC sends ssl_options with ca_data — proxy client writes cert, verify=<path>."""
+        from apollo.integrations.db.starburst_enterprise_proxy_client import (
+            StarburstEnterpriseProxyClient,
+        )
+
+        mock_connect.return_value = Mock()
+        StarburstEnterpriseProxyClient(
+            credentials=self._dc_creds(ssl_options={"ca_data": self._CA_PEM}),
+            platform="test",
+        )
+        verify = mock_connect.call_args.kwargs.get("verify")
+        self.assertIsInstance(verify, str)
+        self.assertTrue(os.path.exists(verify))
+        os.unlink(verify)
+
+    @patch("trino.dbapi.connect")
+    def test_ccp_ca_data(self, mock_connect):
+        """CCP resolves ssl_options ca_data to verify=<path> before proxy client is created."""
+        from apollo.integrations.db.starburst_enterprise_proxy_client import (
+            StarburstEnterpriseProxyClient,
+        )
+
+        mock_connect.return_value = Mock()
+        StarburstEnterpriseProxyClient(
+            credentials=self._ccp_creds(ssl_options={"ca_data": self._CA_PEM}),
+            platform="test",
+        )
+        verify = mock_connect.call_args.kwargs.get("verify")
+        self.assertIsInstance(verify, str)
+        self.assertTrue(os.path.exists(verify))
+        os.unlink(verify)
+
+    # ------------------------------------------------------------------
+    # SSL disabled — verify=False
+    # ------------------------------------------------------------------
+
+    @patch("trino.dbapi.connect")
+    def test_dc_ssl_disabled(self, mock_connect):
+        """DC sends verify=False + ssl_options disabled — trino gets verify=False."""
+        from apollo.integrations.db.starburst_enterprise_proxy_client import (
+            StarburstEnterpriseProxyClient,
+        )
+
+        mock_connect.return_value = Mock()
+        # DC sets verify=False in connection_args when disabled, and includes ssl_options
+        StarburstEnterpriseProxyClient(
+            credentials=self._dc_creds(verify=False, ssl_options={"disabled": True}),
+            platform="test",
+        )
+        self.assertIs(False, mock_connect.call_args.kwargs.get("verify"))
+
+    @patch("trino.dbapi.connect")
+    def test_ccp_ssl_disabled(self, mock_connect):
+        """CCP resolves ssl_options disabled to verify=False before proxy client is created."""
+        from apollo.integrations.db.starburst_enterprise_proxy_client import (
+            StarburstEnterpriseProxyClient,
+        )
+
+        mock_connect.return_value = Mock()
+        StarburstEnterpriseProxyClient(
+            credentials=self._ccp_creds(ssl_options={"disabled": True}),
+            platform="test",
+        )
+        self.assertIs(False, mock_connect.call_args.kwargs.get("verify"))

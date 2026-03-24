@@ -1,20 +1,44 @@
+from typing import Required, TypedDict
 from unittest import TestCase
 from unittest.mock import patch
 
 from apollo.agent.proxy_client_factory import ProxyClientFactory
+from apollo.integrations.ccp.models import CcpConfig, MapperConfig
+from apollo.integrations.ccp.registry import CcpRegistry
+
+_TEST_CONNECTION_TYPE = "test-ccp-factory"
+
+
+class _TestClientArgs(TypedDict):
+    host: Required[str]
+    dbname: Required[str]
+
+
+_TEST_CCP_CONFIG = CcpConfig(
+    name="test-ccp-factory-default",
+    steps=[],
+    mapper=MapperConfig(
+        name="test_client_args",
+        schema=_TestClientArgs,
+        field_map={
+            "host": "{{ raw.host }}",
+            "dbname": "{{ raw.database }}",
+        },
+    ),
+)
 
 
 class TestProxyClientFactoryCcp(TestCase):
     """Verify CCP is applied inside _create_proxy_client for registered types."""
 
-    def test_postgres_flat_credentials_resolved_before_client_creation(self):
-        flat = {
-            "host": "db.example.com",
-            "port": 5432,
-            "database": "mydb",
-            "user": "admin",
-            "password": "secret",
-        }
+    def setUp(self):
+        CcpRegistry.register(_TEST_CONNECTION_TYPE, _TEST_CCP_CONFIG)
+
+    def tearDown(self):
+        CcpRegistry._registry.pop(_TEST_CONNECTION_TYPE, None)
+
+    def test_flat_credentials_resolved_before_client_creation(self):
+        flat = {"host": "db.example.com", "database": "mydb"}
         captured = {}
 
         def fake_factory(credentials, platform):
@@ -23,10 +47,12 @@ class TestProxyClientFactoryCcp(TestCase):
 
         with patch(
             "apollo.agent.proxy_client_factory._CLIENT_FACTORY_MAPPING",
-            {"postgres": fake_factory},
+            {_TEST_CONNECTION_TYPE: fake_factory},
         ):
             with self.assertRaises(StopIteration):
-                ProxyClientFactory._create_proxy_client("postgres", flat, "local")
+                ProxyClientFactory._create_proxy_client(
+                    _TEST_CONNECTION_TYPE, flat, "local"
+                )
 
         self.assertIn("connect_args", captured["credentials"])
         self.assertEqual(
@@ -63,9 +89,11 @@ class TestProxyClientFactoryCcp(TestCase):
 
         with patch(
             "apollo.agent.proxy_client_factory._CLIENT_FACTORY_MAPPING",
-            {"postgres": fake_factory},
+            {_TEST_CONNECTION_TYPE: fake_factory},
         ):
             with self.assertRaises(StopIteration):
-                ProxyClientFactory._create_proxy_client("postgres", legacy, "local")
+                ProxyClientFactory._create_proxy_client(
+                    _TEST_CONNECTION_TYPE, legacy, "local"
+                )
 
         self.assertEqual(legacy, captured["credentials"])

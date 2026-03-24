@@ -1,9 +1,9 @@
-from typing import TypedDict, Required, NotRequired
+from typing import Any, NotRequired, Required, TypedDict
 
 from apollo.integrations.ccp.models import CcpConfig, MapperConfig, TransformStep
 
 
-class PostgresClientArgs(TypedDict):
+class RedshiftClientArgs(TypedDict):
     # Required connection identifiers
     host: Required[str]
     port: Required[int]
@@ -25,12 +25,16 @@ class PostgresClientArgs(TypedDict):
     keepalives_idle: NotRequired[int]
     keepalives_interval: NotRequired[int]
     keepalives_count: NotRequired[int]
-    # Multi-host / HA
-    target_session_attrs: NotRequired[str]
+    # Redshift-specific
+    # Note: autocommit is a post-connection attribute on the psycopg2 connection
+    # object, not a connect() parameter. It is read from the top level of
+    # credentials by the proxy client today. Phase 2 will move it into connect_args
+    # and update the proxy client accordingly.
+    autocommit: NotRequired[bool]
 
 
-POSTGRES_DEFAULT_CCP = CcpConfig(
-    name="postgres-default",
+REDSHIFT_DEFAULT_CCP = CcpConfig(
+    name="redshift-default",
     steps=[
         TransformStep(
             type="resolve_ssl_options",
@@ -47,14 +51,22 @@ POSTGRES_DEFAULT_CCP = CcpConfig(
         )
     ],
     mapper=MapperConfig(
-        name="postgres_client_args",
-        schema=PostgresClientArgs,
+        name="redshift_client_args",
+        schema=RedshiftClientArgs,
         field_map={
             "host": "{{ raw.host }}",
-            "port": "{{ raw.port }}",
-            "dbname": "{{ raw.database }}",
-            "user": "{{ raw.user }}",
+            "port": "{{ raw.port | default(5439) }}",
+            "dbname": "{{ raw.db_name | default(raw.dbname) | default(raw.database) }}",
+            "user": "{{ raw.user | default('awsuser') }}",
             "password": "{{ raw.password }}",
+            "connect_timeout": "{{ raw.connect_timeout | default(none) }}",
+            # DC hardcodes these keepalive values for all Redshift connections
+            "keepalives": 1,
+            "keepalives_idle": 30,
+            "keepalives_interval": 10,
+            "keepalives_count": 5,
+            # statement_timeout in ms; derived from query_timeout_in_seconds when provided
+            "options": "{{ '-c statement_timeout=' ~ (raw.query_timeout_in_seconds | int * 1000) if raw.query_timeout_in_seconds is defined else none }}",
             "sslmode": "{{ raw.ssl_mode | default(none) }}",
         },
     ),
