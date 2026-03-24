@@ -71,4 +71,3 @@ REDSHIFT_DEFAULT_CCP = CcpConfig(
         },
     ),
 )
-

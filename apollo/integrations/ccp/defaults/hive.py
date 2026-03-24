@@ -51,4 +51,3 @@ HIVE_DEFAULT_CCP = CcpConfig(
         },
     ),
 )
-

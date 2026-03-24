@@ -44,4 +44,3 @@ BIGQUERY_DEFAULT_CCP = CcpConfig(
         },
     ),
 )
-

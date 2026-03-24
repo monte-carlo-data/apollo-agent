@@ -69,4 +69,3 @@ STARBURST_ENTERPRISE_DEFAULT_CCP = CcpConfig(
         },
     ),
 )
-

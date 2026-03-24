@@ -19,6 +19,9 @@ from apollo.common.agent.constants import (
     ATTRIBUTE_NAME_ERROR_TYPE,
 )
 from apollo.agent.logging_utils import LoggingUtils
+from apollo.integrations.ccp.defaults.starburst_galaxy import (
+    STARBURST_GALAXY_DEFAULT_CCP,
+)
 from apollo.integrations.ccp.registry import CcpRegistry
 from apollo.integrations.db.starburst_proxy_client import StarburstProxyClient
 
@@ -280,6 +283,12 @@ class StarburstGalaxyCredentialShapeTests(TestCase):
     _PORT_INT = 443
     _USER = "foo"
     _PASSWORD = "bar"
+
+    def setUp(self) -> None:
+        CcpRegistry.register("starburst-galaxy", STARBURST_GALAXY_DEFAULT_CCP)
+
+    def tearDown(self) -> None:
+        CcpRegistry._registry.pop("starburst-galaxy", None)
 
     def _dc_creds(self, **extra_connect_args):
         """Build DC-style credentials: connect_args with all required fields."""

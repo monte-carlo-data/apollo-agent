@@ -31,4 +31,3 @@ DREMIO_DEFAULT_CCP = CcpConfig(
         },
     ),
 )
-

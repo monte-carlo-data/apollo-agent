@@ -50,4 +50,3 @@ SAP_HANA_DEFAULT_CCP = CcpConfig(
         },
     ),
 )
-
