@@ -1,0 +1,81 @@
+# tests/ccp/test_presto_ccp.py
+#
+# Two Phase 2 blockers prevent registration:
+# 1. SSL uses credentials["ssl_options"] via http_session.verify; CCP output drops it.
+# 2. proxy client pops "auth" without a default; mapper omits None values so auth would
+#    be absent when not provided, raising KeyError on connect_args.pop("auth").
+# Tests use CcpPipeline().execute() directly.
+import prestodb
+from unittest import TestCase
+
+from apollo.integrations.ccp.defaults.presto import PRESTO_DEFAULT_CCP
+from apollo.integrations.ccp.pipeline import CcpPipeline
+from apollo.integrations.ccp.registry import CcpRegistry
+
+
+def _resolve(credentials: dict) -> dict:
+    return CcpPipeline().execute(PRESTO_DEFAULT_CCP, credentials)
+
+
+class TestPrestoCcp(TestCase):
+    def test_presto_not_registered(self):
+        self.assertIsNone(CcpRegistry.get("presto"))
+
+    # ── Basic connection fields ────────────────────────────────────────
+
+    def test_basic_connection(self):
+        args = _resolve({"host": "presto.example.com", "port": 8889, "user": "alice"})
+        self.assertEqual("presto.example.com", args["host"])
+        self.assertEqual(8889, args["port"])
+        self.assertEqual("alice", args["user"])
+
+    def test_port_defaults_to_8889(self):
+        args = _resolve({"host": "h", "user": "u"})
+        self.assertEqual(8889, args["port"])
+
+    def test_http_scheme_defaults_to_http(self):
+        args = _resolve({"host": "h", "user": "u"})
+        self.assertEqual("http", args["http_scheme"])
+
+    def test_http_scheme_override(self):
+        args = _resolve({"host": "h", "user": "u", "http_scheme": "https"})
+        self.assertEqual("https", args["http_scheme"])
+
+    def test_max_attempts_always_3(self):
+        args = _resolve({"host": "h", "user": "u"})
+        self.assertEqual(3, args["max_attempts"])
+
+    def test_username_field_alias(self):
+        args = _resolve({"host": "h", "username": "bob"})
+        self.assertEqual("bob", args["user"])
+
+    # ── Optional fields ───────────────────────────────────────────────
+
+    def test_catalog_and_schema(self):
+        args = _resolve(
+            {"host": "h", "user": "u", "catalog": "hive", "schema": "default"}
+        )
+        self.assertEqual("hive", args["catalog"])
+        self.assertEqual("default", args["schema"])
+
+    def test_request_timeout(self):
+        args = _resolve({"host": "h", "user": "u", "request_timeout": 120})
+        self.assertEqual(120, args["request_timeout"])
+
+    def test_omits_absent_optional_fields(self):
+        args = _resolve({"host": "h", "user": "u"})
+        for field in ("catalog", "schema", "request_timeout"):
+            self.assertNotIn(field, args, f"expected {field!r} to be absent")
+
+    # ── Auth passthrough ──────────────────────────────────────────────
+
+    def test_auth_produces_basic_authentication_object(self):
+        auth = {"username": "alice", "password": "secret"}
+        args = _resolve({"host": "h", "user": "u", "auth": auth})
+        self.assertIsInstance(args["auth"], prestodb.auth.BasicAuthentication)
+
+    def test_auth_absent_when_not_provided(self):
+        # When auth is not in raw credentials, the step is skipped (when guard).
+        # Phase 2 will update proxy client to use pop("auth", None).
+        args = _resolve({"host": "h", "user": "u"})
+        self.assertNotIn("auth", args)
