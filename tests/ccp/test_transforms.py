@@ -248,7 +248,7 @@ class TestOAuthTransform(TestCase):
         OAuthTransform().execute(_make_oauth_step(), state)
 
         _, kwargs = mock_post.call_args
-        self.assertIn("grant_type=client_credentials", kwargs["data"])
+        self.assertEqual("client_credentials", kwargs["data"]["grant_type"])
 
     @patch("apollo.integrations.ccp.transforms.oauth.requests.post")
     def test_client_credentials_with_scope(self, mock_post):
@@ -258,7 +258,7 @@ class TestOAuthTransform(TestCase):
         OAuthTransform().execute(_make_oauth_step(), state)
 
         _, kwargs = mock_post.call_args
-        self.assertIn("scope=read:data", kwargs["data"])
+        self.assertEqual("read:data", kwargs["data"]["scope"])
 
     # ── Password grant ────────────────────────────────────────────────
 
@@ -276,8 +276,8 @@ class TestOAuthTransform(TestCase):
         OAuthTransform().execute(_make_oauth_step(), state)
 
         _, kwargs = mock_post.call_args
-        self.assertIn("username=alice", kwargs["data"])
-        self.assertIn("password=hunter2", kwargs["data"])
+        self.assertEqual("alice", kwargs["data"]["username"])
+        self.assertEqual("hunter2", kwargs["data"]["password"])
 
     # ── Error handling ────────────────────────────────────────────────
 

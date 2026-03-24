@@ -38,6 +38,12 @@ class ResolveSslOptionsTransform(Transform):
             )
 
         ssl_options_raw = TemplateEngine.render(step.input["ssl_options"], state)
+        if not isinstance(ssl_options_raw, dict):
+            raise CcpPipelineError(
+                stage="transform_execute",
+                step_name=step.type,
+                message=f"'ssl_options' must resolve to a dict, got {type(ssl_options_raw).__name__}",
+            )
         ssl_options = SslOptions(**ssl_options_raw)
 
         if "ssl_options" in step.output:
@@ -48,7 +54,12 @@ class ResolveSslOptionsTransform(Transform):
             and ssl_options.ca_data
             and not ssl_options.disabled
         ):
-            content_hash = hashlib.sha256(ssl_options.ca_data.encode()).hexdigest()[:12]
+            ca_bytes = (
+                ssl_options.ca_data
+                if isinstance(ssl_options.ca_data, bytes)
+                else ssl_options.ca_data.encode()
+            )
+            content_hash = hashlib.sha256(ca_bytes).hexdigest()[:12]
             cert_path = f"/tmp/{content_hash}_ssl_ca.pem"
             ssl_options.write_ca_data_to_temp_file(cert_path, upsert=True)
             state.derived[step.output["ca_path"]] = cert_path

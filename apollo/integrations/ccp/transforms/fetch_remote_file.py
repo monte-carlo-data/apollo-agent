@@ -1,6 +1,7 @@
 from urllib.request import urlretrieve
 
 from apollo.agent.utils import AgentUtils
+from apollo.integrations.ccp.errors import CcpPipelineError
 from apollo.integrations.ccp.models import PipelineState, TransformStep
 from apollo.integrations.ccp.template import TemplateEngine
 from apollo.integrations.ccp.transforms.base import Transform
@@ -23,6 +24,19 @@ class FetchRemoteFileTransform(Transform):
     """
 
     def execute(self, step: TransformStep, state: PipelineState) -> None:
+        if "url" not in step.input:
+            raise CcpPipelineError(
+                stage="transform_input",
+                step_name=step.type,
+                message="'url' is required in fetch_remote_file input",
+            )
+        if not step.output.get("path"):
+            raise CcpPipelineError(
+                stage="transform_output",
+                step_name=step.type,
+                message="'path' output key required",
+            )
+
         url = TemplateEngine.render(step.input["url"], state)
         sub_folder = step.input.get("sub_folder")
         raw_mechanism = step.input.get("mechanism", "url")
@@ -37,6 +51,14 @@ class FetchRemoteFileTransform(Transform):
         if mechanism == "url":
             urlretrieve(url=url, filename=download_path)
         else:
+            platform = state.context.get("platform")
+            if not platform:
+                raise CcpPipelineError(
+                    stage="transform_execute",
+                    step_name=step.type,
+                    message="'platform' is required in context for non-URL fetch mechanisms",
+                )
+
             from apollo.integrations.storage.base_storage_client import (
                 BaseStorageClient,
             )
@@ -44,7 +66,6 @@ class FetchRemoteFileTransform(Transform):
                 StorageProxyClient,
             )
 
-            platform = state.context.get("platform")
             storage_client = StorageProxyClient(platform).wrapped_client
             try:
                 storage_client.download_file(key=url, download_path=download_path)

@@ -12,8 +12,8 @@ class SslOptions:
     This class contains various configuration options related to SSL certificates
     and verification that are used when establishing a secure connection to a database.
 
-    For ca_data, cert_data and key_data the content of the certificate should be base64 encoded.
-    Example of an expected format can be found here: https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/UsingWithRDS.SSL.html#UsingWithRDS.SSL.CertificatesAllRegions
+    For ca_data, cert_data and key_data the content should be a PEM string (plain text,
+    not base64-encoded). Example format: https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/UsingWithRDS.SSL.html#UsingWithRDS.SSL.CertificatesAllRegions
 
     Attributes:
         ca (str | None): The path to a CA PEM file that can be downloaded.

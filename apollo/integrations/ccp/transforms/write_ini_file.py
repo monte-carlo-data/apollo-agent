@@ -1,3 +1,4 @@
+import os
 import tempfile
 
 from apollo.integrations.ccp.errors import CcpPipelineError
@@ -71,6 +72,7 @@ class WriteIniFileTransform(Transform):
             for key, value in fields.items():
                 f.write(f"{key}={value}\n")
 
+        os.chmod(f.name, 0o600)
         state.derived[output_key] = f.name
 
 

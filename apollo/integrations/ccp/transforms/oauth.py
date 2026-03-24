@@ -90,14 +90,13 @@ class OAuthTransform(Transform):
         client_secret = oauth_config["client_secret"]
         token_endpoint = oauth_config["access_token_endpoint"]
 
-        # Build form body — grant_type first, then optional scope and password fields
-        body_parts = [f"grant_type={grant_type}"]
+        # Build form body as a dict — requests will URL-encode values automatically
+        data: dict = {"grant_type": grant_type}
         if oauth_config.get("scope"):
-            body_parts.append(f"scope={oauth_config['scope']}")
+            data["scope"] = oauth_config["scope"]
         if grant_type == _GRANT_TYPE_PASSWORD:
-            body_parts.append(f"username={oauth_config['username']}")
-            body_parts.append(f"password={oauth_config['password']}")
-        data = "&".join(body_parts)
+            data["username"] = oauth_config["username"]
+            data["password"] = oauth_config["password"]
 
         encoded = base64.b64encode(f"{client_id}:{client_secret}".encode()).decode()
         headers = {
