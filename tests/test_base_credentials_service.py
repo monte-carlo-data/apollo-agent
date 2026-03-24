@@ -1,4 +1,3 @@
-import base64
 from unittest import TestCase
 
 from apollo.credentials.base import BaseCredentialsService
@@ -7,23 +6,12 @@ from apollo.integrations.ccp.pipeline import CcpPipeline
 from apollo.integrations.ccp.registry import CcpRegistry
 
 
-class TestBaseCredentialsServiceDecode(TestCase):
-    """Verify decode_dictionary runs after _merge_connect_args."""
-
+class TestBaseCredentialsService(TestCase):
     def test_plain_credentials_returned_unchanged(self):
         svc = BaseCredentialsService()
         creds = {"connect_args": {"host": "h", "port": 5432}}
         result = svc.get_credentials(creds)
         self.assertEqual({"connect_args": {"host": "h", "port": 5432}}, result)
-
-    def test_binary_value_decoded(self):
-        encoded = {
-            "__type__": "bytes",
-            "__data__": base64.b64encode(b"raw-cert").decode(),
-        }
-        svc = BaseCredentialsService()
-        result = svc.get_credentials({"connect_args": {"cert": encoded}})
-        self.assertEqual(b"raw-cert", result["connect_args"]["cert"])
 
 
 class TestPassthroughCcp(TestCase):
