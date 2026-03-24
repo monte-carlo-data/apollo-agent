@@ -119,6 +119,7 @@ class ResolveMsalTokenTransform(Transform):
         )
         response = app.acquire_token_for_client(scopes=scopes)
         ResolveMsalTokenTransform._raise_for_response(response)
+        assert response is not None
         return response["access_token"]
 
     @staticmethod
@@ -141,6 +142,7 @@ class ResolveMsalTokenTransform(Transform):
             )
 
         ResolveMsalTokenTransform._raise_for_response(response)
+        assert response is not None
         return response["access_token"]
 
     @staticmethod
