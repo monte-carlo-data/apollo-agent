@@ -10,7 +10,7 @@ from apollo.common.agent.env_vars import CLIENT_CACHE_EXPIRATION_SECONDS_ENV_VAR
 from apollo.common.agent.models import AgentError
 from apollo.common.agent.serde import decode_dictionary
 from apollo.integrations.base_proxy_client import BaseProxyClient
-from apollo.integrations.ccp.registry import CcpRegistry
+from apollo.integrations.ctp.registry import CtpRegistry
 from apollo.integrations.db.salesforce_data_cloud_proxy_client import (
     SalesforceDataCloudProxyClient,
     SalesforceDataCloudCredentials,
@@ -460,8 +460,8 @@ class ProxyClientFactory:
     ) -> BaseProxyClient:
         if credentials:
             credentials = decode_dictionary(credentials)
-        if credentials and CcpRegistry.get(connection_type):
-            credentials = CcpRegistry.resolve(
+        if credentials and CtpRegistry.get(connection_type):
+            credentials = CtpRegistry.resolve(
                 connection_type, credentials, context={"platform": platform}
             )
         factory_method = _CLIENT_FACTORY_MAPPING.get(connection_type)
