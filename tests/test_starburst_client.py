@@ -19,10 +19,10 @@ from apollo.common.agent.constants import (
     ATTRIBUTE_NAME_ERROR_TYPE,
 )
 from apollo.agent.logging_utils import LoggingUtils
-from apollo.integrations.ccp.defaults.starburst_galaxy import (
-    STARBURST_GALAXY_DEFAULT_CCP,
+from apollo.integrations.ctp.defaults.starburst_galaxy import (
+    STARBURST_GALAXY_DEFAULT_CTP,
 )
-from apollo.integrations.ccp.registry import CcpRegistry
+from apollo.integrations.ctp.registry import CtpRegistry
 from apollo.integrations.db.starburst_proxy_client import StarburstProxyClient
 
 _STARBURST_CREDENTIALS = {
@@ -267,12 +267,12 @@ class StarburstClientTests(TestCase):
 
 
 class StarburstGalaxyCredentialShapeTests(TestCase):
-    """Verify StarburstProxyClient __init__ accepts both DC-style and CCP-resolved credentials.
+    """Verify StarburstProxyClient __init__ accepts both DC-style and CTP-resolved credentials.
 
     DC path (today): DC plugin builds connect_args with all required fields and sends them to
     the agent. Port arrives as a string; user/password are converted to BasicAuthentication.
 
-    CCP path (after Phase 2): flat credentials go through CCP, which converts port to int and
+    CTP path (after Phase 2): flat credentials go through CTP, which converts port to int and
     hard-codes http_scheme before StarburstProxyClient is created.
 
     In both paths trino.dbapi.connect must receive the same effective arguments.
@@ -285,10 +285,10 @@ class StarburstGalaxyCredentialShapeTests(TestCase):
     _PASSWORD = "bar"
 
     def setUp(self) -> None:
-        CcpRegistry.register("starburst-galaxy", STARBURST_GALAXY_DEFAULT_CCP)
+        CtpRegistry.register("starburst-galaxy", STARBURST_GALAXY_DEFAULT_CTP)
 
     def tearDown(self) -> None:
-        CcpRegistry._registry.pop("starburst-galaxy", None)
+        CtpRegistry._registry.pop("starburst-galaxy", None)
 
     def _dc_creds(self, **extra_connect_args):
         """Build DC-style credentials: connect_args with all required fields."""
@@ -303,9 +303,9 @@ class StarburstGalaxyCredentialShapeTests(TestCase):
             }
         }
 
-    def _ccp_creds(self, **flat_kwargs):
-        """Build CCP-resolved credentials from flat input via the registry."""
-        return CcpRegistry.resolve(
+    def _ctp_creds(self, **flat_kwargs):
+        """Build CTP-resolved credentials from flat input via the registry."""
+        return CtpRegistry.resolve(
             "starburst-galaxy",
             {
                 "host": self._HOST,
@@ -331,14 +331,14 @@ class StarburstGalaxyCredentialShapeTests(TestCase):
         self.assertIn("auth", kwargs)
 
     @patch("trino.dbapi.connect")
-    def test_ccp_path(self, mock_connect):
-        """CCP resolves flat credentials — port is converted to int, http_scheme hard-coded."""
+    def test_ctp_path(self, mock_connect):
+        """CTP resolves flat credentials — port is converted to int, http_scheme hard-coded."""
         mock_connect.return_value = Mock()
-        StarburstProxyClient(credentials=self._ccp_creds(), platform="test")
+        StarburstProxyClient(credentials=self._ctp_creds(), platform="test")
 
         kwargs = mock_connect.call_args.kwargs
         self.assertEqual(self._HOST, kwargs["host"])
-        self.assertEqual(self._PORT_INT, kwargs["port"])  # CCP converts to int
+        self.assertEqual(self._PORT_INT, kwargs["port"])  # CTP converts to int
         self.assertEqual("https", kwargs["http_scheme"])
         self.assertNotIn("user", kwargs)
         self.assertNotIn("password", kwargs)

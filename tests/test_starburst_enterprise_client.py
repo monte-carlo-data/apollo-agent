@@ -14,10 +14,10 @@ from apollo.common.agent.constants import (
     ATTRIBUTE_NAME_ERROR_TYPE,
 )
 from apollo.agent.logging_utils import LoggingUtils
-from apollo.integrations.ccp.defaults.starburst_enterprise import (
-    STARBURST_ENTERPRISE_DEFAULT_CCP,
+from apollo.integrations.ctp.defaults.starburst_enterprise import (
+    STARBURST_ENTERPRISE_DEFAULT_CTP,
 )
-from apollo.integrations.ccp.registry import CcpRegistry
+from apollo.integrations.ctp.registry import CtpRegistry
 
 _STARBURST_CREDENTIALS = {
     "host": "example.starburst.io",
@@ -216,12 +216,12 @@ class StarburstEnterpriseHttpTests(TestCase):
 
 
 class StarburstEnterpriseCredentialShapeTests(TestCase):
-    """Verify the proxy client init accepts both DC-style and CCP-resolved credentials.
+    """Verify the proxy client init accepts both DC-style and CTP-resolved credentials.
 
     DC path (today): DC plugin builds connect_args including ssl_options (unresolved)
     and sends them to the agent. The proxy client pops ssl_options and handles SSL itself.
 
-    CCP path (after Phase 2): flat credentials go through CCP, which resolves ssl_options
+    CTP path (after Phase 2): flat credentials go through CTP, which resolves ssl_options
     into a verify value before the proxy client is created. The proxy client receives
     clean connect_args with no ssl_options.
 
@@ -236,10 +236,10 @@ class StarburstEnterpriseCredentialShapeTests(TestCase):
     _CA_PEM = "-----BEGIN CERTIFICATE-----\nFAKE\n-----END CERTIFICATE-----"
 
     def setUp(self) -> None:
-        CcpRegistry.register("starburst-enterprise", STARBURST_ENTERPRISE_DEFAULT_CCP)
+        CtpRegistry.register("starburst-enterprise", STARBURST_ENTERPRISE_DEFAULT_CTP)
 
     def tearDown(self) -> None:
-        CcpRegistry._registry.pop("starburst-enterprise", None)
+        CtpRegistry._registry.pop("starburst-enterprise", None)
 
     def _dc_creds(self, **ssl_kwargs):
         """Build DC-style credentials: connect_args with ssl_options not yet resolved."""
@@ -254,9 +254,9 @@ class StarburstEnterpriseCredentialShapeTests(TestCase):
             }
         }
 
-    def _ccp_creds(self, **flat_kwargs):
-        """Build CCP-resolved credentials from flat input via the registry."""
-        return CcpRegistry.resolve(
+    def _ctp_creds(self, **flat_kwargs):
+        """Build CTP-resolved credentials from flat input via the registry."""
+        return CtpRegistry.resolve(
             "starburst-enterprise",
             {
                 "host": self._HOST,
@@ -286,14 +286,14 @@ class StarburstEnterpriseCredentialShapeTests(TestCase):
         self.assertNotIn("ssl_options", mock_connect.call_args.kwargs)
 
     @patch("trino.dbapi.connect")
-    def test_ccp_no_ssl(self, mock_connect):
-        """CCP with no ssl_options — no verify passed to trino."""
+    def test_ctp_no_ssl(self, mock_connect):
+        """CTP with no ssl_options — no verify passed to trino."""
         from apollo.integrations.db.starburst_enterprise_proxy_client import (
             StarburstEnterpriseProxyClient,
         )
 
         mock_connect.return_value = Mock()
-        StarburstEnterpriseProxyClient(credentials=self._ccp_creds(), platform="test")
+        StarburstEnterpriseProxyClient(credentials=self._ctp_creds(), platform="test")
         self.assertNotIn("verify", mock_connect.call_args.kwargs)
         self.assertNotIn("ssl_options", mock_connect.call_args.kwargs)
 
@@ -319,15 +319,15 @@ class StarburstEnterpriseCredentialShapeTests(TestCase):
         os.unlink(verify)
 
     @patch("trino.dbapi.connect")
-    def test_ccp_ca_data(self, mock_connect):
-        """CCP resolves ssl_options ca_data to verify=<path> before proxy client is created."""
+    def test_ctp_ca_data(self, mock_connect):
+        """CTP resolves ssl_options ca_data to verify=<path> before proxy client is created."""
         from apollo.integrations.db.starburst_enterprise_proxy_client import (
             StarburstEnterpriseProxyClient,
         )
 
         mock_connect.return_value = Mock()
         StarburstEnterpriseProxyClient(
-            credentials=self._ccp_creds(ssl_options={"ca_data": self._CA_PEM}),
+            credentials=self._ctp_creds(ssl_options={"ca_data": self._CA_PEM}),
             platform="test",
         )
         verify = mock_connect.call_args.kwargs.get("verify")
@@ -355,15 +355,15 @@ class StarburstEnterpriseCredentialShapeTests(TestCase):
         self.assertIs(False, mock_connect.call_args.kwargs.get("verify"))
 
     @patch("trino.dbapi.connect")
-    def test_ccp_ssl_disabled(self, mock_connect):
-        """CCP resolves ssl_options disabled to verify=False before proxy client is created."""
+    def test_ctp_ssl_disabled(self, mock_connect):
+        """CTP resolves ssl_options disabled to verify=False before proxy client is created."""
         from apollo.integrations.db.starburst_enterprise_proxy_client import (
             StarburstEnterpriseProxyClient,
         )
 
         mock_connect.return_value = Mock()
         StarburstEnterpriseProxyClient(
-            credentials=self._ccp_creds(ssl_options={"disabled": True}),
+            credentials=self._ctp_creds(ssl_options={"disabled": True}),
             platform="test",
         )
         self.assertIs(False, mock_connect.call_args.kwargs.get("verify"))
