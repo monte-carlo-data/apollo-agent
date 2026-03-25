@@ -3,13 +3,51 @@ from typing import Any
 
 from jinja2 import StrictUndefined, Undefined
 from jinja2.nativetypes import NativeEnvironment
+from jinja2.sandbox import SandboxedEnvironment
 
 from apollo.integrations.ctp.models import PipelineState
 
-_ENV = NativeEnvironment(undefined=StrictUndefined)
+
+class _CredentialNamespace(dict):
+    """Marker base class for CTP credential namespaces (raw, derived, context).
+
+    Used by _NativeSandboxedEnvironment.is_safe_attribute to allow single-underscore
+    attribute access (e.g. raw._user_agent_entry) while still blocking dunder access.
+    Credential field names may legitimately start with _ and must be accessible in
+    templates via dot notation.
+    """
 
 
-class _StrictDict(dict):
+class _NativeSandboxedEnvironment(SandboxedEnvironment, NativeEnvironment):
+    """Jinja2 environment combining sandbox safety with native type preservation.
+
+    SandboxedEnvironment (first in MRO) blocks access to unsafe Python attributes
+    and builtins inside template expressions — defense-in-depth against malicious
+    template strings in CTP configs.
+
+    NativeEnvironment ensures rendered values preserve their Python type (int stays
+    int, bool stays bool) rather than being coerced to strings.
+
+    Variable *values* (e.g. raw.password) are always treated as data by Jinja2 and
+    are never re-rendered, regardless of whether they contain {{ }} characters.
+    """
+
+    def is_safe_attribute(self, obj: object, attr: str, value: object) -> bool:
+        # Allow single-underscore attribute access on our controlled credential
+        # namespaces. The sandbox blocks all _-prefixed attrs by default, but
+        # credential field names (e.g. _user_agent_entry) may start with _.
+        # Dunder access is always blocked regardless.
+        if isinstance(obj, _CredentialNamespace) and not (
+            attr.startswith("__") and attr.endswith("__")
+        ):
+            return True
+        return super().is_safe_attribute(obj, attr, value)
+
+
+_ENV = _NativeSandboxedEnvironment(undefined=StrictUndefined)
+
+
+class _StrictDict(_CredentialNamespace):
     """Dict subclass whose attribute access returns Undefined (not raises) so
     Jinja2 filters like ``default()`` and tests like ``is defined`` work
     correctly, while bare references to missing keys ultimately raise
@@ -37,8 +75,9 @@ class TemplateEngine:
         Render a value against pipeline state.
         Non-string values are returned as-is.
         Strings without Jinja2 markers are returned as-is.
-        Template strings are rendered using NativeEnvironment so the returned
-        type matches the actual Python type (int, bool, None, etc.).
+        Template strings are rendered using _NativeSandboxedEnvironment so the
+        returned type matches the actual Python type (int, bool, None, etc.)
+        while unsafe attribute/builtin access in templates is blocked.
         """
         if not isinstance(value, str):
             return value

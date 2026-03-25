@@ -1,9 +1,10 @@
 # tests/ctp/test_template.py
 from unittest import TestCase
 from jinja2 import UndefinedError
+from jinja2.sandbox import SecurityError
 
 from apollo.integrations.ctp.models import PipelineState
-from apollo.integrations.ctp.template import TemplateEngine
+from apollo.integrations.ctp.template import TemplateEngine, _ENV
 
 
 class TestTemplateEngine(TestCase):
@@ -70,3 +71,30 @@ class TestTemplateEngine(TestCase):
                 "raw.a is defined and raw.b is defined", state
             )
         )
+
+    # ------------------------------------------------------------------
+    # Sandbox security tests
+    # ------------------------------------------------------------------
+
+    def test_sandbox_blocks_dunder_traversal(self):
+        """Malicious template attempting class traversal raises SecurityError."""
+        state = self._state(raw={})
+        with self.assertRaises(SecurityError):
+            TemplateEngine.render(
+                "{{ ().__class__.__bases__[0].__subclasses__() }}", state
+            )
+
+    def test_credential_value_containing_template_syntax_is_literal(self):
+        """A credential value that looks like a template is never re-rendered."""
+        malicious = "{{ ().__class__.__bases__[0].__subclasses__() }}"
+        state = self._state(raw={"host": malicious})
+        result = TemplateEngine.render("{{ raw.host }}", state)
+        self.assertEqual(malicious, result)
+
+    def test_underscore_prefixed_credential_field_accessible(self):
+        """Field names starting with _ (e.g. _user_agent_entry) work in templates."""
+        state = self._state(raw={"_user_agent_entry": "Monte Carlo"})
+        result = TemplateEngine.render(
+            "{{ raw._user_agent_entry | default(none) }}", state
+        )
+        self.assertEqual("Monte Carlo", result)
