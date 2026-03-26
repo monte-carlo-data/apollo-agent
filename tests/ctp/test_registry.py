@@ -90,3 +90,78 @@ class TestStarburstGalaxyCtp(TestCase):
         self.assertEqual("https", ca["http_scheme"])
         self.assertEqual("svc@org.galaxy.starburst.io", ca["user"])
         self.assertEqual("secret", ca["password"])
+
+
+class TestRedshiftCtp(TestCase):
+    def test_registered(self):
+        config = CtpRegistry.get("redshift")
+        self.assertIsNotNone(config)
+        self.assertEqual("redshift-default", config.name)
+
+    def test_resolve_flat_credentials(self):
+        result = CtpRegistry.resolve(
+            "redshift",
+            {
+                "host": "cluster.abc123.us-east-1.redshift.amazonaws.com",
+                "port": "5439",
+                "db_name": "dev",
+                "user": "admin",
+                "password": "secret",
+            },
+        )
+        self.assertIn("connect_args", result)
+        ca = result["connect_args"]
+        self.assertEqual("cluster.abc123.us-east-1.redshift.amazonaws.com", ca["host"])
+        self.assertEqual(5439, ca["port"])
+        self.assertIsInstance(ca["port"], int)
+        self.assertEqual("dev", ca["dbname"])
+        self.assertEqual("admin", ca["user"])
+        self.assertEqual("secret", ca["password"])
+        self.assertEqual(1, ca["keepalives"])
+
+    def test_resolve_dc_shaped_credentials(self):
+        # DC pre-shapes credentials into connect_args before calling the agent.
+        # The pipeline unwraps and re-runs the transform, producing the same output
+        # as flat credentials would.
+        result = CtpRegistry.resolve(
+            "redshift",
+            {
+                "connect_args": {
+                    "host": "cluster.abc123.us-east-1.redshift.amazonaws.com",
+                    "port": 5439,
+                    "dbname": "dev",
+                    "user": "admin",
+                    "password": "secret",
+                    "keepalives": 1,
+                    "keepalives_idle": 30,
+                    "keepalives_interval": 10,
+                    "keepalives_count": 5,
+                },
+            },
+        )
+        self.assertIn("connect_args", result)
+        ca = result["connect_args"]
+        self.assertEqual("cluster.abc123.us-east-1.redshift.amazonaws.com", ca["host"])
+        self.assertEqual(5439, ca["port"])
+        self.assertEqual("dev", ca["dbname"])
+
+    def test_resolve_dc_shaped_dbname_variants(self):
+        # DC sends dbname (driver-native key); pipeline handles it via default() chaining
+        for key in ("db_name", "dbname", "database"):
+            dc_input = {
+                "connect_args": {
+                    "host": "h",
+                    "port": 5439,
+                    key: "mydb",
+                    "user": "u",
+                    "password": "p",
+                    "keepalives": 1,
+                    "keepalives_idle": 30,
+                    "keepalives_interval": 10,
+                    "keepalives_count": 5,
+                },
+            }
+            result = CtpRegistry.resolve("redshift", dc_input)
+            self.assertEqual(
+                "mydb", result["connect_args"]["dbname"], f"failed for key={key}"
+            )

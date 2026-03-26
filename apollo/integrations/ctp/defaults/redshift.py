@@ -25,12 +25,6 @@ class RedshiftClientArgs(TypedDict):
     keepalives_idle: NotRequired[int]
     keepalives_interval: NotRequired[int]
     keepalives_count: NotRequired[int]
-    # Redshift-specific
-    # Note: autocommit is a post-connection attribute on the psycopg2 connection
-    # object, not a connect() parameter. It is read from the top level of
-    # credentials by the proxy client today. Phase 2 will move it into connect_args
-    # and update the proxy client accordingly.
-    autocommit: NotRequired[bool]
 
 
 REDSHIFT_DEFAULT_CTP = CtpConfig(
@@ -71,3 +65,7 @@ REDSHIFT_DEFAULT_CTP = CtpConfig(
         },
     ),
 )
+
+from apollo.integrations.ctp.registry import CtpRegistry  # noqa: E402
+
+CtpRegistry.register("redshift", REDSHIFT_DEFAULT_CTP)

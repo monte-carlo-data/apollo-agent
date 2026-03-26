@@ -20,8 +20,7 @@ class RedshiftProxyClient(PostgresProxyClient):
         PostgresProxyClient.__init__(
             self, credentials=credentials, client_type="redshift"
         )
-        if credentials and credentials.get("autocommit", False):
-            self._connection.autocommit = True
+        self._connection.autocommit = True
 
     def disable_decoding_in_driver(self):
         """
