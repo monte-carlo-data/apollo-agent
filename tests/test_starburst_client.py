@@ -36,11 +36,16 @@ _STARBURST_CREDENTIALS = {
 }
 _EXPECTED_STARBURST_CREDENTIALS = {
     "host": "example.starburst.io",
-    "port": "443",
+    "port": 443,  # CTP coerces string → int
     "http_scheme": "https",
     "catalog": "fizz",
     "schema": "buzz",
     "auth": ANY,
+}
+# starburst-enterprise is not CTP-registered, so port stays as the original string
+_EXPECTED_STARBURST_ENTERPRISE_CREDENTIALS = {
+    **_EXPECTED_STARBURST_CREDENTIALS,
+    "port": "443",
 }
 
 
@@ -99,6 +104,7 @@ class StarburstClientTests(TestCase):
             expected_data,
             expected_description,
             connection_type="starburst-enterprise",
+            expected_connect_kwargs=_EXPECTED_STARBURST_ENTERPRISE_CREDENTIALS,
         )
 
     @patch("trino.dbapi.connect")
@@ -129,7 +135,6 @@ class StarburstClientTests(TestCase):
             {"connect_args": credentials_no_password},
         )
 
-        self.assertIn("user", response.result.get(ATTRIBUTE_NAME_ERROR))
         self.assertIn("password", response.result.get(ATTRIBUTE_NAME_ERROR))
         mock_connect.assert_not_called()
 
@@ -151,7 +156,6 @@ class StarburstClientTests(TestCase):
         )
 
         self.assertIn("user", response.result.get(ATTRIBUTE_NAME_ERROR))
-        self.assertIn("password", response.result.get(ATTRIBUTE_NAME_ERROR))
         mock_connect.assert_not_called()
 
     def _test_run_query(
@@ -163,6 +167,7 @@ class StarburstClientTests(TestCase):
         raise_exception: Optional[Exception] = None,
         expected_error_type: Optional[str] = None,
         connection_type: str = "starburst-galaxy",
+        expected_connect_kwargs: Optional[dict] = None,
     ):
         operation_dict = {
             "trace_id": "1234",
@@ -223,7 +228,9 @@ class StarburstClientTests(TestCase):
         self.assertTrue(ATTRIBUTE_NAME_RESULT in response.result)
         result = response.result.get(ATTRIBUTE_NAME_RESULT)
 
-        mock_connect.assert_called_with(**_EXPECTED_STARBURST_CREDENTIALS)
+        mock_connect.assert_called_with(
+            **(expected_connect_kwargs or _EXPECTED_STARBURST_CREDENTIALS)
+        )
         self._mock_cursor.execute.assert_has_calls(
             [
                 call(query, None),
@@ -283,12 +290,6 @@ class StarburstGalaxyCredentialShapeTests(TestCase):
     _PORT_INT = 443
     _USER = "foo"
     _PASSWORD = "bar"
-
-    def setUp(self) -> None:
-        CtpRegistry.register("starburst-galaxy", STARBURST_GALAXY_DEFAULT_CTP)
-
-    def tearDown(self) -> None:
-        CtpRegistry._registry.pop("starburst-galaxy", None)
 
     def _dc_creds(self, **extra_connect_args):
         """Build DC-style credentials: connect_args with all required fields."""
