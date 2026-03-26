@@ -37,9 +37,7 @@ class _NativeSandboxedEnvironment(SandboxedEnvironment, NativeEnvironment):
         # namespaces. The sandbox blocks all _-prefixed attrs by default, but
         # credential field names (e.g. _user_agent_entry) may start with _.
         # Dunder access is always blocked regardless.
-        if isinstance(obj, _CredentialNamespace) and not (
-            attr.startswith("__") and attr.endswith("__")
-        ):
+        if isinstance(obj, _CredentialNamespace) and not attr.startswith("__"):
             return True
         return super().is_safe_attribute(obj, attr, value)
 

@@ -159,6 +159,31 @@ class TestCtpPipeline(TestCase):
             {}, state.derived, "state.derived should be cleared after execute"
         )
 
+    def test_credential_state_cleared_on_exception(self):
+        """raw state must be scrubbed even when the pipeline raises."""
+        captured_state: list = []
+        original_mapper_execute = _pipeline_module.Mapper.execute
+
+        def failing_execute(self_mapper, config, state, **kwargs):
+            captured_state.append(state)
+            raise RuntimeError("simulated mapper failure")
+
+        _pipeline_module.Mapper.execute = failing_execute
+        try:
+            config = _minimal_config(field_map={"host": "{{ raw.host }}"})
+            with self.assertRaises(RuntimeError):
+                self._pipeline.execute(
+                    config, {"host": "db.example.com", "password": "s3cr3t"}
+                )
+        finally:
+            _pipeline_module.Mapper.execute = original_mapper_execute
+
+        state = captured_state[0]
+        self.assertEqual({}, state.raw, "state.raw should be cleared even on exception")
+        self.assertEqual(
+            {}, state.derived, "state.derived should be cleared even on exception"
+        )
+
 
 class TestPostgresDefaultCtp(TestCase):
     def setUp(self):

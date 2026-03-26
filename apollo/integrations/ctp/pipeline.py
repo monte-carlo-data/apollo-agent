@@ -22,21 +22,23 @@ class CtpPipeline:
         state = PipelineState(raw=dict(raw_credentials), context=context or {})
         step_field_maps: dict[str, Any] = {}
 
-        for step in config.steps:
-            if step.when is not None:
-                if not TemplateEngine.evaluate_condition(step.when, state):
-                    continue
-            transform = TransformRegistry.get(step.type)
-            transform.execute(step, state)
-            step_field_maps.update(step.field_map)
+        try:
+            for step in config.steps:
+                if step.when is not None:
+                    if not TemplateEngine.evaluate_condition(step.when, state):
+                        continue
+                transform = TransformRegistry.get(step.type)
+                transform.execute(step, state)
+                step_field_maps.update(step.field_map)
 
-        result = self._mapper.execute(
-            config.mapper, state, step_field_maps=step_field_maps
-        )
-        # Scrub credential state after client_args are frozen so that raw
-        # credentials and derived secrets (tokens, keys) cannot leak into
-        # error payloads, Sentry context, or any reference that outlives
-        # this call.
-        state.raw.clear()
-        state.derived.clear()
+            result = self._mapper.execute(
+                config.mapper, state, step_field_maps=step_field_maps
+            )
+        finally:
+            # Scrub credential state regardless of success or failure so that raw
+            # credentials and derived secrets (tokens, keys) cannot leak into
+            # error payloads, Sentry context, or any reference that outlives
+            # this call.
+            state.raw.clear()
+            state.derived.clear()
         return result

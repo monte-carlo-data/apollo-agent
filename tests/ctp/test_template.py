@@ -84,6 +84,14 @@ class TestTemplateEngine(TestCase):
                 "{{ ().__class__.__bases__[0].__subclasses__() }}", state
             )
 
+    def test_sandbox_blocks_double_underscore_prefixed_attr_on_credential_namespace(
+        self,
+    ):
+        """__-prefixed non-dunder attrs (e.g. __secret) are blocked even on credential namespaces."""
+        state = self._state(raw={"__secret": "leaked"})
+        with self.assertRaises((SecurityError, Exception)):
+            TemplateEngine.render("{{ raw.__secret }}", state)
+
     def test_credential_value_containing_template_syntax_is_literal(self):
         """A credential value that looks like a template is never re-rendered."""
         malicious = "{{ ().__class__.__bases__[0].__subclasses__() }}"
