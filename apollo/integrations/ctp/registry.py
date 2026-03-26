@@ -16,6 +16,7 @@ def _discover() -> None:
     their proxy clients are updated in Phase 2 to read from connect_args.
     """
     import apollo.integrations.ctp.defaults.starburst_galaxy  # noqa: F401
+    import apollo.integrations.ctp.defaults.redshift  # noqa: F401
 
 
 def _ensure_initialized() -> None:
