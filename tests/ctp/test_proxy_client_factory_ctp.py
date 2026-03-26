@@ -79,8 +79,10 @@ class TestProxyClientFactoryCtp(TestCase):
         self.assertNotIn("connect_args", captured["credentials"])
         self.assertEqual("Bearer abc123", captured["credentials"]["token"])
 
-    def test_legacy_connect_args_not_overwritten_by_ctp(self):
-        legacy = {"connect_args": {"host": "h", "dbname": "d"}}
+    def test_dc_shaped_credentials_run_through_ctp(self):
+        # DC pre-shapes credentials into connect_args before calling the agent.
+        # The inner dict is unwrapped and re-processed by CTP — same output as flat creds.
+        dc_shaped = {"connect_args": {"host": "db.example.com", "database": "mydb"}}
         captured = {}
 
         def fake_factory(credentials, platform):
@@ -93,7 +95,11 @@ class TestProxyClientFactoryCtp(TestCase):
         ):
             with self.assertRaises(StopIteration):
                 ProxyClientFactory._create_proxy_client(
-                    _TEST_CONNECTION_TYPE, legacy, "local"
+                    _TEST_CONNECTION_TYPE, dc_shaped, "local"
                 )
 
-        self.assertEqual(legacy, captured["credentials"])
+        self.assertIn("connect_args", captured["credentials"])
+        self.assertEqual(
+            "db.example.com", captured["credentials"]["connect_args"]["host"]
+        )
+        self.assertEqual("mydb", captured["credentials"]["connect_args"]["dbname"])

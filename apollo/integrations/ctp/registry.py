@@ -16,6 +16,7 @@ def _discover() -> None:
     their proxy clients are updated in Phase 2 to read from connect_args.
     """
     import apollo.integrations.ctp.defaults.fabric  # noqa: F401
+    import apollo.integrations.ctp.defaults.starburst_galaxy  # noqa: F401
 
 
 def _ensure_initialized() -> None:
@@ -47,21 +48,21 @@ class CtpRegistry:
         """
         Run the registered CTP pipeline for connection_type and return
         {"connect_args": <pipeline output>}.
-        If credentials already have connect_args, returns unchanged (legacy path).
+        If credentials contain connect_args (DC pre-shaped path), the inner dict
+        is unwrapped and run through the pipeline — both flat and pre-shaped
+        credentials follow the same transform path.
         Raises CtpPipelineError if connection_type is not registered.
         """
         _ensure_initialized()
-        if _ATTR_CONNECT_ARGS in credentials:
-            return credentials
-
         config = cls.get(connection_type)
         if config is None:
             raise CtpPipelineError(
                 stage="registry",
                 message=f"No CTP config registered for '{connection_type}'. Call CtpRegistry.get() before resolve().",
             )
+        raw = credentials.get(_ATTR_CONNECT_ARGS, credentials)
         return {
             _ATTR_CONNECT_ARGS: CtpPipeline().execute(
-                config, credentials, context=context or {}
+                config, raw, context=context or {}
             )
         }
