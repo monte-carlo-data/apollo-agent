@@ -243,3 +243,72 @@ class TestSapHanaCtp(TestCase):
         self.assertEqual("HXE", ca["databaseName"])
         self.assertEqual(10000, ca["connectTimeout"])
         self.assertEqual(30000, ca["communicationTimeout"])
+
+
+class TestSalesforceCrmCtp(TestCase):
+    def test_registered(self):
+        config = CtpRegistry.get("salesforce-crm")
+        self.assertIsNotNone(config)
+        self.assertEqual("salesforce-crm-default", config.name)
+
+    def test_resolve_flat_token_credentials(self):
+        result = CtpRegistry.resolve(
+            "salesforce-crm",
+            {
+                "user": "admin@example.com",
+                "password": "secret",
+                "security_token": "ABC123",
+            },
+        )
+        self.assertIn("connect_args", result)
+        ca = result["connect_args"]
+        self.assertEqual("admin@example.com", ca["username"])
+        self.assertNotIn("user", ca)
+        self.assertEqual("secret", ca["password"])
+        self.assertEqual("ABC123", ca["security_token"])
+        self.assertNotIn("consumer_key", ca)
+        self.assertNotIn("domain", ca)
+
+    def test_resolve_flat_oauth_credentials(self):
+        result = CtpRegistry.resolve(
+            "salesforce-crm",
+            {
+                "consumer_key": "key123",
+                "consumer_secret": "secret456",
+                "domain": "myorg",
+            },
+        )
+        self.assertIn("connect_args", result)
+        ca = result["connect_args"]
+        self.assertEqual("key123", ca["consumer_key"])
+        self.assertEqual("secret456", ca["consumer_secret"])
+        self.assertEqual("myorg", ca["domain"])
+        self.assertNotIn("username", ca)
+
+    def test_domain_suffix_stripped(self):
+        result = CtpRegistry.resolve(
+            "salesforce-crm",
+            {
+                "consumer_key": "k",
+                "consumer_secret": "s",
+                "domain": "myorg.salesforce.com",
+            },
+        )
+        self.assertEqual("myorg", result["connect_args"]["domain"])
+
+    def test_resolve_dc_shaped_credentials(self):
+        result = CtpRegistry.resolve(
+            "salesforce-crm",
+            {
+                "connect_args": {
+                    "username": "admin@example.com",
+                    "password": "secret",
+                    "security_token": "ABC123",
+                }
+            },
+        )
+        self.assertIn("connect_args", result)
+        ca = result["connect_args"]
+        self.assertEqual("admin@example.com", ca["username"])
+        self.assertEqual("secret", ca["password"])
+        self.assertEqual("ABC123", ca["security_token"])
