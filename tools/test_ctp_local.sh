@@ -381,6 +381,67 @@ print(json.dumps({
         "$select_one_op"
 }
 
+# ── connector: starburst-enterprise ─────────────────────────────────────────
+
+test_starburst_enterprise() {
+    log "Fetching Starburst Enterprise Dev credentials from 1Password..."
+    local SE_HOST SE_PORT SE_USER SE_PASS
+    local item
+    item="$(op item get "Starburst Enterprise Dev" --format json)"
+    SE_HOST="$(echo "$item" | python3 -c "import json,sys; d=json.load(sys.stdin); [print(f['value']) for f in d['fields'] if f.get('label')=='url']" | sed 's|https*://||')"
+    SE_PORT="$(echo "$item" | python3 -c "import json,sys; d=json.load(sys.stdin); [print(f['value'].split(': ')[-1]) for f in d['fields'] if f.get('label')=='text' and 'port' in f.get('value','')]")"
+    SE_USER="$(echo "$item" | python3 -c "import json,sys; d=json.load(sys.stdin); [print(f['value'].split(': ')[-1]) for f in d['fields'] if f.get('label')=='text' and 'user' in f.get('value','')]")"
+    SE_PASS="$(echo "$item" | python3 -c "import json,sys; d=json.load(sys.stdin); [print(f['value']) for f in d['fields'] if f.get('type')=='CONCEALED']")"
+    log "  host=$SE_HOST  port=$SE_PORT  user=$SE_USER"
+
+    # ── 1. CTP pipeline path: flat creds → agent directly ──
+    # Sends flat credentials — agent runs CTP pipeline.
+    # CTP maps port str→int, hardcodes http_scheme=https.
+    # The dev server uses a self-signed cert; ssl_options.disabled=true skips verification.
+    local flat_creds
+    flat_creds="$(python3 -c "
+import json
+print(json.dumps({
+    'host': '$SE_HOST',
+    'port': '$SE_PORT',
+    'user': '$SE_USER',
+    'password': '$SE_PASS',
+    'ssl_options': {'disabled': True},
+}))")"
+
+    local show_catalogs_op
+    show_catalogs_op='{"trace_id": "ctp-test-flat", "commands": [{"method": "cursor", "store": "c"}, {"target": "c", "method": "execute", "args": ["SHOW CATALOGS"]}, {"target": "c", "method": "fetchall", "store": "rows"}, {"target": "c", "method": "description", "store": "desc"}, {"target": "__utils", "method": "build_dict", "kwargs": {"all_results": {"__reference__": "rows"}, "description": {"__reference__": "desc"}}}]}'
+
+    test_agent_direct \
+        "starburst-enterprise: flat credentials (CTP pipeline path)" \
+        "starburst-enterprise" \
+        "$flat_creds" \
+        "$show_catalogs_op"
+
+    # ── 2. DC passthrough path: connect_args → agent directly ──
+    # DC pre-shapes credentials into connect_args using driver-native names.
+    # verify=False corresponds to ssl_options.disabled=true in flat credentials.
+    local dc_shaped_creds
+    dc_shaped_creds="$(python3 -c "
+import json
+print(json.dumps({
+    'connect_args': {
+        'host': '$SE_HOST',
+        'port': int('$SE_PORT'),
+        'user': '$SE_USER',
+        'password': '$SE_PASS',
+        'http_scheme': 'https',
+        'verify': False,
+    }
+}))")"
+
+    test_agent_direct \
+        "starburst-enterprise: DC pre-shaped credentials (passthrough path)" \
+        "starburst-enterprise" \
+        "$dc_shaped_creds" \
+        "$show_catalogs_op"
+}
+
 # ── connector: salesforce-crm ────────────────────────────────────────────────
 
 test_salesforce_crm() {
@@ -456,8 +517,11 @@ case "$CONNECTOR" in
     salesforce-crm)
         test_salesforce_crm
         ;;
+    starburst-enterprise)
+        test_starburst_enterprise
+        ;;
     *)
-        fail "Unknown connector: $CONNECTOR. Supported: starburst-galaxy, redshift, sap-hana, salesforce-crm"
+        fail "Unknown connector: $CONNECTOR. Supported: starburst-galaxy, redshift, sap-hana, salesforce-crm, starburst-enterprise"
         ;;
 esac
 
