@@ -245,6 +245,104 @@ class TestSapHanaCtp(TestCase):
         self.assertEqual(30000, ca["communicationTimeout"])
 
 
+class TestStarburstEnterpriseCtp(TestCase):
+    def test_registered(self):
+        config = CtpRegistry.get("starburst-enterprise")
+        self.assertIsNotNone(config)
+        self.assertEqual("starburst-enterprise-default", config.name)
+
+    def test_resolve_flat_credentials(self):
+        result = CtpRegistry.resolve(
+            "starburst-enterprise",
+            {
+                "host": "cluster.example.com",
+                "port": "8443",
+                "user": "svc",
+                "password": "secret",
+            },
+        )
+        self.assertIn("connect_args", result)
+        ca = result["connect_args"]
+        self.assertEqual("cluster.example.com", ca["host"])
+        self.assertEqual(8443, ca["port"])
+        self.assertIsInstance(ca["port"], int)
+        self.assertEqual("svc", ca["user"])
+        self.assertEqual("secret", ca["password"])
+        self.assertEqual("https", ca["http_scheme"])
+        self.assertNotIn("ssl_options", ca)
+        self.assertNotIn("verify", ca)
+
+    def test_resolve_dc_shaped_credentials(self):
+        result = CtpRegistry.resolve(
+            "starburst-enterprise",
+            {
+                "connect_args": {
+                    "host": "cluster.example.com",
+                    "port": 8443,
+                    "user": "svc",
+                    "password": "secret",
+                    "http_scheme": "https",
+                }
+            },
+        )
+        self.assertIn("connect_args", result)
+        ca = result["connect_args"]
+        self.assertEqual("cluster.example.com", ca["host"])
+        self.assertEqual(8443, ca["port"])
+        self.assertEqual("https", ca["http_scheme"])
+
+    def test_resolve_with_catalog_and_schema(self):
+        result = CtpRegistry.resolve(
+            "starburst-enterprise",
+            {
+                "host": "h",
+                "port": "8443",
+                "user": "u",
+                "password": "p",
+                "catalog": "my_catalog",
+                "schema": "my_schema",
+            },
+        )
+        ca = result["connect_args"]
+        self.assertEqual("my_catalog", ca["catalog"])
+        self.assertEqual("my_schema", ca["schema"])
+
+    def test_resolve_ssl_disabled(self):
+        result = CtpRegistry.resolve(
+            "starburst-enterprise",
+            {
+                "host": "h",
+                "port": "8443",
+                "user": "u",
+                "password": "p",
+                "ssl_options": {"disabled": True},
+            },
+        )
+        ca = result["connect_args"]
+        self.assertIs(False, ca["verify"])
+        self.assertNotIn("ssl_options", ca)
+
+    def test_resolve_dc_shaped_ssl_disabled(self):
+        # DC already resolved ssl_options → verify: False before calling agent.
+        # Mapper passes verify through; step doesn't run (no ssl_options in raw).
+        result = CtpRegistry.resolve(
+            "starburst-enterprise",
+            {
+                "connect_args": {
+                    "host": "h",
+                    "port": 8443,
+                    "user": "u",
+                    "password": "p",
+                    "http_scheme": "https",
+                    "verify": False,
+                }
+            },
+        )
+        ca = result["connect_args"]
+        self.assertIs(False, ca["verify"])
+        self.assertNotIn("ssl_options", ca)
+
+
 class TestSalesforceCrmCtp(TestCase):
     def test_registered(self):
         config = CtpRegistry.get("salesforce-crm")

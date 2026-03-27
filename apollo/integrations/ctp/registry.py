@@ -20,6 +20,7 @@ def _discover() -> None:
     import apollo.integrations.ctp.defaults.redshift  # noqa: F401
     import apollo.integrations.ctp.defaults.sap_hana  # noqa: F401
     import apollo.integrations.ctp.defaults.salesforce_crm  # noqa: F401
+    import apollo.integrations.ctp.defaults.starburst_enterprise  # noqa: F401
 
 
 def _ensure_initialized() -> None:
