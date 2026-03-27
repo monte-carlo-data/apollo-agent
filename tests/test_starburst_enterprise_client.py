@@ -216,16 +216,10 @@ class StarburstEnterpriseHttpTests(TestCase):
 
 
 class StarburstEnterpriseCredentialShapeTests(TestCase):
-    """Verify the proxy client init accepts both DC-style and CTP-resolved credentials.
+    """Verify the proxy client init accepts CTP-resolved credentials.
 
-    DC path (today): DC plugin builds connect_args including ssl_options (unresolved)
-    and sends them to the agent. The proxy client pops ssl_options and handles SSL itself.
-
-    CTP path (after Phase 2): flat credentials go through CTP, which resolves ssl_options
-    into a verify value before the proxy client is created. The proxy client receives
-    clean connect_args with no ssl_options.
-
-    In both paths trino.dbapi.connect must receive the same effective arguments.
+    CTP pipeline resolves ssl_options into a verify value before the proxy client is
+    created. The proxy client receives clean connect_args with no ssl_options.
     """
 
     _HOST = "example.starburst.io"
@@ -237,19 +231,6 @@ class StarburstEnterpriseCredentialShapeTests(TestCase):
 
     def setUp(self) -> None:
         pass  # connector registered by _discover() via _ensure_initialized()
-
-    def _dc_creds(self, **ssl_kwargs):
-        """Build DC-style credentials: connect_args with ssl_options not yet resolved."""
-        return {
-            "connect_args": {
-                "host": self._HOST,
-                "port": self._PORT_INT,
-                "user": self._USER,
-                "password": self._PASSWORD,
-                "http_scheme": "https",
-                **ssl_kwargs,
-            }
-        }
 
     def _ctp_creds(self, **flat_kwargs):
         """Build CTP-resolved credentials from flat input via the registry."""
@@ -269,20 +250,6 @@ class StarburstEnterpriseCredentialShapeTests(TestCase):
     # ------------------------------------------------------------------
 
     @patch("trino.dbapi.connect")
-    def test_dc_no_ssl(self, mock_connect):
-        """DC sends empty ssl_options — no verify passed to trino."""
-        from apollo.integrations.db.starburst_enterprise_proxy_client import (
-            StarburstEnterpriseProxyClient,
-        )
-
-        mock_connect.return_value = Mock()
-        StarburstEnterpriseProxyClient(
-            credentials=self._dc_creds(ssl_options={}), platform="test"
-        )
-        self.assertNotIn("verify", mock_connect.call_args.kwargs)
-        self.assertNotIn("ssl_options", mock_connect.call_args.kwargs)
-
-    @patch("trino.dbapi.connect")
     def test_ctp_no_ssl(self, mock_connect):
         """CTP with no ssl_options — no verify passed to trino."""
         from apollo.integrations.db.starburst_enterprise_proxy_client import (
@@ -295,25 +262,8 @@ class StarburstEnterpriseCredentialShapeTests(TestCase):
         self.assertNotIn("ssl_options", mock_connect.call_args.kwargs)
 
     # ------------------------------------------------------------------
-    # CA data — cert written to file, verify=<path>
+    # CA data — cert written to file by CTP, verify=<path>
     # ------------------------------------------------------------------
-
-    @patch("trino.dbapi.connect")
-    def test_dc_ca_data(self, mock_connect):
-        """DC sends ssl_options with ca_data — proxy client writes cert, verify=<path>."""
-        from apollo.integrations.db.starburst_enterprise_proxy_client import (
-            StarburstEnterpriseProxyClient,
-        )
-
-        mock_connect.return_value = Mock()
-        StarburstEnterpriseProxyClient(
-            credentials=self._dc_creds(ssl_options={"ca_data": self._CA_PEM}),
-            platform="test",
-        )
-        verify = mock_connect.call_args.kwargs.get("verify")
-        self.assertIsInstance(verify, str)
-        self.assertTrue(os.path.exists(verify))
-        os.unlink(verify)
 
     @patch("trino.dbapi.connect")
     def test_ctp_ca_data(self, mock_connect):
@@ -333,23 +283,8 @@ class StarburstEnterpriseCredentialShapeTests(TestCase):
         os.unlink(verify)
 
     # ------------------------------------------------------------------
-    # SSL disabled — verify=False
+    # SSL disabled — CTP resolves to verify=False
     # ------------------------------------------------------------------
-
-    @patch("trino.dbapi.connect")
-    def test_dc_ssl_disabled(self, mock_connect):
-        """DC sends verify=False + ssl_options disabled — trino gets verify=False."""
-        from apollo.integrations.db.starburst_enterprise_proxy_client import (
-            StarburstEnterpriseProxyClient,
-        )
-
-        mock_connect.return_value = Mock()
-        # DC sets verify=False in connection_args when disabled, and includes ssl_options
-        StarburstEnterpriseProxyClient(
-            credentials=self._dc_creds(verify=False, ssl_options={"disabled": True}),
-            platform="test",
-        )
-        self.assertIs(False, mock_connect.call_args.kwargs.get("verify"))
 
     @patch("trino.dbapi.connect")
     def test_ctp_ssl_disabled(self, mock_connect):
