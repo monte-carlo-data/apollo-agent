@@ -17,7 +17,7 @@ class TestCtpRegistry(TestCase):
         # connect_args no longer bypasses the pipeline — unregistered types always raise
         with self.assertRaises(CtpPipelineError):
             CtpRegistry.resolve(
-                "postgres", {"connect_args": {"host": "db.example.com"}}
+                "not_a_real_type", {"connect_args": {"host": "db.example.com"}}
             )
 
 
@@ -410,3 +410,193 @@ class TestSalesforceCrmCtp(TestCase):
         self.assertEqual("admin@example.com", ca["username"])
         self.assertEqual("secret", ca["password"])
         self.assertEqual("ABC123", ca["security_token"])
+
+
+class TestPostgresCtp(TestCase):
+    def test_registered(self):
+        config = CtpRegistry.get("postgres")
+        self.assertIsNotNone(config)
+        self.assertEqual("postgres-default", config.name)
+
+    def test_resolve_flat_credentials(self):
+        result = CtpRegistry.resolve(
+            "postgres",
+            {
+                "host": "db.example.com",
+                "port": "5432",
+                "database": "mydb",
+                "user": "admin",
+                "password": "secret",
+            },
+        )
+        self.assertIn("connect_args", result)
+        ca = result["connect_args"]
+        self.assertEqual("db.example.com", ca["host"])
+        self.assertEqual(5432, ca["port"])
+        self.assertIsInstance(ca["port"], int)
+        self.assertEqual("mydb", ca["dbname"])
+        self.assertEqual("admin", ca["user"])
+        self.assertEqual("secret", ca["password"])
+        self.assertNotIn("sslmode", ca)
+
+    def test_resolve_dc_shaped_credentials(self):
+        result = CtpRegistry.resolve(
+            "postgres",
+            {
+                "connect_args": {
+                    "host": "db.example.com",
+                    "port": 5432,
+                    "dbname": "mydb",
+                    "user": "admin",
+                    "password": "secret",
+                    "keepalives": 1,
+                    "keepalives_idle": 30,
+                    "keepalives_interval": 10,
+                    "keepalives_count": 5,
+                }
+            },
+        )
+        self.assertIn("connect_args", result)
+        ca = result["connect_args"]
+        self.assertEqual("db.example.com", ca["host"])
+        self.assertEqual(5432, ca["port"])
+        self.assertEqual("mydb", ca["dbname"])
+
+    def test_resolve_dc_shaped_dbname_variants(self):
+        # DC sends dbname (driver-native key); pipeline handles all variants via default() chaining
+        for key in ("db_name", "dbname", "database"):
+            dc_input = {
+                "connect_args": {
+                    "host": "h",
+                    "port": 5432,
+                    key: "mydb",
+                    "user": "u",
+                    "password": "p",
+                }
+            }
+            result = CtpRegistry.resolve("postgres", dc_input)
+            self.assertEqual(
+                "mydb", result["connect_args"]["dbname"], f"failed for key={key}"
+            )
+
+    def test_resolve_with_ssl_mode(self):
+        result = CtpRegistry.resolve(
+            "postgres",
+            {
+                "host": "h",
+                "port": 5432,
+                "database": "d",
+                "user": "u",
+                "password": "p",
+                "ssl_mode": "verify-full",
+            },
+        )
+        self.assertEqual("verify-full", result["connect_args"]["sslmode"])
+
+
+class TestMysqlCtp(TestCase):
+    def test_registered(self):
+        config = CtpRegistry.get("mysql")
+        self.assertIsNotNone(config)
+        self.assertEqual("mysql-default", config.name)
+
+    def test_resolve_flat_credentials(self):
+        result = CtpRegistry.resolve(
+            "mysql",
+            {
+                "host": "db.example.com",
+                "port": "3306",
+                "user": "admin",
+                "password": "secret",
+            },
+        )
+        self.assertIn("connect_args", result)
+        ca = result["connect_args"]
+        self.assertEqual("db.example.com", ca["host"])
+        self.assertEqual(3306, ca["port"])
+        self.assertIsInstance(ca["port"], int)
+        self.assertEqual("admin", ca["user"])
+        self.assertEqual("secret", ca["password"])
+        self.assertNotIn("ssl", ca)
+
+    def test_resolve_flat_credentials_with_database(self):
+        result = CtpRegistry.resolve(
+            "mysql",
+            {
+                "host": "db.example.com",
+                "port": "3306",
+                "user": "admin",
+                "password": "secret",
+                "database": "mydb",
+            },
+        )
+        self.assertEqual("mydb", result["connect_args"]["database"])
+
+    def test_resolve_dc_shaped_credentials(self):
+        result = CtpRegistry.resolve(
+            "mysql",
+            {
+                "connect_args": {
+                    "host": "db.example.com",
+                    "port": 3306,
+                    "user": "admin",
+                    "password": "secret",
+                }
+            },
+        )
+        self.assertIn("connect_args", result)
+        ca = result["connect_args"]
+        self.assertEqual("db.example.com", ca["host"])
+        self.assertEqual(3306, ca["port"])
+
+
+class TestOracleCtp(TestCase):
+    def test_registered(self):
+        config = CtpRegistry.get("oracle")
+        self.assertIsNotNone(config)
+        self.assertEqual("oracle-default", config.name)
+
+    def test_resolve_flat_credentials(self):
+        result = CtpRegistry.resolve(
+            "oracle",
+            {
+                "dsn": "db.example.com:1521/ORCL",
+                "user": "admin",
+                "password": "secret",
+            },
+        )
+        self.assertIn("connect_args", result)
+        ca = result["connect_args"]
+        self.assertEqual("db.example.com:1521/ORCL", ca["dsn"])
+        self.assertEqual("admin", ca["user"])
+        self.assertEqual("secret", ca["password"])
+        self.assertEqual(1, ca["expire_time"])  # default applied by CTP
+
+    def test_resolve_with_explicit_expire_time(self):
+        result = CtpRegistry.resolve(
+            "oracle",
+            {
+                "dsn": "db.example.com:1521/ORCL",
+                "user": "admin",
+                "password": "secret",
+                "expire_time": 5,
+            },
+        )
+        self.assertEqual(5, result["connect_args"]["expire_time"])
+
+    def test_resolve_dc_shaped_credentials(self):
+        result = CtpRegistry.resolve(
+            "oracle",
+            {
+                "connect_args": {
+                    "dsn": "db.example.com:1521/ORCL",
+                    "user": "admin",
+                    "password": "secret",
+                    "expire_time": 1,
+                }
+            },
+        )
+        self.assertIn("connect_args", result)
+        ca = result["connect_args"]
+        self.assertEqual("db.example.com:1521/ORCL", ca["dsn"])
+        self.assertEqual(1, ca["expire_time"])

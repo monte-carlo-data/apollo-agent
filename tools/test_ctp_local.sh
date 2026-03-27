@@ -495,6 +495,182 @@ print(json.dumps({
         "$query_op"
 }
 
+# ── connector: postgres ──────────────────────────────────────────────────────
+
+test_postgres() {
+    log "Fetching Postgres Dev credentials from 1Password..."
+    local item
+    item="$(op item get "postgres-smoke-test" --vault "3rd Party Creds" --format json)"
+    local PG_HOST PG_PORT PG_USER PG_PASS PG_DB
+    # host is stored in the item's URL list, not as a field
+    PG_HOST="$(echo "$item" | python3 -c "import json,sys; d=json.load(sys.stdin); [print(u['href']) for u in d.get('urls',[]) if u.get('href')]" | head -1)"
+    PG_PORT="$(echo "$item" | python3 -c "import json,sys; d=json.load(sys.stdin); [print(f['value']) for f in d['fields'] if f.get('label')=='port']" | head -1)"
+    PG_PORT="${PG_PORT:-5432}"
+    PG_USER="$(echo "$item" | python3 -c "import json,sys; d=json.load(sys.stdin); [print(f['value']) for f in d['fields'] if f.get('label')=='username']" | head -1)"
+    PG_PASS="$(echo "$item" | python3 -c "import json,sys; d=json.load(sys.stdin); [print(f['value']) for f in d['fields'] if f.get('type')=='CONCEALED']" | head -1)"
+    PG_DB="$(echo "$item" | python3 -c "import json,sys; d=json.load(sys.stdin); [print(f['value']) for f in d['fields'] if f.get('label') in ('db','database')]" | head -1)"
+    PG_DB="${PG_DB:-postgres}"
+    log "  host=$PG_HOST  port=$PG_PORT  user=$PG_USER  db=$PG_DB"
+
+    local select_one_op
+    select_one_op='{"trace_id": "ctp-test-flat", "commands": [{"method": "cursor", "store": "cursor"}, {"target": "cursor", "method": "execute", "args": ["SELECT 1"]}, {"target": "cursor", "method": "fetchall"}]}'
+
+    # ── 1. CTP pipeline path: flat creds → agent directly ──
+    local flat_creds
+    flat_creds="$(python3 -c "
+import json
+print(json.dumps({
+    'host': '$PG_HOST',
+    'port': '$PG_PORT',
+    'database': '$PG_DB',
+    'user': '$PG_USER',
+    'password': '$PG_PASS',
+}))")"
+
+    test_agent_direct \
+        "postgres: flat credentials (CTP pipeline path)" \
+        "postgres" \
+        "$flat_creds" \
+        "$select_one_op"
+
+    # ── 2. DC passthrough path: connect_args → agent directly ──
+    # DC sends connect_args with driver-native key names (dbname, not database).
+    local dc_shaped_creds
+    dc_shaped_creds="$(python3 -c "
+import json
+print(json.dumps({
+    'connect_args': {
+        'host': '$PG_HOST',
+        'port': int('$PG_PORT'),
+        'dbname': '$PG_DB',
+        'user': '$PG_USER',
+        'password': '$PG_PASS',
+    }
+}))")"
+
+    test_agent_direct \
+        "postgres: DC pre-shaped credentials (passthrough path)" \
+        "postgres" \
+        "$dc_shaped_creds" \
+        "$select_one_op"
+}
+
+# ── connector: mysql ─────────────────────────────────────────────────────────
+
+test_mysql() {
+    log "Fetching MySQL Dev credentials from 1Password..."
+    local item
+    item="$(op item get "mysql-smoke-test" --vault "3rd Party Creds" --format json)"
+    local MY_HOST MY_PORT MY_USER MY_PASS MY_DB
+    # host is stored in the item's URL list, not as a field
+    MY_HOST="$(echo "$item" | python3 -c "import json,sys; d=json.load(sys.stdin); [print(u['href']) for u in d.get('urls',[]) if u.get('href')]" | head -1)"
+    MY_PORT="$(echo "$item" | python3 -c "import json,sys; d=json.load(sys.stdin); [print(f['value']) for f in d['fields'] if f.get('label')=='port']" | head -1)"
+    MY_PORT="${MY_PORT:-3306}"
+    MY_USER="$(echo "$item" | python3 -c "import json,sys; d=json.load(sys.stdin); [print(f['value']) for f in d['fields'] if f.get('label')=='username']" | head -1)"
+    MY_PASS="$(echo "$item" | python3 -c "import json,sys; d=json.load(sys.stdin); [print(f['value']) for f in d['fields'] if f.get('type')=='CONCEALED']" | head -1)"
+    MY_DB="$(echo "$item" | python3 -c "import json,sys; d=json.load(sys.stdin); [print(f['value']) for f in d['fields'] if f.get('label') in ('db','database')]" | head -1)"
+    MY_DB="${MY_DB:-information_schema}"
+    log "  host=$MY_HOST  port=$MY_PORT  user=$MY_USER  db=$MY_DB"
+
+    local select_one_op
+    select_one_op='{"trace_id": "ctp-test-flat", "commands": [{"method": "cursor", "store": "cursor"}, {"target": "cursor", "method": "execute", "args": ["SELECT 1"]}, {"target": "cursor", "method": "fetchall"}]}'
+
+    # ── 1. CTP pipeline path: flat creds → agent directly ──
+    local flat_creds
+    flat_creds="$(python3 -c "
+import json
+print(json.dumps({
+    'host': '$MY_HOST',
+    'port': '$MY_PORT',
+    'database': '$MY_DB',
+    'user': '$MY_USER',
+    'password': '$MY_PASS',
+}))")"
+
+    test_agent_direct \
+        "mysql: flat credentials (CTP pipeline path)" \
+        "mysql" \
+        "$flat_creds" \
+        "$select_one_op"
+
+    # ── 2. DC passthrough path: connect_args → agent directly ──
+    local dc_shaped_creds
+    dc_shaped_creds="$(python3 -c "
+import json
+print(json.dumps({
+    'connect_args': {
+        'host': '$MY_HOST',
+        'port': int('$MY_PORT'),
+        'database': '$MY_DB',
+        'user': '$MY_USER',
+        'password': '$MY_PASS',
+    }
+}))")"
+
+    test_agent_direct \
+        "mysql: DC pre-shaped credentials (passthrough path)" \
+        "mysql" \
+        "$dc_shaped_creds" \
+        "$select_one_op"
+}
+
+# ── connector: oracle ────────────────────────────────────────────────────────
+
+test_oracle() {
+    log "Fetching Oracle Dev credentials from 1Password..."
+    local item
+    item="$(op item get "Oracle (dev)" --vault "3rd Party Creds" --format json)"
+    local ORA_DSN ORA_USER ORA_PASS ORA_HOST ORA_PORT ORA_SID
+    ORA_HOST="$(echo "$item" | python3 -c "import json,sys; d=json.load(sys.stdin); [print(f['value']) for f in d['fields'] if f.get('label')=='host']" | head -1)"
+    ORA_PORT="$(echo "$item" | python3 -c "import json,sys; d=json.load(sys.stdin); [print(f['value']) for f in d['fields'] if f.get('label')=='port']" | head -1)"
+    ORA_PORT="${ORA_PORT:-1521}"
+    ORA_SID="$(echo "$item" | python3 -c "import json,sys; d=json.load(sys.stdin); [print(f['value']) for f in d['fields'] if f.get('label') in ('db/sid','sid','db')]" | head -1)"
+    ORA_SID="${ORA_SID:-TEST}"
+    ORA_DSN="${ORA_HOST}:${ORA_PORT}/${ORA_SID}"
+    ORA_USER="$(echo "$item" | python3 -c "import json,sys; d=json.load(sys.stdin); [print(f['value']) for f in d['fields'] if f.get('label')=='username']" | head -1)"
+    ORA_PASS="$(echo "$item" | python3 -c "import json,sys; d=json.load(sys.stdin); [print(f['value']) for f in d['fields'] if f.get('type')=='CONCEALED']" | head -1)"
+    log "  dsn=$ORA_DSN  user=$ORA_USER"
+
+    local select_one_op
+    select_one_op='{"trace_id": "ctp-test-flat", "commands": [{"method": "cursor", "store": "cursor"}, {"target": "cursor", "method": "execute", "args": ["SELECT 1 FROM DUAL"]}, {"target": "cursor", "method": "fetchall"}]}'
+
+    # ── 1. CTP pipeline path: flat creds → agent directly ──
+    local flat_creds
+    flat_creds="$(python3 -c "
+import json
+print(json.dumps({
+    'dsn': '$ORA_DSN',
+    'user': '$ORA_USER',
+    'password': '$ORA_PASS',
+}))")"
+
+    test_agent_direct \
+        "oracle: flat credentials (CTP pipeline path)" \
+        "oracle" \
+        "$flat_creds" \
+        "$select_one_op"
+
+    # ── 2. DC passthrough path: connect_args → agent directly ──
+    # DC sends connect_args with driver-native key names; expire_time already set.
+    local dc_shaped_creds
+    dc_shaped_creds="$(python3 -c "
+import json
+print(json.dumps({
+    'connect_args': {
+        'dsn': '$ORA_DSN',
+        'user': '$ORA_USER',
+        'password': '$ORA_PASS',
+        'expire_time': 1,
+    }
+}))")"
+
+    test_agent_direct \
+        "oracle: DC pre-shaped credentials (passthrough path)" \
+        "oracle" \
+        "$dc_shaped_creds" \
+        "$select_one_op"
+}
+
 # ── main ─────────────────────────────────────────────────────────────────────
 
 log "CTP local integration test: connector=$CONNECTOR"
@@ -520,8 +696,17 @@ case "$CONNECTOR" in
     starburst-enterprise)
         test_starburst_enterprise
         ;;
+    postgres)
+        test_postgres
+        ;;
+    mysql)
+        test_mysql
+        ;;
+    oracle)
+        test_oracle
+        ;;
     *)
-        fail "Unknown connector: $CONNECTOR. Supported: starburst-galaxy, redshift, sap-hana, salesforce-crm, starburst-enterprise"
+        fail "Unknown connector: $CONNECTOR. Supported: starburst-galaxy, redshift, sap-hana, salesforce-crm, starburst-enterprise, postgres, mysql, oracle"
         ;;
 esac
 
