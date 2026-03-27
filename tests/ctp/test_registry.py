@@ -165,3 +165,81 @@ class TestRedshiftCtp(TestCase):
             self.assertEqual(
                 "mydb", result["connect_args"]["dbname"], f"failed for key={key}"
             )
+
+
+class TestSapHanaCtp(TestCase):
+    def test_registered(self):
+        config = CtpRegistry.get("sap-hana")
+        self.assertIsNotNone(config)
+        self.assertEqual("sap-hana-default", config.name)
+
+    def test_resolve_flat_credentials(self):
+        result = CtpRegistry.resolve(
+            "sap-hana",
+            {
+                "host": "hana.example.com",
+                "port": 39015,
+                "user": "SYSTEM",
+                "password": "secret",
+                "db_name": "HXE",
+            },
+        )
+        self.assertIn("connect_args", result)
+        ca = result["connect_args"]
+        self.assertEqual("hana.example.com", ca["address"])
+        self.assertNotIn("host", ca)
+        self.assertEqual(39015, ca["port"])
+        self.assertEqual("SYSTEM", ca["user"])
+        self.assertEqual("secret", ca["password"])
+        self.assertEqual("HXE", ca["databaseName"])
+
+    def test_resolve_flat_credentials_without_optional_fields(self):
+        result = CtpRegistry.resolve(
+            "sap-hana",
+            {"host": "h", "port": 39015, "user": "u", "password": "p"},
+        )
+        ca = result["connect_args"]
+        self.assertNotIn("databaseName", ca)
+        self.assertNotIn("connectTimeout", ca)
+        self.assertNotIn("communicationTimeout", ca)
+
+    def test_resolve_flat_credentials_with_timeouts(self):
+        result = CtpRegistry.resolve(
+            "sap-hana",
+            {
+                "host": "h",
+                "port": 39015,
+                "user": "u",
+                "password": "p",
+                "login_timeout_in_seconds": 10,
+                "query_timeout_in_seconds": 30,
+            },
+        )
+        ca = result["connect_args"]
+        self.assertEqual(10000, ca["connectTimeout"])
+        self.assertEqual(30000, ca["communicationTimeout"])
+
+    def test_resolve_dc_shaped_credentials(self):
+        # DC pre-shapes credentials into connect_args before calling the agent.
+        # The pipeline unwraps and re-runs the transform, producing the same output.
+        result = CtpRegistry.resolve(
+            "sap-hana",
+            {
+                "connect_args": {
+                    "address": "hana.example.com",
+                    "port": 39015,
+                    "user": "SYSTEM",
+                    "password": "secret",
+                    "databaseName": "HXE",
+                    "connectTimeout": 10000,
+                    "communicationTimeout": 30000,
+                }
+            },
+        )
+        self.assertIn("connect_args", result)
+        ca = result["connect_args"]
+        self.assertEqual("hana.example.com", ca["address"])
+        self.assertEqual(39015, ca["port"])
+        self.assertEqual("HXE", ca["databaseName"])
+        self.assertEqual(10000, ca["connectTimeout"])
+        self.assertEqual(30000, ca["communicationTimeout"])

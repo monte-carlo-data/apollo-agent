@@ -316,6 +316,71 @@ print(json.dumps({
         "$dc_input"
 }
 
+# ── connector: sap-hana ──────────────────────────────────────────────────────
+
+test_sap_hana() {
+    log "Fetching SAP HANA Dev credentials from 1Password..."
+    local SH_HOST SH_USER SH_PASS SH_DB SH_PORT
+    local item
+    # Host/port/db come from "SAP HANA dev"; use SYSTEM user for broader access
+    item="$(op item get "SAP HANA dev" --vault "3rd Party Creds" --format json)"
+    SH_HOST="$(echo "$item" | python3 -c "import json,sys; d=json.load(sys.stdin); [print(u['href']) for u in d.get('urls',[]) if u.get('label')=='HOST']")"
+    SH_PORT="$(echo "$item" | python3 -c "import json,sys; d=json.load(sys.stdin); [print(u['href']) for u in d.get('urls',[]) if u.get('label')=='PORT']")"
+    SH_DB="$(echo "$item" | python3 -c "import json,sys; d=json.load(sys.stdin); [print(u['href']) for u in d.get('urls',[]) if u.get('label')=='Database']")"
+    SH_USER="$(op item get "SAP HANA Dev System User" --vault "3rd Party Creds" --fields username)"
+    SH_PASS="$(op item get "SAP HANA Dev System User" --vault "3rd Party Creds" --fields password --reveal)"
+    log "  host=$SH_HOST  user=$SH_USER  port=$SH_PORT  db=$SH_DB"
+
+    # ── 1. CTP pipeline path: flat creds → agent directly ──
+    # Sends flat credentials (host/port/user/password/db_name) — agent runs CTP pipeline.
+    # CTP maps: host→address, db_name→databaseName, seconds→milliseconds for timeouts.
+    local flat_creds
+    flat_creds="$(python3 -c "
+import json
+print(json.dumps({
+    'host': '$SH_HOST',
+    'port': int('$SH_PORT'),
+    'user': '$SH_USER',
+    'password': '$SH_PASS',
+    'db_name': '$SH_DB',
+}))")"
+
+    local select_one_op
+    select_one_op='{"trace_id": "ctp-test-flat", "commands": [{"method": "cursor", "store": "c"}, {"target": "c", "method": "execute", "args": ["SELECT 1 FROM DUMMY"]}, {"target": "c", "method": "fetchall", "store": "tmp_1"}, {"target": "c", "method": "description", "store": "tmp_2"}, {"target": "c", "method": "rowcount", "store": "tmp_3"}, {"target": "__utils", "method": "build_dict", "kwargs": {"all_results": {"__reference__": "tmp_1"}, "description": {"__reference__": "tmp_2"}, "rowcount": {"__reference__": "tmp_3"}}}]}'
+
+    test_agent_direct \
+        "sap-hana: flat credentials (CTP pipeline path)" \
+        "sap-hana" \
+        "$flat_creds" \
+        "$select_one_op"
+
+    # ── 2. DC passthrough path: connect_args → agent directly ──
+    # DC pre-shapes credentials into connect_args using driver-native names before calling
+    # the agent. SAP HANA metadata jobs do not go through worker_local_execution.py
+    # (sap-hana is not a registered transformer type), so we test the DC-shaped credential
+    # shape directly against the agent REST API.
+    local dc_shaped_creds
+    dc_shaped_creds="$(python3 -c "
+import json
+print(json.dumps({
+    'connect_args': {
+        'address': '$SH_HOST',
+        'port': int('$SH_PORT'),
+        'user': '$SH_USER',
+        'password': '$SH_PASS',
+        'databaseName': '$SH_DB',
+        'connectTimeout': 30000,
+        'communicationTimeout': 60000,
+    }
+}))")"
+
+    test_agent_direct \
+        "sap-hana: DC pre-shaped credentials (passthrough path)" \
+        "sap-hana" \
+        "$dc_shaped_creds" \
+        "$select_one_op"
+}
+
 # ── main ─────────────────────────────────────────────────────────────────────
 
 log "CTP local integration test: connector=$CONNECTOR"
@@ -332,8 +397,11 @@ case "$CONNECTOR" in
     redshift)
         test_redshift
         ;;
+    sap-hana)
+        test_sap_hana
+        ;;
     *)
-        fail "Unknown connector: $CONNECTOR. Supported: starburst-galaxy, redshift"
+        fail "Unknown connector: $CONNECTOR. Supported: starburst-galaxy, redshift, sap-hana"
         ;;
 esac
 
