@@ -6,8 +6,8 @@ from apollo.integrations.ctp.registry import CtpRegistry
 
 
 class TestOracleCtp(TestCase):
-    def test_not_registered(self):
-        self.assertIsNone(CtpRegistry.get("oracle"))
+    def test_registered(self):
+        self.assertIsNotNone(CtpRegistry.get("oracle"))
 
     def test_resolve_flat_oracle_credentials(self):
         result = CtpPipeline().execute(

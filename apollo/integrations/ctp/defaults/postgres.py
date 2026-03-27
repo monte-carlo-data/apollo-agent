@@ -52,10 +52,15 @@ POSTGRES_DEFAULT_CTP = CtpConfig(
         field_map={
             "host": "{{ raw.host }}",
             "port": "{{ raw.port }}",
-            "dbname": "{{ raw.database }}",
+            # DC sends driver-native "dbname"; flat credentials use "database" or "db_name"
+            "dbname": "{{ raw.database | default(raw.db_name) | default(raw.dbname) }}",
             "user": "{{ raw.user }}",
             "password": "{{ raw.password }}",
             "sslmode": "{{ raw.ssl_mode | default(none) }}",
         },
     ),
 )
+
+from apollo.integrations.ctp.registry import CtpRegistry  # noqa: E402
+
+CtpRegistry.register("postgres", POSTGRES_DEFAULT_CTP)
