@@ -381,6 +381,59 @@ print(json.dumps({
         "$select_one_op"
 }
 
+# ── connector: salesforce-crm ────────────────────────────────────────────────
+
+test_salesforce_crm() {
+    log "Fetching Salesforce CRM test credentials from 1Password..."
+    local SF_USER SF_PASS SF_TOKEN
+    local item
+    item="$(op item get "Salesforce CRM Test Account (toffermann)" --vault Engineering --format json)"
+    SF_USER="$(echo "$item" | python3 -c "import json,sys,re; d=json.load(sys.stdin); notes=[f['value'] for f in d.get('fields',[]) if f.get('label')=='notesPlain'][0]; print(re.search(r'Username: (\S+)', notes).group(1))")"
+    SF_PASS="$(echo "$item" | python3 -c "import json,sys,re; d=json.load(sys.stdin); notes=[f['value'] for f in d.get('fields',[]) if f.get('label')=='notesPlain'][0]; print(re.search(r'Password: (\S+)', notes).group(1))")"
+    SF_TOKEN="$(echo "$item" | python3 -c "import json,sys,re; d=json.load(sys.stdin); notes=[f['value'] for f in d.get('fields',[]) if f.get('label')=='notesPlain'][0]; print(re.search(r'Security Token: (\S+)', notes).group(1))")"
+    log "  user=$SF_USER"
+
+    # ── 1. CTP pipeline path: flat creds → agent directly ──
+    # Sends flat creds (user/password/security_token) — agent runs CTP pipeline.
+    # CTP maps: user→username; password and security_token pass through unchanged.
+    local flat_creds
+    flat_creds="$(python3 -c "
+import json
+print(json.dumps({
+    'user': '$SF_USER',
+    'password': '$SF_PASS',
+    'security_token': '$SF_TOKEN',
+}))")"
+
+    local query_op
+    query_op='{"trace_id": "ctp-test-flat", "commands": [{"method": "execute", "args": ["SELECT Id, Name FROM Account LIMIT 1"]}]}'
+
+    test_agent_direct \
+        "salesforce-crm: flat credentials (CTP pipeline path)" \
+        "salesforce-crm" \
+        "$flat_creds" \
+        "$query_op"
+
+    # ── 2. DC passthrough path: connect_args → agent directly ──
+    # DC pre-shapes credentials into connect_args using driver-native names.
+    local dc_shaped_creds
+    dc_shaped_creds="$(python3 -c "
+import json
+print(json.dumps({
+    'connect_args': {
+        'username': '$SF_USER',
+        'password': '$SF_PASS',
+        'security_token': '$SF_TOKEN',
+    }
+}))")"
+
+    test_agent_direct \
+        "salesforce-crm: DC pre-shaped credentials (passthrough path)" \
+        "salesforce-crm" \
+        "$dc_shaped_creds" \
+        "$query_op"
+}
+
 # ── main ─────────────────────────────────────────────────────────────────────
 
 log "CTP local integration test: connector=$CONNECTOR"
@@ -400,8 +453,11 @@ case "$CONNECTOR" in
     sap-hana)
         test_sap_hana
         ;;
+    salesforce-crm)
+        test_salesforce_crm
+        ;;
     *)
-        fail "Unknown connector: $CONNECTOR. Supported: starburst-galaxy, redshift, sap-hana"
+        fail "Unknown connector: $CONNECTOR. Supported: starburst-galaxy, redshift, sap-hana, salesforce-crm"
         ;;
 esac
 
