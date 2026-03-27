@@ -53,7 +53,7 @@ _EXPECTED_STARBURST_CREDENTIALS = {
 # starburst-enterprise is not CTP-registered, so port stays as the original string
 _EXPECTED_STARBURST_ENTERPRISE_CREDENTIALS = {
     **_EXPECTED_STARBURST_CREDENTIALS,
-    "port": "443",
+    "port": 443,  # CTP coerces port str→int
 }
 
 
