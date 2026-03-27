@@ -7,8 +7,8 @@ from apollo.integrations.ctp.registry import CtpRegistry
 
 
 class TestSapHanaCtp(TestCase):
-    def test_not_registered(self):
-        self.assertIsNone(CtpRegistry.get("sap-hana"))
+    def test_registered(self):
+        self.assertIsNotNone(CtpRegistry.get("sap-hana"))
 
     def test_resolve_flat_credentials(self):
         result = CtpPipeline().execute(
