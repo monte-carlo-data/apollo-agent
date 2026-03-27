@@ -17,17 +17,28 @@ class CtpPipeline:
         raw_credentials: dict[str, Any],
         context: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        state = PipelineState(raw=raw_credentials, context=context or {})
+        # Copy raw_credentials so state.raw is an independent dict — the
+        # clear() at the end of this method must not mutate the caller's dict.
+        state = PipelineState(raw=dict(raw_credentials), context=context or {})
         step_field_maps: dict[str, Any] = {}
 
-        for step in config.steps:
-            if step.when is not None:
-                if not TemplateEngine.evaluate_condition(step.when, state):
-                    continue
-            transform = TransformRegistry.get(step.type)
-            transform.execute(step, state)
-            step_field_maps.update(step.field_map)
+        try:
+            for step in config.steps:
+                if step.when is not None:
+                    if not TemplateEngine.evaluate_condition(step.when, state):
+                        continue
+                transform = TransformRegistry.get(step.type)
+                transform.execute(step, state)
+                step_field_maps.update(step.field_map)
 
-        return self._mapper.execute(
-            config.mapper, state, step_field_maps=step_field_maps
-        )
+            result = self._mapper.execute(
+                config.mapper, state, step_field_maps=step_field_maps
+            )
+        finally:
+            # Scrub credential state regardless of success or failure so that raw
+            # credentials and derived secrets (tokens, keys) cannot leak into
+            # error payloads, Sentry context, or any reference that outlives
+            # this call.
+            state.raw.clear()
+            state.derived.clear()
+        return result
