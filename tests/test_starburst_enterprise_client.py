@@ -16,9 +16,6 @@ from apollo.common.agent.constants import (
     ATTRIBUTE_NAME_RESULT,
     ATTRIBUTE_NAME_ERROR_TYPE,
 )
-from apollo.integrations.ctp.defaults.starburst_enterprise import (
-    STARBURST_ENTERPRISE_DEFAULT_CTP,
-)
 from apollo.integrations.ctp.registry import CtpRegistry
 from apollo.interfaces.lambda_function.json_log_formatter import JsonLogFormatter
 
@@ -239,10 +236,7 @@ class StarburstEnterpriseCredentialShapeTests(TestCase):
     _CA_PEM = "-----BEGIN CERTIFICATE-----\nFAKE\n-----END CERTIFICATE-----"
 
     def setUp(self) -> None:
-        CtpRegistry.register("starburst-enterprise", STARBURST_ENTERPRISE_DEFAULT_CTP)
-
-    def tearDown(self) -> None:
-        CtpRegistry._registry.pop("starburst-enterprise", None)
+        pass  # connector registered by _discover() via _ensure_initialized()
 
     def _dc_creds(self, **ssl_kwargs):
         """Build DC-style credentials: connect_args with ssl_options not yet resolved."""
@@ -396,14 +390,13 @@ class StarburstEnterpriseCtpCredentialSafetyTests(TestCase):
 
     def setUp(self):
         self._agent = Agent(LoggingUtils())
-        CtpRegistry.register("starburst-enterprise", STARBURST_ENTERPRISE_DEFAULT_CTP)
+        # connector registered by _discover() via _ensure_initialized()
         self._log_records = []
         self._log_handler = _ListHandler(self._log_records)
         logging.getLogger().addHandler(self._log_handler)
 
     def tearDown(self):
         logging.getLogger().removeHandler(self._log_handler)
-        CtpRegistry._registry.pop("starburst-enterprise", None)
 
     def _assert_no_credential_leak(self, response) -> None:
         serialized = json.dumps(response.result, default=str)
