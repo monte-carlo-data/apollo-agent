@@ -23,6 +23,7 @@ def _discover() -> None:
     import apollo.integrations.ctp.defaults.postgres  # noqa: F401
     import apollo.integrations.ctp.defaults.mysql  # noqa: F401
     import apollo.integrations.ctp.defaults.oracle  # noqa: F401
+    import  apollo.integrations.ctp.defaults.fabric # noqa: F401
 
 
 def _ensure_initialized() -> None:

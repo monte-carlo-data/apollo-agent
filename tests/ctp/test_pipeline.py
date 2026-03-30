@@ -10,6 +10,7 @@ from apollo.integrations.ctp.models import (
     PipelineState,
     TransformStep,
 )
+from apollo.integrations.ctp import pipeline as _pipeline_module
 from apollo.integrations.ctp.pipeline import CtpPipeline
 
 
@@ -125,6 +126,63 @@ class TestCtpPipeline(TestCase):
         )
         result = self._pipeline.execute(config, {"host": "localhost"})  # no ca_pem
         self.assertNotIn("sslrootcert", result)
+
+    def test_raw_credentials_not_mutated_by_pipeline(self):
+        """pipeline.execute() must not clear or mutate the caller's credentials dict."""
+        creds = {"host": "db.example.com", "password": "secret"}
+        config = _minimal_config(field_map={"host": "{{ raw.host }}"})
+        self._pipeline.execute(config, creds)
+        self.assertEqual("db.example.com", creds["host"])
+        self.assertEqual("secret", creds["password"])
+
+    def test_credential_state_cleared_after_execute(self):
+        """raw and derived state must be scrubbed after client_args are returned."""
+        captured_state: list = []
+        original_mapper_execute = _pipeline_module.Mapper.execute
+
+        def capturing_execute(self_mapper, config, state, **kwargs):
+            captured_state.append(state)
+            return original_mapper_execute(self_mapper, config, state, **kwargs)
+
+        _pipeline_module.Mapper.execute = capturing_execute
+        try:
+            config = _minimal_config(field_map={"host": "{{ raw.host }}"})
+            self._pipeline.execute(
+                config, {"host": "db.example.com", "password": "s3cr3t"}
+            )
+        finally:
+            _pipeline_module.Mapper.execute = original_mapper_execute
+
+        state = captured_state[0]
+        self.assertEqual({}, state.raw, "state.raw should be cleared after execute")
+        self.assertEqual(
+            {}, state.derived, "state.derived should be cleared after execute"
+        )
+
+    def test_credential_state_cleared_on_exception(self):
+        """raw state must be scrubbed even when the pipeline raises."""
+        captured_state: list = []
+        original_mapper_execute = _pipeline_module.Mapper.execute
+
+        def failing_execute(self_mapper, config, state, **kwargs):
+            captured_state.append(state)
+            raise RuntimeError("simulated mapper failure")
+
+        _pipeline_module.Mapper.execute = failing_execute
+        try:
+            config = _minimal_config(field_map={"host": "{{ raw.host }}"})
+            with self.assertRaises(RuntimeError):
+                self._pipeline.execute(
+                    config, {"host": "db.example.com", "password": "s3cr3t"}
+                )
+        finally:
+            _pipeline_module.Mapper.execute = original_mapper_execute
+
+        state = captured_state[0]
+        self.assertEqual({}, state.raw, "state.raw should be cleared even on exception")
+        self.assertEqual(
+            {}, state.derived, "state.derived should be cleared even on exception"
+        )
 
 
 class TestPostgresDefaultCtp(TestCase):
