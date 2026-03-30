@@ -350,6 +350,14 @@ def _get_proxy_client_db2(
     return Db2ProxyClient(credentials=credentials, platform=platform)
 
 
+def _get_proxy_client_microsoft_fabric(
+    credentials: Optional[Dict], platform: str, **kwargs  # type: ignore
+) -> BaseProxyClient:
+    from apollo.integrations.db.fabric_proxy_client import MsFabricProxyClient
+
+    return MsFabricProxyClient(credentials=credentials, platform=platform)
+
+
 @dataclass
 class ProxyClientCacheEntry:
     created_time: datetime
@@ -385,6 +393,7 @@ _CLIENT_FACTORY_MAPPING = {
     "hive": _get_proxy_client_hive,
     "msk-connect": _get_proxy_client_msk_connect,
     "msk-kafka": _get_proxy_client_msk_kafka,
+    "microsoft-fabric": _get_proxy_client_microsoft_fabric,
     "dremio": _get_proxy_client_dremio,
     "salesforce-crm": _get_proxy_client_salesforce_crm,
     "salesforce-data-cloud": _get_proxy_client_salesforce_data_cloud,
