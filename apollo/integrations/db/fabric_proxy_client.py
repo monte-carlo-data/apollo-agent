@@ -1,4 +1,4 @@
-from typing import Optional, Dict, Any, Union
+from typing import Optional, Any
 
 import pyodbc
 
@@ -30,15 +30,12 @@ class MsFabricProxyClient(TSqlBaseDbProxyClient):
     """Proxy client for Microsoft Fabric SQL Warehouse connections via ODBC.
 
     This client connects to a Microsoft Fabric SQL Warehouse endpoint using pyodbc.
-    The ``connect_args`` credential field accepts either:
-
-    - A ``str``: passed directly to pyodbc as the ODBC connection string.
-    - A ``dict``: serialized to ODBC connection string format by joining each
-      key/value pair as ``"key=value"`` separated by semicolons. Values that contain
-      special ODBC characters (``;``, ``{``, ``}``, ``=``) are automatically wrapped
-      in curly braces per the ODBC spec, e.g.
-      ``{"Driver": "{ODBC Driver 18 for SQL Server}", "Server": "..."}`` becomes
-      ``"Driver={ODBC Driver 18 for SQL Server};Server=..."``.
+    The ``connect_args`` credential field must be a dict mapping ODBC keys to values.
+    It is serialized to an ODBC connection string by joining each key/value pair as
+    ``"key=value"`` separated by semicolons. Values that contain special ODBC characters
+    (``;``, ``{``, ``}``, ``=``) are automatically wrapped in curly braces per the ODBC
+    spec, e.g. ``{"Driver": "{ODBC Driver 18 for SQL Server}", "Server": "..."}`` becomes
+    ``"Driver={ODBC Driver 18 for SQL Server};Server=..."``.
 
     Optional credential keys:
     - ``login_timeout``: seconds to wait when establishing a connection (default 15).
@@ -48,24 +45,21 @@ class MsFabricProxyClient(TSqlBaseDbProxyClient):
     _DEFAULT_LOGIN_TIMEOUT_IN_SECONDS = 15
     _DEFAULT_QUERY_TIMEOUT_IN_SECONDS = 60 * 14  # 14 minutes
 
-    def __init__(self, credentials: Optional[Dict], **kwargs: Any):
+    def __init__(self, credentials: Optional[dict], **kwargs: Any):
         super().__init__(connection_type="microsoft-fabric")
         if not credentials or _ATTR_CONNECT_ARGS not in credentials:
             raise ValueError(
                 f"Microsoft Fabric agent client requires {_ATTR_CONNECT_ARGS} in credentials"
             )
-        connect_args: Union[str, dict] = credentials[_ATTR_CONNECT_ARGS]
-        if isinstance(connect_args, dict):
-            connection_string = ";".join(
-                f"{k}={_odbc_escape(str(v))}" for k, v in connect_args.items()
-            )
-        elif isinstance(connect_args, str):
-            connection_string = connect_args
-        else:
+        connect_args = credentials[_ATTR_CONNECT_ARGS]
+        if not isinstance(connect_args, dict):
             raise ValueError(
-                f"{_ATTR_CONNECT_ARGS} must be a dict or str, "
+                f"{_ATTR_CONNECT_ARGS} must be a dict, "
                 f"got {type(connect_args).__name__}"
             )
+        connection_string = ";".join(
+            f"{k}={_odbc_escape(str(v))}" for k, v in connect_args.items()
+        )
         self._connection = pyodbc.connect(
             connection_string,
             timeout=credentials.get(
@@ -82,4 +76,3 @@ class MsFabricProxyClient(TSqlBaseDbProxyClient):
     @property
     def wrapped_client(self):
         return self._connection
-

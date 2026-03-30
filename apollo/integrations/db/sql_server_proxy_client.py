@@ -1,6 +1,5 @@
 from typing import (
     Any,
-    Dict,
     Optional,
 )
 
@@ -22,7 +21,7 @@ class SqlServerProxyClient(TSqlBaseDbProxyClient):
     _DEFAULT_LOGIN_TIMEOUT_IN_SECONDS = 15
     _DEFAULT_QUERY_TIMEOUT_IN_SECONDS = 60 * 14  # 14 minutes
 
-    def __init__(self, credentials: Optional[Dict], **kwargs: Any):
+    def __init__(self, credentials: Optional[dict], **kwargs: Any):
         super().__init__(connection_type="sql-server")
         if not credentials or _ATTR_CONNECT_ARGS not in credentials:
             raise ValueError(
@@ -55,4 +54,3 @@ class SqlServerProxyClient(TSqlBaseDbProxyClient):
     @property
     def wrapped_client(self):
         return self._connection
-

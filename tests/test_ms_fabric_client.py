@@ -33,9 +33,6 @@ _CONNECT_ARGS_DICT = {
 # Expected ODBC connection string after dict serialization
 _EXPECTED_ODBC_STRING = ";".join(f"{k}={v}" for k, v in _CONNECT_ARGS_DICT.items())
 
-# Legacy string form (DC produces pre-built ODBC string)
-_CONNECT_ARGS_STRING = _EXPECTED_ODBC_STRING
-
 
 class MsFabricProxyClientTests(TestCase):
     def setUp(self) -> None:
@@ -55,15 +52,13 @@ class MsFabricProxyClientTests(TestCase):
         )
         mock_connect.assert_called_once_with(_EXPECTED_ODBC_STRING, timeout=15)
 
-    @patch("pyodbc.connect")
-    def test_connect_args_string_passed_through(self, mock_connect):
-        """connect_args as legacy string → passed directly to pyodbc.connect unchanged."""
-        mock_connect.return_value = self._mock_connection
-        MsFabricProxyClient(
-            credentials={"connect_args": _CONNECT_ARGS_STRING},
-            platform="test",
-        )
-        mock_connect.assert_called_once_with(_CONNECT_ARGS_STRING, timeout=15)
+    def test_connect_args_string_raises(self):
+        """connect_args as a string is not accepted — must be a dict."""
+        with self.assertRaises(ValueError):
+            MsFabricProxyClient(
+                credentials={"connect_args": _EXPECTED_ODBC_STRING},
+                platform="test",
+            )
 
     @patch("pyodbc.connect")
     def test_login_timeout_from_credentials(self, mock_connect):
