@@ -15,7 +15,9 @@ def _discover() -> None:
     Called once on first registry access. Add new connector imports here as
     their proxy clients are updated in Phase 2 to read from connect_args.
     """
-    pass
+    from apollo.integrations.ctp.defaults.fabric import MS_FABRIC_DEFAULT_CTP
+
+    CtpRegistry.register("microsoft-fabric", MS_FABRIC_DEFAULT_CTP)
 
 
 def _ensure_initialized() -> None:
