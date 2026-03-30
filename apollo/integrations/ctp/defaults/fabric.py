@@ -10,7 +10,7 @@ class MsFabricOdbcArgs(TypedDict):
     DATABASE: Required[str]
     # Azure AD service principal authentication
     Authentication: Required[str]  # "ActiveDirectoryServicePrincipal"
-    UID: Required[str]  # service principal client_id
+    UID: Required[str]  # "<client_id>@<tenant_id>" — ODBC format for service principal
     PWD: Required[str]  # service principal client_secret
     # Encryption — always enforced for Fabric
     Encrypt: NotRequired[str]  # "yes"
@@ -28,7 +28,7 @@ MS_FABRIC_DEFAULT_CTP = CtpConfig(
             "SERVER": "{{ raw.server }}",
             "DATABASE": "{{ raw.database }}",
             "Authentication": "ActiveDirectoryServicePrincipal",
-            "UID": "{{ raw.client_id }}",
+            "UID": "{{ raw.client_id }}@{{ raw.tenant_id }}",
             "PWD": "{{ raw.client_secret }}",
             "Encrypt": "yes",
             "TrustServerCertificate": "no",

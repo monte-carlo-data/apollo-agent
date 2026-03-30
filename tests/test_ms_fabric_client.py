@@ -16,6 +16,7 @@ _SERVER = "myworkspace.datawarehouse.fabric.microsoft.com,1433"
 _DATABASE = "mydb"
 _CLIENT_ID = "my-client-id"
 _CLIENT_SECRET = "my-client-secret"
+_TENANT_ID = "my-tenant-id"
 
 # Dict form produced by the CTP mapper
 _CONNECT_ARGS_DICT = {
@@ -23,7 +24,7 @@ _CONNECT_ARGS_DICT = {
     "SERVER": _SERVER,
     "DATABASE": _DATABASE,
     "Authentication": "ActiveDirectoryServicePrincipal",
-    "UID": _CLIENT_ID,
+    "UID": f"{_CLIENT_ID}@{_TENANT_ID}",
     "PWD": _CLIENT_SECRET,
     "Encrypt": "yes",
     "TrustServerCertificate": "no",
@@ -198,6 +199,7 @@ class MsFabricCtpRoundTripTests(TestCase):
         "database": _DATABASE,
         "client_id": _CLIENT_ID,
         "client_secret": _CLIENT_SECRET,
+        "tenant_id": _TENANT_ID,
     }
 
     def test_ctp_registered(self):
@@ -211,7 +213,7 @@ class MsFabricCtpRoundTripTests(TestCase):
         self.assertEqual(_SERVER, connect_args["SERVER"])
         self.assertEqual(_DATABASE, connect_args["DATABASE"])
         self.assertEqual("ActiveDirectoryServicePrincipal", connect_args["Authentication"])
-        self.assertEqual(_CLIENT_ID, connect_args["UID"])
+        self.assertEqual(f"{_CLIENT_ID}@{_TENANT_ID}", connect_args["UID"])
         self.assertEqual(_CLIENT_SECRET, connect_args["PWD"])
         self.assertEqual("yes", connect_args["Encrypt"])
         self.assertEqual("no", connect_args["TrustServerCertificate"])
