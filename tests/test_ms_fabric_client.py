@@ -120,11 +120,10 @@ class MsFabricProxyClientTests(TestCase):
         creds = {**_CONNECT_ARGS_DICT, "PWD": tricky_secret}
         MsFabricProxyClient(credentials={"connect_args": creds}, platform="test")
         call_args = mock_connect.call_args[0][0]
-        # The escaped value must appear as {p@ss;word=1}, not raw
+        # Brace-wrapped value: the semicolon is contained inside the braces, not a delimiter
         self.assertIn("PWD={p@ss;word=1}", call_args)
-        # No stray injection — "word=1" must not appear as a standalone key
-        parts = dict(p.split("=", 1) for p in call_args.split(";") if "=" in p)
-        self.assertNotIn("word", parts)
+        # Unescaped form must not appear (would mean the semicolon was left as a delimiter)
+        self.assertNotIn("PWD=p@ss;word=1", call_args)
 
     @patch("pyodbc.connect")
     def test_query_via_agent(self, mock_connect):
