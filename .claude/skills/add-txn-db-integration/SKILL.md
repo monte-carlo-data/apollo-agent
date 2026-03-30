@@ -1,14 +1,15 @@
 ---
-name: add-integration
-description: Use when adding a new database integration to apollo-agent — creates the proxy client, CTP default config, factory registration, and tests
+name: add-txn-db-integration
+description: Use when adding a new transactional database integration to apollo-agent — creates the proxy client, CTP default config, factory registration, and tests
 argument-hint: "<connection-type-name>"
 ---
 
-# Add a Database Integration
+# Add a Transactional Database Integration
 
 ## Overview
 
-Every new database integration requires exactly **5 file changes**:
+
+Every new transactional database integration requires exactly **5 file changes**:
 
 | Step | File | What changes |
 |------|------|-------------|
