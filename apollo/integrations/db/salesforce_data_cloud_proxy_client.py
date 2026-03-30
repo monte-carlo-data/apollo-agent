@@ -98,7 +98,10 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
             if raw_tables:
                 logger.info(
                     "Salesforce raw metadata response fields",
-                    extra={"dataspace": dataspace, "fields": list(raw_tables[0].keys())},
+                    extra={
+                        "dataspace": dataspace,
+                        "fields": list(raw_tables[0].keys()),
+                    },
                 )
             tables = [
                 GenieTable(
