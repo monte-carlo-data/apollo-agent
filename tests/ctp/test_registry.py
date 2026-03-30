@@ -146,7 +146,7 @@ class TestRedshiftCtp(TestCase):
         self.assertEqual("dev", ca["dbname"])
 
     def test_resolve_dc_shaped_dbname_variants(self):
-        # DC sends dbname (driver-native key); pipeline handles it via default() chaining
+        # DC pre-shapes credentials into connect_args; CTP passes them through unchanged.
         for key in ("db_name", "dbname", "database"):
             dc_input = {
                 "connect_args": {
@@ -162,9 +162,7 @@ class TestRedshiftCtp(TestCase):
                 },
             }
             result = CtpRegistry.resolve("redshift", dc_input)
-            self.assertEqual(
-                "mydb", result["connect_args"]["dbname"], f"failed for key={key}"
-            )
+            self.assertEqual(dc_input, result)
 
 
 class TestSapHanaCtp(TestCase):
@@ -463,7 +461,8 @@ class TestPostgresCtp(TestCase):
         self.assertEqual("mydb", ca["dbname"])
 
     def test_resolve_dc_shaped_dbname_variants(self):
-        # DC sends dbname (driver-native key); pipeline handles all variants via default() chaining
+        # DC pre-shapes credentials into connect_args; CTP passes them through unchanged.
+        # The key used by DC (db_name, dbname, database) is preserved as-is.
         for key in ("db_name", "dbname", "database"):
             dc_input = {
                 "connect_args": {
@@ -475,9 +474,7 @@ class TestPostgresCtp(TestCase):
                 }
             }
             result = CtpRegistry.resolve("postgres", dc_input)
-            self.assertEqual(
-                "mydb", result["connect_args"]["dbname"], f"failed for key={key}"
-            )
+            self.assertEqual(dc_input, result)
 
     def test_resolve_with_ssl_mode(self):
         result = CtpRegistry.resolve(

@@ -67,9 +67,12 @@ class CtpRegistry:
                 stage="registry",
                 message=f"No CTP config registered for '{connection_type}'. Call CtpRegistry.get() before resolve().",
             )
-        raw = credentials.get(_ATTR_CONNECT_ARGS, credentials)
+        # If credentials are already shaped as connect_args (DC pre-shaped path),
+        # pass them through unchanged — do not unwrap and re-run the pipeline.
+        if _ATTR_CONNECT_ARGS in credentials:
+            return credentials
         return {
             _ATTR_CONNECT_ARGS: CtpPipeline().execute(
-                config, raw, context=context or {}
+                config, credentials, context=context or {}
             )
         }

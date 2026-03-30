@@ -79,9 +79,9 @@ class TestProxyClientFactoryCtp(TestCase):
         self.assertNotIn("connect_args", captured["credentials"])
         self.assertEqual("Bearer abc123", captured["credentials"]["token"])
 
-    def test_dc_shaped_credentials_run_through_ctp(self):
+    def test_dc_shaped_credentials_passed_through(self):
         # DC pre-shapes credentials into connect_args before calling the agent.
-        # The inner dict is unwrapped and re-processed by CTP — same output as flat creds.
+        # CTP passes them through unchanged — the inner dict is not unwrapped.
         dc_shaped = {"connect_args": {"host": "db.example.com", "database": "mydb"}}
         captured = {}
 
@@ -98,8 +98,4 @@ class TestProxyClientFactoryCtp(TestCase):
                     _TEST_CONNECTION_TYPE, dc_shaped, "local"
                 )
 
-        self.assertIn("connect_args", captured["credentials"])
-        self.assertEqual(
-            "db.example.com", captured["credentials"]["connect_args"]["host"]
-        )
-        self.assertEqual("mydb", captured["credentials"]["connect_args"]["dbname"])
+        self.assertEqual(dc_shaped, captured["credentials"])
