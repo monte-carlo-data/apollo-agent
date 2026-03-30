@@ -15,6 +15,7 @@ def _discover() -> None:
     Called once on first registry access. Add new connector imports here as
     their proxy clients are updated in Phase 2 to read from connect_args.
     """
+<<<<<<< HEAD
     import apollo.integrations.ctp.defaults.starburst_galaxy  # noqa: F401
     import apollo.integrations.ctp.defaults.redshift  # noqa: F401
     import apollo.integrations.ctp.defaults.sap_hana  # noqa: F401
@@ -23,7 +24,7 @@ def _discover() -> None:
     import apollo.integrations.ctp.defaults.postgres  # noqa: F401
     import apollo.integrations.ctp.defaults.mysql  # noqa: F401
     import apollo.integrations.ctp.defaults.oracle  # noqa: F401
-    import  apollo.integrations.ctp.defaults.fabric # noqa: F401
+    import apollo.integrations.ctp.defaults.fabric  # noqa: F401
 
 
 def _ensure_initialized() -> None:
