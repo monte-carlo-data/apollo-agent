@@ -237,6 +237,22 @@ class MsFabricCtpRoundTripTests(TestCase):
 
         mock_connect.assert_called_once_with(_EXPECTED_ODBC_STRING, timeout=15)
 
+    def test_ctp_resolves_host_alias(self):
+        """host and hostname are accepted as aliases for server."""
+        for key in ("host", "hostname"):
+            with self.subTest(key=key):
+                creds = {**self._FLAT_CREDS, key: _SERVER}
+                creds.pop("server")
+                resolved = CtpRegistry.resolve("microsoft-fabric", creds)
+                self.assertEqual(_SERVER, resolved["connect_args"]["SERVER"])
+
+    def test_ctp_resolves_db_name_alias(self):
+        """db_name is accepted as an alias for database."""
+        creds = {**self._FLAT_CREDS, "db_name": _DATABASE}
+        creds.pop("database")
+        resolved = CtpRegistry.resolve("microsoft-fabric", creds)
+        self.assertEqual(_DATABASE, resolved["connect_args"]["DATABASE"])
+
     def test_ctp_bypasses_when_connect_args_present(self):
         """If connect_args is already present, CTP returns credentials unchanged."""
         creds_with_connect_args = {"connect_args": _CONNECT_ARGS_DICT}

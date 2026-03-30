@@ -27,8 +27,8 @@ MS_FABRIC_DEFAULT_CTP = CtpConfig(
         schema=MsFabricOdbcArgs,
         field_map={
             "DRIVER": "{ODBC Driver 18 for SQL Server}",
-            "SERVER": "{{ raw.server }}",
-            "DATABASE": "{{ raw.database }}",
+            "SERVER": "{{ raw.server | default(raw.host) | default(raw.hostname) }}",
+            "DATABASE": "{{ raw.database | default(raw.db_name) }}",
             "Authentication": "ActiveDirectoryServicePrincipal",
             "UID": "{{ raw.client_id }}@{{ raw.tenant_id }}",
             "PWD": "{{ raw.client_secret }}",
