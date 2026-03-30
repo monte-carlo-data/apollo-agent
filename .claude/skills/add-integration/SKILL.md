@@ -18,7 +18,7 @@ Every new database integration requires exactly **4 file changes**:
 | 4 | `apollo/integrations/ctp/registry.py` | Wire CTP into `_discover()` |
 | 5 | `tests/test_<name>_client.py` | Tests |
 
-> **vs `/add-ccp-connector`**: That skill covers Step 2 only (CTP config). Use this skill for the full integration.
+> **Relationship to `/add-ccp-connector`**: That skill covers Step 2 (CTP config) in depth — use it for the CTP authoring step. This skill orchestrates the full integration and delegates CTP details there.
 
 ---
 
@@ -118,48 +118,13 @@ For trino, `connect_args` is a dict of kwargs passed directly to `trino.dbapi.co
 
 **File:** `apollo/integrations/ctp/defaults/<name>.py`
 
-The CTP maps flat credentials (sent by the DC) to a typed `connect_args` dict before the proxy client is created.
+**→ Run `/add-ccp-connector` for detailed guidance** on the TypedDict schema, `CtpConfig`/`MapperConfig` structure, Jinja2 template rules, optional fields, transform steps, and SSL cert materialization.
 
-```python
-from typing import NotRequired, Required, TypedDict
-from apollo.integrations.ctp.models import CtpConfig, MapperConfig
+Reference implementation: `apollo/integrations/ctp/defaults/fabric.py`
 
+### ODBC / Azure AD addition not covered by `/add-ccp-connector`
 
-class <Name>ClientArgs(TypedDict):
-    # Required fields
-    DRIVER: Required[str]
-    SERVER: Required[str]
-    DATABASE: Required[str]
-    # Optional fields — use NotRequired
-    Encrypt: NotRequired[str]
-
-
-<NAME>_DEFAULT_CTP = CtpConfig(
-    name="<connection-type-name>-default",
-    steps=[],
-    mapper=MapperConfig(
-        name="<name>_client_args",
-        schema=<Name>ClientArgs,
-        field_map={
-            "DRIVER": "{ODBC Driver 18 for SQL Server}",  # hard-coded constants go here
-            "SERVER": "{{ raw.server }}",
-            "DATABASE": "{{ raw.database }}",
-            # ...
-        },
-    ),
-)
-```
-
-### Jinja2 template rules
-
-- **Always dot-notation**: `{{ raw.field }}` not `{{ raw['field'] }}`
-- **Optional fields**: `{{ raw.field | default(none) }}` — `None` values are automatically omitted from output
-- **NativeEnvironment preserves Python types**: don't add `| int` / `| float` unless the source is actually a string
-- **No type coercion filters** unless the upstream value is a string and you need to convert it
-
-### Azure AD service principal auth (ODBC)
-
-The ODBC Driver 18 for SQL Server encodes the tenant in the `UID` field:
+For integrations using ODBC Driver 18 + Azure AD service principal auth, the tenant ID is encoded in the `UID` field — this is ODBC-specific and not in the `/add-ccp-connector` examples:
 
 ```python
 "Authentication": "ActiveDirectoryServicePrincipal",
@@ -168,10 +133,6 @@ The ODBC Driver 18 for SQL Server encodes the tenant in the `UID` field:
 ```
 
 Three required flat credential fields: `client_id`, `client_secret`, `tenant_id`.
-
-### SSL / transform steps
-
-If the integration needs SSL cert materialization (writing a PEM string to a temp file), use a `TransformStep`. See `/add-ccp-connector` skill and `starburst_galaxy.py` for the pattern.
 
 ---
 
@@ -204,16 +165,14 @@ Place alphabetically in the dict.
 
 **File:** `apollo/integrations/ctp/registry.py`
 
-Add to `_discover()`:
+**→ `/add-ccp-connector` covers this step.** In short: add two lines to `_discover()`:
 
 ```python
-def _discover() -> None:
-    from apollo.integrations.ctp.defaults.<name> import <NAME>_DEFAULT_CTP
-    CtpRegistry.register("<connection-type-name>", <NAME>_DEFAULT_CTP)
-    # ... other registrations
+from apollo.integrations.ctp.defaults.<name> import <NAME>_DEFAULT_CTP
+CtpRegistry.register("<connection-type-name>", <NAME>_DEFAULT_CTP)
 ```
 
-> **Note:** Only register here once the proxy client accepts `connect_args` as a dict (Step 1). Registering before the proxy client supports dict `connect_args` will cause silent failures for flat credentials.
+> **Note:** Only register here once the proxy client (Step 1) accepts `connect_args` as a dict. Registering before that will silently skip CTP for flat credentials.
 
 ---
 
