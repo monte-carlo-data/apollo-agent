@@ -1,3 +1,4 @@
+import logging
 from dataclasses import dataclass
 from typing import Any
 
@@ -6,6 +7,8 @@ from salesforcecdpconnector.genie_table import GenieTable, Field
 from salesforcecdpconnector.query_submitter import QuerySubmitter
 
 from apollo.integrations.db.base_db_proxy_client import BaseDbProxyClient
+
+logger = logging.getLogger(__name__)
 
 
 class SalesforceDataCloudConnection(SalesforceCDPConnection):
@@ -91,6 +94,15 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
             metadata_json = QuerySubmitter.get_metadata(
                 self._connection, {"dataspace": dataspace}
             )
+            raw_tables = metadata_json.get("metadata", [])
+            if raw_tables:
+                logger.info(
+                    "Salesforce raw metadata response fields",
+                    extra={
+                        "dataspace": dataspace,
+                        "fields": list(raw_tables[0].keys()),
+                    },
+                )
             tables = [
                 GenieTable(
                     name=table["name"],
@@ -105,7 +117,7 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
                         for field in table.get("fields", [])
                     ],
                 )
-                for table in metadata_json.get("metadata", [])
+                for table in raw_tables
             ]
         else:
             tables = self._connection.list_tables()
