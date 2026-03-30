@@ -80,7 +80,10 @@ class MsFabricProxyClientTests(TestCase):
         """query_timeout_in_seconds in credentials overrides the default."""
         mock_connect.return_value = self._mock_connection
         client = MsFabricProxyClient(
-            credentials={"connect_args": _CONNECT_ARGS_DICT, "query_timeout_in_seconds": 120},
+            credentials={
+                "connect_args": _CONNECT_ARGS_DICT,
+                "query_timeout_in_seconds": 120,
+            },
             platform="test",
         )
         self.assertEqual(120, client.wrapped_client.timeout)
@@ -106,6 +109,7 @@ class MsFabricProxyClientTests(TestCase):
     def test_connect_failure_propagates(self, mock_connect):
         """pyodbc.OperationalError raised during connect propagates to the caller."""
         import pyodbc as _pyodbc
+
         mock_connect.side_effect = _pyodbc.OperationalError("connection refused")
         with self.assertRaises(_pyodbc.OperationalError):
             MsFabricProxyClient(
@@ -135,7 +139,9 @@ class MsFabricProxyClientTests(TestCase):
             ["name", str.__class__, None, None, None, None, None],
             ["value", int.__class__, None, None, None, None, None],
         ]
-        self._test_run_query(mock_connect, query, None, expected_data, expected_description)
+        self._test_run_query(
+            mock_connect, query, None, expected_data, expected_description
+        )
 
     def _test_run_query(
         self,
@@ -212,7 +218,9 @@ class MsFabricCtpRoundTripTests(TestCase):
         self.assertEqual("{ODBC Driver 18 for SQL Server}", connect_args["DRIVER"])
         self.assertEqual(_SERVER, connect_args["SERVER"])
         self.assertEqual(_DATABASE, connect_args["DATABASE"])
-        self.assertEqual("ActiveDirectoryServicePrincipal", connect_args["Authentication"])
+        self.assertEqual(
+            "ActiveDirectoryServicePrincipal", connect_args["Authentication"]
+        )
         self.assertEqual(f"{_CLIENT_ID}@{_TENANT_ID}", connect_args["UID"])
         self.assertEqual(_CLIENT_SECRET, connect_args["PWD"])
         self.assertEqual("yes", connect_args["Encrypt"])

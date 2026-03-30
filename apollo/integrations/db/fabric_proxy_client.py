@@ -71,7 +71,9 @@ class MsFabricProxyClient(BaseDbProxyClient):
             )
         self._connection = pyodbc.connect(
             connection_string,
-            timeout=credentials.get("login_timeout", self._DEFAULT_LOGIN_TIMEOUT_IN_SECONDS),
+            timeout=credentials.get(
+                "login_timeout", self._DEFAULT_LOGIN_TIMEOUT_IN_SECONDS
+            ),
         )
         self._connection.add_output_converter(
             self._DATETIMEOFFSET_SQL_TYPE_CODE, self._handle_datetimeoffset
@@ -92,7 +94,12 @@ class MsFabricProxyClient(BaseDbProxyClient):
     def _handle_datetimeoffset(dto_value: bytes) -> datetime:
         tup = struct.unpack("<6hI2h", dto_value)
         return datetime(
-            tup[0], tup[1], tup[2], tup[3], tup[4], tup[5],
+            tup[0],
+            tup[1],
+            tup[2],
+            tup[3],
+            tup[4],
+            tup[5],
             tup[6] // 1000,
             timezone(timedelta(hours=tup[7], minutes=tup[8])),
         )

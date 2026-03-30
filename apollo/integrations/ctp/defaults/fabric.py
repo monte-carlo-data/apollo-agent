@@ -6,7 +6,9 @@ from apollo.integrations.ctp.models import CtpConfig, MapperConfig
 class MsFabricOdbcArgs(TypedDict):
     # Driver and server
     DRIVER: Required[str]
-    SERVER: Required[str]  # Fabric SQL Analytics Endpoint, e.g. "<workspace>.datawarehouse.fabric.microsoft.com,1433"
+    SERVER: Required[
+        str
+    ]  # Fabric SQL Analytics Endpoint, e.g. "<workspace>.datawarehouse.fabric.microsoft.com,1433"
     DATABASE: Required[str]
     # Azure AD service principal authentication
     Authentication: Required[str]  # "ActiveDirectoryServicePrincipal"
