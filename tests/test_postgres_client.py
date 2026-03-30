@@ -22,8 +22,8 @@ _POSTGRES_CREDENTIALS = {
     "host": "www.test.com",
     "user": "u",
     "password": "p",
-    "port": "5432",
-    "db_name": "db1",
+    "port": 5432,
+    "dbname": "db1",
 }
 
 _POSTGRES_FLAT_CREDENTIALS = {
@@ -34,8 +34,8 @@ _POSTGRES_FLAT_CREDENTIALS = {
     "database": "db1",
 }
 
-# Expected connect_args after CTP resolves _POSTGRES_CREDENTIALS:
-# port coerced str→int, db_name mapped to dbname
+# Expected connect_args after CTP resolves _POSTGRES_FLAT_CREDENTIALS (flat path)
+# or passes through _POSTGRES_CREDENTIALS unchanged (DC connect_args path).
 _EXPECTED_POSTGRES_CONNECT_ARGS = {
     "host": "www.test.com",
     "port": 5432,
@@ -292,11 +292,11 @@ class PostgresCredentialShapeTests(TestCase):
         pass  # postgres registered via _discover() in Phase 2
 
     def _dc_creds(self, **extra_connect_args):
-        """Build DC-style credentials: connect_args with driver-native key names."""
+        """Build DC-style credentials: connect_args with driver-native key names and int port."""
         return {
             "connect_args": {
                 "host": self._HOST,
-                "port": self._PORT_STR,
+                "port": int(self._PORT_STR),
                 "dbname": "mydb",
                 "user": self._USER,
                 "password": self._PASSWORD,

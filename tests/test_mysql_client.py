@@ -24,10 +24,10 @@ _MYSQL_CREDENTIALS = {
     "host": "www.test.com",
     "user": "u",
     "password": "p",
-    "port": "3306",
+    "port": 3306,
 }
 
-# Expected connect_args after CTP resolves _MYSQL_CREDENTIALS: port coerced str→int
+# Expected connect_args after CTP passes through _MYSQL_CREDENTIALS unchanged (DC path).
 _EXPECTED_MYSQL_CONNECT_ARGS = {
     "host": "www.test.com",
     "user": "u",
