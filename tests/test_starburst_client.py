@@ -35,7 +35,7 @@ from apollo.interfaces.lambda_function.json_log_formatter import JsonLogFormatte
 
 _STARBURST_CREDENTIALS = {
     "host": "example.starburst.io",
-    "port": "443",
+    "port": 443,
     "http_scheme": "https",
     "catalog": "fizz",
     "schema": "buzz",
@@ -44,16 +44,15 @@ _STARBURST_CREDENTIALS = {
 }
 _EXPECTED_STARBURST_CREDENTIALS = {
     "host": "example.starburst.io",
-    "port": 443,  # CTP coerces string → int
+    "port": 443,
     "http_scheme": "https",
     "catalog": "fizz",
     "schema": "buzz",
     "auth": ANY,
 }
-# starburst-enterprise is not CTP-registered, so port stays as the original string
 _EXPECTED_STARBURST_ENTERPRISE_CREDENTIALS = {
     **_EXPECTED_STARBURST_CREDENTIALS,
-    "port": 443,  # CTP coerces port str→int
+    "port": 443,
 }
 
 
