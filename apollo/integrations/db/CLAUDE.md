@@ -25,8 +25,7 @@ Several clients use `pyodbc` (fabric, azure_database, sql_server). They share:
   the Python type object, not a type code)
 - Default timeouts: `login_timeout=15s`, `query_timeout_in_seconds=840s` (14 minutes)
 
-These are currently duplicated across the three pyodbc clients; a shared base class is a
-planned follow-up.
+These are shared via `TSqlBaseDbProxyClient` in `tsql_base_db_proxy_client.py`, which all three clients inherit from.
 
 ### Connection lifecycle
 

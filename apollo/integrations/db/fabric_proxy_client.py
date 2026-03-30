@@ -1,10 +1,8 @@
-import struct
-from datetime import datetime, timezone, timedelta
-from typing import Optional, Dict, Any, List, Union
+from typing import Optional, Dict, Any, Union
 
 import pyodbc
 
-from apollo.integrations.db.base_db_proxy_client import BaseDbProxyClient
+from apollo.integrations.db.tsql_base_db_proxy_client import TSqlBaseDbProxyClient
 
 _ATTR_CONNECT_ARGS = "connect_args"
 
@@ -28,7 +26,7 @@ def _odbc_escape(value: str) -> str:
     return value
 
 
-class MsFabricProxyClient(BaseDbProxyClient):
+class MsFabricProxyClient(TSqlBaseDbProxyClient):
     """Proxy client for Microsoft Fabric SQL Warehouse connections via ODBC.
 
     This client connects to a Microsoft Fabric SQL Warehouse endpoint using pyodbc.
@@ -47,7 +45,6 @@ class MsFabricProxyClient(BaseDbProxyClient):
     - ``query_timeout_in_seconds``: seconds to wait for a query result (default 840).
     """
 
-    _DATETIMEOFFSET_SQL_TYPE_CODE = -155
     _DEFAULT_LOGIN_TIMEOUT_IN_SECONDS = 15
     _DEFAULT_QUERY_TIMEOUT_IN_SECONDS = 60 * 14  # 14 minutes
 
@@ -86,20 +83,3 @@ class MsFabricProxyClient(BaseDbProxyClient):
     def wrapped_client(self):
         return self._connection
 
-    @classmethod
-    def _process_description(cls, col: List) -> List:
-        return [col[0], col[1].__name__, col[2], col[3], col[4], col[5], col[6]]
-
-    @staticmethod
-    def _handle_datetimeoffset(dto_value: bytes) -> datetime:
-        tup = struct.unpack("<6hI2h", dto_value)
-        return datetime(
-            tup[0],
-            tup[1],
-            tup[2],
-            tup[3],
-            tup[4],
-            tup[5],
-            tup[6] // 1000,
-            timezone(timedelta(hours=tup[7], minutes=tup[8])),
-        )
