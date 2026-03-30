@@ -102,6 +102,31 @@ class MsFabricProxyClientTests(TestCase):
             MsFabricProxyClient(credentials={"connect_args": 12345}, platform="test")
 
     @patch("pyodbc.connect")
+    def test_connect_failure_propagates(self, mock_connect):
+        """pyodbc.OperationalError raised during connect propagates to the caller."""
+        import pyodbc as _pyodbc
+        mock_connect.side_effect = _pyodbc.OperationalError("connection refused")
+        with self.assertRaises(_pyodbc.OperationalError):
+            MsFabricProxyClient(
+                credentials={"connect_args": _CONNECT_ARGS_DICT},
+                platform="test",
+            )
+
+    @patch("pyodbc.connect")
+    def test_dict_value_with_semicolon_is_escaped(self, mock_connect):
+        """connect_args dict values containing semicolons are brace-escaped in the ODBC string."""
+        mock_connect.return_value = self._mock_connection
+        tricky_secret = "p@ss;word=1"
+        creds = {**_CONNECT_ARGS_DICT, "PWD": tricky_secret}
+        MsFabricProxyClient(credentials={"connect_args": creds}, platform="test")
+        call_args = mock_connect.call_args[0][0]
+        # The escaped value must appear as {p@ss;word=1}, not raw
+        self.assertIn("PWD={p@ss;word=1}", call_args)
+        # No stray injection — "word=1" must not appear as a standalone key
+        parts = dict(p.split("=", 1) for p in call_args.split(";") if "=" in p)
+        self.assertNotIn("word", parts)
+
+    @patch("pyodbc.connect")
     def test_query_via_agent(self, mock_connect):
         """End-to-end query through the Agent using connect_args dict."""
         query = "SELECT name, value FROM dbo.table"
@@ -146,8 +171,9 @@ class MsFabricProxyClientTests(TestCase):
         }
         mock_connect.return_value = self._mock_connection
         self._mock_cursor.fetchall.return_value = data
-        self._mock_cursor.description.return_value = description
-        self._mock_cursor.rowcount.return_value = len(data)
+        # description and rowcount are pyodbc attributes, not callables — set directly
+        self._mock_cursor.description = description
+        self._mock_cursor.rowcount = len(data)
 
         response = self._agent.execute_operation(
             "microsoft-fabric",

@@ -9,6 +9,25 @@ from apollo.integrations.db.base_db_proxy_client import BaseDbProxyClient
 _ATTR_CONNECT_ARGS = "connect_args"
 
 
+def _odbc_escape(value: str) -> str:
+    """Escape an ODBC connection string value by wrapping in braces if it contains special chars.
+
+    ODBC connection string values containing ``;``, ``{``, ``}``, or ``=`` must be wrapped
+    in curly braces to prevent them from being interpreted as key-value delimiters.
+    Any literal ``}`` inside the value is doubled (``}}``) per the ODBC spec.
+
+    Values that are already wrapped in a matching ``{...}`` pair (e.g. driver names like
+    ``{ODBC Driver 18 for SQL Server}``) are left unchanged — they are already correctly
+    quoted for ODBC.
+    """
+    if value.startswith("{") and value.endswith("}"):
+        # Already brace-wrapped (e.g. driver names) — leave as-is.
+        return value
+    if any(c in value for c in (";", "{", "}", "=")):
+        return "{" + value.replace("}", "}}") + "}"
+    return value
+
+
 class MsFabricProxyClient(BaseDbProxyClient):
     """Proxy client for Microsoft Fabric SQL Warehouse connections via ODBC.
 
@@ -17,7 +36,9 @@ class MsFabricProxyClient(BaseDbProxyClient):
 
     - A ``str``: passed directly to pyodbc as the ODBC connection string.
     - A ``dict``: serialized to ODBC connection string format by joining each
-      key/value pair as ``"key=value"`` separated by semicolons, e.g.
+      key/value pair as ``"key=value"`` separated by semicolons. Values that contain
+      special ODBC characters (``;``, ``{``, ``}``, ``=``) are automatically wrapped
+      in curly braces per the ODBC spec, e.g.
       ``{"Driver": "{ODBC Driver 18 for SQL Server}", "Server": "..."}`` becomes
       ``"Driver={ODBC Driver 18 for SQL Server};Server=..."``.
 
@@ -38,7 +59,9 @@ class MsFabricProxyClient(BaseDbProxyClient):
             )
         connect_args: Union[str, dict] = credentials[_ATTR_CONNECT_ARGS]
         if isinstance(connect_args, dict):
-            connection_string = ";".join(f"{k}={v}" for k, v in connect_args.items())
+            connection_string = ";".join(
+                f"{k}={_odbc_escape(str(v))}" for k, v in connect_args.items()
+            )
         elif isinstance(connect_args, str):
             connection_string = connect_args
         else:
