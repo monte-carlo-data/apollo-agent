@@ -37,3 +37,8 @@ MS_FABRIC_DEFAULT_CTP = CtpConfig(
         },
     ),
 )
+
+
+from apollo.integrations.ctp.registry import CtpRegistry  # noqa: E402
+
+CtpRegistry.register("microsoft-fabric", MS_FABRIC_DEFAULT_CTP)
