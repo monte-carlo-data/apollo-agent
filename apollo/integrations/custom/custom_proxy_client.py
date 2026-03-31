@@ -23,6 +23,7 @@ _COMPILED_TEMPLATE_NAMES = frozenset(
         "get_databases_query_template.j2",
         "get_schemas_query_template.j2",
         "get_tables_query_template.j2",
+        "get_columns_query_template.j2",
         "get_query_logs_query_template.j2",
     }
 )
@@ -89,16 +90,33 @@ class CustomProxyClient(BaseProxyClient):
             "get_schemas_query_template.j2", database_name=database_name
         )
 
-    def fetch_metadata(
-        self, database_name: str, schemas: str, offset: int, limit: int
+    def fetch_tables(
+        self,
+        database_name: str,
+        schemas: str,
+        offset: int,
+        limit: int,
+        tables: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Fetch table metadata for given database, schemas, offset and limit."""
         return self._render_and_execute(
             "get_tables_query_template.j2",
             database_name=database_name,
             schemas=schemas,
+            tables=tables,
             offset=offset,
             limit=limit,
+        )
+
+    def fetch_columns(
+        self, database_name: str, schemas: str, tables: str
+    ) -> Dict[str, Any]:
+        """Fetch columns (schema) for a given list of tables"""
+        return self._render_and_execute(
+            "get_columns_query_template.j2",
+            database_name=database_name,
+            schemas=schemas,
+            tables=tables,
         )
 
     def fetch_query_logs(
