@@ -1,3 +1,4 @@
+import logging
 from dataclasses import dataclass
 from typing import Any
 
@@ -5,6 +6,8 @@ from salesforcecdpconnector.connection import SalesforceCDPConnection
 from salesforcecdpconnector.genie_table import GenieTable, Field
 
 from apollo.integrations.db.base_db_proxy_client import BaseDbProxyClient
+
+logger = logging.getLogger(__name__)
 
 
 class SalesforceDataCloudConnection(SalesforceCDPConnection):
@@ -91,6 +94,10 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
 
     def list_tables(self, dataspace: str | None = None) -> list[dict]:
         if dataspace is not None:
+            logger.info(
+                "Salesforce Data Cloud: fetching tables for dataspace",
+                extra={"dataspace": dataspace},
+            )
             # Create a temporary connection scoped to this dataspace.
             # The dataspace param is passed to /services/a360/token exchange,
             # which scopes the resulting Data Cloud token to that dataspace.
@@ -103,8 +110,17 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
                 dataspace=dataspace,
             )
             tables: list[GenieTable] = conn.list_tables()
+            logger.info(
+                "Salesforce Data Cloud: fetched tables for dataspace",
+                extra={"dataspace": dataspace, "table_count": len(tables)},
+            )
         else:
+            logger.info("Salesforce Data Cloud: fetching tables (unscoped)")
             tables = self._connection.list_tables()
+            logger.info(
+                "Salesforce Data Cloud: fetched tables (unscoped)",
+                extra={"table_count": len(tables)},
+            )
         return [self._serialize_table(table) for table in tables]
 
     def _serialize_table(self, table: GenieTable) -> dict:
