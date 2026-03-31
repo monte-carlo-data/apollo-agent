@@ -86,7 +86,10 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
     def close(self):
         self._connection.close()
 
-    def list_tables(self) -> list[dict]:
+    def list_tables(self, dataspace: str | None = None) -> list[dict]:
+        # dataspace param accepted for backwards compatibility with older data-collectors
+        # that may still send it as a kwarg; the Salesforce metadata API does not support
+        # filtering by dataspace, so it is intentionally ignored.
         tables: list[GenieTable] = self._connection.list_tables()
         return [self._serialize_table(table) for table in tables]
 
