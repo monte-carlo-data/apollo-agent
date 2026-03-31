@@ -19,6 +19,11 @@ from apollo.common.agent.constants import (
     ATTRIBUTE_NAME_ERROR_TYPE,
 )
 from apollo.agent.logging_utils import LoggingUtils
+from apollo.integrations.ctp.defaults.starburst_galaxy import (
+    STARBURST_GALAXY_DEFAULT_CTP,
+)
+from apollo.integrations.ctp.registry import CtpRegistry
+from apollo.integrations.db.starburst_proxy_client import StarburstProxyClient
 
 _STARBURST_CREDENTIALS = {
     "host": "example.starburst.io",
@@ -259,3 +264,82 @@ class StarburstClientTests(TestCase):
             }
         else:
             return value
+
+
+class StarburstGalaxyCredentialShapeTests(TestCase):
+    """Verify StarburstProxyClient __init__ accepts both DC-style and CTP-resolved credentials.
+
+    DC path (today): DC plugin builds connect_args with all required fields and sends them to
+    the agent. Port arrives as a string; user/password are converted to BasicAuthentication.
+
+    CTP path (after Phase 2): flat credentials go through CTP, which converts port to int and
+    hard-codes http_scheme before StarburstProxyClient is created.
+
+    In both paths trino.dbapi.connect must receive the same effective arguments.
+    """
+
+    _HOST = "example.starburst.io"
+    _PORT_STR = "443"
+    _PORT_INT = 443
+    _USER = "foo"
+    _PASSWORD = "bar"
+
+    def setUp(self) -> None:
+        CtpRegistry.register("starburst-galaxy", STARBURST_GALAXY_DEFAULT_CTP)
+
+    def tearDown(self) -> None:
+        CtpRegistry._registry.pop("starburst-galaxy", None)
+
+    def _dc_creds(self, **extra_connect_args):
+        """Build DC-style credentials: connect_args with all required fields."""
+        return {
+            "connect_args": {
+                "host": self._HOST,
+                "port": self._PORT_STR,
+                "http_scheme": "https",
+                "user": self._USER,
+                "password": self._PASSWORD,
+                **extra_connect_args,
+            }
+        }
+
+    def _ctp_creds(self, **flat_kwargs):
+        """Build CTP-resolved credentials from flat input via the registry."""
+        return CtpRegistry.resolve(
+            "starburst-galaxy",
+            {
+                "host": self._HOST,
+                "port": self._PORT_STR,
+                "user": self._USER,
+                "password": self._PASSWORD,
+                **flat_kwargs,
+            },
+        )
+
+    @patch("trino.dbapi.connect")
+    def test_dc_path(self, mock_connect):
+        """DC sends connect_args — port stays as string, user/password become BasicAuthentication."""
+        mock_connect.return_value = Mock()
+        StarburstProxyClient(credentials=self._dc_creds(), platform="test")
+
+        kwargs = mock_connect.call_args.kwargs
+        self.assertEqual(self._HOST, kwargs["host"])
+        self.assertEqual(self._PORT_STR, kwargs["port"])  # string passes through as-is
+        self.assertEqual("https", kwargs["http_scheme"])
+        self.assertNotIn("user", kwargs)
+        self.assertNotIn("password", kwargs)
+        self.assertIn("auth", kwargs)
+
+    @patch("trino.dbapi.connect")
+    def test_ctp_path(self, mock_connect):
+        """CTP resolves flat credentials — port is converted to int, http_scheme hard-coded."""
+        mock_connect.return_value = Mock()
+        StarburstProxyClient(credentials=self._ctp_creds(), platform="test")
+
+        kwargs = mock_connect.call_args.kwargs
+        self.assertEqual(self._HOST, kwargs["host"])
+        self.assertEqual(self._PORT_INT, kwargs["port"])  # CTP converts to int
+        self.assertEqual("https", kwargs["http_scheme"])
+        self.assertNotIn("user", kwargs)
+        self.assertNotIn("password", kwargs)
+        self.assertIn("auth", kwargs)

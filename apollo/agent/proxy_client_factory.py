@@ -10,7 +10,7 @@ from apollo.common.agent.env_vars import CLIENT_CACHE_EXPIRATION_SECONDS_ENV_VAR
 from apollo.common.agent.models import AgentError
 from apollo.common.agent.serde import decode_dictionary
 from apollo.integrations.base_proxy_client import BaseProxyClient
-from apollo.integrations.ccp.registry import CcpRegistry
+from apollo.integrations.ctp.registry import CtpRegistry
 from apollo.integrations.db.salesforce_data_cloud_proxy_client import (
     SalesforceDataCloudProxyClient,
     SalesforceDataCloudCredentials,
@@ -350,6 +350,14 @@ def _get_proxy_client_db2(
     return Db2ProxyClient(credentials=credentials, platform=platform)
 
 
+def _get_proxy_client_microsoft_fabric(
+    credentials: Optional[Dict], platform: str, **kwargs  # type: ignore
+) -> BaseProxyClient:
+    from apollo.integrations.db.fabric_proxy_client import MsFabricProxyClient
+
+    return MsFabricProxyClient(credentials=credentials, platform=platform)
+
+
 @dataclass
 class ProxyClientCacheEntry:
     created_time: datetime
@@ -385,6 +393,7 @@ _CLIENT_FACTORY_MAPPING = {
     "hive": _get_proxy_client_hive,
     "msk-connect": _get_proxy_client_msk_connect,
     "msk-kafka": _get_proxy_client_msk_kafka,
+    "microsoft-fabric": _get_proxy_client_microsoft_fabric,
     "dremio": _get_proxy_client_dremio,
     "salesforce-crm": _get_proxy_client_salesforce_crm,
     "salesforce-data-cloud": _get_proxy_client_salesforce_data_cloud,
@@ -460,8 +469,10 @@ class ProxyClientFactory:
     ) -> BaseProxyClient:
         if credentials:
             credentials = decode_dictionary(credentials)
-        if credentials and CcpRegistry.get(connection_type):
-            credentials = CcpRegistry.resolve(connection_type, credentials)
+        if credentials and CtpRegistry.get(connection_type):
+            credentials = CtpRegistry.resolve(
+                connection_type, credentials, context={"platform": platform}
+            )
         factory_method = _CLIENT_FACTORY_MAPPING.get(connection_type)
         if factory_method:
             return factory_method(credentials, platform=platform)
