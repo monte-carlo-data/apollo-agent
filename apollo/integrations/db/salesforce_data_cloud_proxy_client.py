@@ -1,3 +1,4 @@
+import logging
 from dataclasses import dataclass
 from typing import Any
 
@@ -5,6 +6,8 @@ from salesforcecdpconnector.connection import SalesforceCDPConnection
 from salesforcecdpconnector.genie_table import GenieTable, Field
 
 from apollo.integrations.db.base_db_proxy_client import BaseDbProxyClient
+
+logger = logging.getLogger(__name__)
 
 
 class SalesforceDataCloudConnection(SalesforceCDPConnection):
@@ -15,6 +18,7 @@ class SalesforceDataCloudConnection(SalesforceCDPConnection):
         client_secret: str,
         core_token: str | None = None,
         refresh_token: str | None = None,
+        dataspace: str | None = None,
     ):
         """
         SalesforceCDPConnection is designed to use a refresh token.
@@ -36,6 +40,7 @@ class SalesforceDataCloudConnection(SalesforceCDPConnection):
             client_secret=client_secret,
             core_token=core_token,
             refresh_token=(refresh_token or "required_but_not_used"),
+            dataspace=dataspace,
         )
 
         if refresh_token is None:
@@ -63,14 +68,15 @@ class SalesforceDataCloudCredentials:
     client_secret: str
     core_token: str | None
     refresh_token: str | None
-    # Accepted for backwards compatibility with older data-collectors that send this field;
-    # dataspaces filtering is not supported by the Salesforce metadata REST API.
+    # List of dataspaces to scope metadata collection. When provided, list_tables() will
+    # create a separate scoped connection for each dataspace to fetch its tables.
     dataspaces: list[str] | None = None
 
 
 class SalesforceDataCloudProxyClient(BaseDbProxyClient):
     def __init__(self, credentials: SalesforceDataCloudCredentials):
         super().__init__(connection_type="salesforce-data-cloud")
+        self._credentials = credentials
         self._connection = SalesforceDataCloudConnection(
             f"https://{credentials.domain}",
             client_id=credentials.client_id,
@@ -87,10 +93,34 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
         self._connection.close()
 
     def list_tables(self, dataspace: str | None = None) -> list[dict]:
-        # dataspace param accepted for backwards compatibility with older data-collectors
-        # that may still send it as a kwarg; the Salesforce metadata API does not support
-        # filtering by dataspace, so it is intentionally ignored.
-        tables: list[GenieTable] = self._connection.list_tables()
+        if dataspace is not None:
+            logger.info(
+                "Salesforce Data Cloud: fetching tables for dataspace",
+                extra={"dataspace": dataspace},
+            )
+            # Create a temporary connection scoped to this dataspace.
+            # The dataspace param is passed to /services/a360/token exchange,
+            # which scopes the resulting Data Cloud token to that dataspace.
+            conn = SalesforceDataCloudConnection(
+                f"https://{self._credentials.domain}",
+                client_id=self._credentials.client_id,
+                client_secret=self._credentials.client_secret,
+                core_token=self._credentials.core_token,
+                refresh_token=self._credentials.refresh_token,
+                dataspace=dataspace,
+            )
+            tables: list[GenieTable] = conn.list_tables()
+            logger.info(
+                "Salesforce Data Cloud: fetched tables for dataspace",
+                extra={"dataspace": dataspace, "table_count": len(tables)},
+            )
+        else:
+            logger.info("Salesforce Data Cloud: fetching tables (unscoped)")
+            tables = self._connection.list_tables()
+            logger.info(
+                "Salesforce Data Cloud: fetched tables (unscoped)",
+                extra={"table_count": len(tables)},
+            )
         return [self._serialize_table(table) for table in tables]
 
     def _serialize_table(self, table: GenieTable) -> dict:

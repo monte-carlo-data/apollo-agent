@@ -338,7 +338,7 @@ rsa==4.9
     # via google-auth
 s3transfer==0.10.4
     # via boto3
-salesforce-cdp-connector==1.0.16
+salesforce-cdp-connector==1.0.19
     # via -r requirements.in
 simple-salesforce==1.12.6
     # via -r requirements.in
