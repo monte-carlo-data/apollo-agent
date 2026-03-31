@@ -68,8 +68,8 @@ class SalesforceDataCloudCredentials:
     client_secret: str
     core_token: str | None
     refresh_token: str | None
-    # List of dataspaces to scope metadata collection. When provided, list_tables() will
-    # create a separate scoped connection for each dataspace to fetch its tables.
+    # Accepted for backwards compatibility; iteration over dataspaces is handled
+    # by the data-collector, which calls list_tables(dataspace=X) once per dataspace.
     dataspaces: list[str] | None = None
 
 
