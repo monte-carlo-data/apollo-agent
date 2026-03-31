@@ -109,7 +109,10 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
                 refresh_token=self._credentials.refresh_token,
                 dataspace=dataspace,
             )
-            tables: list[GenieTable] = conn.list_tables()
+            try:
+                tables: list[GenieTable] = conn.list_tables()
+            finally:
+                conn.close()
             logger.info(
                 "Salesforce Data Cloud: fetched tables for dataspace",
                 extra={"dataspace": dataspace, "table_count": len(tables)},
