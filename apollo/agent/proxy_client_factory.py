@@ -308,7 +308,6 @@ def _get_proxy_client_salesforce_data_cloud(
         client_secret=client_secret,
         core_token=core_token,
         refresh_token=refresh_token,
-        dataspaces=connect_args.get("dataspaces"),
     )
     return SalesforceDataCloudProxyClient(credentials=credentials)
 
