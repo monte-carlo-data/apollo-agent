@@ -20,35 +20,25 @@ class SalesforceDataCloudConnection(SalesforceCDPConnection):
         refresh_token: str | None = None,
         dataspace: str | None = None,
     ):
-        """
-        SalesforceCDPConnection is designed to use a refresh token.
-        After it exchanges the given core_token for a Data Cloud API token,
-        it then revokes the core_token with the assumption that it can get a new one using the refresh token.
-
-        In order to support client credentials, which doesn't involve a refresh token, we need to:
-        1. Pass a fake refresh token (so the library enters the exchange path)
-        2. Prevent the core token from being revoked (so it can be reused across dataspaces)
-        3. Prevent the _renew_token fallback (so exchange failures raise a clear error instead of
-           "Token Renewal failed with code 400" from attempting to renew with the fake token)
-
-        "required_but_not_used" is normalized to None for backwards compatibility with
-        old data-collectors that sent it before this change.
-        """
-
         # Normalize legacy value sent by old data-collectors.
         if refresh_token == "required_but_not_used":
             refresh_token = None
 
-        super().__init__(
-            login_url,
-            client_id=client_id,
-            client_secret=client_secret,
-            core_token=core_token,
-            refresh_token=(refresh_token or "required_but_not_used"),
-            dataspace=dataspace,
-        )
-
-        if refresh_token is None:
+        if core_token is not None:
+            # Old DC path: exchange the externally-provided core_token.
+            # Pass a fake refresh_token so the library enters the exchange path.
+            # Override _revoke_core_token so the same token can be reused across
+            # multiple per-dataspace connections without being revoked after the first.
+            # Override _renew_token to raise a clear error instead of the misleading
+            # "Token Renewal failed with code 400" if the exchange itself fails.
+            super().__init__(
+                login_url,
+                client_id=client_id,
+                client_secret=client_secret,
+                core_token=core_token,
+                refresh_token="required_but_not_used",
+                dataspace=dataspace,
+            )
 
             def noop(*args: Any, **kwargs: Any) -> None:
                 pass
@@ -64,9 +54,6 @@ class SalesforceDataCloudConnection(SalesforceCDPConnection):
                 and hasattr(self.authentication_helper, "_revoke_core_token")
                 and hasattr(self.authentication_helper, "_renew_token")
             ):
-                # Prevent core token from being revoked after a successful exchange,
-                # and raise a clear error if the exchange fails instead of falling back
-                # to the misleading "Token Renewal failed with code 400" path.
                 self.authentication_helper._revoke_core_token = noop
                 self.authentication_helper._renew_token = raise_on_renewal
             else:
@@ -74,6 +61,16 @@ class SalesforceDataCloudConnection(SalesforceCDPConnection):
                     "salesforce-cdp-connector library has changed. "
                     "Cannot override _revoke_core_token() and _renew_token()."
                 )
+        else:
+            # New DC path: let the library handle OAuth + exchange via client credentials.
+            # _token_by_client_creds_flow fetches a core token then exchanges it for
+            # a scoped Data Cloud token. No overrides needed.
+            super().__init__(
+                login_url,
+                client_id=client_id,
+                client_secret=client_secret,
+                dataspace=dataspace,
+            )
 
 
 @dataclass

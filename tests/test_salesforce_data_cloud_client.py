@@ -108,13 +108,26 @@ class SalesforceDataCloudProxyClientTests(TestCase):
             return_value=(
                 200,
                 {},
-                json.dumps({"access_token": self.client_credentials_token}),
+                json.dumps(
+                    {
+                        "access_token": self.client_credentials_token,
+                        "instance_url": "https://test.salesforce.com",
+                    }
+                ),
             )
         )
         self.mock_responses.add_callback(
             method=responses.POST,
             url="https://test.salesforce.com/services/oauth2/token",
             callback=self.client_credentials_token_endpoint,
+        )
+
+        # The library revokes the core token after exchange in the client credentials flow.
+        self.mock_responses.add(
+            method=responses.POST,
+            url="https://test.salesforce.com/services/oauth2/revoke",
+            status=200,
+            body="",
         )
 
         self.api_token_endpoint = Mock(
@@ -155,7 +168,7 @@ class SalesforceDataCloudProxyClientTests(TestCase):
         )
 
     def test_init(self):
-        # Test that the agent can create a SalesforceDataCloudProxyClient via execute_operation
+        # Old DC path: core_token is provided by the data-collector.
         operation = {
             "trace_id": "test-trace-id",
             "skip_cache": True,  # Force a new client to be created
@@ -169,23 +182,44 @@ class SalesforceDataCloudProxyClientTests(TestCase):
             credentials=self.credentials,
         )
 
-        # Verify the operation was successful and returned the connection type
+        self.assertFalse(response.is_error)
+        self.assertEqual(
+            response.result[ATTRIBUTE_NAME_RESULT], "salesforce-data-cloud"
+        )
+
+    def test_init_with_client_credentials_flow(self):
+        # New DC path: only client_id/client_secret, no core_token.
+        # The library handles OAuth + exchange internally via _token_by_client_creds_flow.
+        operation = {
+            "trace_id": "test-trace-id",
+            "skip_cache": True,
+            "commands": [{"method": "_connection_type"}],
+        }
+
+        del self.credentials["connect_args"]["core_token"]
+
+        response = self.agent.execute_operation(
+            connection_type="salesforce-data-cloud",
+            operation_name="test_init_clean",
+            operation_dict=operation,
+            credentials=self.credentials,
+        )
+
         self.assertFalse(response.is_error)
         self.assertEqual(
             response.result[ATTRIBUTE_NAME_RESULT], "salesforce-data-cloud"
         )
 
     def test_init_with_refresh_token(self):
-        # Test that the agent can create a SalesforceDataCloudProxyClient via execute_operation
+        # Backward compat: old DCs sent refresh_token="required_but_not_used".
+        # This is normalized to None → same as new clean path.
         operation = {
             "trace_id": "test-trace-id",
-            "skip_cache": True,  # Force a new client to be created
+            "skip_cache": True,
             "commands": [{"method": "_connection_type"}],
         }
 
-        del self.credentials["connect_args"][
-            "core_token"
-        ]  # Using refresh_token instead of core_token
+        del self.credentials["connect_args"]["core_token"]
         self.credentials["connect_args"]["refresh_token"] = "required_but_not_used"
 
         response = self.agent.execute_operation(
@@ -195,7 +229,6 @@ class SalesforceDataCloudProxyClientTests(TestCase):
             credentials=self.credentials,
         )
 
-        # Verify the operation was successful and returned the connection type
         self.assertFalse(response.is_error)
         self.assertEqual(
             response.result[ATTRIBUTE_NAME_RESULT], "salesforce-data-cloud"
