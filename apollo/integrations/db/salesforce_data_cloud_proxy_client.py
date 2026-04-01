@@ -25,14 +25,19 @@ class SalesforceDataCloudConnection(SalesforceCDPConnection):
         After it exchanges the given core_token for a Data Cloud API token,
         it then revokes the core_token with the assumption that it can get a new one using the refresh token.
 
-        In order to support client credentials, which doesn't involve a refresh token, we need to do a bit of a hack:
-        1. Pass a fake refresh token
-        2. Prevent the core token from being revoked
+        In order to support client credentials, which doesn't involve a refresh token, we need to:
+        1. Pass a fake refresh token (so the library enters the exchange path)
+        2. Prevent the core token from being revoked (so it can be reused across dataspaces)
+        3. Prevent the _renew_token fallback (so exchange failures raise a clear error instead of
+           "Token Renewal failed with code 400" from attempting to renew with the fake token)
+
+        "required_but_not_used" is normalized to None for backwards compatibility with
+        old data-collectors that sent it before this change.
         """
 
-        refresh_token = (
-            None if refresh_token == "required_but_not_used" else refresh_token
-        )  # Todo: remove this once data collectors are upgraded
+        # Normalize legacy value sent by old data-collectors.
+        if refresh_token == "required_but_not_used":
+            refresh_token = None
 
         super().__init__(
             login_url,
@@ -45,8 +50,13 @@ class SalesforceDataCloudConnection(SalesforceCDPConnection):
 
         if refresh_token is None:
 
-            def noop(*args: Any, **kwargs: Any):
+            def noop(*args: Any, **kwargs: Any) -> None:
                 pass
+
+            def raise_on_renewal(*args: Any, **kwargs: Any) -> None:
+                raise Exception(
+                    "Token exchange failed. The access token may have expired or the dataspace may not exist."
+                )
 
             if (
                 hasattr(self, "authentication_helper")
@@ -55,6 +65,7 @@ class SalesforceDataCloudConnection(SalesforceCDPConnection):
             ):
                 # Prevent core token from being revoked.
                 self.authentication_helper._revoke_core_token = noop
+                self.authentication_helper._renew_token = raise_on_renewal
             else:
                 raise Exception(
                     "salesforce-cdp-connector library has changed. Cannot override _revoke_core_token()"

@@ -270,3 +270,37 @@ class SalesforceDataCloudProxyClientTests(TestCase):
         for i, (key, value) in enumerate(self.data_response["metadata"].items()):
             self.assertEqual(result["description"][i][0], key)
             self.assertEqual(result["description"][i][1], value["type"])
+
+    def test_list_tables_with_invalid_dataspace_raises_clear_error(self):
+        """
+        When the dataspace token exchange fails (e.g. dataspace doesn't exist), the error should
+        be clear rather than "Token Renewal failed with code 400" from the fake refresh_token.
+        """
+        # Make the a360/token endpoint fail for this test
+        self.mock_responses.remove(responses.POST, "https://test.salesforce.com/services/a360/token")
+        self.mock_responses.add(
+            method=responses.POST,
+            url="https://test.salesforce.com/services/a360/token",
+            status=400,
+            body=json.dumps({"error": "invalid_dataspace"}),
+        )
+
+        operation = {
+            "trace_id": "test-trace-id",
+            "skip_cache": True,
+            "commands": [{"method": "list_tables", "kwargs": {"dataspace": "NonExistentDataspace"}}],
+        }
+
+        response = self.agent.execute_operation(
+            connection_type="salesforce-data-cloud",
+            operation_name="test_list_tables_invalid_dataspace",
+            operation_dict=operation,
+            credentials=self.credentials,
+        )
+
+        self.assertTrue(response.is_error)
+        error_message = str(response.result)
+        # Should NOT see the misleading "Token Renewal failed" error
+        self.assertNotIn("Token Renewal failed", error_message)
+        # Should see a clear token exchange error
+        self.assertIn("Token exchange failed", error_message)
