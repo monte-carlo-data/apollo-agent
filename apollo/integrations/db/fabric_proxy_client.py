@@ -34,8 +34,8 @@ class MsFabricProxyClient(TSqlBaseDbProxyClient):
     It is serialized to an ODBC connection string by joining each key/value pair as
     ``"key=value"`` separated by semicolons. Values that contain special ODBC characters
     (``;``, ``{``, ``}``, ``=``) are automatically wrapped in curly braces per the ODBC
-    spec, e.g. ``{"Driver": "{ODBC Driver 18 for SQL Server}", "Server": "..."}`` becomes
-    ``"Driver={ODBC Driver 18 for SQL Server};Server=..."``.
+    spec, e.g. ``{"Driver": "{ODBC Driver 17 for SQL Server}", "Server": "..."}`` becomes
+    ``"Driver={ODBC Driver 17 for SQL Server};Server=..."``.
 
     Optional credential keys:
     - ``login_timeout``: seconds to wait when establishing a connection (default 15).
