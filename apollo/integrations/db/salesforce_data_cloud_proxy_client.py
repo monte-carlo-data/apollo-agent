@@ -1,6 +1,6 @@
 import logging
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, NoReturn
 
 from salesforcecdpconnector.connection import SalesforceCDPConnection
 from salesforcecdpconnector.genie_table import GenieTable, Field
@@ -53,7 +53,7 @@ class SalesforceDataCloudConnection(SalesforceCDPConnection):
             def noop(*args: Any, **kwargs: Any) -> None:
                 pass
 
-            def raise_on_renewal(*args: Any, **kwargs: Any) -> tuple[Any, Any]:
+            def raise_on_renewal(*args: Any, **kwargs: Any) -> NoReturn:
                 raise Exception(
                     "Token exchange failed. The access token may have expired or the dataspace may not exist."
                 )
@@ -62,13 +62,17 @@ class SalesforceDataCloudConnection(SalesforceCDPConnection):
                 hasattr(self, "authentication_helper")
                 and self.authentication_helper
                 and hasattr(self.authentication_helper, "_revoke_core_token")
+                and hasattr(self.authentication_helper, "_renew_token")
             ):
-                # Prevent core token from being revoked.
+                # Prevent core token from being revoked after a successful exchange,
+                # and raise a clear error if the exchange fails instead of falling back
+                # to the misleading "Token Renewal failed with code 400" path.
                 self.authentication_helper._revoke_core_token = noop
                 self.authentication_helper._renew_token = raise_on_renewal
             else:
                 raise Exception(
-                    "salesforce-cdp-connector library has changed. Cannot override _revoke_core_token()"
+                    "salesforce-cdp-connector library has changed. "
+                    "Cannot override _revoke_core_token() and _renew_token()."
                 )
 
 
