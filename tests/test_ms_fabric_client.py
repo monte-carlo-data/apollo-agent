@@ -20,7 +20,7 @@ _TENANT_ID = "my-tenant-id"
 
 # Dict form produced by the CTP mapper
 _CONNECT_ARGS_DICT = {
-    "DRIVER": "{ODBC Driver 18 for SQL Server}",
+    "DRIVER": "{ODBC Driver 17 for SQL Server}",
     "SERVER": _SERVER,
     "DATABASE": _DATABASE,
     "Authentication": "ActiveDirectoryServicePrincipal",
@@ -210,7 +210,7 @@ class MsFabricCtpRoundTripTests(TestCase):
         resolved = CtpRegistry.resolve("microsoft-fabric", self._FLAT_CREDS)
         connect_args = resolved["connect_args"]
 
-        self.assertEqual("{ODBC Driver 18 for SQL Server}", connect_args["DRIVER"])
+        self.assertEqual("{ODBC Driver 17 for SQL Server}", connect_args["DRIVER"])
         self.assertEqual(_SERVER, connect_args["SERVER"])
         self.assertEqual(_DATABASE, connect_args["DATABASE"])
         self.assertEqual(
