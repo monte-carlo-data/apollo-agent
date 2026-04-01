@@ -1,7 +1,7 @@
 import json
 import uuid
 from unittest import TestCase
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import responses
 
@@ -344,3 +344,44 @@ class SalesforceDataCloudProxyClientTests(TestCase):
         self.assertNotIn("Token Renewal failed", error_message)
         # Should see a clear token exchange error
         self.assertIn("Token exchange failed", error_message)
+
+    def test_list_tables_with_invalid_dataspace_raises_clear_error_clean_path(self):
+        """
+        Older versions of salesforce-cdp-connector raise KeyError('access_token') when the
+        a360/token exchange fails (instead of a typed Error). Verify this is wrapped into a
+        readable RuntimeError rather than surfacing as AgentClientError: 'access_token'.
+        """
+        operation = {
+            "trace_id": "test-trace-id",
+            "skip_cache": True,
+            "commands": [
+                {
+                    "method": "list_tables",
+                    "kwargs": {"dataspace": "NonExistentDataspace"},
+                }
+            ],
+        }
+
+        # Use clean-credentials path: no core_token
+        del self.credentials["connect_args"]["core_token"]
+
+        # Simulate the older salesforce-cdp-connector behavior that raises KeyError
+        # instead of a typed Error when the a360 exchange fails.
+        with patch(
+            "salesforcecdpconnector.connection.SalesforceCDPConnection.list_tables",
+            side_effect=KeyError("access_token"),
+        ):
+            response = self.agent.execute_operation(
+                connection_type="salesforce-data-cloud",
+                operation_name="test_list_tables_invalid_dataspace_clean",
+                operation_dict=operation,
+                credentials=self.credentials,
+            )
+
+        self.assertTrue(response.is_error)
+        error_message = str(response.result)
+        # Should NOT see the raw KeyError: 'access_token'
+        self.assertNotIn("KeyError", error_message)
+        # Should see a clear token exchange error mentioning the dataspace
+        self.assertIn("Token exchange failed", error_message)
+        self.assertIn("NonExistentDataspace", error_message)

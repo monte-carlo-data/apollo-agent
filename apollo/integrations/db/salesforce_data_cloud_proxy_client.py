@@ -123,6 +123,12 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
             )
             try:
                 tables: list[GenieTable] = conn.list_tables()
+            except KeyError as e:
+                raise RuntimeError(
+                    f"Token exchange failed for dataspace '{dataspace}': "
+                    f"OAuth response missing key {e} — "
+                    f"verify the dataspace exists and credentials are valid"
+                ) from e
             finally:
                 conn.close()
             logger.info(
@@ -131,7 +137,13 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
             )
         else:
             logger.info("Salesforce Data Cloud: fetching tables (unscoped)")
-            tables = self._connection.list_tables()
+            try:
+                tables = self._connection.list_tables()
+            except KeyError as e:
+                raise RuntimeError(
+                    f"Token exchange failed: OAuth response missing key {e} — "
+                    f"verify credentials are valid"
+                ) from e
             logger.info(
                 "Salesforce Data Cloud: fetched tables (unscoped)",
                 extra={"table_count": len(tables)},
