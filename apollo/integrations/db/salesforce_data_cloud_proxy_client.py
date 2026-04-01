@@ -53,7 +53,7 @@ class SalesforceDataCloudConnection(SalesforceCDPConnection):
             def noop(*args: Any, **kwargs: Any) -> None:
                 pass
 
-            def raise_on_renewal(*args: Any, **kwargs: Any) -> None:
+            def raise_on_renewal(*args: Any, **kwargs: Any) -> tuple[Any, Any]:
                 raise Exception(
                     "Token exchange failed. The access token may have expired or the dataspace may not exist."
                 )
