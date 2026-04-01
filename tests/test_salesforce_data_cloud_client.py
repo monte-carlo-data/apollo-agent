@@ -277,7 +277,9 @@ class SalesforceDataCloudProxyClientTests(TestCase):
         be clear rather than "Token Renewal failed with code 400" from the fake refresh_token.
         """
         # Make the a360/token endpoint fail for this test
-        self.mock_responses.remove(responses.POST, "https://test.salesforce.com/services/a360/token")
+        self.mock_responses.remove(
+            responses.POST, "https://test.salesforce.com/services/a360/token"
+        )
         self.mock_responses.add(
             method=responses.POST,
             url="https://test.salesforce.com/services/a360/token",
@@ -288,7 +290,12 @@ class SalesforceDataCloudProxyClientTests(TestCase):
         operation = {
             "trace_id": "test-trace-id",
             "skip_cache": True,
-            "commands": [{"method": "list_tables", "kwargs": {"dataspace": "NonExistentDataspace"}}],
+            "commands": [
+                {
+                    "method": "list_tables",
+                    "kwargs": {"dataspace": "NonExistentDataspace"},
+                }
+            ],
         }
 
         response = self.agent.execute_operation(
