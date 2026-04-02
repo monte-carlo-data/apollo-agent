@@ -38,7 +38,6 @@ TABLEAU_DEFAULT_CTP = CtpConfig(
     ),
 )
 
-# Not registered: the proxy client reads credentials flat (not from connect_args)
-# and calls generate_jwt internally on each sign-in.
-# Phase 2 will update TableauProxyClient to read from connect_args["token"],
-# connect_args["server_name"], etc., then register here.
+from apollo.integrations.ctp.registry import CtpRegistry  # noqa: E402
+
+CtpRegistry.register("tableau", TABLEAU_DEFAULT_CTP)

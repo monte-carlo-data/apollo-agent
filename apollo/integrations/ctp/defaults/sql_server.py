@@ -64,7 +64,8 @@ AZURE_DEDICATED_SQL_POOL_DEFAULT_CTP = CtpConfig(
     ),
 )
 
-# Not registered: the proxy clients currently expect connect_args to be a pre-built
-# ODBC string (produced by the DC). CTP produces a dict of ODBC key-value pairs.
-# Phase 2 will update the proxy clients to accept a dict and serialize it to a string,
-# then these configs will be registered in CtpRegistry._discover().
+from apollo.integrations.ctp.registry import CtpRegistry  # noqa: E402
+
+CtpRegistry.register("sql-server", SQL_SERVER_DEFAULT_CTP)
+CtpRegistry.register("azure-sql-database", AZURE_SQL_DATABASE_DEFAULT_CTP)
+CtpRegistry.register("azure-dedicated-sql-pool", AZURE_DEDICATED_SQL_POOL_DEFAULT_CTP)

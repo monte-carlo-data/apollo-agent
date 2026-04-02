@@ -34,7 +34,6 @@ POWERBI_DEFAULT_CTP = CtpConfig(
     ),
 )
 
-# Not registered: the proxy client reads credentials flat and calls MSAL internally,
-# then forwards token + auth_type="Bearer" to HttpProxyClient.
-# Phase 2 will update PowerBiProxyClient to read from connect_args["token"] directly,
-# then register here.
+from apollo.integrations.ctp.registry import CtpRegistry  # noqa: E402
+
+CtpRegistry.register("power-bi", POWERBI_DEFAULT_CTP)

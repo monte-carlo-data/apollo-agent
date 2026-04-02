@@ -94,12 +94,15 @@ class PowerBiProxyClient(HttpProxyClient):
         if not credentials:
             raise ValueError("Credentials are required for PowerBI")
 
-        super().__init__(
-            credentials={
-                **credentials,
-                **dict(
-                    auth_type="Bearer",
-                    token=_get_access_token(credentials),
-                ),
-            }
-        )
+        if "connect_args" in credentials:
+            # CTP path: MSAL token already resolved in connect_args by resolve_msal_token transform
+            super().__init__(credentials=credentials)
+        else:
+            # Legacy flat path: acquire MSAL token here
+            super().__init__(
+                credentials={
+                    **credentials,
+                    "auth_type": "Bearer",
+                    "token": _get_access_token(credentials),
+                }
+            )

@@ -42,20 +42,27 @@ class LookerProxyClient(BaseProxyClient):
         if not credentials:
             raise ValueError("Credentials are required for Looker")
 
-        self._temp_file_path = AgentUtils.temp_file_path(
-            sub_folder=_LOOKER_DIRECTORY, extension="ini"
-        )
+        if "connect_args" in credentials:
+            # CTP path: INI file written by pipeline, path in connect_args["ini_file_path"]
+            creds = credentials["connect_args"]
+            self._temp_file_path = creds["ini_file_path"]
+            self._client_id = creds.get("client_id")
+            self._client_secret = creds.get("client_secret")
+        else:
+            # Legacy flat path: write INI file here
+            self._temp_file_path = AgentUtils.temp_file_path(
+                sub_folder=_LOOKER_DIRECTORY, extension="ini"
+            )
+            self._client_id = credentials.get("client_id")
+            self._client_secret = credentials.get("client_secret")
+            with open(self._temp_file_path, "w") as output_file:
+                self._write_connection_to_file(output_file, credentials)
 
-        self._client_id = credentials.get("client_id")
-        self._client_secret = credentials.get("client_secret")
-
-        with open(self._temp_file_path, "w") as output_file:
-            self._write_connection_to_file(output_file, credentials)
         self._client = init40(self._temp_file_path)
         # we cannot remove temp_file_path here, it's used when we call the first method, like all_dashboards
 
     def __del__(self):
-        if self._temp_file_path:
+        if self._temp_file_path and os.path.exists(self._temp_file_path):
             os.remove(self._temp_file_path)
 
     def login(self, transport_options: Optional[Dict]):
