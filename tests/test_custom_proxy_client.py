@@ -320,7 +320,7 @@ class TestCustomProxyClient(TestCase):
         },
     )
     @patch("apollo.integrations.custom.custom_proxy_client.load_integration_module")
-    def test_fetch_metadata(
+    def test_fetch_tables(
         self, mock_load_module, mock_load_templates, mock_load_caps
     ):
         mock_load_module.return_value = self._mock_module
@@ -334,7 +334,7 @@ class TestCustomProxyClient(TestCase):
             credentials={"connect_args": {"host": "localhost"}},
             integration_dir="/opt/custom-integrations/mydb",
         )
-        result = client.fetch_metadata(
+        result = client.fetch_tables(
             database_name="mydb", schemas="public", offset=0, limit=100
         )
 
