@@ -7,9 +7,11 @@ from unittest.mock import Mock, patch, MagicMock
 from apollo.integrations.custom.custom_integration_loader import (
     _discover_custom_integrations,
     load_integration_module,
+    load_manifest,
     load_templates,
     load_capabilities,
 )
+from apollo.agent.agent import Agent
 from apollo.integrations.custom.custom_proxy_client import CustomProxyClient
 
 
@@ -154,6 +156,23 @@ class TestLoadTemplates(TestCase):
     def test_load_templates_no_directory(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             result = load_templates(tmp_dir)
+            self.assertEqual(result, {})
+
+
+class TestLoadManifest(TestCase):
+    def test_load_manifest(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            manifest = {"connection_type": "custom-integration-abc", "name": "mydb"}
+            with open(os.path.join(tmp_dir, "manifest.json"), "w") as f:
+                json.dump(manifest, f)
+
+            result = load_manifest(tmp_dir)
+
+            self.assertEqual(result, manifest)
+
+    def test_load_manifest_no_file(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            result = load_manifest(tmp_dir)
             self.assertEqual(result, {})
 
 
@@ -482,3 +501,118 @@ class TestCustomProxyClient(TestCase):
         )
 
         self.assertEqual(client.wrapped_client, mock_conn)
+
+
+class TestGetConnectionManifests(TestCase):
+    def test_returns_all_integrations(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            _create_mock_integration_dir(
+                tmp_dir,
+                "db1",
+                "custom-integration-aaa",
+                templates={"get_tables.j2": "SELECT * FROM tables"},
+                capabilities={"capabilities": {"supports_metadata": True}},
+            )
+            _create_mock_integration_dir(
+                tmp_dir,
+                "db2",
+                "custom-integration-bbb",
+                templates={"get_schemas.j2": "SELECT * FROM schemas"},
+                capabilities={"capabilities": {"supports_query_logs": False}},
+            )
+
+            with patch(
+                "apollo.integrations.custom.custom_integration_loader._CUSTOM_INTEGRATIONS_BASE_PATH",
+                tmp_dir,
+            ), patch(
+                "apollo.integrations.custom.custom_integration_loader._custom_integration_registry",
+                None,
+            ):
+                result = CustomProxyClient.get_connection_manifests()
+
+            self.assertEqual(len(result), 2)
+
+            self.assertIn("custom-integration-aaa", result)
+            aaa = result["custom-integration-aaa"]
+            self.assertEqual(
+                aaa["manifest"]["connection_type"], "custom-integration-aaa"
+            )
+            self.assertEqual(aaa["manifest"]["name"], "db1")
+            self.assertEqual(
+                aaa["capabilities"], {"capabilities": {"supports_metadata": True}}
+            )
+            self.assertEqual(
+                aaa["templates"], {"get_tables.j2": "SELECT * FROM tables"}
+            )
+
+            self.assertIn("custom-integration-bbb", result)
+            bbb = result["custom-integration-bbb"]
+            self.assertEqual(
+                bbb["manifest"]["connection_type"], "custom-integration-bbb"
+            )
+            self.assertEqual(
+                bbb["templates"], {"get_schemas.j2": "SELECT * FROM schemas"}
+            )
+
+    def test_returns_empty_when_no_integrations(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with patch(
+                "apollo.integrations.custom.custom_integration_loader._CUSTOM_INTEGRATIONS_BASE_PATH",
+                tmp_dir,
+            ), patch(
+                "apollo.integrations.custom.custom_integration_loader._custom_integration_registry",
+                None,
+            ):
+                result = CustomProxyClient.get_connection_manifests()
+
+            self.assertEqual(result, {})
+
+    def test_handles_missing_capabilities_and_templates(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            _create_mock_integration_dir(
+                tmp_dir,
+                "db1",
+                "custom-integration-aaa",
+            )
+
+            with patch(
+                "apollo.integrations.custom.custom_integration_loader._CUSTOM_INTEGRATIONS_BASE_PATH",
+                tmp_dir,
+            ), patch(
+                "apollo.integrations.custom.custom_integration_loader._custom_integration_registry",
+                None,
+            ):
+                result = CustomProxyClient.get_connection_manifests()
+
+            aaa = result["custom-integration-aaa"]
+            self.assertEqual(
+                aaa["manifest"]["connection_type"], "custom-integration-aaa"
+            )
+            self.assertEqual(aaa["capabilities"], {})
+            self.assertEqual(aaa["templates"], {})
+
+
+class TestAgentGetConnectionManifests(TestCase):
+    @patch(
+        "apollo.integrations.custom.custom_proxy_client.get_custom_integration_registry",
+        return_value={},
+    )
+    def test_returns_ok_response(self, _mock_registry):
+        agent = Agent(None)
+        response = agent.get_connection_manifests(trace_id="test-trace")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("__mcd_result__", response.result)
+        self.assertEqual(response.result["__mcd_result__"], {})
+        self.assertEqual(response.trace_id, "test-trace")
+
+    @patch(
+        "apollo.integrations.custom.custom_proxy_client.get_custom_integration_registry",
+        side_effect=RuntimeError("boom"),
+    )
+    def test_returns_error_on_failure(self, _mock_registry):
+        agent = Agent(None)
+        response = agent.get_connection_manifests(trace_id="test-trace")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("__mcd_error__", response.result)
