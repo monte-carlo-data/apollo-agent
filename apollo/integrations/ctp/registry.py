@@ -20,6 +20,8 @@ def _discover() -> None:
     import apollo.integrations.ctp.defaults.db2  # noqa: F401
     import apollo.integrations.ctp.defaults.dremio  # noqa: F401
     import apollo.integrations.ctp.defaults.fabric  # noqa: F401
+    import apollo.integrations.ctp.defaults.git  # noqa: F401
+    import apollo.integrations.ctp.defaults.http  # noqa: F401
     import apollo.integrations.ctp.defaults.hive  # noqa: F401
     import apollo.integrations.ctp.defaults.motherduck  # noqa: F401
     import apollo.integrations.ctp.defaults.presto  # noqa: F401

@@ -60,7 +60,7 @@ class TestProxyClientFactoryCtp(TestCase):
         )
         self.assertEqual("mydb", captured["credentials"]["connect_args"]["dbname"])
 
-    def test_http_credentials_pass_through_unchanged(self):
+    def test_http_credentials_run_through_ctp(self):
         http_creds = {"token": "Bearer abc123"}
         captured = {}
 
@@ -75,9 +75,11 @@ class TestProxyClientFactoryCtp(TestCase):
             with self.assertRaises(StopIteration):
                 ProxyClientFactory._create_proxy_client("http", http_creds, "local")
 
-        # http is not in the CTP registry — credentials must NOT be wrapped
-        self.assertNotIn("connect_args", captured["credentials"])
-        self.assertEqual("Bearer abc123", captured["credentials"]["token"])
+        # http is registered in CTP — credentials are wrapped in connect_args
+        self.assertIn("connect_args", captured["credentials"])
+        self.assertEqual(
+            "Bearer abc123", captured["credentials"]["connect_args"]["token"]
+        )
 
     def test_dc_shaped_credentials_passed_through(self):
         # DC pre-shapes credentials into connect_args before calling the agent.

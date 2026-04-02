@@ -2,23 +2,6 @@ from typing import Any, NotRequired, TypedDict, Union
 
 from apollo.integrations.ctp.models import CtpConfig, MapperConfig, TransformStep
 
-# NOTE: This config is intentionally NOT registered in CtpRegistry._discover().
-#
-# HttpProxyClient reads credentials flat (credentials.get("token"), etc.) rather
-# than from credentials["connect_args"]. DC also sends flat credentials for http
-# with no connect_args wrapper, so the legacy short-circuit in CtpRegistry.resolve()
-# does not protect it.
-#
-# If this config were registered today, resolve() would wrap output in
-# {"connect_args": {...}} and the proxy client would silently lose all credentials.
-#
-# Phase 2 work required before registering:
-#   1. Update HttpProxyClient.__init__ to read token/auth_header/auth_type from
-#      credentials["connect_args"] instead of the top-level credentials dict.
-#   2. Remove the ssl_options handling from HttpProxyClient.__init__ — the
-#      tmp_file_write transform below takes over cert materialisation.
-#   3. Add `import apollo.integrations.ctp.defaults.http` to CtpRegistry._discover().
-
 
 class HttpClientArgs(TypedDict):
     # Auth
@@ -59,6 +42,6 @@ HTTP_DEFAULT_CTP = CtpConfig(
     ),
 )
 
-# Intentionally not registered — see module docstring above.
-# from apollo.integrations.ctp.registry import CtpRegistry  # noqa: E402
-# CtpRegistry.register("http", HTTP_DEFAULT_CTP)
+from apollo.integrations.ctp.registry import CtpRegistry  # noqa: E402
+
+CtpRegistry.register("http", HTTP_DEFAULT_CTP)
