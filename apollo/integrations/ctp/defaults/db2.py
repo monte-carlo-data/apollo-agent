@@ -1,6 +1,7 @@
 from typing import NotRequired, Required, TypedDict
 
 from apollo.integrations.ctp.models import CtpConfig, MapperConfig, TransformStep
+from apollo.integrations.ctp.registry import CtpRegistry
 
 
 class Db2ClientArgs(TypedDict):
@@ -63,3 +64,5 @@ DB2_DEFAULT_CTP = CtpConfig(
         },
     ),
 )
+
+CtpRegistry.register("db2", DB2_DEFAULT_CTP)

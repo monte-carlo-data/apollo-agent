@@ -1,6 +1,7 @@
 from typing import Any, NotRequired, Required, TypedDict
 
 from apollo.integrations.ctp.models import CtpConfig, MapperConfig, TransformStep
+from apollo.integrations.ctp.registry import CtpRegistry
 
 
 class PrestoConnectArgs(TypedDict):
@@ -59,6 +60,4 @@ PRESTO_DEFAULT_CTP = CtpConfig(
 
 # Not registered: two Phase 2 blockers —
 # 1. SSL uses credentials["ssl_options"] via http_session.verify; CTP output drops it.
-# 2. proxy client uses connect_args.pop("auth") without a default; mapper omits None
-#    values so auth would be absent when not provided, raising KeyError.
-# Phase 2 will add resolve_presto_auth transform, update the proxy client, and register.
+CtpRegistry.register("presto", PRESTO_DEFAULT_CTP)

@@ -1,6 +1,7 @@
 from typing import NotRequired, Required, TypedDict
 
 from apollo.integrations.ctp.models import CtpConfig, MapperConfig, TransformStep
+from apollo.integrations.ctp.registry import CtpRegistry
 
 
 class TeradataClientArgs(TypedDict):
@@ -77,3 +78,5 @@ TERADATA_DEFAULT_CTP = CtpConfig(
         },
     ),
 )
+
+CtpRegistry.register("teradata", TERADATA_DEFAULT_CTP)

@@ -17,9 +17,12 @@ def _discover() -> None:
     """
     import apollo.integrations.ctp.defaults.bigquery  # noqa: F401
     import apollo.integrations.ctp.defaults.databricks  # noqa: F401
+    import apollo.integrations.ctp.defaults.db2  # noqa: F401
     import apollo.integrations.ctp.defaults.fabric  # noqa: F401
     import apollo.integrations.ctp.defaults.hive  # noqa: F401
+    import apollo.integrations.ctp.defaults.presto  # noqa: F401
     import apollo.integrations.ctp.defaults.snowflake  # noqa: F401
+    import apollo.integrations.ctp.defaults.teradata  # noqa: F401
     import apollo.integrations.ctp.defaults.starburst_galaxy  # noqa: F401
     import apollo.integrations.ctp.defaults.redshift  # noqa: F401
     import apollo.integrations.ctp.defaults.sap_hana  # noqa: F401

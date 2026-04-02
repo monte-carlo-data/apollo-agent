@@ -27,8 +27,10 @@ class PrestoProxyClient(BaseDbProxyClient):
             )
 
         connect_args: Dict[str, Any] = {**credentials[_ATTR_CONNECT_ARGS]}
-        if auth := connect_args.pop("auth"):
-            connect_args.update({"auth": prestodb.auth.BasicAuthentication(**auth)})
+        if auth := connect_args.pop("auth", None):
+            if not isinstance(auth, prestodb.auth.BasicAuthentication):
+                auth = prestodb.auth.BasicAuthentication(**auth)
+            connect_args["auth"] = auth
 
         self._connection = prestodb.dbapi.connect(**connect_args)
 
