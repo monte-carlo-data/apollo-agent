@@ -1,11 +1,13 @@
+import logging
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, NoReturn
 
 from salesforcecdpconnector.connection import SalesforceCDPConnection
 from salesforcecdpconnector.genie_table import GenieTable, Field
-from salesforcecdpconnector.query_submitter import QuerySubmitter
 
 from apollo.integrations.db.base_db_proxy_client import BaseDbProxyClient
+
+logger = logging.getLogger(__name__)
 
 
 class SalesforceDataCloudConnection(SalesforceCDPConnection):
@@ -16,45 +18,59 @@ class SalesforceDataCloudConnection(SalesforceCDPConnection):
         client_secret: str,
         core_token: str | None = None,
         refresh_token: str | None = None,
+        dataspace: str | None = None,
     ):
-        """
-        SalesforceCDPConnection is designed to use a refresh token.
-        After it exchanges the given core_token for a Data Cloud API token,
-        it then revokes the core_token with the assumption that it can get a new one using the refresh token.
+        # Normalize legacy value sent by old data-collectors.
+        if refresh_token == "required_but_not_used":
+            refresh_token = None
 
-        In order to support client credentials, which doesn't involve a refresh token, we need to do a bit of a hack:
-        1. Pass a fake refresh token
-        2. Prevent the core token from being revoked
-        """
+        if core_token is not None:
+            # Old DC path: exchange the externally-provided core_token.
+            # Pass a fake refresh_token so the library enters the exchange path.
+            # Override _revoke_core_token so the same token can be reused across
+            # multiple per-dataspace connections without being revoked after the first.
+            # Override _renew_token to raise a clear error instead of the misleading
+            # "Token Renewal failed with code 400" if the exchange itself fails.
+            super().__init__(
+                login_url,
+                client_id=client_id,
+                client_secret=client_secret,
+                core_token=core_token,
+                refresh_token="required_but_not_used",
+                dataspace=dataspace,
+            )
 
-        refresh_token = (
-            None if refresh_token == "required_but_not_used" else refresh_token
-        )  # Todo: remove this once data collectors are upgraded
-
-        super().__init__(
-            login_url,
-            client_id=client_id,
-            client_secret=client_secret,
-            core_token=core_token,
-            refresh_token=(refresh_token or "required_but_not_used"),
-        )
-
-        if refresh_token is None:
-
-            def noop(*args: Any, **kwargs: Any):
+            def noop(*args: Any, **kwargs: Any) -> None:
                 pass
+
+            def raise_on_renewal(*args: Any, **kwargs: Any) -> NoReturn:
+                raise Exception(
+                    "Token exchange failed. The access token may have expired or the dataspace may not exist."
+                )
 
             if (
                 hasattr(self, "authentication_helper")
                 and self.authentication_helper
                 and hasattr(self.authentication_helper, "_revoke_core_token")
+                and hasattr(self.authentication_helper, "_renew_token")
             ):
-                # Prevent core token from being revoked.
                 self.authentication_helper._revoke_core_token = noop
+                self.authentication_helper._renew_token = raise_on_renewal
             else:
                 raise Exception(
-                    "salesforce-cdp-connector library has changed. Cannot override _revoke_core_token()"
+                    "salesforce-cdp-connector library has changed. "
+                    "Cannot override _revoke_core_token() and _renew_token()."
                 )
+        else:
+            # New DC path: let the library handle OAuth + exchange via client credentials.
+            # _token_by_client_creds_flow fetches a core token then exchanges it for
+            # a scoped Data Cloud token. No overrides needed.
+            super().__init__(
+                login_url,
+                client_id=client_id,
+                client_secret=client_secret,
+                dataspace=dataspace,
+            )
 
 
 @dataclass
@@ -64,11 +80,15 @@ class SalesforceDataCloudCredentials:
     client_secret: str
     core_token: str | None
     refresh_token: str | None
+    # Accepted for backwards compatibility; iteration over dataspaces is handled
+    # by the data-collector, which calls list_tables(dataspace=X) once per dataspace.
+    dataspaces: list[str] | None = None
 
 
 class SalesforceDataCloudProxyClient(BaseDbProxyClient):
     def __init__(self, credentials: SalesforceDataCloudCredentials):
         super().__init__(connection_type="salesforce-data-cloud")
+        self._credentials = credentials
         self._connection = SalesforceDataCloudConnection(
             f"https://{credentials.domain}",
             client_id=credentials.client_id,
@@ -86,29 +106,51 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
 
     def list_tables(self, dataspace: str | None = None) -> list[dict]:
         if dataspace is not None:
-            # The salesforce-cdp-connector library's list_tables() does not support the
-            # dataspace parameter, so we call QuerySubmitter.get_metadata() directly.
-            metadata_json = QuerySubmitter.get_metadata(
-                self._connection, {"dataspace": dataspace}
+            logger.info(
+                f"Salesforce Data Cloud: fetching tables for dataspace '{dataspace}'",
+                extra={"dataspace": dataspace},
             )
-            tables = [
-                GenieTable(
-                    name=table["name"],
-                    display_name=table.get("displayName"),
-                    category=table.get("category"),
-                    fields=[
-                        Field(
-                            name=field["name"],
-                            display_name=field.get("displayName", field["name"]),
-                            type=field["type"],
-                        )
-                        for field in table.get("fields", [])
-                    ],
-                )
-                for table in metadata_json.get("metadata", [])
-            ]
+            # Create a temporary connection scoped to this dataspace.
+            #
+            # IMPORTANT:
+            # For dataspace-scoped collection we intentionally do NOT reuse the pre-fetched
+            # core_token from data-collector. Reusing the same core token across multiple
+            # dataspaces can result in ambiguous scoping behavior on the Salesforce side.
+            # Using the clean client-credentials flow here obtains a fresh core token and
+            # performs a dataspace-scoped a360 exchange for each dataspace attempt.
+            conn = SalesforceDataCloudConnection(
+                f"https://{self._credentials.domain}",
+                client_id=self._credentials.client_id,
+                client_secret=self._credentials.client_secret,
+                core_token=None,
+                refresh_token=None,
+                dataspace=dataspace,
+            )
+            try:
+                tables: list[GenieTable] = conn.list_tables()
+            except Exception as e:
+                raise RuntimeError(
+                    f"Token exchange failed for dataspace '{dataspace}': "
+                    "verify the dataspace exists and credentials are valid"
+                ) from e
+            finally:
+                conn.close()
+            logger.info(
+                f"Salesforce Data Cloud: fetched tables for dataspace '{dataspace}'",
+                extra={"dataspace": dataspace, "table_count": len(tables)},
+            )
         else:
-            tables = self._connection.list_tables()
+            logger.info("Salesforce Data Cloud: fetching tables (unscoped)")
+            try:
+                tables = self._connection.list_tables()
+            except Exception as e:
+                raise RuntimeError(
+                    "Token exchange failed: verify credentials are valid"
+                ) from e
+            logger.info(
+                "Salesforce Data Cloud: fetched tables (unscoped)",
+                extra={"table_count": len(tables)},
+            )
         return [self._serialize_table(table) for table in tables]
 
     def _serialize_table(self, table: GenieTable) -> dict:

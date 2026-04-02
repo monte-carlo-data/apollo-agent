@@ -2,7 +2,6 @@ import json
 import uuid
 from unittest import TestCase
 from unittest.mock import Mock
-from urllib.parse import parse_qs, urlparse
 
 import responses
 
@@ -109,13 +108,26 @@ class SalesforceDataCloudProxyClientTests(TestCase):
             return_value=(
                 200,
                 {},
-                json.dumps({"access_token": self.client_credentials_token}),
+                json.dumps(
+                    {
+                        "access_token": self.client_credentials_token,
+                        "instance_url": "https://test.salesforce.com",
+                    }
+                ),
             )
         )
         self.mock_responses.add_callback(
             method=responses.POST,
             url="https://test.salesforce.com/services/oauth2/token",
             callback=self.client_credentials_token_endpoint,
+        )
+
+        # The library revokes the core token after exchange in the client credentials flow.
+        self.mock_responses.add(
+            method=responses.POST,
+            url="https://test.salesforce.com/services/oauth2/revoke",
+            status=200,
+            body="",
         )
 
         self.api_token_endpoint = Mock(
@@ -156,7 +168,7 @@ class SalesforceDataCloudProxyClientTests(TestCase):
         )
 
     def test_init(self):
-        # Test that the agent can create a SalesforceDataCloudProxyClient via execute_operation
+        # Old DC path: core_token is provided by the data-collector.
         operation = {
             "trace_id": "test-trace-id",
             "skip_cache": True,  # Force a new client to be created
@@ -170,23 +182,44 @@ class SalesforceDataCloudProxyClientTests(TestCase):
             credentials=self.credentials,
         )
 
-        # Verify the operation was successful and returned the connection type
+        self.assertFalse(response.is_error)
+        self.assertEqual(
+            response.result[ATTRIBUTE_NAME_RESULT], "salesforce-data-cloud"
+        )
+
+    def test_init_with_client_credentials_flow(self):
+        # New DC path: only client_id/client_secret, no core_token.
+        # The library handles OAuth + exchange internally via _token_by_client_creds_flow.
+        operation = {
+            "trace_id": "test-trace-id",
+            "skip_cache": True,
+            "commands": [{"method": "_connection_type"}],
+        }
+
+        del self.credentials["connect_args"]["core_token"]
+
+        response = self.agent.execute_operation(
+            connection_type="salesforce-data-cloud",
+            operation_name="test_init_clean",
+            operation_dict=operation,
+            credentials=self.credentials,
+        )
+
         self.assertFalse(response.is_error)
         self.assertEqual(
             response.result[ATTRIBUTE_NAME_RESULT], "salesforce-data-cloud"
         )
 
     def test_init_with_refresh_token(self):
-        # Test that the agent can create a SalesforceDataCloudProxyClient via execute_operation
+        # Backward compat: old DCs sent refresh_token="required_but_not_used".
+        # This is normalized to None → same as new clean path.
         operation = {
             "trace_id": "test-trace-id",
-            "skip_cache": True,  # Force a new client to be created
+            "skip_cache": True,
             "commands": [{"method": "_connection_type"}],
         }
 
-        del self.credentials["connect_args"][
-            "core_token"
-        ]  # Using refresh_token instead of core_token
+        del self.credentials["connect_args"]["core_token"]
         self.credentials["connect_args"]["refresh_token"] = "required_but_not_used"
 
         response = self.agent.execute_operation(
@@ -196,7 +229,6 @@ class SalesforceDataCloudProxyClientTests(TestCase):
             credentials=self.credentials,
         )
 
-        # Verify the operation was successful and returned the connection type
         self.assertFalse(response.is_error)
         self.assertEqual(
             response.result[ATTRIBUTE_NAME_RESULT], "salesforce-data-cloud"
@@ -230,51 +262,6 @@ class SalesforceDataCloudProxyClientTests(TestCase):
 
         # Verify that the metadata was cached and not re-fetched for fetch_columns
         self.metadata_endpoint.assert_called_once()
-
-    def test_list_tables_with_dataspace(self):
-        """When list_tables is called with a dataspace kwarg, it should call
-        QuerySubmitter.get_metadata() directly with the dataspace query param."""
-        dataspace_name = "Unified Knowledge"
-        operation = {
-            "trace_id": "test-trace-id",
-            "skip_cache": True,
-            "commands": [
-                {"method": "list_tables", "kwargs": {"dataspace": dataspace_name}}
-            ],
-        }
-
-        response = self.agent.execute_operation(
-            connection_type="salesforce-data-cloud",
-            operation_name="test_list_tables_with_dataspace",
-            operation_dict=operation,
-            credentials=self.credentials,
-        )
-
-        self.assertFalse(response.is_error)
-        tables = response.result[ATTRIBUTE_NAME_RESULT]
-        self.assertEqual(len(tables), len(self.metadata_response))
-
-        # Verify the metadata endpoint was called with the dataspace query param
-        self.metadata_endpoint.assert_called_once()
-        request = self.metadata_endpoint.call_args[0][0]
-        query_params = parse_qs(urlparse(request.url).query)
-        self.assertEqual(query_params.get("dataspace"), [dataspace_name])
-
-        # Verify the serialized schema matches the non-dataspace path (display_name,
-        # category on tables; displayName on fields) so both paths return consistent data.
-        for mock_table in self.metadata_response:
-            table = next(t for t in tables if t.get("name") == mock_table["name"])
-            self.assertEqual(table.get("display_name"), mock_table.get("displayName"))
-            self.assertEqual(table.get("category"), mock_table.get("category"))
-            for mock_field in mock_table["fields"]:
-                field = next(
-                    f for f in table["fields"] if f.get("name") == mock_field["name"]
-                )
-                self.assertEqual(field.get("type"), mock_field["type"])
-                self.assertEqual(
-                    field.get("displayName"),
-                    mock_field.get("displayName", mock_field["name"]),
-                )
 
     def test_sql_query_execution(self):
         sql_query = "SELECT Name, Status, CreatedDate FROM Account LIMIT 10"
@@ -316,3 +303,44 @@ class SalesforceDataCloudProxyClientTests(TestCase):
         for i, (key, value) in enumerate(self.data_response["metadata"].items()):
             self.assertEqual(result["description"][i][0], key)
             self.assertEqual(result["description"][i][1], value["type"])
+
+    def test_list_tables_with_invalid_dataspace_raises_clear_error(self):
+        """
+        When the dataspace token exchange fails (e.g. dataspace doesn't exist), the error should
+        be clear rather than "Token Renewal failed with code 400" from the fake refresh_token.
+        """
+        # Make the a360/token endpoint fail for this test
+        self.mock_responses.remove(
+            responses.POST, "https://test.salesforce.com/services/a360/token"
+        )
+        self.mock_responses.add(
+            method=responses.POST,
+            url="https://test.salesforce.com/services/a360/token",
+            status=400,
+            body=json.dumps({"error": "invalid_dataspace"}),
+        )
+
+        operation = {
+            "trace_id": "test-trace-id",
+            "skip_cache": True,
+            "commands": [
+                {
+                    "method": "list_tables",
+                    "kwargs": {"dataspace": "NonExistentDataspace"},
+                }
+            ],
+        }
+
+        response = self.agent.execute_operation(
+            connection_type="salesforce-data-cloud",
+            operation_name="test_list_tables_invalid_dataspace",
+            operation_dict=operation,
+            credentials=self.credentials,
+        )
+
+        self.assertTrue(response.is_error)
+        error_message = str(response.result)
+        # Should NOT see the misleading "Token Renewal failed" error
+        self.assertNotIn("Token Renewal failed", error_message)
+        # Should see a clear token exchange error
+        self.assertIn("Token exchange failed", error_message)
