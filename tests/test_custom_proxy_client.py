@@ -320,9 +320,7 @@ class TestCustomProxyClient(TestCase):
         },
     )
     @patch("apollo.integrations.custom.custom_proxy_client.load_integration_module")
-    def test_fetch_tables(
-        self, mock_load_module, mock_load_templates, mock_load_caps
-    ):
+    def test_fetch_tables(self, mock_load_module, mock_load_templates, mock_load_caps):
         mock_load_module.return_value = self._mock_module
         self._mock_integration.fetch_all_results.return_value = [["t1"], ["t2"]]
         cursor = self._mock_integration.create_cursor.return_value
