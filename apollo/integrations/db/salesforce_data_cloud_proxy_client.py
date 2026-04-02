@@ -107,42 +107,45 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
     def list_tables(self, dataspace: str | None = None) -> list[dict]:
         if dataspace is not None:
             logger.info(
-                "Salesforce Data Cloud: fetching tables for dataspace",
+                f"Salesforce Data Cloud: fetching tables for dataspace '{dataspace}'",
                 extra={"dataspace": dataspace},
             )
             # Create a temporary connection scoped to this dataspace.
-            # The dataspace param is passed to /services/a360/token exchange,
-            # which scopes the resulting Data Cloud token to that dataspace.
+            #
+            # IMPORTANT:
+            # For dataspace-scoped collection we intentionally do NOT reuse the pre-fetched
+            # core_token from data-collector. Reusing the same core token across multiple
+            # dataspaces can result in ambiguous scoping behavior on the Salesforce side.
+            # Using the clean client-credentials flow here obtains a fresh core token and
+            # performs a dataspace-scoped a360 exchange for each dataspace attempt.
             conn = SalesforceDataCloudConnection(
                 f"https://{self._credentials.domain}",
                 client_id=self._credentials.client_id,
                 client_secret=self._credentials.client_secret,
-                core_token=self._credentials.core_token,
-                refresh_token=self._credentials.refresh_token,
+                core_token=None,
+                refresh_token=None,
                 dataspace=dataspace,
             )
             try:
                 tables: list[GenieTable] = conn.list_tables()
-            except KeyError as e:
+            except Exception as e:
                 raise RuntimeError(
                     f"Token exchange failed for dataspace '{dataspace}': "
-                    f"OAuth response missing key {e} — "
-                    f"verify the dataspace exists and credentials are valid"
+                    "verify the dataspace exists and credentials are valid"
                 ) from e
             finally:
                 conn.close()
             logger.info(
-                "Salesforce Data Cloud: fetched tables for dataspace",
+                f"Salesforce Data Cloud: fetched tables for dataspace '{dataspace}'",
                 extra={"dataspace": dataspace, "table_count": len(tables)},
             )
         else:
             logger.info("Salesforce Data Cloud: fetching tables (unscoped)")
             try:
                 tables = self._connection.list_tables()
-            except KeyError as e:
+            except Exception as e:
                 raise RuntimeError(
-                    f"Token exchange failed: OAuth response missing key {e} — "
-                    f"verify credentials are valid"
+                    "Token exchange failed: verify credentials are valid"
                 ) from e
             logger.info(
                 "Salesforce Data Cloud: fetched tables (unscoped)",
