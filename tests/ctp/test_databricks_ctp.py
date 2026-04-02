@@ -39,8 +39,8 @@ _SQL_AZURE_OAUTH_CREDS = {
 
 
 class TestDatabricksSqlCtp(TestCase):
-    def test_not_registered(self):
-        self.assertIsNone(CtpRegistry.get("databricks"))
+    def test_registered(self):
+        self.assertIsNotNone(CtpRegistry.get("databricks"))
 
     # ── PAT auth ──────────────────────────────────────────────────────
 
@@ -113,8 +113,8 @@ class TestDatabricksSqlCtp(TestCase):
 
 
 class TestDatabricksRestCtp(TestCase):
-    def test_not_registered(self):
-        self.assertIsNone(CtpRegistry.get("databricks-rest"))
+    def test_registered(self):
+        self.assertIsNotNone(CtpRegistry.get("databricks-rest"))
 
     # ── PAT auth ──────────────────────────────────────────────────────
 

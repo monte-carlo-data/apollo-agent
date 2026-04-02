@@ -1,6 +1,7 @@
 from typing import NotRequired, Required, TypedDict
 
 from apollo.integrations.ctp.models import CtpConfig, MapperConfig, TransformStep
+from apollo.integrations.ctp.registry import CtpRegistry
 
 
 class SnowflakeClientArgs(TypedDict):
@@ -84,3 +85,5 @@ SNOWFLAKE_DEFAULT_CTP = CtpConfig(
         },
     ),
 )
+
+CtpRegistry.register("snowflake", SNOWFLAKE_DEFAULT_CTP)

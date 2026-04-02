@@ -1,6 +1,7 @@
 from typing import Any, NotRequired, Required, TypedDict
 
 from apollo.integrations.ctp.models import CtpConfig, MapperConfig, TransformStep
+from apollo.integrations.ctp.registry import CtpRegistry
 
 
 class DatabricksSqlClientArgs(TypedDict):
@@ -55,8 +56,7 @@ DATABRICKS_DEFAULT_CTP = CtpConfig(
     ),
 )
 
-# Not registered: proxy client reads credentials flat and calls the SDK itself.
-# Phase 2 will register when DatabricksSqlWarehouseProxyClient reads from connect_args.
+CtpRegistry.register("databricks", DATABRICKS_DEFAULT_CTP)
 
 
 class DatabricksRestClientArgs(TypedDict):
@@ -91,5 +91,4 @@ DATABRICKS_REST_DEFAULT_CTP = CtpConfig(
     ),
 )
 
-# Not registered: proxy client reads credentials flat and resolves the token internally.
-# Phase 2 will register when DatabricksRestProxyClient reads from connect_args.
+CtpRegistry.register("databricks-rest", DATABRICKS_REST_DEFAULT_CTP)
