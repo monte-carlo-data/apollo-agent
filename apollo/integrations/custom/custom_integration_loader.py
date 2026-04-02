@@ -110,6 +110,19 @@ def load_templates(integration_dir: str) -> Dict[str, str]:
     return templates
 
 
+def load_manifest(integration_dir: str) -> Dict:
+    """
+    Read manifest.json from the integration directory.
+    Returns the parsed dict, or empty dict if not found.
+    """
+    manifest_path = os.path.join(integration_dir, "manifest.json")
+    if not os.path.isfile(manifest_path):
+        return {}
+
+    with open(manifest_path) as f:
+        return json.load(f)
+
+
 def load_capabilities(integration_dir: str) -> Dict:
     """
     Read capabilities.json from the integration directory.

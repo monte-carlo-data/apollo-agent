@@ -6,8 +6,10 @@ from jinja2.sandbox import ImmutableSandboxedEnvironment
 
 from apollo.integrations.base_proxy_client import BaseProxyClient
 from apollo.integrations.custom.custom_integration_loader import (
+    get_custom_integration_registry,
     load_capabilities,
     load_integration_module,
+    load_manifest,
     load_templates,
 )
 
@@ -142,6 +144,31 @@ class CustomProxyClient(BaseProxyClient):
     def get_capabilities(self) -> Dict:
         """Return the capabilities.json contents."""
         return self._capabilities
+
+    @staticmethod
+    def get_connection_manifests() -> Dict[str, Dict[str, Any]]:
+        """
+        Discover all custom integrations and return their manifests,
+        capabilities, and templates.
+
+        Returns a dict keyed by connection_type, e.g.:
+            {
+                "custom-integration-abc1234": {
+                    "manifest": {...},
+                    "capabilities": {...},
+                    "templates": {"get_tables.j2": "...", ...}
+                }
+            }
+        """
+        registry = get_custom_integration_registry()
+        result: Dict[str, Dict[str, Any]] = {}
+        for connection_type, integration_dir in registry.items():
+            result[connection_type] = {
+                "manifest": load_manifest(integration_dir),
+                "capabilities": load_capabilities(integration_dir),
+                "templates": load_templates(integration_dir),
+            }
+        return result
 
     def _render_and_execute(
         self, template_name: str, **template_vars: Any
