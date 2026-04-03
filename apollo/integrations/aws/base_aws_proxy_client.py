@@ -30,9 +30,7 @@ class BaseAwsProxyClient(BaseProxyClient):
     """
 
     def __init__(self, service_type: str, credentials: Optional[Dict], **kwargs: Any):
-        creds = (
-            (credentials.get("connect_args") or credentials) if credentials else None
-        )
+        creds = credentials.get("connect_args") if credentials else None
         self._client = self.create_boto_client(
             service_type=service_type,
             assumable_role=creds.get("assumable_role") if creds else None,

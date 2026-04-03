@@ -27,14 +27,8 @@ class PrestoProxyClient(BaseDbProxyClient):
             )
 
         connect_args: Dict[str, Any] = {**credentials[_ATTR_CONNECT_ARGS]}
-        if auth := connect_args.pop("auth", None):
-            if not isinstance(auth, prestodb.auth.BasicAuthentication):
-                auth = prestodb.auth.BasicAuthentication(**auth)
-            connect_args["auth"] = auth
-
+        ssl_options = connect_args.pop("ssl_options", None) or {}
         self._connection = prestodb.dbapi.connect(**connect_args)
-
-        ssl_options = credentials.get("ssl_options") or {}
         if bool(ssl_options.get("skip_verification")):
             logger.info("Skipping certificate validation")
             self._connection._http_session.verify = False

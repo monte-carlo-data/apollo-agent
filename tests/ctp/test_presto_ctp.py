@@ -70,6 +70,5 @@ class TestPrestoCtp(TestCase):
 
     def test_auth_absent_when_not_provided(self):
         # When auth is not in raw credentials, the step is skipped (when guard).
-        # Phase 2 will update proxy client to use pop("auth", None).
         args = _resolve({"host": "h", "user": "u"})
         self.assertNotIn("auth", args)

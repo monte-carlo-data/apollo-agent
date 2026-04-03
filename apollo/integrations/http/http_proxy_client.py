@@ -1,4 +1,3 @@
-import hashlib
 import logging
 from typing import Dict, Optional, List, Tuple, Union
 
@@ -9,8 +8,6 @@ from retry.api import retry_call
 from apollo.common.agent.models import AgentOperation
 from apollo.common.agent.redact import AgentRedactUtilities
 from apollo.integrations.base_proxy_client import BaseProxyClient
-from apollo.integrations.db.base_db_proxy_client import SslOptions
-
 
 _logger = logging.getLogger(__name__)
 
@@ -53,29 +50,13 @@ class HttpProxyClient(BaseProxyClient):
         self._ssl_verify: Union[bool, str, None] = None
 
         if credentials and "connect_args" in credentials:
-            # CTP path: token, auth_header, auth_type, and ssl_verify are in connect_args
             self._credentials = credentials["connect_args"]
             ssl_verify = self._credentials.get("ssl_verify")
             if ssl_verify is not None:
                 self._ssl_verify = ssl_verify
         else:
-            # Legacy flat path: handle ssl_options directly
+            # Used when HttpProxyClient is instantiated directly (e.g. by other proxy clients)
             self._credentials = credentials
-            if credentials:
-                ssl_options = SslOptions(**(credentials.get("ssl_options", {}) or {}))
-
-                if ssl_options.ca_data and not ssl_options.disabled:
-                    ca_hash = hashlib.sha256(ssl_options.ca_data.encode()).hexdigest()[
-                        :12
-                    ]
-                    cert_file = f"/tmp/{ca_hash}_http_ca.pem"
-                    ssl_options.write_ca_data_to_temp_file(cert_file, upsert=True)
-                    self._ssl_verify = cert_file
-                    _logger.debug("HTTP SSL configured with custom CA certificate")
-
-                if ssl_options.disabled:
-                    self._ssl_verify = False
-                    _logger.debug("HTTP SSL verification disabled")
 
     @property
     def wrapped_client(self):

@@ -78,8 +78,11 @@ SNOWFLAKE_DEFAULT_CTP = CtpConfig(
             "session_parameters": "{{ raw.session_parameters | default(none) }}",
             # Auth fields — omit when absent so the connector selects the auth mode
             # from whichever field is present (password / private_key / token).
-            # private_key is NOT here — contributed only by the step field_map above.
+            # private_key is also accepted here for the DC-pre-shaped path where bytes
+            # have already been decoded; the load_private_key step overrides it when
+            # raw.private_key_pem is present.
             "password": "{{ raw.password | default(none) }}",
+            "private_key": "{{ raw.private_key | default(none) }}",
             "token": "{{ raw.token | default(none) }}",
             "authenticator": "{{ raw.authenticator | default(none) }}",
         },

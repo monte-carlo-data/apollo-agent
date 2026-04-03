@@ -13,8 +13,10 @@ class TableauClientArgs(TypedDict):
 TABLEAU_DEFAULT_CTP = CtpConfig(
     name="tableau-default",
     steps=[
-        # No `when` guard — JWT generation is always required for Tableau Connected Apps.
+        # Generate JWT from Connected App credentials. Skipped when credentials are
+        # pre-shaped (DC path) and a token is already present.
         TransformStep(
+            when="raw.client_id is defined",
             type="generate_jwt",
             input={
                 "username": "{{ raw.username }}",
@@ -34,6 +36,9 @@ TABLEAU_DEFAULT_CTP = CtpConfig(
             "server_name": "{{ raw.server_name }}",
             "site_name": "{{ raw.site_name | default('') }}",
             "verify_ssl": "{{ raw.verify_ssl | default(true) }}",
+            # Passed through when token is already resolved (DC pre-shaped path).
+            # Overridden by the generate_jwt step field_map when client_id is present.
+            "token": "{{ raw.token | default(none) }}",
         },
     ),
 )

@@ -83,12 +83,15 @@ class CtpRegistry:
                 stage="registry",
                 message=f"No CTP config registered for '{connection_type}'. Call CtpRegistry.get() before resolve().",
             )
-        # If credentials are already shaped as connect_args (DC pre-shaped path),
-        # pass them through unchanged — do not unwrap and re-run the pipeline.
-        if _ATTR_CONNECT_ARGS in credentials:
+        # Unwrap pre-shaped connect_args so both flat and DC-pre-shaped credentials
+        # follow the same transform path through the pipeline.
+        # If connect_args is not a dict (e.g. a pre-built ODBC string), pass through
+        # unchanged — the pipeline cannot interpret non-dict credentials.
+        raw_or_connect_args = credentials.get(_ATTR_CONNECT_ARGS, credentials)
+        if not isinstance(raw_or_connect_args, dict):
             return credentials
         return {
             _ATTR_CONNECT_ARGS: CtpPipeline().execute(
-                config, credentials, context=context or {}
+                config, raw_or_connect_args, context=context or {}
             )
         }

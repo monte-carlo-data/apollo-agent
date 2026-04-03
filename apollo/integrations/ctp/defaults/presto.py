@@ -13,13 +13,12 @@ class PrestoConnectArgs(TypedDict):
     request_timeout: NotRequired[int]
     http_scheme: NotRequired[str]  # "http" or "https"; default "http"
     max_attempts: NotRequired[int]  # default 3
-    # auth is a dict {username, password} in the CTP output.
-    # The proxy client pops it and wraps it in prestodb.auth.BasicAuthentication(**auth).
-    # Phase 2 will add a resolve_presto_auth transform that produces the object directly.
-    # Note: the proxy client uses connect_args.pop("auth") without a default, so auth
-    # must always be present in connect_args (even as None/falsy). Phase 2 will update
-    # the proxy client to use pop("auth", None) to remove this constraint.
+    # auth is a prestodb.auth.BasicAuthentication object produced by resolve_presto_auth.
+    # Absent when no auth credentials are provided (when guard on the transform step).
     auth: NotRequired[Any]
+    # ssl_options is passed through to the proxy for post-connection _http_session.verify
+    # patching, which cannot be expressed in prestodb.dbapi.connect kwargs.
+    ssl_options: NotRequired[Any]
 
 
 PRESTO_DEFAULT_CTP = CtpConfig(
@@ -27,8 +26,6 @@ PRESTO_DEFAULT_CTP = CtpConfig(
     steps=[
         # Auth: construct BasicAuthentication from raw.auth dict {username, password}.
         # Fires when auth credentials are provided; contributes auth object to connect_args.
-        # Phase 2 will also update the proxy client to skip its own re-wrapping when
-        # connect_args["auth"] is already a BasicAuthentication object.
         TransformStep(
             type="resolve_presto_auth",
             when="raw.auth is defined",
@@ -36,7 +33,7 @@ PRESTO_DEFAULT_CTP = CtpConfig(
             output={"auth": "presto_auth_obj"},
             field_map={"auth": "{{ derived.presto_auth_obj }}"},
         ),
-        # Phase 2: SSL post-connection verify stays in the proxy client
+        # SSL post-connection verify stays in the proxy client
         # (it patches _http_session.verify, which can't be expressed in connect_args).
     ],
     mapper=MapperConfig(
@@ -52,12 +49,11 @@ PRESTO_DEFAULT_CTP = CtpConfig(
             "http_scheme": "{{ raw.http_scheme | default('http') }}",
             "max_attempts": 3,
             # auth is omitted from the mapper — the step above contributes it via
-            # field_map when raw.auth is present. When absent, auth is not in
-            # connect_args. Phase 2 updates proxy client to use pop("auth", None).
+            # field_map when raw.auth is present. When absent, auth is not in connect_args.
+            # ssl_options is passed through for proxy-side _http_session.verify patching.
+            "ssl_options": "{{ raw.ssl_options | default(none) }}",
         },
     ),
 )
 
-# Not registered: two Phase 2 blockers —
-# 1. SSL uses credentials["ssl_options"] via http_session.verify; CTP output drops it.
 CtpRegistry.register("presto", PRESTO_DEFAULT_CTP)

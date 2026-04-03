@@ -36,8 +36,12 @@ HTTP_DEFAULT_CTP = CtpConfig(
         field_map={
             "token": "{{ raw.token | default(none) }}",
             "auth_header": "{{ raw.auth_header | default(none) }}",
-            "auth_type": "{{ raw.auth_type | default(none) }}",
-            "ssl_verify": "{{ false if raw.ssl_options is defined and raw.ssl_options.disabled else none }}",
+            # Use '' (empty string) when auth_type is explicitly null — the proxy treats
+            # an empty string as "no prefix", distinguishing it from the absent-key default.
+            "auth_type": "{{ '' if (raw.auth_type is defined and raw.auth_type is none) else (raw.auth_type | default(none)) }}",
+            # ssl_verify: pass through a pre-resolved path/bool (DC pre-shaped path),
+            # or derive from ssl_options when present in raw credentials.
+            "ssl_verify": "{{ raw.ssl_verify if raw.ssl_verify is defined else (false if raw.ssl_options is defined and raw.ssl_options.disabled else none) }}",
         },
     ),
 )
