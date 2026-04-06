@@ -30,10 +30,11 @@ _PRESTO_CREDENTIALS = {
 }
 _EXPECTED_PRESTO_CREDENTIALS = {
     "host": "https://example.com",
-    "port": "443",
+    "port": 443,
     "http_scheme": "https",
     "catalog": "fizz",
     "schema": "buzz",
+    "max_attempts": 3,
     "auth": ANY,
 }
 

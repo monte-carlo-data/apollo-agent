@@ -22,13 +22,15 @@ class DremioProxyClient(BaseDbProxyClient):
             raise ValueError(
                 f"Dremio agent client requires {_ATTR_CONNECT_ARGS} in credentials"
             )
-        if "token" not in credentials:
-            raise ValueError(f"Dremio agent client requires a token in credentials")
-        self._connection = flight.connect(**credentials[_ATTR_CONNECT_ARGS])  # type: ignore
+        connect_args = dict(credentials[_ATTR_CONNECT_ARGS])
+        token = connect_args.pop("token", credentials.get("token"))
+        if not token:
+            raise ValueError("Dremio agent client requires a token in credentials")
+        self._connection = flight.connect(**connect_args)  # type: ignore
         self._headers = [
             (
                 b"authorization",
-                f"bearer {credentials.get('token')}".encode("utf-8"),
+                f"bearer {token}".encode("utf-8"),
             )
         ]
 

@@ -1,9 +1,4 @@
 # tests/ctp/test_tableau_ctp.py
-#
-# The proxy client reads credentials flat (not from connect_args) and calls
-# generate_jwt internally on each sign-in. Not registered until Phase 2 updates
-# TableauProxyClient to read from connect_args.
-# Tests use CtpPipeline().execute() directly.
 import jwt
 from unittest import TestCase
 
@@ -25,8 +20,8 @@ def _resolve(credentials: dict) -> dict:
 
 
 class TestTableauCtp(TestCase):
-    def test_tableau_not_registered(self):
-        self.assertIsNone(CtpRegistry.get("tableau"))
+    def test_tableau_registered(self):
+        self.assertIsNotNone(CtpRegistry.get("tableau"))
 
     # ── JWT generation ────────────────────────────────────────────────
 

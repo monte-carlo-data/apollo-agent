@@ -1,6 +1,7 @@
 from typing import Required, TypedDict
 
 from apollo.integrations.ctp.models import CtpConfig, MapperConfig
+from apollo.integrations.ctp.registry import CtpRegistry
 
 
 class MotherDuckClientArgs(TypedDict):
@@ -21,7 +22,4 @@ MOTHERDUCK_DEFAULT_CTP = CtpConfig(
     ),
 )
 
-# Not registered: the proxy client expects connect_args to be the pre-built
-# connection string "md:{db_name}?motherduck_token={token}" (a string, not a dict).
-# Phase 2 will update MotherDuckProxyClient to build the string from the dict,
-# then register here.
+CtpRegistry.register("motherduck", MOTHERDUCK_DEFAULT_CTP)

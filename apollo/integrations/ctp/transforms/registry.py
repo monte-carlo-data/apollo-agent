@@ -19,6 +19,7 @@ def _discover() -> None:
     import apollo.integrations.ctp.transforms.generate_jwt  # noqa: F401
     import apollo.integrations.ctp.transforms.resolve_msal_token  # noqa: F401
     import apollo.integrations.ctp.transforms.resolve_databricks_oauth  # noqa: F401
+    import apollo.integrations.ctp.transforms.resolve_databricks_token  # noqa: F401
 
 
 def _ensure_initialized() -> None:

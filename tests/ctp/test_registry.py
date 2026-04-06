@@ -146,7 +146,8 @@ class TestRedshiftCtp(TestCase):
         self.assertEqual("dev", ca["dbname"])
 
     def test_resolve_dc_shaped_dbname_variants(self):
-        # DC pre-shapes credentials into connect_args; CTP passes them through unchanged.
+        # CTP runs on pre-shaped connect_args — all three dbname key variants
+        # (db_name, dbname, database) are normalised to "dbname" in the output.
         for key in ("db_name", "dbname", "database"):
             dc_input = {
                 "connect_args": {
@@ -162,7 +163,15 @@ class TestRedshiftCtp(TestCase):
                 },
             }
             result = CtpRegistry.resolve("redshift", dc_input)
-            self.assertEqual(dc_input, result)
+            self.assertIn("connect_args", result)
+            ca = result["connect_args"]
+            self.assertEqual(
+                "mydb", ca["dbname"], f"dbname not normalised for key={key!r}"
+            )
+            self.assertNotIn("db_name", ca)
+            self.assertNotIn("database", ca)
+            self.assertEqual("h", ca["host"])
+            self.assertEqual(5439, ca["port"])
 
 
 class TestSapHanaCtp(TestCase):
@@ -461,8 +470,8 @@ class TestPostgresCtp(TestCase):
         self.assertEqual("mydb", ca["dbname"])
 
     def test_resolve_dc_shaped_dbname_variants(self):
-        # DC pre-shapes credentials into connect_args; CTP passes them through unchanged.
-        # The key used by DC (db_name, dbname, database) is preserved as-is.
+        # CTP runs on pre-shaped connect_args — all three dbname key variants
+        # (db_name, dbname, database) are normalised to "dbname" in the output.
         for key in ("db_name", "dbname", "database"):
             dc_input = {
                 "connect_args": {
@@ -474,7 +483,15 @@ class TestPostgresCtp(TestCase):
                 }
             }
             result = CtpRegistry.resolve("postgres", dc_input)
-            self.assertEqual(dc_input, result)
+            self.assertIn("connect_args", result)
+            ca = result["connect_args"]
+            self.assertEqual(
+                "mydb", ca["dbname"], f"dbname not normalised for key={key!r}"
+            )
+            self.assertNotIn("db_name", ca)
+            self.assertNotIn("database", ca)
+            self.assertEqual("h", ca["host"])
+            self.assertEqual(5432, ca["port"])
 
     def test_resolve_with_ssl_mode(self):
         result = CtpRegistry.resolve(

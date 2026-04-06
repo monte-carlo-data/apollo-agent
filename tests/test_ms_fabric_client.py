@@ -18,6 +18,15 @@ _CLIENT_ID = "my-client-id"
 _CLIENT_SECRET = "my-client-secret"
 _TENANT_ID = "my-tenant-id"
 
+# Flat DC credentials (raw input to CTP)
+_FLAT_CREDS = {
+    "server": _SERVER,
+    "database": _DATABASE,
+    "client_id": _CLIENT_ID,
+    "client_secret": _CLIENT_SECRET,
+    "tenant_id": _TENANT_ID,
+}
+
 # Dict form produced by the CTP mapper
 _CONNECT_ARGS_DICT = {
     "DRIVER": "{ODBC Driver 17 for SQL Server}",
@@ -180,7 +189,7 @@ class MsFabricProxyClientTests(TestCase):
             "microsoft-fabric",
             "run_query",
             operation_dict,
-            {"connect_args": _CONNECT_ARGS_DICT},
+            _FLAT_CREDS,
         )
 
         self.assertIsNone(response.result.get(ATTRIBUTE_NAME_ERROR))
@@ -195,19 +204,11 @@ class MsFabricProxyClientTests(TestCase):
 class MsFabricCtpRoundTripTests(TestCase):
     """Verify the CTP pipeline produces the expected ODBC dict from flat credentials."""
 
-    _FLAT_CREDS = {
-        "server": _SERVER,
-        "database": _DATABASE,
-        "client_id": _CLIENT_ID,
-        "client_secret": _CLIENT_SECRET,
-        "tenant_id": _TENANT_ID,
-    }
-
     def test_ctp_registered(self):
         self.assertIsNotNone(CtpRegistry.get("microsoft-fabric"))
 
     def test_ctp_resolves_flat_credentials(self):
-        resolved = CtpRegistry.resolve("microsoft-fabric", self._FLAT_CREDS)
+        resolved = CtpRegistry.resolve("microsoft-fabric", _FLAT_CREDS)
         connect_args = resolved["connect_args"]
 
         self.assertEqual("{ODBC Driver 17 for SQL Server}", connect_args["DRIVER"])
@@ -227,7 +228,7 @@ class MsFabricCtpRoundTripTests(TestCase):
         mock_connection = Mock()
         mock_connect.return_value = mock_connection
 
-        resolved = CtpRegistry.resolve("microsoft-fabric", self._FLAT_CREDS)
+        resolved = CtpRegistry.resolve("microsoft-fabric", _FLAT_CREDS)
         MsFabricProxyClient(credentials=resolved, platform="test")
 
         mock_connect.assert_called_once_with(_EXPECTED_ODBC_STRING, timeout=15)
@@ -236,23 +237,17 @@ class MsFabricCtpRoundTripTests(TestCase):
         """host and hostname are accepted as aliases for server."""
         for key in ("host", "hostname"):
             with self.subTest(key=key):
-                creds = {**self._FLAT_CREDS, key: _SERVER}
+                creds = {**_FLAT_CREDS, key: _SERVER}
                 creds.pop("server")
                 resolved = CtpRegistry.resolve("microsoft-fabric", creds)
                 self.assertEqual(_SERVER, resolved["connect_args"]["SERVER"])
 
     def test_ctp_resolves_db_name_alias(self):
         """db_name is accepted as an alias for database."""
-        creds = {**self._FLAT_CREDS, "db_name": _DATABASE}
+        creds = {**_FLAT_CREDS, "db_name": _DATABASE}
         creds.pop("database")
         resolved = CtpRegistry.resolve("microsoft-fabric", creds)
         self.assertEqual(_DATABASE, resolved["connect_args"]["DATABASE"])
-
-    def test_ctp_bypasses_when_connect_args_present(self):
-        """If connect_args is already present, CTP returns credentials unchanged."""
-        creds_with_connect_args = {"connect_args": _CONNECT_ARGS_DICT}
-        resolved = CtpRegistry.resolve("microsoft-fabric", creds_with_connect_args)
-        self.assertEqual(creds_with_connect_args, resolved)
 
 
 class MsFabricDatetimeoffsetTests(TestCase):

@@ -39,8 +39,8 @@ _SQL_AZURE_OAUTH_CREDS = {
 
 
 class TestDatabricksSqlCtp(TestCase):
-    def test_not_registered(self):
-        self.assertIsNone(CtpRegistry.get("databricks"))
+    def test_registered(self):
+        self.assertIsNotNone(CtpRegistry.get("databricks"))
 
     # ── PAT auth ──────────────────────────────────────────────────────
 
@@ -112,66 +112,110 @@ class TestDatabricksSqlCtp(TestCase):
         self.assertTrue(callable(args["credentials_provider"]))
 
 
+_REST_BASE_CREDS = {"databricks_workspace_url": "https://workspace.azuredatabricks.net"}
+_REST_PAT_CREDS = {**_REST_BASE_CREDS, "databricks_token": "dapi_pat_token"}
+_REST_OAUTH_CREDS = {
+    **_REST_BASE_CREDS,
+    "databricks_client_id": "client-id",
+    "databricks_client_secret": "client-secret",
+}
+_REST_AZURE_OAUTH_CREDS = {
+    **_REST_OAUTH_CREDS,
+    "azure_tenant_id": "tenant-id",
+    "azure_workspace_resource_id": "/subscriptions/sub/workspaces/ws",
+}
+
+
 class TestDatabricksRestCtp(TestCase):
-    def test_not_registered(self):
-        self.assertIsNone(CtpRegistry.get("databricks-rest"))
+    def test_registered(self):
+        self.assertIsNotNone(CtpRegistry.get("databricks-rest"))
 
     # ── PAT auth ──────────────────────────────────────────────────────
 
-    def test_pat_fields(self):
-        args = _resolve_rest(
-            {
-                "databricks_workspace_url": "https://workspace.azuredatabricks.net",
-                "databricks_token": "dapi_pat_token",
-            }
-        )
+    def test_pat_resolves_token(self):
+        args = _resolve_rest(_REST_PAT_CREDS)
         self.assertEqual(
             "https://workspace.azuredatabricks.net", args["databricks_workspace_url"]
         )
-        self.assertEqual("dapi_pat_token", args["databricks_token"])
+        self.assertEqual("dapi_pat_token", args["token"])
 
-    # ── Databricks-managed OAuth ──────────────────────────────────────
-
-    def test_databricks_oauth_fields(self):
-        args = _resolve_rest(
-            {
-                "databricks_workspace_url": "https://workspace.azuredatabricks.net",
-                "databricks_client_id": "client-id",
-                "databricks_client_secret": "client-secret",
-            }
-        )
-        self.assertEqual("client-id", args["databricks_client_id"])
-        self.assertEqual("client-secret", args["databricks_client_secret"])
-        self.assertNotIn("databricks_token", args)
-
-    # ── Azure-managed OAuth ───────────────────────────────────────────
-
-    def test_azure_oauth_fields(self):
-        args = _resolve_rest(
-            {
-                "databricks_workspace_url": "https://workspace.azuredatabricks.net",
-                "databricks_client_id": "client-id",
-                "databricks_client_secret": "client-secret",
-                "azure_tenant_id": "tenant-id",
-                "azure_workspace_resource_id": "/subscriptions/sub/workspaces/ws",
-            }
-        )
-        self.assertEqual("tenant-id", args["azure_tenant_id"])
-        self.assertEqual(
-            "/subscriptions/sub/workspaces/ws", args["azure_workspace_resource_id"]
-        )
-
-    def test_absent_optional_fields_omitted(self):
-        args = _resolve_rest(
-            {
-                "databricks_workspace_url": "https://workspace.azuredatabricks.net",
-                "databricks_token": "t",
-            }
-        )
+    def test_pat_no_raw_cred_fields_in_output(self):
+        args = _resolve_rest(_REST_PAT_CREDS)
         for field in (
+            "databricks_token",
             "databricks_client_id",
             "databricks_client_secret",
             "azure_tenant_id",
             "azure_workspace_resource_id",
         ):
-            self.assertNotIn(field, args, f"expected {field!r} absent")
+            self.assertNotIn(
+                field, args, f"expected {field!r} absent from connect_args"
+            )
+
+    # ── Databricks-managed OAuth ──────────────────────────────────────
+
+    @patch(
+        "apollo.integrations.ctp.transforms.resolve_databricks_token.oauth_service_principal"
+    )
+    @patch("apollo.integrations.ctp.transforms.resolve_databricks_token.Config")
+    def test_databricks_oauth_resolves_token(self, mock_config, mock_provider):
+        mock_provider.return_value = lambda: {"Authorization": "Bearer oauth-token-db"}
+        args = _resolve_rest(_REST_OAUTH_CREDS)
+        self.assertEqual("oauth-token-db", args["token"])
+
+    @patch(
+        "apollo.integrations.ctp.transforms.resolve_databricks_token.oauth_service_principal"
+    )
+    @patch("apollo.integrations.ctp.transforms.resolve_databricks_token.Config")
+    def test_databricks_oauth_no_raw_cred_fields_in_output(
+        self, mock_config, mock_provider
+    ):
+        mock_provider.return_value = lambda: {"Authorization": "Bearer oauth-token-db"}
+        args = _resolve_rest(_REST_OAUTH_CREDS)
+        for field in (
+            "databricks_client_id",
+            "databricks_client_secret",
+        ):
+            self.assertNotIn(
+                field, args, f"expected {field!r} absent from connect_args"
+            )
+
+    # ── Azure-managed OAuth ───────────────────────────────────────────
+
+    @patch(
+        "apollo.integrations.ctp.transforms.resolve_databricks_token.azure_service_principal"
+    )
+    @patch("apollo.integrations.ctp.transforms.resolve_databricks_token.Config")
+    def test_azure_oauth_resolves_token(self, mock_config, mock_provider):
+        mock_provider.return_value = lambda: {
+            "Authorization": "Bearer oauth-token-azure"
+        }
+        args = _resolve_rest(_REST_AZURE_OAUTH_CREDS)
+        self.assertEqual("oauth-token-azure", args["token"])
+
+    @patch(
+        "apollo.integrations.ctp.transforms.resolve_databricks_token.azure_service_principal"
+    )
+    @patch("apollo.integrations.ctp.transforms.resolve_databricks_token.Config")
+    def test_azure_oauth_uses_azure_service_principal(self, mock_config, mock_provider):
+        mock_provider.return_value = lambda: {"Authorization": "Bearer t"}
+        _resolve_rest(_REST_AZURE_OAUTH_CREDS)
+        mock_config.assert_called_once_with(
+            host="https://workspace.azuredatabricks.net",
+            azure_client_id="client-id",
+            azure_client_secret="client-secret",
+            azure_tenant_id="tenant-id",
+            azure_workspace_resource_id="/subscriptions/sub/workspaces/ws",
+        )
+        mock_provider.assert_called_once_with(mock_config.return_value)
+
+    # ── OAuth priority over PAT ───────────────────────────────────────
+
+    @patch(
+        "apollo.integrations.ctp.transforms.resolve_databricks_token.oauth_service_principal"
+    )
+    @patch("apollo.integrations.ctp.transforms.resolve_databricks_token.Config")
+    def test_oauth_takes_priority_over_stale_pat(self, mock_config, mock_provider):
+        mock_provider.return_value = lambda: {"Authorization": "Bearer oauth-wins"}
+        args = _resolve_rest({**_REST_OAUTH_CREDS, "databricks_token": "stale-pat"})
+        self.assertEqual("oauth-wins", args["token"])

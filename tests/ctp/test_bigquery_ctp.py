@@ -23,8 +23,8 @@ def _resolve(credentials: dict) -> dict:
 
 
 class TestBigqueryCtp(TestCase):
-    def test_not_registered(self):
-        self.assertIsNone(CtpRegistry.get("bigquery"))
+    def test_registered(self):
+        self.assertIsNotNone(CtpRegistry.get("bigquery"))
 
     # ── Service account JSON passthrough ──────────────────────────────
 

@@ -11,8 +11,8 @@ def _resolve(credentials: dict) -> dict:
 
 
 class TestTeradataCtp(TestCase):
-    def test_not_registered(self):
-        self.assertIsNone(CtpRegistry.get("teradata"))
+    def test_registered(self):
+        self.assertIsNotNone(CtpRegistry.get("teradata"))
 
     # ── Basic connection fields ────────────────────────────────────────
 

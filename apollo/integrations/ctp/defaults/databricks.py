@@ -1,6 +1,7 @@
 from typing import Any, NotRequired, Required, TypedDict
 
 from apollo.integrations.ctp.models import CtpConfig, MapperConfig, TransformStep
+from apollo.integrations.ctp.registry import CtpRegistry
 
 
 class DatabricksSqlClientArgs(TypedDict):
@@ -55,41 +56,41 @@ DATABRICKS_DEFAULT_CTP = CtpConfig(
     ),
 )
 
-# Not registered: proxy client reads credentials flat and calls the SDK itself.
-# Phase 2 will register when DatabricksSqlWarehouseProxyClient reads from connect_args.
+CtpRegistry.register("databricks", DATABRICKS_DEFAULT_CTP)
 
 
 class DatabricksRestClientArgs(TypedDict):
     databricks_workspace_url: Required[str]
-    databricks_token: NotRequired[str]  # PAT auth
-    databricks_client_id: NotRequired[str]  # OAuth (Databricks or Azure-managed)
-    databricks_client_secret: NotRequired[str]  # OAuth
-    azure_tenant_id: NotRequired[str]  # Azure-managed OAuth only
-    azure_workspace_resource_id: NotRequired[str]  # Azure-managed OAuth only
+    token: Required[str]  # resolved by resolve_databricks_token (PAT or OAuth)
 
 
 DATABRICKS_REST_DEFAULT_CTP = CtpConfig(
     name="databricks-rest-default",
     steps=[
-        # Phase 2: add an OAuth→token transform that resolves the access token string
-        # directly, so the proxy client can read connect_args["token"] without calling
-        # the SDK itself.
+        # Resolve the access token for all auth modes (PAT, Databricks OAuth, Azure OAuth).
+        # OAuth keys take priority over PAT — see ResolveDatabricksTokenTransform for details.
+        TransformStep(
+            type="resolve_databricks_token",
+            input={
+                "workspace_url": "{{ raw.databricks_workspace_url }}",
+                "databricks_token": "{{ raw.databricks_token | default(none) }}",
+                "client_id": "{{ raw.databricks_client_id | default(none) }}",
+                "client_secret": "{{ raw.databricks_client_secret | default(none) }}",
+                "azure_tenant_id": "{{ raw.azure_tenant_id | default(none) }}",
+                "azure_workspace_resource_id": "{{ raw.azure_workspace_resource_id | default(none) }}",
+            },
+            output={"token": "databricks_rest_token"},
+            field_map={"token": "{{ derived.databricks_rest_token }}"},
+        ),
     ],
     mapper=MapperConfig(
         name="databricks_rest_client_args",
         schema=DatabricksRestClientArgs,
         field_map={
             "databricks_workspace_url": "{{ raw.databricks_workspace_url }}",
-            # PAT auth
-            "databricks_token": "{{ raw.databricks_token | default(none) }}",
-            # OAuth auth — proxy client resolves the token internally in Phase 1
-            "databricks_client_id": "{{ raw.databricks_client_id | default(none) }}",
-            "databricks_client_secret": "{{ raw.databricks_client_secret | default(none) }}",
-            "azure_tenant_id": "{{ raw.azure_tenant_id | default(none) }}",
-            "azure_workspace_resource_id": "{{ raw.azure_workspace_resource_id | default(none) }}",
+            # token is contributed by the resolve_databricks_token step above
         },
     ),
 )
 
-# Not registered: proxy client reads credentials flat and resolves the token internally.
-# Phase 2 will register when DatabricksRestProxyClient reads from connect_args.
+CtpRegistry.register("databricks-rest", DATABRICKS_REST_DEFAULT_CTP)

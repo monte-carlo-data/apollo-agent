@@ -2,7 +2,10 @@ from typing import Optional, Any
 
 import pyodbc
 
-from apollo.integrations.db.tsql_base_db_proxy_client import TSqlBaseDbProxyClient
+from apollo.integrations.db.tsql_base_db_proxy_client import (
+    TSqlBaseDbProxyClient,
+    odbc_string_from_dict,
+)
 
 _ATTR_CONNECT_ARGS = "connect_args"
 
@@ -23,8 +26,14 @@ class AzureDatabaseProxyClient(TSqlBaseDbProxyClient):
             raise ValueError(
                 f"Azure database agent client requires {_ATTR_CONNECT_ARGS} in credentials"
             )
+        connect_args = credentials[_ATTR_CONNECT_ARGS]
+        connection_string = (
+            odbc_string_from_dict(connect_args)
+            if isinstance(connect_args, dict)
+            else connect_args
+        )
         self._connection = pyodbc.connect(
-            credentials[_ATTR_CONNECT_ARGS],
+            connection_string,
             # Set timeout for establishing connection to db
             timeout=credentials.get(
                 "login_timeout", self._DEFAULT_LOGIN_TIMEOUT_IN_SECONDS
