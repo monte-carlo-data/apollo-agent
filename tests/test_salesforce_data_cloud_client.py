@@ -445,11 +445,12 @@ class SalesforceDataCloudProxyClientTests(TestCase):
         # Salesforce response body must be included so it reaches Datadog via data-collector
         self.assertIn("insufficient_scope", error_message)
 
-    def test_list_tables_response_body_included_in_error_message(self):
+    def test_capturing_session_stores_body_and_status(self):
         """
-        _attach_capturing_session captures the Salesforce a360/token response body
-        regardless of status code — including 200 responses with error payloads (which
-        cause KeyError) — so it can be included in the RuntimeError propagated to Datadog.
+        _attach_capturing_session stores last_exchange_body and last_exchange_status on
+        the _CapturingSession regardless of response status code (including non-200).
+        This validates that the plumbing is in place so error handlers can include the
+        captured body in RuntimeErrors propagated to the data-collector and Datadog.
         """
         from apollo.integrations.db.salesforce_data_cloud_proxy_client import (
             SalesforceDataCloudConnection,
@@ -598,6 +599,9 @@ class SalesforceDataCloudProxyClientTests(TestCase):
         self.assertEqual(extra.get("exchange_status_code"), 429)
         self.assertEqual(extra.get("exchange_error_type"), "rate_limited")
         self.assertEqual(extra.get("dataspace"), "UnifiedKnowledge")
+        # Response body must be present as a structured field (redacted of any tokens)
+        self.assertIsNotNone(extra.get("exchange_response_body"))
+        self.assertIn("rate_limit_exceeded", extra.get("exchange_response_body", ""))
 
     def test_warning_logged_with_missing_access_token_type_on_keyerror(self):
         """
@@ -645,3 +649,69 @@ class SalesforceDataCloudProxyClientTests(TestCase):
         self.assertEqual(extra.get("exchange_error_type"), "missing_access_token")
         self.assertEqual(extra.get("exchange_status_code"), 200)
         self.assertEqual(extra.get("dataspace"), "UnifiedKnowledge")
+        # Response body must be present as a structured field
+        self.assertIsNotNone(extra.get("exchange_response_body"))
+        self.assertIn("invalid_dataspace", extra.get("exchange_response_body", ""))
+
+    def test_any_keyerror_is_wrapped_with_structured_logging(self):
+        """
+        Any KeyError from conn.list_tables() — not just KeyError('access_token') —
+        is caught, logged with structured fields (exchange_status_code, exchange_error_type,
+        exchange_response_body), and wrapped in a clear RuntimeError.
+
+        This ensures that if the library raises KeyError for other missing fields
+        (e.g. 'instance_url', 'token_type') we still get full diagnostic context
+        in Datadog rather than a raw KeyError propagating to the caller.
+        """
+        from unittest.mock import patch
+        from apollo.integrations.db.salesforce_data_cloud_proxy_client import (
+            SalesforceDataCloudProxyClient,
+            SalesforceDataCloudCredentials,
+        )
+
+        client = SalesforceDataCloudProxyClient(
+            SalesforceDataCloudCredentials(
+                domain="test.salesforce.com",
+                client_id="test_client_id",
+                client_secret="test_client_secret",
+                core_token=None,
+                refresh_token=None,
+            )
+        )
+
+        with patch(
+            "salesforcecdpconnector.connection.SalesforceCDPConnection.list_tables",
+            side_effect=KeyError("instance_url"),
+        ):
+            with patch(
+                "apollo.integrations.db.salesforce_data_cloud_proxy_client.logger"
+            ) as mock_logger:
+                with self.assertRaises(RuntimeError) as ctx:
+                    client.list_tables(dataspace="UnifiedKnowledge")
+
+        # Must be wrapped as a clear RuntimeError, not a raw KeyError
+        self.assertIn("Token exchange failed", str(ctx.exception))
+        self.assertIn("instance_url", str(ctx.exception))
+        # Structured warning must be emitted
+        mock_logger.warning.assert_called_once()
+        extra = mock_logger.warning.call_args.kwargs.get("extra", {})
+        self.assertEqual(extra.get("exchange_error_type"), "missing_access_token")
+        self.assertEqual(extra.get("dataspace"), "UnifiedKnowledge")
+
+    def test_access_token_redacted_from_error_on_successful_exchange(self):
+        """
+        If the a360/token exchange SUCCEEDS (body contains access_token) but a KeyError
+        fires later for an unrelated reason, the captured body is redacted before being
+        included in any error so the real token is never exposed.
+        """
+        from apollo.integrations.db.salesforce_data_cloud_proxy_client import (
+            _redact_body,
+        )
+
+        body_with_token = "{'access_token': 'eyJREAL_SECRET_TOKEN', 'expires_in': 3600}"
+        redacted = _redact_body(body_with_token)
+        self.assertIsNotNone(redacted)
+        self.assertNotIn("eyJREAL_SECRET_TOKEN", redacted)
+        self.assertIn("[REDACTED]", redacted)
+        # Non-sensitive fields must still be present
+        self.assertIn("expires_in", redacted)

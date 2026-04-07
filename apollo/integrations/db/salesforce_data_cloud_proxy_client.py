@@ -57,6 +57,26 @@ def _classify_exchange_status(status: int | None) -> str:
     return "other"
 
 
+import re as _re
+
+_ACCESS_TOKEN_PATTERN = _re.compile(r"('access_token'\s*:\s*)'[^']*'")
+
+
+def _redact_body(body: str | None) -> str | None:
+    """
+    Redact access_token values from a captured a360/token response body string
+    before including it in error messages or log records.
+
+    The body is stored as str(response.json()), so token values appear as
+    Python string literals: 'access_token': 'eyJ...'. Redacting prevents
+    accidental credential exposure when an unrelated error fires after a
+    successful token exchange.
+    """
+    if body is None:
+        return None
+    return _ACCESS_TOKEN_PATTERN.sub(r"\1'[REDACTED]'", body)
+
+
 def _attach_capturing_session(
     conn: "SalesforceDataCloudConnection",
 ) -> _CapturingSession | None:
@@ -65,8 +85,9 @@ def _attach_capturing_session(
     _CapturingSession so that on failure the response body can be included in the
     RuntimeError propagated back to the data-collector (and visible in Datadog).
 
-    Returns the capturing session so the caller can read last_failed_exchange_body
-    after a failed call, or None if the library internals have changed.
+    Returns the capturing session so the caller can read last_exchange_body and
+    last_exchange_status after a failed call, or None if the library internals
+    have changed.
     """
     if not (
         hasattr(conn, "authentication_helper")
@@ -205,7 +226,7 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
             try:
                 tables: list[GenieTable] = conn.list_tables()
             except SalesforceCDPError as e:
-                body = capturing.last_exchange_body if capturing else None
+                body = _redact_body(capturing.last_exchange_body if capturing else None)
                 status = capturing.last_exchange_status if capturing else None
                 logger.warning(
                     "Salesforce Data Cloud: a360/token exchange failed for dataspace '%s'",
@@ -215,6 +236,7 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
                         "exchange_status_code": status,
                         "exchange_error_type": _classify_exchange_status(status),
                         "exchange_error": str(e)[:500],
+                        "exchange_response_body": body,
                     },
                 )
                 detail = f" (Salesforce response: {body})" if body else ""
@@ -224,7 +246,7 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
                     f"has permission for this dataspace"
                 ) from e
             except KeyError as e:
-                body = capturing.last_exchange_body if capturing else None
+                body = _redact_body(capturing.last_exchange_body if capturing else None)
                 status = capturing.last_exchange_status if capturing else None
                 logger.warning(
                     "Salesforce Data Cloud: a360/token exchange returned unexpected response for dataspace '%s'",
@@ -234,6 +256,7 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
                         "exchange_status_code": status,
                         "exchange_error_type": "missing_access_token",
                         "missing_key": str(e),
+                        "exchange_response_body": body,
                     },
                 )
                 detail = (
