@@ -14,26 +14,31 @@ logger = logging.getLogger(__name__)
 
 class _CapturingSession(requests.Session):
     """
-    Wraps the library's requests.Session to capture the Salesforce response body on
-    non-200 a360/token exchanges.
+    Wraps the library's requests.Session to capture the Salesforce a360/token response
+    body regardless of status code.
 
     The salesforcecdpconnector library raises Error('CDP token retrieval failed with
-    code N') and discards the response body. By capturing it here we can include the
-    Salesforce error detail (e.g. "dataspace_not_found" / "insufficient_scope") in the
-    RuntimeError that propagates back to the data-collector and into Datadog logs.
+    code N') on non-200 and discards the body. On 200 responses with unexpected payloads
+    (e.g. Salesforce returning 200 with an error body for unknown dataspaces) the library
+    raises KeyError. In both cases the body is discarded before we can see it.
+
+    Capturing on all a360/token responses means we always have it available to include
+    in the RuntimeError that propagates back to the data-collector and into Datadog logs.
     """
 
     def __init__(self) -> None:
         super().__init__()
-        self.last_failed_exchange_body: str | None = None
+        self.last_exchange_body: str | None = None
+        self.last_exchange_status: int | None = None
 
     def post(self, url: str, **kwargs: Any):  # type: ignore[override]
         response = super().post(url, **kwargs)
-        if response.status_code != 200 and "a360/token" in url:
+        if "a360/token" in url:
+            self.last_exchange_status = response.status_code
             try:
-                self.last_failed_exchange_body = str(response.json())
+                self.last_exchange_body = str(response.json())
             except Exception:
-                self.last_failed_exchange_body = response.text[:500]
+                self.last_exchange_body = response.text[:500]
         return response
 
 
@@ -185,7 +190,7 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
             try:
                 tables: list[GenieTable] = conn.list_tables()
             except SalesforceCDPError as e:
-                body = capturing.last_failed_exchange_body if capturing else None
+                body = capturing.last_exchange_body if capturing else None
                 detail = f" (Salesforce response: {body})" if body else ""
                 raise RuntimeError(
                     f"Token exchange failed for dataspace '{dataspace}': {e}{detail} — "
@@ -193,9 +198,14 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
                     f"has permission for this dataspace"
                 ) from e
             except KeyError as e:
+                body = capturing.last_exchange_body if capturing else None
+                status = capturing.last_exchange_status if capturing else None
+                detail = (
+                    f" (HTTP {status}, Salesforce response: {body})" if body else ""
+                )
                 raise RuntimeError(
                     f"Token exchange failed for dataspace '{dataspace}': "
-                    f"OAuth response missing key {e} — "
+                    f"OAuth response missing key {e}{detail} — "
                     f"verify the dataspace exists and credentials are valid"
                 ) from e
             finally:

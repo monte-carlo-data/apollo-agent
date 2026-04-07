@@ -1,7 +1,7 @@
 import json
 import uuid
 from unittest import TestCase
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import responses
 
@@ -345,6 +345,47 @@ class SalesforceDataCloudProxyClientTests(TestCase):
         # Should see a clear token exchange error
         self.assertIn("Token exchange failed", error_message)
 
+    def test_list_tables_with_invalid_dataspace_raises_clear_error_clean_path(self):
+        """
+        Older versions of salesforce-cdp-connector raise KeyError('access_token') when the
+        a360/token exchange fails (instead of a typed Error). Verify this is wrapped into a
+        readable RuntimeError rather than surfacing as AgentClientError: 'access_token'.
+        """
+        operation = {
+            "trace_id": "test-trace-id",
+            "skip_cache": True,
+            "commands": [
+                {
+                    "method": "list_tables",
+                    "kwargs": {"dataspace": "NonExistentDataspace"},
+                }
+            ],
+        }
+
+        # Use clean-credentials path: no core_token
+        del self.credentials["connect_args"]["core_token"]
+
+        # Simulate the older salesforce-cdp-connector behavior that raises KeyError
+        # instead of a typed Error when the a360 exchange fails.
+        with patch(
+            "salesforcecdpconnector.connection.SalesforceCDPConnection.list_tables",
+            side_effect=KeyError("access_token"),
+        ):
+            response = self.agent.execute_operation(
+                connection_type="salesforce-data-cloud",
+                operation_name="test_list_tables_invalid_dataspace_clean",
+                operation_dict=operation,
+                credentials=self.credentials,
+            )
+
+        self.assertTrue(response.is_error)
+        error_message = str(response.result)
+        # Should NOT see the raw KeyError: 'access_token'
+        self.assertNotIn("KeyError", error_message)
+        # Should see a clear token exchange error mentioning the dataspace
+        self.assertIn("Token exchange failed", error_message)
+        self.assertIn("NonExistentDataspace", error_message)
+
     def test_list_tables_invalid_dataspace_surfaces_http_status_code(self):
         """
         When the a360/token exchange returns a non-200 response, the error message must
@@ -406,9 +447,9 @@ class SalesforceDataCloudProxyClientTests(TestCase):
 
     def test_list_tables_response_body_included_in_error_message(self):
         """
-        _attach_capturing_session stores the Salesforce response body on non-200
-        a360/token exchanges so it can be included in the RuntimeError that propagates
-        back to the data-collector (and into Datadog logs).
+        _attach_capturing_session captures the Salesforce a360/token response body
+        regardless of status code — including 200 responses with error payloads (which
+        cause KeyError) — so it can be included in the RuntimeError propagated to Datadog.
         """
         from apollo.integrations.db.salesforce_data_cloud_proxy_client import (
             SalesforceDataCloudConnection,
@@ -436,12 +477,64 @@ class SalesforceDataCloudProxyClientTests(TestCase):
         capturing = _attach_capturing_session(conn)
         self.assertIsNotNone(capturing)
 
-        error_raised = None
         try:
             conn.list_tables()
-        except Exception as exc:
-            error_raised = exc
+        except Exception:
+            pass
 
-        # The capturing session must have stored the response body
-        self.assertIsNotNone(capturing.last_failed_exchange_body)
-        self.assertIn("dataspace_not_found", capturing.last_failed_exchange_body)
+        # The capturing session must have stored the response body and status
+        self.assertIsNotNone(capturing.last_exchange_body)
+        self.assertIsNotNone(capturing.last_exchange_status)
+        self.assertIn("dataspace_not_found", capturing.last_exchange_body)
+        self.assertEqual(capturing.last_exchange_status, 400)
+
+    def test_list_tables_keyerror_includes_response_body(self):
+        """
+        When Salesforce returns HTTP 200 but with a body missing 'access_token'
+        (a 200-with-error-payload pattern observed in the wild), the KeyError path
+        must still include the captured body and status in the error message.
+        """
+        self.mock_responses.remove(
+            responses.POST, "https://test.salesforce.com/services/a360/token"
+        )
+        # Salesforce returns 200 but with an unexpected body (no access_token)
+        self.mock_responses.add(
+            method=responses.POST,
+            url="https://test.salesforce.com/services/a360/token",
+            status=200,
+            body=json.dumps(
+                {"error": "invalid_dataspace", "message": "Dataspace not found"}
+            ),
+        )
+
+        operation = {
+            "trace_id": "test-trace-id",
+            "skip_cache": True,
+            "commands": [
+                {
+                    "method": "list_tables",
+                    "kwargs": {"dataspace": "UnifiedKnowledge"},
+                }
+            ],
+        }
+
+        credentials = {**self.credentials}
+        credentials["connect_args"] = {
+            k: v
+            for k, v in self.credentials["connect_args"].items()
+            if k != "core_token"
+        }
+
+        response = self.agent.execute_operation(
+            connection_type="salesforce-data-cloud",
+            operation_name="test_list_tables_keyerror_body",
+            operation_dict=operation,
+            credentials=credentials,
+        )
+
+        self.assertTrue(response.is_error)
+        error_message = str(response.result)
+        self.assertIn("Token exchange failed", error_message)
+        # HTTP status and body must both appear in the error message
+        self.assertIn("HTTP 200", error_message)
+        self.assertIn("invalid_dataspace", error_message)
