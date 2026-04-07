@@ -385,3 +385,104 @@ class SalesforceDataCloudProxyClientTests(TestCase):
         # Should see a clear token exchange error mentioning the dataspace
         self.assertIn("Token exchange failed", error_message)
         self.assertIn("NonExistentDataspace", error_message)
+
+    def test_list_tables_invalid_dataspace_surfaces_http_status_code(self):
+        """
+        When the a360/token exchange returns a non-200 response, the error message must
+        include the HTTP status code (from SalesforceCDPError) so the caller can distinguish
+        between auth failures (401/403) and bad dataspace names (400/404).
+        """
+        self.mock_responses.remove(
+            responses.POST, "https://test.salesforce.com/services/a360/token"
+        )
+        self.mock_responses.add(
+            method=responses.POST,
+            url="https://test.salesforce.com/services/a360/token",
+            status=403,
+            body=json.dumps(
+                {
+                    "error": "insufficient_scope",
+                    "error_description": "Run-As user lacks access",
+                }
+            ),
+        )
+
+        operation = {
+            "trace_id": "test-trace-id",
+            "skip_cache": True,
+            "commands": [
+                {
+                    "method": "list_tables",
+                    "kwargs": {"dataspace": "UnifiedKnowledge"},
+                }
+            ],
+        }
+
+        # Use clean-credentials path (no core_token) so the per-dataspace connection
+        # goes through _token_by_client_creds_flow and raises SalesforceCDPError.
+        credentials = {**self.credentials}
+        credentials["connect_args"] = {
+            k: v
+            for k, v in self.credentials["connect_args"].items()
+            if k != "core_token"
+        }
+
+        response = self.agent.execute_operation(
+            connection_type="salesforce-data-cloud",
+            operation_name="test_list_tables_http_status",
+            operation_dict=operation,
+            credentials=credentials,
+        )
+
+        self.assertTrue(response.is_error)
+        error_message = str(response.result)
+        # Status code from SalesforceCDPError must be surfaced
+        self.assertIn("403", error_message)
+        # Must still say "Token exchange failed"
+        self.assertIn("Token exchange failed", error_message)
+        # Hint about Run-As user / dataspace name should be present
+        self.assertIn("Run-As user", error_message)
+        # Salesforce response body must be included so it reaches Datadog via data-collector
+        self.assertIn("insufficient_scope", error_message)
+
+    def test_list_tables_response_body_included_in_error_message(self):
+        """
+        _attach_capturing_session stores the Salesforce response body on non-200
+        a360/token exchanges so it can be included in the RuntimeError that propagates
+        back to the data-collector (and into Datadog logs).
+        """
+        from apollo.integrations.db.salesforce_data_cloud_proxy_client import (
+            SalesforceDataCloudConnection,
+            _attach_capturing_session,
+        )
+
+        self.mock_responses.remove(
+            responses.POST, "https://test.salesforce.com/services/a360/token"
+        )
+        self.mock_responses.add(
+            method=responses.POST,
+            url="https://test.salesforce.com/services/a360/token",
+            status=400,
+            body=json.dumps({"error": "dataspace_not_found"}),
+        )
+
+        conn = SalesforceDataCloudConnection(
+            "https://test.salesforce.com",
+            client_id="test_client_id",
+            client_secret="test_client_secret",
+            core_token=None,
+            refresh_token=None,
+            dataspace="BadDataspace",
+        )
+        capturing = _attach_capturing_session(conn)
+        self.assertIsNotNone(capturing)
+
+        error_raised = None
+        try:
+            conn.list_tables()
+        except Exception as exc:
+            error_raised = exc
+
+        # The capturing session must have stored the response body
+        self.assertIsNotNone(capturing.last_failed_exchange_body)
+        self.assertIn("dataspace_not_found", capturing.last_failed_exchange_body)
