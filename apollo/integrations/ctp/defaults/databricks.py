@@ -30,7 +30,7 @@ DATABRICKS_DEFAULT_CTP = CtpConfig(
                 " and raw.databricks_client_secret is defined"
             ),
             input={
-                "server_hostname": "{{ raw.server_hostname }}",
+                "server_hostname": "{{ raw.server_hostname if raw.server_hostname is defined else (raw.databricks_workspace_url | replace('https://', '') | replace('http://', '') | trim('/')) }}",
                 "client_id": "{{ raw.databricks_client_id }}",
                 "client_secret": "{{ raw.databricks_client_secret }}",
                 "azure_tenant_id": "{{ raw.azure_tenant_id | default(none) }}",
@@ -46,7 +46,7 @@ DATABRICKS_DEFAULT_CTP = CtpConfig(
         name="databricks_sql_client_args",
         schema=DatabricksSqlClientArgs,
         field_map={
-            "server_hostname": "{{ raw.server_hostname }}",
+            "server_hostname": "{{ raw.server_hostname if raw.server_hostname is defined else (raw.databricks_workspace_url | replace('https://', '') | replace('http://', '') | trim('/')) }}",
             "http_path": "{{ raw.http_path }}",
             # PAT auth — absent when using OAuth (step contributes credentials_provider instead)
             "access_token": "{{ raw.access_token | default(none) }}",
@@ -69,8 +69,10 @@ DATABRICKS_REST_DEFAULT_CTP = CtpConfig(
     steps=[
         # Resolve the access token for all auth modes (PAT, Databricks OAuth, Azure OAuth).
         # OAuth keys take priority over PAT — see ResolveDatabricksTokenTransform for details.
+        # Skipped on the DC pre-shaped path where the token is already resolved in raw.token.
         TransformStep(
             type="resolve_databricks_token",
+            when="raw.databricks_token is defined or raw.databricks_client_id is defined",
             input={
                 "workspace_url": "{{ raw.databricks_workspace_url }}",
                 "databricks_token": "{{ raw.databricks_token | default(none) }}",
@@ -88,7 +90,9 @@ DATABRICKS_REST_DEFAULT_CTP = CtpConfig(
         schema=DatabricksRestClientArgs,
         field_map={
             "databricks_workspace_url": "{{ raw.databricks_workspace_url }}",
-            # token is contributed by the resolve_databricks_token step above
+            # On the flat path, token is contributed by the resolve_databricks_token step above.
+            # On the DC pre-shaped path (step skipped), token is read directly from raw.
+            "token": "{{ raw.token | default(none) }}",
         },
     ),
 )

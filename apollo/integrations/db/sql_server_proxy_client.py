@@ -30,17 +30,29 @@ class SqlServerProxyClient(TSqlBaseDbProxyClient):
                 f"SQL Server agent client requires {_ATTR_CONNECT_ARGS} in credentials"
             )
         connect_args = credentials[_ATTR_CONNECT_ARGS]
-        connection_string = (
-            odbc_string_from_dict(connect_args)
-            if isinstance(connect_args, dict)
-            else connect_args
-        )
+        if isinstance(connect_args, dict):
+            # CTP path: timeout fields land in connect_args; pop before building ODBC string
+            connect_args = dict(connect_args)
+            login_timeout = connect_args.pop(
+                "login_timeout", self._DEFAULT_LOGIN_TIMEOUT_IN_SECONDS
+            )
+            query_timeout = connect_args.pop(
+                "query_timeout_in_seconds", self._DEFAULT_QUERY_TIMEOUT_IN_SECONDS
+            )
+            connection_string = odbc_string_from_dict(connect_args)
+        else:
+            # Legacy path: pre-built ODBC string; timeouts at top-level credentials
+            login_timeout = credentials.get(
+                "login_timeout", self._DEFAULT_LOGIN_TIMEOUT_IN_SECONDS
+            )
+            query_timeout = credentials.get(
+                "query_timeout_in_seconds", self._DEFAULT_QUERY_TIMEOUT_IN_SECONDS
+            )
+            connection_string = connect_args
         self._connection = pyodbc.connect(
             connection_string,
             # Set timeout for establishing connection to db
-            timeout=credentials.get(
-                "login_timeout", self._DEFAULT_LOGIN_TIMEOUT_IN_SECONDS
-            ),
+            timeout=login_timeout,
         )  # type: ignore
 
         # Add output converter to handle datetimeoffset data types that are not supported by pyodbc
@@ -49,9 +61,7 @@ class SqlServerProxyClient(TSqlBaseDbProxyClient):
         )
 
         # Set timeout for any query executed through this connection
-        self._connection.timeout = credentials.get(
-            "query_timeout_in_seconds", self._DEFAULT_QUERY_TIMEOUT_IN_SECONDS
-        )
+        self._connection.timeout = query_timeout
 
     @property
     def wrapped_client(self):

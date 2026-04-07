@@ -62,6 +62,44 @@ class SqlServerClientTests(TestCase):
         mock_connect.assert_called_once_with(expected, timeout=15)
 
     @patch("pyodbc.connect")
+    def test_dict_login_timeout_used_and_not_in_odbc_string(self, mock_connect):
+        mock_connect.return_value = self._mock_connection
+        SqlServerProxyClient(
+            credentials={
+                "connect_args": {
+                    "DRIVER": "{ODBC Driver 17 for SQL Server}",
+                    "SERVER": "tcp:db.example.com,1433",
+                    "UID": "alice",
+                    "PWD": "s3cr3t",
+                    "MARS_Connection": "Yes",
+                    "login_timeout": 42,
+                }
+            }
+        )
+        args, kwargs = mock_connect.call_args
+        self.assertEqual(42, kwargs.get("timeout", args[1] if len(args) > 1 else None))
+        self.assertNotIn("login_timeout", args[0])
+
+    @patch("pyodbc.connect")
+    def test_dict_query_timeout_used_and_not_in_odbc_string(self, mock_connect):
+        mock_connect.return_value = self._mock_connection
+        client = SqlServerProxyClient(
+            credentials={
+                "connect_args": {
+                    "DRIVER": "{ODBC Driver 17 for SQL Server}",
+                    "SERVER": "tcp:db.example.com,1433",
+                    "UID": "alice",
+                    "PWD": "s3cr3t",
+                    "MARS_Connection": "Yes",
+                    "query_timeout_in_seconds": 99,
+                }
+            }
+        )
+        self.assertEqual(99, client.wrapped_client.timeout)
+        odbc_string = mock_connect.call_args[0][0]
+        self.assertNotIn("query_timeout_in_seconds", odbc_string)
+
+    @patch("pyodbc.connect")
     def test_query(self, mock_connect):
         query = (
             "SELECT name, value FROM table OFFSET ? ROWS FETCH NEXT ? ROWS ONLY"  # noqa
