@@ -653,12 +653,15 @@ class SalesforceDataCloudProxyClientTests(TestCase):
         self.assertIsNotNone(extra.get("exchange_response_body"))
         self.assertIn("invalid_dataspace", extra.get("exchange_response_body", ""))
 
-    def test_unrelated_keyerror_is_not_swallowed(self):
+    def test_any_keyerror_is_wrapped_with_structured_logging(self):
         """
-        A KeyError raised inside conn.list_tables() for a reason unrelated to the
-        OAuth exchange (e.g. a missing dict key in post-processing) must propagate
-        as-is rather than being misclassified as a token-exchange failure.
-        Only KeyError('access_token') should be caught and wrapped.
+        Any KeyError from conn.list_tables() — not just KeyError('access_token') —
+        is caught, logged with structured fields (exchange_status_code, exchange_error_type,
+        exchange_response_body), and wrapped in a clear RuntimeError.
+
+        This ensures that if the library raises KeyError for other missing fields
+        (e.g. 'instance_url', 'token_type') we still get full diagnostic context
+        in Datadog rather than a raw KeyError propagating to the caller.
         """
         from unittest.mock import patch
         from apollo.integrations.db.salesforce_data_cloud_proxy_client import (
@@ -678,13 +681,22 @@ class SalesforceDataCloudProxyClientTests(TestCase):
 
         with patch(
             "salesforcecdpconnector.connection.SalesforceCDPConnection.list_tables",
-            side_effect=KeyError("some_unrelated_key"),
+            side_effect=KeyError("instance_url"),
         ):
-            with self.assertRaises(KeyError) as ctx:
-                client.list_tables(dataspace="UnifiedKnowledge")
+            with patch(
+                "apollo.integrations.db.salesforce_data_cloud_proxy_client.logger"
+            ) as mock_logger:
+                with self.assertRaises(RuntimeError) as ctx:
+                    client.list_tables(dataspace="UnifiedKnowledge")
 
-        # Must re-raise the original KeyError, not wrap it as a RuntimeError
-        self.assertEqual(ctx.exception.args[0], "some_unrelated_key")
+        # Must be wrapped as a clear RuntimeError, not a raw KeyError
+        self.assertIn("Token exchange failed", str(ctx.exception))
+        self.assertIn("instance_url", str(ctx.exception))
+        # Structured warning must be emitted
+        mock_logger.warning.assert_called_once()
+        extra = mock_logger.warning.call_args.kwargs.get("extra", {})
+        self.assertEqual(extra.get("exchange_error_type"), "missing_access_token")
+        self.assertEqual(extra.get("dataspace"), "UnifiedKnowledge")
 
     def test_access_token_redacted_from_error_on_successful_exchange(self):
         """

@@ -246,11 +246,6 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
                     f"has permission for this dataspace"
                 ) from e
             except KeyError as e:
-                # Only handle the specific missing-token case raised by the
-                # salesforcecdpconnector library. Re-raise any other KeyError so
-                # it is not misclassified as a token-exchange failure.
-                if e.args[0] != "access_token":
-                    raise
                 body = _redact_body(capturing.last_exchange_body if capturing else None)
                 status = capturing.last_exchange_status if capturing else None
                 logger.warning(
@@ -290,8 +285,6 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
                     f"Token exchange failed: {e} — verify credentials are valid"
                 ) from e
             except KeyError as e:
-                if e.args[0] != "access_token":
-                    raise
                 raise RuntimeError(
                     f"Token exchange failed: OAuth response missing key {e} — "
                     f"verify credentials are valid"
