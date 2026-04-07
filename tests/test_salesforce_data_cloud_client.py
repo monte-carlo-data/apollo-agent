@@ -158,9 +158,7 @@ class SalesforceDataCloudProxyClientTests(TestCase):
             callback=self.metadata_endpoint,
         )
 
-        self.query_endpoint = Mock(
-            return_value=(200, {}, json.dumps(self.data_response))
-        )
+        self.query_endpoint = Mock(return_value=(200, {}, json.dumps(self.data_response)))
         self.mock_responses.add_callback(
             method=responses.POST,
             url="https://test.salesforce.com/api/v2/query",
@@ -183,9 +181,7 @@ class SalesforceDataCloudProxyClientTests(TestCase):
         )
 
         self.assertFalse(response.is_error)
-        self.assertEqual(
-            response.result[ATTRIBUTE_NAME_RESULT], "salesforce-data-cloud"
-        )
+        self.assertEqual(response.result[ATTRIBUTE_NAME_RESULT], "salesforce-data-cloud")
 
     def test_init_with_client_credentials_flow(self):
         # New DC path: only client_id/client_secret, no core_token.
@@ -206,9 +202,7 @@ class SalesforceDataCloudProxyClientTests(TestCase):
         )
 
         self.assertFalse(response.is_error)
-        self.assertEqual(
-            response.result[ATTRIBUTE_NAME_RESULT], "salesforce-data-cloud"
-        )
+        self.assertEqual(response.result[ATTRIBUTE_NAME_RESULT], "salesforce-data-cloud")
 
     def test_init_with_refresh_token(self):
         # Backward compat: old DCs sent refresh_token="required_but_not_used".
@@ -230,9 +224,7 @@ class SalesforceDataCloudProxyClientTests(TestCase):
         )
 
         self.assertFalse(response.is_error)
-        self.assertEqual(
-            response.result[ATTRIBUTE_NAME_RESULT], "salesforce-data-cloud"
-        )
+        self.assertEqual(response.result[ATTRIBUTE_NAME_RESULT], "salesforce-data-cloud")
 
     def test_list_tables(self):
         operation = {
@@ -255,9 +247,7 @@ class SalesforceDataCloudProxyClientTests(TestCase):
             table = next(t for t in tables if t.get("name") == mock_table["name"])
             self.assertEqual(len(table["fields"]), len(mock_table["fields"]))
             for mock_field in mock_table["fields"]:
-                field = next(
-                    f for f in table["fields"] if f.get("name") == mock_field["name"]
-                )
+                field = next(f for f in table["fields"] if f.get("name") == mock_field["name"])
                 self.assertEqual(field.get("type"), mock_field["type"])
 
         # Verify that the metadata was cached and not re-fetched for fetch_columns
@@ -422,9 +412,7 @@ class SalesforceDataCloudProxyClientTests(TestCase):
         # goes through _token_by_client_creds_flow and raises SalesforceCDPError.
         credentials = {**self.credentials}
         credentials["connect_args"] = {
-            k: v
-            for k, v in self.credentials["connect_args"].items()
-            if k != "core_token"
+            k: v for k, v in self.credentials["connect_args"].items() if k != "core_token"
         }
 
         response = self.agent.execute_operation(
@@ -502,9 +490,7 @@ class SalesforceDataCloudProxyClientTests(TestCase):
             method=responses.POST,
             url="https://test.salesforce.com/services/a360/token",
             status=200,
-            body=json.dumps(
-                {"error": "invalid_dataspace", "message": "Dataspace not found"}
-            ),
+            body=json.dumps({"error": "invalid_dataspace", "message": "Dataspace not found"}),
         )
 
         operation = {
@@ -520,9 +506,7 @@ class SalesforceDataCloudProxyClientTests(TestCase):
 
         credentials = {**self.credentials}
         credentials["connect_args"] = {
-            k: v
-            for k, v in self.credentials["connect_args"].items()
-            if k != "core_token"
+            k: v for k, v in self.credentials["connect_args"].items() if k != "core_token"
         }
 
         response = self.agent.execute_operation(
@@ -538,3 +522,108 @@ class SalesforceDataCloudProxyClientTests(TestCase):
         # HTTP status and body must both appear in the error message
         self.assertIn("HTTP 200", error_message)
         self.assertIn("invalid_dataspace", error_message)
+
+    def test_classify_exchange_status(self):
+        """_classify_exchange_status returns the right label for each HTTP status family."""
+        from apollo.integrations.db.salesforce_data_cloud_proxy_client import (
+            _classify_exchange_status,
+        )
+
+        self.assertEqual(_classify_exchange_status(429), "rate_limited")
+        self.assertEqual(_classify_exchange_status(401), "auth_failed")
+        self.assertEqual(_classify_exchange_status(403), "auth_failed")
+        self.assertEqual(_classify_exchange_status(400), "bad_request")
+        self.assertEqual(_classify_exchange_status(500), "server_error")
+        self.assertEqual(_classify_exchange_status(503), "server_error")
+        self.assertEqual(_classify_exchange_status(200), "other")
+        self.assertEqual(_classify_exchange_status(None), "unknown")
+
+    def test_warning_logged_with_status_code_on_cdp_error(self):
+        """
+        When SalesforceCDPError is raised (non-200 a360/token response), logger.warning
+        must be called with exchange_status_code and exchange_error_type as structured fields.
+        This ensures throttling (429) is distinguishable from auth failures (403) in logs.
+        """
+        from unittest.mock import patch
+        from apollo.integrations.db.salesforce_data_cloud_proxy_client import (
+            SalesforceDataCloudProxyClient,
+            SalesforceDataCloudCredentials,
+        )
+
+        # a360/token returns 429 (throttled)
+        self.mock_responses.remove(
+            responses.POST, "https://test.salesforce.com/services/a360/token"
+        )
+        self.mock_responses.add(
+            method=responses.POST,
+            url="https://test.salesforce.com/services/a360/token",
+            status=429,
+            body=json.dumps({"error": "rate_limit_exceeded"}),
+        )
+
+        client = SalesforceDataCloudProxyClient(
+            SalesforceDataCloudCredentials(
+                domain="test.salesforce.com",
+                client_id="test_client_id",
+                client_secret="test_client_secret",
+                core_token=None,
+                refresh_token=None,
+            )
+        )
+
+        with patch(
+            "apollo.integrations.db.salesforce_data_cloud_proxy_client.logger"
+        ) as mock_logger:
+            with self.assertRaises(RuntimeError):
+                client.list_tables(dataspace="UnifiedKnowledge")
+
+        mock_logger.warning.assert_called_once()
+        extra = mock_logger.warning.call_args.kwargs.get("extra", {})
+        self.assertEqual(extra.get("exchange_status_code"), 429)
+        self.assertEqual(extra.get("exchange_error_type"), "rate_limited")
+        self.assertEqual(extra.get("dataspace"), "UnifiedKnowledge")
+
+    def test_warning_logged_with_missing_access_token_type_on_keyerror(self):
+        """
+        When Salesforce returns HTTP 200 but with a body missing 'access_token' (KeyError path),
+        logger.warning must be called with exchange_error_type='missing_access_token' so the
+        200-with-error pattern is distinguishable from non-200 failures in logs.
+        """
+        from unittest.mock import patch
+        from apollo.integrations.db.salesforce_data_cloud_proxy_client import (
+            SalesforceDataCloudProxyClient,
+            SalesforceDataCloudCredentials,
+        )
+
+        # Salesforce returns 200 but with a body that has no access_token
+        self.mock_responses.remove(
+            responses.POST, "https://test.salesforce.com/services/a360/token"
+        )
+        self.mock_responses.add(
+            method=responses.POST,
+            url="https://test.salesforce.com/services/a360/token",
+            status=200,
+            body=json.dumps({"error": "invalid_dataspace", "message": "Dataspace not found"}),
+        )
+
+        client = SalesforceDataCloudProxyClient(
+            SalesforceDataCloudCredentials(
+                domain="test.salesforce.com",
+                client_id="test_client_id",
+                client_secret="test_client_secret",
+                core_token=None,
+                refresh_token=None,
+            )
+        )
+
+        with patch(
+            "apollo.integrations.db.salesforce_data_cloud_proxy_client.logger"
+        ) as mock_logger:
+            with self.assertRaises(RuntimeError):
+                client.list_tables(dataspace="UnifiedKnowledge")
+
+        mock_logger.warning.assert_called_once()
+        extra = mock_logger.warning.call_args.kwargs.get("extra", {})
+        self.assertEqual(extra.get("exchange_error_type"), "missing_access_token")
+        self.assertEqual(extra.get("exchange_status_code"), 200)
+        self.assertEqual(extra.get("dataspace"), "UnifiedKnowledge")

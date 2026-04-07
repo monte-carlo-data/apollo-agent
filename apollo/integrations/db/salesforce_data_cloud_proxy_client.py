@@ -42,6 +42,21 @@ class _CapturingSession(requests.Session):
         return response
 
 
+def _classify_exchange_status(status: int | None) -> str:
+    """Return a short error-type label for a Salesforce a360/token HTTP status code."""
+    if status is None:
+        return "unknown"
+    if status == 429:
+        return "rate_limited"
+    if status in (401, 403):
+        return "auth_failed"
+    if status == 400:
+        return "bad_request"
+    if status >= 500:
+        return "server_error"
+    return "other"
+
+
 def _attach_capturing_session(
     conn: "SalesforceDataCloudConnection",
 ) -> _CapturingSession | None:
@@ -191,6 +206,17 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
                 tables: list[GenieTable] = conn.list_tables()
             except SalesforceCDPError as e:
                 body = capturing.last_exchange_body if capturing else None
+                status = capturing.last_exchange_status if capturing else None
+                logger.warning(
+                    "Salesforce Data Cloud: a360/token exchange failed for dataspace '%s'",
+                    dataspace,
+                    extra={
+                        "dataspace": dataspace,
+                        "exchange_status_code": status,
+                        "exchange_error_type": _classify_exchange_status(status),
+                        "exchange_error": str(e)[:500],
+                    },
+                )
                 detail = f" (Salesforce response: {body})" if body else ""
                 raise RuntimeError(
                     f"Token exchange failed for dataspace '{dataspace}': {e}{detail} — "
@@ -200,9 +226,17 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
             except KeyError as e:
                 body = capturing.last_exchange_body if capturing else None
                 status = capturing.last_exchange_status if capturing else None
-                detail = (
-                    f" (HTTP {status}, Salesforce response: {body})" if body else ""
+                logger.warning(
+                    "Salesforce Data Cloud: a360/token exchange returned unexpected response for dataspace '%s'",
+                    dataspace,
+                    extra={
+                        "dataspace": dataspace,
+                        "exchange_status_code": status,
+                        "exchange_error_type": "missing_access_token",
+                        "missing_key": str(e),
+                    },
                 )
+                detail = f" (HTTP {status}, Salesforce response: {body})" if body else ""
                 raise RuntimeError(
                     f"Token exchange failed for dataspace '{dataspace}': "
                     f"OAuth response missing key {e}{detail} — "
