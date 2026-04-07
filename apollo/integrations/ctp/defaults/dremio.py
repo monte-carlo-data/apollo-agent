@@ -22,8 +22,9 @@ DREMIO_DEFAULT_CTP = CtpConfig(
         name="dremio_client_args",
         schema=DremioClientArgs,
         field_map={
-            # grpc+tls when raw.use_tls is set, plain grpc otherwise
-            "location": "{{ ('grpc+tls' if raw.use_tls is defined and raw.use_tls else 'grpc') ~ '://' ~ raw.host ~ ':' ~ raw.port }}",
+            # Pass through a pre-built location string (DC pre-shaped path), or
+            # construct from host/port/use_tls (flat credentials path).
+            "location": "{{ raw.location if raw.location is defined else (('grpc+tls' if raw.use_tls is defined and raw.use_tls else 'grpc') ~ '://' ~ raw.host ~ ':' ~ raw.port) }}",
             "token": "{{ raw.token | default(none) }}",
         },
     ),
