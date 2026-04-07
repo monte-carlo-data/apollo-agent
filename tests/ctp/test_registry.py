@@ -21,6 +21,42 @@ class TestCtpRegistry(TestCase):
             )
 
 
+class TestNonDictConnectArgsPassthrough(TestCase):
+    """
+    When connect_args is a non-dict (e.g. a pre-built ODBC string sent by an older DC
+    version), the registry cannot run the pipeline against it, so credentials are returned
+    unchanged.  This preserves backwards compatibility on the legacy string path.
+    """
+
+    _ODBC_STRING = (
+        "DRIVER={ODBC Driver 17 for SQL Server};"
+        "SERVER=tcp:db.example.com,1433;"
+        "UID=alice;"
+        "PWD=secret"
+    )
+
+    def test_string_connect_args_returned_unchanged(self):
+        credentials = {"connect_args": self._ODBC_STRING}
+        result = CtpRegistry.resolve("sql-server", credentials)
+        self.assertIs(credentials, result)
+
+    def test_string_connect_args_not_wrapped(self):
+        # The result must be the original dict, not {"connect_args": {"connect_args": ...}}
+        credentials = {"connect_args": self._ODBC_STRING}
+        result = CtpRegistry.resolve("sql-server", credentials)
+        self.assertEqual(self._ODBC_STRING, result["connect_args"])
+
+    def test_string_connect_args_azure_sql_database(self):
+        credentials = {"connect_args": self._ODBC_STRING}
+        result = CtpRegistry.resolve("azure-sql-database", credentials)
+        self.assertIs(credentials, result)
+
+    def test_string_connect_args_azure_dedicated_sql_pool(self):
+        credentials = {"connect_args": self._ODBC_STRING}
+        result = CtpRegistry.resolve("azure-dedicated-sql-pool", credentials)
+        self.assertIs(credentials, result)
+
+
 class TestStarburstGalaxyCtp(TestCase):
     def test_starburst_galaxy_registered(self):
         config = CtpRegistry.get("starburst-galaxy")
