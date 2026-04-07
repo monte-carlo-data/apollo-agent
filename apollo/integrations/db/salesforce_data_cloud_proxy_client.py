@@ -236,7 +236,9 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
                         "missing_key": str(e),
                     },
                 )
-                detail = f" (HTTP {status}, Salesforce response: {body})" if body else ""
+                detail = (
+                    f" (HTTP {status}, Salesforce response: {body})" if body else ""
+                )
                 raise RuntimeError(
                     f"Token exchange failed for dataspace '{dataspace}': "
                     f"OAuth response missing key {e}{detail} — "
