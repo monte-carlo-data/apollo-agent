@@ -66,6 +66,28 @@ class TestDatabricksSqlCtp(TestCase):
         args = _resolve_sql({**_SQL_PAT_CREDS, "_user_agent_entry": "Monte Carlo"})
         self.assertEqual("Monte Carlo", args["_user_agent_entry"])
 
+    # ── server_hostname fallback ──────────────────────────────────────
+
+    def test_server_hostname_falls_back_to_workspace_url(self):
+        creds = {k: v for k, v in _SQL_PAT_CREDS.items() if k != "server_hostname"}
+        creds["databricks_workspace_url"] = "https://workspace.azuredatabricks.net"
+        args = _resolve_sql(creds)
+        self.assertEqual("workspace.azuredatabricks.net", args["server_hostname"])
+
+    def test_server_hostname_fallback_strips_trailing_slash(self):
+        creds = {k: v for k, v in _SQL_PAT_CREDS.items() if k != "server_hostname"}
+        creds["databricks_workspace_url"] = "https://workspace.azuredatabricks.net/"
+        args = _resolve_sql(creds)
+        self.assertEqual("workspace.azuredatabricks.net", args["server_hostname"])
+
+    def test_server_hostname_takes_priority_over_workspace_url(self):
+        creds = {
+            **_SQL_PAT_CREDS,
+            "databricks_workspace_url": "https://other.azuredatabricks.net",
+        }
+        args = _resolve_sql(creds)
+        self.assertEqual("workspace.azuredatabricks.net", args["server_hostname"])
+
     # ── Databricks-managed OAuth ──────────────────────────────────────
 
     @patch("apollo.integrations.ctp.transforms.resolve_databricks_oauth.Config")
@@ -179,6 +201,22 @@ class TestDatabricksRestCtp(TestCase):
             self.assertNotIn(
                 field, args, f"expected {field!r} absent from connect_args"
             )
+
+    # ── DC pre-shaped path ────────────────────────────────────────────
+
+    def test_dc_shaped_token_passed_through(self):
+        # DC pre-shapes credentials as {"token": "...", "databricks_workspace_url": "..."}.
+        # The resolve_databricks_token step is skipped (no raw auth keys present);
+        # the mapper reads token directly from raw.
+        dc_shaped = {
+            "databricks_workspace_url": "https://workspace.azuredatabricks.net",
+            "token": "already-resolved-token",
+        }
+        args = _resolve_rest(dc_shaped)
+        self.assertEqual("already-resolved-token", args["token"])
+        self.assertEqual(
+            "https://workspace.azuredatabricks.net", args["databricks_workspace_url"]
+        )
 
     # ── Azure-managed OAuth ───────────────────────────────────────────
 

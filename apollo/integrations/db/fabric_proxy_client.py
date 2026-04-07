@@ -57,21 +57,25 @@ class MsFabricProxyClient(TSqlBaseDbProxyClient):
                 f"{_ATTR_CONNECT_ARGS} must be a dict, "
                 f"got {type(connect_args).__name__}"
             )
+        # CTP path: timeout fields land in connect_args; pop before building ODBC string
+        connect_args = dict(connect_args)
+        login_timeout = connect_args.pop(
+            "login_timeout", self._DEFAULT_LOGIN_TIMEOUT_IN_SECONDS
+        )
+        query_timeout = connect_args.pop(
+            "query_timeout_in_seconds", self._DEFAULT_QUERY_TIMEOUT_IN_SECONDS
+        )
         connection_string = ";".join(
             f"{k}={_odbc_escape(str(v))}" for k, v in connect_args.items()
         )
         self._connection = pyodbc.connect(
             connection_string,
-            timeout=credentials.get(
-                "login_timeout", self._DEFAULT_LOGIN_TIMEOUT_IN_SECONDS
-            ),
+            timeout=login_timeout,
         )
         self._connection.add_output_converter(
             self._DATETIMEOFFSET_SQL_TYPE_CODE, self._handle_datetimeoffset
         )
-        self._connection.timeout = credentials.get(
-            "query_timeout_in_seconds", self._DEFAULT_QUERY_TIMEOUT_IN_SECONDS
-        )
+        self._connection.timeout = query_timeout
 
     @property
     def wrapped_client(self):

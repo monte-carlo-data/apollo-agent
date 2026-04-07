@@ -34,6 +34,9 @@ MS_FABRIC_DEFAULT_CTP = CtpConfig(
             "PWD": "{{ raw.client_secret }}",
             "Encrypt": "yes",
             "TrustServerCertificate": "no",
+            # Timeout fields — not ODBC params; proxy client pops these before building the connection string
+            "login_timeout": "{{ raw.login_timeout | default(none) }}",
+            "query_timeout_in_seconds": "{{ raw.query_timeout_in_seconds | default(none) }}",
         },
     ),
 )

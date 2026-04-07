@@ -70,27 +70,27 @@ class MsFabricProxyClientTests(TestCase):
             )
 
     @patch("pyodbc.connect")
-    def test_login_timeout_from_credentials(self, mock_connect):
-        """login_timeout in credentials overrides the default."""
+    def test_login_timeout_from_connect_args(self, mock_connect):
+        """login_timeout in connect_args overrides the default and is not serialized to the ODBC string."""
         mock_connect.return_value = self._mock_connection
         MsFabricProxyClient(
-            credentials={"connect_args": _CONNECT_ARGS_DICT, "login_timeout": 30},
+            credentials={"connect_args": {**_CONNECT_ARGS_DICT, "login_timeout": 30}},
             platform="test",
         )
         mock_connect.assert_called_once_with(_EXPECTED_ODBC_STRING, timeout=30)
 
     @patch("pyodbc.connect")
-    def test_query_timeout_from_credentials(self, mock_connect):
-        """query_timeout_in_seconds in credentials overrides the default."""
+    def test_query_timeout_from_connect_args(self, mock_connect):
+        """query_timeout_in_seconds in connect_args overrides the default and is not serialized to the ODBC string."""
         mock_connect.return_value = self._mock_connection
         client = MsFabricProxyClient(
             credentials={
-                "connect_args": _CONNECT_ARGS_DICT,
-                "query_timeout_in_seconds": 120,
+                "connect_args": {**_CONNECT_ARGS_DICT, "query_timeout_in_seconds": 120},
             },
             platform="test",
         )
         self.assertEqual(120, client.wrapped_client.timeout)
+        self.assertNotIn("query_timeout_in_seconds", mock_connect.call_args[0][0])
 
     def test_missing_connect_args_raises(self):
         """Missing connect_args raises ValueError."""

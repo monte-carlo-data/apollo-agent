@@ -187,8 +187,9 @@ class TestDatabricksRestProxyClientRequests(TestCase):
         )
 
         self.assertIsNotNone(response.result.get(ATTRIBUTE_NAME_ERROR))
+        # Step is skipped when no auth keys are present; mapper raises for missing required field.
         self.assertIn(
-            "No supported Databricks credentials found",
+            "token",
             response.result.get(ATTRIBUTE_NAME_ERROR),
         )
 
