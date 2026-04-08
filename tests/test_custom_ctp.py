@@ -16,6 +16,7 @@ from apollo.common.agent.constants import (
     ATTRIBUTE_NAME_RESULT,
 )
 from apollo.integrations.ctp.registry import CtpRegistry
+from apollo.integrations.ctp.validator import validate_ctp_config
 
 _WORKSPACE_URL = "https://adb-123.azuredatabricks.net"
 _CUSTOM_TOKEN = "custom-pipeline-token"
@@ -197,3 +198,79 @@ class TestCustomCtpSchemaInjection(TestCase):
             _CUSTOM_CTP,
         )
         self.assertIs(credentials, result)
+
+
+class TestValidateCtp(TestCase):
+    """Unit tests for validate_ctp_config."""
+
+    def test_valid_ctp_returns_valid_true(self):
+        """A well-formed custom CTP for a registered type passes validation."""
+        result = validate_ctp_config("databricks-rest", _CUSTOM_CTP)
+        self.assertTrue(result["valid"])
+        self.assertEqual([], result["errors"])
+
+    def test_missing_required_field_returns_error(self):
+        """CtpConfig.from_dict raises when a required top-level field is absent."""
+        result = validate_ctp_config("databricks-rest", {"name": "bad", "steps": []})
+        self.assertFalse(result["valid"])
+        self.assertTrue(any("mapper" in e for e in result["errors"]))
+
+    def test_unknown_transform_type_returns_error(self):
+        """An unregistered transform type in steps is flagged."""
+        ctp_with_bad_step = {
+            "name": "bad-step-ctp",
+            "steps": [
+                {
+                    "type": "does-not-exist",
+                    "input": {},
+                    "output": {},
+                }
+            ],
+            "mapper": {
+                "name": "m",
+                "field_map": {
+                    "databricks_workspace_url": "{{ raw.databricks_workspace_url }}",
+                    "token": "{{ raw.custom_token }}",
+                },
+            },
+        }
+        result = validate_ctp_config("databricks-rest", ctp_with_bad_step)
+        self.assertFalse(result["valid"])
+        self.assertTrue(any("does-not-exist" in e for e in result["errors"]))
+
+    def test_bad_jinja2_syntax_returns_error(self):
+        """A malformed Jinja2 template in field_map is flagged."""
+        bad_template_ctp = {
+            "name": "bad-template-ctp",
+            "steps": [],
+            "mapper": {
+                "name": "m",
+                "field_map": {
+                    "databricks_workspace_url": "{{ raw.databricks_workspace_url }}",
+                    "token": "{{ raw.custom_token ",  # missing closing }}
+                },
+            },
+        }
+        result = validate_ctp_config("databricks-rest", bad_template_ctp)
+        self.assertFalse(result["valid"])
+        self.assertTrue(
+            any("token" in e and "syntax" in e.lower() for e in result["errors"])
+        )
+
+    def test_missing_required_schema_keys_returns_error(self):
+        """A mapper that omits TypedDict required keys (no steps) is flagged."""
+        result = validate_ctp_config("databricks-rest", _CUSTOM_CTP_MISSING_TOKEN)
+        self.assertFalse(result["valid"])
+        self.assertTrue(any("token" in e for e in result["errors"]))
+
+    def test_unknown_connection_type_validates_without_schema(self):
+        """An unknown connection type has no schema to inject — valid if well-formed."""
+        result = validate_ctp_config("unknown-type", _CUSTOM_CTP)
+        self.assertTrue(result["valid"])
+
+    def test_missing_ctp_required_fields_returns_error_list(self):
+        """validate_ctp_config returns a list with the deserialization error."""
+        result = validate_ctp_config("databricks-rest", {})
+        self.assertFalse(result["valid"])
+        self.assertIsInstance(result["errors"], list)
+        self.assertTrue(len(result["errors"]) > 0)
