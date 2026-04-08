@@ -16,6 +16,7 @@ from apollo.common.agent.redact_formatter import RedactFormatterWrapper
 from apollo.agent.settings import VERSION
 from apollo.agent.utils import AgentUtils
 from apollo.credentials.factory import CredentialsFactory
+from apollo.integrations.ctp.validator import validate_ctp_config
 
 app = Flask(__name__)
 Compress(app)
@@ -217,10 +218,62 @@ def execute_agent_operation(
         )
 
     operation = json_request.get("operation")
+    ctp_config = json_request.get("ctp_config")
 
     return agent.execute_operation(
-        connection_type, operation_name, operation, credentials
+        connection_type, operation_name, operation, credentials, ctp_config=ctp_config
     )
+
+
+@app.route("/api/v1/ctp/validate/<connection_type>", methods=["POST"])  # type: ignore
+def ctp_validate(connection_type: str) -> Tuple[Dict, int]:
+    """
+    Validate a custom CTP config for a given connection type.
+
+    Structural validation only: deserialization, transform-type existence, Jinja2
+    template syntax, and required TypedDict key coverage. Does not execute the
+    pipeline or create a proxy client.
+    ---
+    tags:
+        - Agent Operations
+    produces:
+        - application/json
+    parameters:
+        - in: path
+          name: connection_type
+          required: true
+          description: The connection type whose registered TypedDict schema is used for validation.
+          schema:
+              type: string
+              example: databricks-rest
+        - in: body
+          name: body
+          schema:
+            id: CtpValidateRequest
+            required:
+                - ctp_config
+            properties:
+                ctp_config:
+                    type: object
+                    description: The CTP config to validate (name, steps, mapper).
+    responses:
+        200:
+            description: Validation result.
+            schema:
+                properties:
+                    valid:
+                        type: boolean
+                    errors:
+                        type: array
+                        items:
+                            type: string
+    """
+    json_request: Dict = request.json or {}
+    ctp_config = json_request.get("ctp_config")
+    if not ctp_config:
+        return {"valid": False, "errors": ["ctp_config is required"]}, 400
+    result = validate_ctp_config(connection_type, ctp_config)
+    return result, 200
 
 
 @app.route("/api/v1/agent/execute_script/<connection_type>", methods=["POST"])  # type: ignore

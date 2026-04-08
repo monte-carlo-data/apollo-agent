@@ -62,6 +62,34 @@ class CtpRegistry:
         return cls._registry.get(connection_type)
 
     @classmethod
+    def resolve_custom(
+        cls,
+        connection_type: str,
+        credentials: dict[str, Any],
+        ctp_config: dict[str, Any],
+        context: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Resolve credentials using a caller-supplied CTP config dict.
+
+        The TypedDict schema from the registered default for connection_type is
+        injected into the custom config's mapper so the output contract is preserved.
+        Follows the same connect_args unwrap-and-run path as resolve().
+        """
+        _ensure_initialized()
+        config = CtpConfig.from_dict(ctp_config)
+        registered = cls._registry.get(connection_type)
+        if registered is not None:
+            config.mapper.schema = registered.mapper.schema
+        raw_or_connect_args = credentials.get(_ATTR_CONNECT_ARGS, credentials)
+        if not isinstance(raw_or_connect_args, dict):
+            return credentials
+        return {
+            _ATTR_CONNECT_ARGS: CtpPipeline().execute(
+                config, raw_or_connect_args, context=context or {}
+            )
+        }
+
+    @classmethod
     def resolve(
         cls,
         connection_type: str,
