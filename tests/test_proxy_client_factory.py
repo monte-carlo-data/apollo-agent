@@ -38,7 +38,9 @@ class ProxyClientFactoryTests(TestCase):
             credentials=None,
         )
         # two invocations, a single client created
-        mock_create_client.assert_called_once_with("test_type", None, agent.platform)
+        mock_create_client.assert_called_once_with(
+            "test_type", None, agent.platform, ctp_config=None
+        )
 
     @patch.object(Agent, "_execute_client_operation")
     @patch.object(ProxyClientFactory, "_create_proxy_client")
@@ -69,7 +71,7 @@ class ProxyClientFactoryTests(TestCase):
         # two invocations, two clients created
         mock_create_client.assert_has_calls(
             [
-                call("test_type", None, agent.platform),
-                call("test_type", None, agent.platform),
+                call("test_type", None, agent.platform, ctp_config=None),
+                call("test_type", None, agent.platform, ctp_config=None),
             ]
         )
