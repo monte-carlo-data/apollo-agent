@@ -26,11 +26,11 @@ def _discover_custom_connectors() -> Dict[str, str]:
         return registry
 
     for name in sorted(os.listdir(base_path)):
-        integration_dir = os.path.join(base_path, name)
-        if not os.path.isdir(integration_dir):
+        connector_dir = os.path.join(base_path, name)
+        if not os.path.isdir(connector_dir):
             continue
 
-        manifest_path = os.path.join(integration_dir, "manifest.json")
+        manifest_path = os.path.join(connector_dir, "manifest.json")
         if not os.path.isfile(manifest_path):
             logger.warning("Skipping custom connector %s: no manifest.json", name)
             continue
@@ -45,11 +45,11 @@ def _discover_custom_connectors() -> Dict[str, str]:
                     name,
                 )
                 continue
-            registry[connection_type] = integration_dir
+            registry[connection_type] = connector_dir
             logger.info(
                 "Discovered custom connector: %s -> %s",
                 connection_type,
-                integration_dir,
+                connector_dir,
             )
         except Exception:
             logger.exception("Failed to read manifest for custom connector %s", name)
@@ -68,18 +68,18 @@ def get_custom_connector_registry() -> Dict[str, str]:
     return _custom_connector_registry
 
 
-def load_integration_module(integration_dir: str) -> types.ModuleType:
+def load_connector_module(connector_dir: str) -> types.ModuleType:
     """
     Dynamically load integration.py from the given directory.
-    Uses a unique module name per integration to avoid namespace collisions.
+    Uses a unique module name per connector to avoid namespace collisions.
     Returns the loaded module.
     """
-    module_path = os.path.join(integration_dir, "integration.py")
+    module_path = os.path.join(connector_dir, "integration.py")
     if not os.path.isfile(module_path):
-        raise FileNotFoundError(f"integration.py not found in {integration_dir}")
+        raise FileNotFoundError(f"integration.py not found in {connector_dir}")
 
     # Use directory name as part of module name for uniqueness
-    dir_name = os.path.basename(integration_dir)
+    dir_name = os.path.basename(connector_dir)
     module_name = f"custom_connector_{dir_name}"
 
     spec = importlib.util.spec_from_file_location(module_name, module_path)
@@ -90,13 +90,13 @@ def load_integration_module(integration_dir: str) -> types.ModuleType:
     return module
 
 
-def load_templates(integration_dir: str) -> Dict[str, str]:
+def load_templates(connector_dir: str) -> Dict[str, str]:
     """
     Read all .j2 template files from the templates/ subdirectory.
     Returns {filename: content} mapping.
     """
     templates: Dict[str, str] = {}
-    templates_dir = os.path.join(integration_dir, "templates")
+    templates_dir = os.path.join(connector_dir, "templates")
 
     if not os.path.isdir(templates_dir):
         return templates
@@ -110,12 +110,12 @@ def load_templates(integration_dir: str) -> Dict[str, str]:
     return templates
 
 
-def load_manifest(integration_dir: str) -> Dict:
+def load_manifest(connector_dir: str) -> Dict:
     """
-    Read manifest.json from the integration directory.
+    Read manifest.json from the connector directory.
     Returns the parsed dict, or empty dict if not found.
     """
-    manifest_path = os.path.join(integration_dir, "manifest.json")
+    manifest_path = os.path.join(connector_dir, "manifest.json")
     if not os.path.isfile(manifest_path):
         return {}
 
@@ -123,12 +123,12 @@ def load_manifest(integration_dir: str) -> Dict:
         return json.load(f)
 
 
-def load_capabilities(integration_dir: str) -> Dict:
+def load_capabilities(connector_dir: str) -> Dict:
     """
-    Read capabilities.json from the integration directory.
+    Read capabilities.json from the connector directory.
     Returns the parsed dict, or empty dict if not found.
     """
-    capabilities_path = os.path.join(integration_dir, "capabilities.json")
+    capabilities_path = os.path.join(connector_dir, "capabilities.json")
     if not os.path.isfile(capabilities_path):
         return {}
 

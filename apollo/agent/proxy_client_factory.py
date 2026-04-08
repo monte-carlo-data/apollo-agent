@@ -340,11 +340,11 @@ def _get_proxy_client_db2(
 
 
 def _get_proxy_client_custom(
-    credentials: Optional[Dict], integration_dir: str, **kwargs  # type: ignore
+    credentials: Optional[Dict], connector_dir: str, **kwargs  # type: ignore
 ) -> BaseProxyClient:
     from apollo.integrations.custom.custom_proxy_client import CustomProxyClient
 
-    return CustomProxyClient(credentials=credentials, integration_dir=integration_dir)
+    return CustomProxyClient(credentials=credentials, connector_dir=connector_dir)
 
 
 @dataclass
@@ -467,12 +467,12 @@ class ProxyClientFactory:
             )
 
             custom_registry = get_custom_connector_registry()
-            integration_dir = custom_registry.get(connection_type)
-            if integration_dir:
+            connector_dir = custom_registry.get(connection_type)
+            if connector_dir:
                 if credentials:
                     credentials = decode_dictionary(credentials)
                 return _get_proxy_client_custom(
-                    credentials, integration_dir=integration_dir
+                    credentials, connector_dir=connector_dir
                 )
 
         raise AgentError(
