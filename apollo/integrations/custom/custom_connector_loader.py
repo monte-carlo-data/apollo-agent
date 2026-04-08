@@ -70,13 +70,13 @@ def get_custom_connector_registry() -> Dict[str, str]:
 
 def load_connector_module(connector_dir: str) -> types.ModuleType:
     """
-    Dynamically load integration.py from the given directory.
+    Dynamically load connector.py from the given directory.
     Uses a unique module name per connector to avoid namespace collisions.
     Returns the loaded module.
     """
-    module_path = os.path.join(connector_dir, "integration.py")
+    module_path = os.path.join(connector_dir, "connector.py")
     if not os.path.isfile(module_path):
-        raise FileNotFoundError(f"integration.py not found in {connector_dir}")
+        raise FileNotFoundError(f"connector.py not found in {connector_dir}")
 
     # Use directory name as part of module name for uniqueness
     dir_name = os.path.basename(connector_dir)

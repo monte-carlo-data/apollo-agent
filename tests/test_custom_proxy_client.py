@@ -31,8 +31,8 @@ def _create_mock_connector_dir(
     with open(os.path.join(connector_dir, "manifest.json"), "w") as f:
         json.dump(manifest, f)
 
-    # integration.py
-    integration_code = """
+    # connector.py
+    connector_code = """
 class BaseConnector:
     credentials = {}
     connection = None
@@ -53,8 +53,8 @@ class BaseConnector:
     def close_connection(self):
         pass
 """
-    with open(os.path.join(connector_dir, "integration.py"), "w") as f:
-        f.write(integration_code)
+    with open(os.path.join(connector_dir, "connector.py"), "w") as f:
+        f.write(connector_code)
 
     # templates/
     if templates:
