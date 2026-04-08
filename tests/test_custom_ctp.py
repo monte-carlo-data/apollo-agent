@@ -1,0 +1,199 @@
+# tests/test_custom_ctp.py
+"""Integration tests for custom CTP support in execute_operation.
+
+Uses the databricks-rest connection type as the test vehicle because it has a
+simple CTP (PAT → token) and a well-defined TypedDict output contract.
+"""
+from unittest import TestCase
+from unittest.mock import create_autospec, patch
+
+from requests import Response
+
+from apollo.agent.agent import Agent
+from apollo.agent.logging_utils import LoggingUtils
+from apollo.common.agent.constants import (
+    ATTRIBUTE_NAME_ERROR,
+    ATTRIBUTE_NAME_RESULT,
+)
+from apollo.integrations.ctp.registry import CtpRegistry
+
+_WORKSPACE_URL = "https://adb-123.azuredatabricks.net"
+_CUSTOM_TOKEN = "custom-pipeline-token"
+
+_OPERATION = {
+    "trace_id": "custom-ctp-test",
+    "skip_cache": True,
+    "commands": [
+        {
+            "method": "do_request",
+            "kwargs": {
+                "url": f"{_WORKSPACE_URL}/api/2.0/sql/warehouses/abc/start",
+                "http_method": "POST",
+            },
+        }
+    ],
+}
+
+# Credentials use a non-standard field name ("custom_token") that the
+# registered default CTP would not recognize — proves the custom pipeline ran.
+_CUSTOM_CREDENTIALS = {
+    "databricks_workspace_url": _WORKSPACE_URL,
+    "custom_token": _CUSTOM_TOKEN,
+}
+
+# Custom CTP: no steps, mapper reads "custom_token" instead of "databricks_token".
+_CUSTOM_CTP = {
+    "name": "custom-databricks-rest",
+    "steps": [],
+    "mapper": {
+        "name": "custom_mapper",
+        "field_map": {
+            "databricks_workspace_url": "{{ raw.databricks_workspace_url }}",
+            "token": "{{ raw.custom_token }}",
+        },
+    },
+}
+
+# Custom CTP that deliberately omits "token" from its mapper output —
+# used to verify the TypedDict schema is injected and enforced.
+_CUSTOM_CTP_MISSING_TOKEN = {
+    "name": "bad-custom-ctp",
+    "steps": [],
+    "mapper": {
+        "name": "bad_mapper",
+        "field_map": {
+            "databricks_workspace_url": "{{ raw.databricks_workspace_url }}",
+            # token intentionally absent
+        },
+    },
+}
+
+
+class TestCustomCtpExecution(TestCase):
+    """Full agent → proxy client path with a custom_ctp supplied."""
+
+    def setUp(self) -> None:
+        self._agent = Agent(LoggingUtils())
+
+    def _mock_http_success(self, mock_request):
+        mock_response = create_autospec(Response)
+        mock_response.json.return_value = {"result": "ok"}
+        mock_request.return_value = mock_response
+        return mock_response
+
+    @patch("requests.request")
+    def test_custom_ctp_used_instead_of_default(self, mock_request):
+        """Custom CTP pipeline runs in place of the registered default."""
+        self._mock_http_success(mock_request)
+
+        response = self._agent.execute_operation(
+            "databricks-rest",
+            "start_warehouse",
+            _OPERATION,
+            _CUSTOM_CREDENTIALS,
+            custom_ctp=_CUSTOM_CTP,
+        )
+
+        self.assertIsNone(response.result.get(ATTRIBUTE_NAME_ERROR))
+        self.assertIn(ATTRIBUTE_NAME_RESULT, response.result)
+        # The custom CTP reads custom_token — verify it reached the HTTP call
+        self.assertEqual(
+            f"Bearer {_CUSTOM_TOKEN}",
+            mock_request.call_args[1]["headers"]["Authorization"],
+        )
+
+    @patch("requests.request")
+    def test_custom_ctp_schema_injected_enforces_required_fields(self, mock_request):
+        """TypedDict schema is injected from the registered CTP; missing required fields raise."""
+        # DatabricksRestClientArgs requires "token" — the bad CTP omits it.
+        response = self._agent.execute_operation(
+            "databricks-rest",
+            "start_warehouse",
+            _OPERATION,
+            _CUSTOM_CREDENTIALS,
+            custom_ctp=_CUSTOM_CTP_MISSING_TOKEN,
+        )
+
+        self.assertIsNotNone(response.result.get(ATTRIBUTE_NAME_ERROR))
+        self.assertIn("token", response.result.get(ATTRIBUTE_NAME_ERROR, ""))
+
+    @patch("requests.request")
+    def test_absent_custom_ctp_uses_registered_default(self, mock_request):
+        """When custom_ctp is absent the registered default pipeline runs unchanged."""
+        self._mock_http_success(mock_request)
+
+        response = self._agent.execute_operation(
+            "databricks-rest",
+            "start_warehouse",
+            _OPERATION,
+            {
+                "databricks_workspace_url": _WORKSPACE_URL,
+                "databricks_token": "dapi-pat",
+            },
+        )
+
+        self.assertIsNone(response.result.get(ATTRIBUTE_NAME_ERROR))
+        self.assertEqual(
+            "Bearer dapi-pat",
+            mock_request.call_args[1]["headers"]["Authorization"],
+        )
+
+    @patch("requests.request")
+    def test_custom_ctp_with_pre_shaped_connect_args(self, mock_request):
+        """DC pre-shaped connect_args are unwrapped before the custom pipeline runs."""
+        self._mock_http_success(mock_request)
+
+        response = self._agent.execute_operation(
+            "databricks-rest",
+            "start_warehouse",
+            _OPERATION,
+            {"connect_args": _CUSTOM_CREDENTIALS},
+            custom_ctp=_CUSTOM_CTP,
+        )
+
+        self.assertIsNone(response.result.get(ATTRIBUTE_NAME_ERROR))
+        self.assertEqual(
+            f"Bearer {_CUSTOM_TOKEN}",
+            mock_request.call_args[1]["headers"]["Authorization"],
+        )
+
+
+class TestCustomCtpSchemaInjection(TestCase):
+    """Unit tests for CtpRegistry.resolve_custom schema injection."""
+
+    def test_schema_injected_from_registered_ctp(self):
+        """resolve_custom injects the TypedDict schema from the registered default."""
+        registered = CtpRegistry.get("databricks-rest")
+        self.assertIsNotNone(registered)
+
+        result = CtpRegistry.resolve_custom(
+            "databricks-rest",
+            _CUSTOM_CREDENTIALS,
+            _CUSTOM_CTP,
+        )
+        self.assertIn("connect_args", result)
+        self.assertEqual(_CUSTOM_TOKEN, result["connect_args"]["token"])
+        self.assertEqual(
+            _WORKSPACE_URL, result["connect_args"]["databricks_workspace_url"]
+        )
+
+    def test_schema_injected_for_unknown_connection_type(self):
+        """resolve_custom works without a registered CTP — no schema injection, no error."""
+        result = CtpRegistry.resolve_custom(
+            "unknown-type",
+            _CUSTOM_CREDENTIALS,
+            _CUSTOM_CTP,
+        )
+        self.assertIn("connect_args", result)
+        self.assertEqual(_CUSTOM_TOKEN, result["connect_args"]["token"])
+
+    def test_non_dict_connect_args_returned_unchanged(self):
+        """Legacy ODBC string passthrough is preserved even with a custom CTP."""
+        odbc = "DRIVER={SQL Server};SERVER=db.example.com"
+        credentials = {"connect_args": odbc}
+        result = CtpRegistry.resolve_custom(
+            "sql-server",
+            credentials,
+            _CUSTOM_CTP,
+        )
+        self.assertIs(credentials, result)

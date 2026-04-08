@@ -217,9 +217,10 @@ def execute_agent_operation(
         )
 
     operation = json_request.get("operation")
+    custom_ctp = json_request.get("custom_ctp")
 
     return agent.execute_operation(
-        connection_type, operation_name, operation, credentials
+        connection_type, operation_name, operation, credentials, custom_ctp=custom_ctp
     )
 
 
