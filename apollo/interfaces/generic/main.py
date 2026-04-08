@@ -218,10 +218,10 @@ def execute_agent_operation(
         )
 
     operation = json_request.get("operation")
-    custom_ctp = json_request.get("custom_ctp")
+    ctp_config = json_request.get("ctp_config")
 
     return agent.execute_operation(
-        connection_type, operation_name, operation, credentials, custom_ctp=custom_ctp
+        connection_type, operation_name, operation, credentials, ctp_config=ctp_config
     )
 
 
@@ -251,9 +251,9 @@ def ctp_validate(connection_type: str) -> Tuple[Dict, int]:
           schema:
             id: CtpValidateRequest
             required:
-                - custom_ctp
+                - ctp_config
             properties:
-                custom_ctp:
+                ctp_config:
                     type: object
                     description: The CTP config to validate (name, steps, mapper).
     responses:
@@ -269,10 +269,10 @@ def ctp_validate(connection_type: str) -> Tuple[Dict, int]:
                             type: string
     """
     json_request: Dict = request.json or {}
-    custom_ctp = json_request.get("custom_ctp")
-    if not custom_ctp:
-        return {"valid": False, "errors": ["custom_ctp is required"]}, 400
-    result = validate_ctp_config(connection_type, custom_ctp)
+    ctp_config = json_request.get("ctp_config")
+    if not ctp_config:
+        return {"valid": False, "errors": ["ctp_config is required"]}, 400
+    result = validate_ctp_config(connection_type, ctp_config)
     return result, 200
 
 

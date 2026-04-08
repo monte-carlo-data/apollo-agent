@@ -66,7 +66,7 @@ class CtpRegistry:
         cls,
         connection_type: str,
         credentials: dict[str, Any],
-        custom_ctp: dict[str, Any],
+        ctp_config: dict[str, Any],
         context: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Resolve credentials using a caller-supplied CTP config dict.
@@ -76,7 +76,7 @@ class CtpRegistry:
         Follows the same connect_args unwrap-and-run path as resolve().
         """
         _ensure_initialized()
-        config = CtpConfig.from_dict(custom_ctp)
+        config = CtpConfig.from_dict(ctp_config)
         registered = cls._registry.get(connection_type)
         if registered is not None:
             config.mapper.schema = registered.mapper.schema

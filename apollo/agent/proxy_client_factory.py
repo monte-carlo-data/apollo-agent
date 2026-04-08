@@ -418,14 +418,14 @@ class ProxyClientFactory:
         credentials: Optional[Dict],
         skip_cache: bool,
         platform: str,
-        custom_ctp: Optional[Dict] = None,
+        ctp_config: Optional[Dict] = None,
     ) -> BaseProxyClient:
         # skip_cache is a flag sent by the client, and can be used to force a new client to be created
         # it defaults to False
         if skip_cache:
             try:
                 return cls._create_proxy_client(
-                    connection_type, credentials, platform, custom_ctp=custom_ctp
+                    connection_type, credentials, platform, ctp_config=ctp_config
                 )
             except Exception:
                 logger.exception(f"Failed to create {connection_type} client")
@@ -442,7 +442,7 @@ class ProxyClientFactory:
                 logger.info(f"Using cached client for {connection_type}")
             else:
                 client = cls._create_proxy_client(
-                    connection_type, credentials, platform, custom_ctp=custom_ctp
+                    connection_type, credentials, platform, ctp_config=ctp_config
                 )
                 logger.info(f"Caching {connection_type} client")
                 cls._cache_client(key, client)
@@ -470,13 +470,13 @@ class ProxyClientFactory:
         connection_type: str,
         credentials: Optional[Dict],
         platform: str,
-        custom_ctp: Optional[Dict] = None,
+        ctp_config: Optional[Dict] = None,
     ) -> BaseProxyClient:
         if credentials:
             credentials = decode_dictionary(credentials)
-        if custom_ctp and credentials:
+        if ctp_config and credentials:
             credentials = CtpRegistry.resolve_custom(
-                connection_type, credentials, custom_ctp, context={"platform": platform}
+                connection_type, credentials, ctp_config, context={"platform": platform}
             )
         elif credentials and CtpRegistry.get(connection_type):
             credentials = CtpRegistry.resolve(

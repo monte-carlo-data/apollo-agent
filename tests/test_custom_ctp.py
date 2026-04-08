@@ -1,4 +1,4 @@
-# tests/test_custom_ctp.py
+# tests/test_ctp_config.py
 """Integration tests for custom CTP support in execute_operation.
 
 Uses the databricks-rest connection type as the test vehicle because it has a
@@ -71,7 +71,7 @@ _CUSTOM_CTP_MISSING_TOKEN = {
 
 
 class TestCustomCtpExecution(TestCase):
-    """Full agent → proxy client path with a custom_ctp supplied."""
+    """Full agent → proxy client path with a ctp_config supplied."""
 
     def setUp(self) -> None:
         self._agent = Agent(LoggingUtils())
@@ -83,7 +83,7 @@ class TestCustomCtpExecution(TestCase):
         return mock_response
 
     @patch("requests.request")
-    def test_custom_ctp_used_instead_of_default(self, mock_request):
+    def test_ctp_config_used_instead_of_default(self, mock_request):
         """Custom CTP pipeline runs in place of the registered default."""
         self._mock_http_success(mock_request)
 
@@ -92,7 +92,7 @@ class TestCustomCtpExecution(TestCase):
             "start_warehouse",
             _OPERATION,
             _CUSTOM_CREDENTIALS,
-            custom_ctp=_CUSTOM_CTP,
+            ctp_config=_CUSTOM_CTP,
         )
 
         self.assertIsNone(response.result.get(ATTRIBUTE_NAME_ERROR))
@@ -104,7 +104,7 @@ class TestCustomCtpExecution(TestCase):
         )
 
     @patch("requests.request")
-    def test_custom_ctp_schema_injected_enforces_required_fields(self, mock_request):
+    def test_ctp_config_schema_injected_enforces_required_fields(self, mock_request):
         """TypedDict schema is injected from the registered CTP; missing required fields raise."""
         # DatabricksRestClientArgs requires "token" — the bad CTP omits it.
         response = self._agent.execute_operation(
@@ -112,15 +112,15 @@ class TestCustomCtpExecution(TestCase):
             "start_warehouse",
             _OPERATION,
             _CUSTOM_CREDENTIALS,
-            custom_ctp=_CUSTOM_CTP_MISSING_TOKEN,
+            ctp_config=_CUSTOM_CTP_MISSING_TOKEN,
         )
 
         self.assertIsNotNone(response.result.get(ATTRIBUTE_NAME_ERROR))
         self.assertIn("token", response.result.get(ATTRIBUTE_NAME_ERROR, ""))
 
     @patch("requests.request")
-    def test_absent_custom_ctp_uses_registered_default(self, mock_request):
-        """When custom_ctp is absent the registered default pipeline runs unchanged."""
+    def test_absent_ctp_config_uses_registered_default(self, mock_request):
+        """When ctp_config is absent the registered default pipeline runs unchanged."""
         self._mock_http_success(mock_request)
 
         response = self._agent.execute_operation(
@@ -140,7 +140,7 @@ class TestCustomCtpExecution(TestCase):
         )
 
     @patch("requests.request")
-    def test_custom_ctp_with_pre_shaped_connect_args(self, mock_request):
+    def test_ctp_config_with_pre_shaped_connect_args(self, mock_request):
         """DC pre-shaped connect_args are unwrapped before the custom pipeline runs."""
         self._mock_http_success(mock_request)
 
@@ -149,7 +149,7 @@ class TestCustomCtpExecution(TestCase):
             "start_warehouse",
             _OPERATION,
             {"connect_args": _CUSTOM_CREDENTIALS},
-            custom_ctp=_CUSTOM_CTP,
+            ctp_config=_CUSTOM_CTP,
         )
 
         self.assertIsNone(response.result.get(ATTRIBUTE_NAME_ERROR))

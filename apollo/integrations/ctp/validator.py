@@ -30,7 +30,7 @@ def _check_template_syntax(template: str, location: str) -> str | None:
 
 def validate_ctp_config(
     connection_type: str,
-    custom_ctp: dict[str, Any],
+    ctp_config: dict[str, Any],
 ) -> dict[str, Any]:
     """Validate a custom CTP config dict structurally without executing the pipeline.
 
@@ -41,7 +41,7 @@ def validate_ctp_config(
 
     # 1. Deserialize
     try:
-        config = CtpConfig.from_dict(custom_ctp)
+        config = CtpConfig.from_dict(ctp_config)
     except ValueError as e:
         return {"valid": False, "errors": [str(e)]}
 
