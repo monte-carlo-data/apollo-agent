@@ -2,12 +2,106 @@ import logging
 from dataclasses import dataclass
 from typing import Any, NoReturn
 
+import requests
 from salesforcecdpconnector.connection import SalesforceCDPConnection
+from salesforcecdpconnector.exceptions import Error as SalesforceCDPError
 from salesforcecdpconnector.genie_table import GenieTable, Field
 
 from apollo.integrations.db.base_db_proxy_client import BaseDbProxyClient
 
 logger = logging.getLogger(__name__)
+
+
+class _CapturingSession(requests.Session):
+    """
+    Wraps the library's requests.Session to capture the Salesforce a360/token response
+    body regardless of status code.
+
+    The salesforcecdpconnector library raises Error('CDP token retrieval failed with
+    code N') on non-200 and discards the body. On 200 responses with unexpected payloads
+    (e.g. Salesforce returning 200 with an error body for unknown dataspaces) the library
+    raises KeyError. In both cases the body is discarded before we can see it.
+
+    Capturing on all a360/token responses means we always have it available to include
+    in the RuntimeError that propagates back to the data-collector and into Datadog logs.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.last_exchange_body: str | None = None
+        self.last_exchange_status: int | None = None
+
+    def post(self, url: str, **kwargs: Any):  # type: ignore[override]
+        response = super().post(url, **kwargs)
+        if "a360/token" in url:
+            self.last_exchange_status = response.status_code
+            try:
+                self.last_exchange_body = str(response.json())
+            except Exception:
+                self.last_exchange_body = response.text[:500]
+        return response
+
+
+def _classify_exchange_status(status: int | None) -> str:
+    """Return a short error-type label for a Salesforce a360/token HTTP status code."""
+    if status is None:
+        return "unknown"
+    if status == 429:
+        return "rate_limited"
+    if status in (401, 403):
+        return "auth_failed"
+    if status == 400:
+        return "bad_request"
+    if status >= 500:
+        return "server_error"
+    return "other"
+
+
+import re as _re
+
+_ACCESS_TOKEN_PATTERN = _re.compile(r"('access_token'\s*:\s*)'[^']*'")
+
+
+def _redact_body(body: str | None) -> str | None:
+    """
+    Redact access_token values from a captured a360/token response body string
+    before including it in error messages or log records.
+
+    The body is stored as str(response.json()), so token values appear as
+    Python string literals: 'access_token': 'eyJ...'. Redacting prevents
+    accidental credential exposure when an unrelated error fires after a
+    successful token exchange.
+    """
+    if body is None:
+        return None
+    return _ACCESS_TOKEN_PATTERN.sub(r"\1'[REDACTED]'", body)
+
+
+def _attach_capturing_session(
+    conn: "SalesforceDataCloudConnection",
+) -> _CapturingSession | None:
+    """
+    Replace the requests.Session on the connection's authentication_helper with a
+    _CapturingSession so that on failure the response body can be included in the
+    RuntimeError propagated back to the data-collector (and visible in Datadog).
+
+    Returns the capturing session so the caller can read last_exchange_body and
+    last_exchange_status after a failed call, or None if the library internals
+    have changed.
+    """
+    if not (
+        hasattr(conn, "authentication_helper")
+        and conn.authentication_helper
+        and hasattr(conn.authentication_helper, "session")
+    ):
+        return None
+
+    original = conn.authentication_helper.session
+    capturing = _CapturingSession()
+    capturing.headers.update(original.headers)
+    capturing.cookies.update(original.cookies)
+    conn.authentication_helper.session = capturing
+    return capturing
 
 
 class SalesforceDataCloudConnection(SalesforceCDPConnection):
@@ -107,7 +201,9 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
     def list_tables(self, dataspace: str | None = None) -> list[dict]:
         if dataspace is not None:
             logger.info(
-                f"Salesforce Data Cloud: fetching tables for dataspace '{dataspace}'",
+                f"Salesforce Data Cloud: fetching tables for dataspace '{dataspace}' "
+                f"(domain={self._credentials.domain}, "
+                f"client_id={self._credentials.client_id[:8]}...)",
                 extra={"dataspace": dataspace},
             )
             # Create a temporary connection scoped to this dataspace.
@@ -126,12 +222,50 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
                 refresh_token=None,
                 dataspace=dataspace,
             )
+            capturing = _attach_capturing_session(conn)
             try:
                 tables: list[GenieTable] = conn.list_tables()
-            except Exception as e:
+            except SalesforceCDPError as e:
+                body = _redact_body(capturing.last_exchange_body if capturing else None)
+                status = capturing.last_exchange_status if capturing else None
+                logger.warning(
+                    "Salesforce Data Cloud: a360/token exchange failed for dataspace '%s'",
+                    dataspace,
+                    extra={
+                        "dataspace": dataspace,
+                        "exchange_status_code": status,
+                        "exchange_error_type": _classify_exchange_status(status),
+                        "exchange_error": str(e)[:500],
+                        "exchange_response_body": body,
+                    },
+                )
+                detail = f" (Salesforce response: {body})" if body else ""
+                raise RuntimeError(
+                    f"Token exchange failed for dataspace '{dataspace}': {e}{detail} — "
+                    f"verify the dataspace name and that the connected app's Run-As user "
+                    f"has permission for this dataspace"
+                ) from e
+            except KeyError as e:
+                body = _redact_body(capturing.last_exchange_body if capturing else None)
+                status = capturing.last_exchange_status if capturing else None
+                logger.warning(
+                    "Salesforce Data Cloud: a360/token exchange returned unexpected response for dataspace '%s'",
+                    dataspace,
+                    extra={
+                        "dataspace": dataspace,
+                        "exchange_status_code": status,
+                        "exchange_error_type": "missing_access_token",
+                        "missing_key": str(e),
+                        "exchange_response_body": body,
+                    },
+                )
+                detail = (
+                    f" (HTTP {status}, Salesforce response: {body})" if body else ""
+                )
                 raise RuntimeError(
                     f"Token exchange failed for dataspace '{dataspace}': "
-                    "verify the dataspace exists and credentials are valid"
+                    f"OAuth response missing key {e}{detail} — "
+                    f"verify the dataspace exists and credentials are valid"
                 ) from e
             finally:
                 conn.close()
@@ -140,12 +274,20 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
                 extra={"dataspace": dataspace, "table_count": len(tables)},
             )
         else:
-            logger.info("Salesforce Data Cloud: fetching tables (unscoped)")
+            logger.info(
+                f"Salesforce Data Cloud: fetching tables (unscoped, "
+                f"domain={self._credentials.domain})"
+            )
             try:
                 tables = self._connection.list_tables()
-            except Exception as e:
+            except SalesforceCDPError as e:
                 raise RuntimeError(
-                    "Token exchange failed: verify credentials are valid"
+                    f"Token exchange failed: {e} — verify credentials are valid"
+                ) from e
+            except KeyError as e:
+                raise RuntimeError(
+                    f"Token exchange failed: OAuth response missing key {e} — "
+                    f"verify credentials are valid"
                 ) from e
             logger.info(
                 "Salesforce Data Cloud: fetched tables (unscoped)",
