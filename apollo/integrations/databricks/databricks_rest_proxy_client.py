@@ -18,7 +18,12 @@ class DatabricksRestProxyClient(BaseProxyClient):
 
     def __init__(self, credentials: Optional[Dict], **kwargs: Any):
         creds = credentials["connect_args"] if credentials else {}
-        self._http_client = HttpProxyClient(credentials={"token": creds.get("token")})
+        token = creds.get("token")
+        if not token:
+            raise ValueError(
+                "Databricks REST credentials must include a resolved token in connect_args"
+            )
+        self._http_client = HttpProxyClient(credentials={"token": token})
         self._databricks_workspace_url: Optional[str] = creds.get(_WORKSPACE_URL_KEY)
 
     @property
