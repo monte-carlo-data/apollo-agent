@@ -4,8 +4,8 @@ import tempfile
 from unittest import TestCase
 from unittest.mock import Mock, patch, MagicMock
 
-from apollo.integrations.custom.custom_integration_loader import (
-    _discover_custom_integrations,
+from apollo.integrations.custom.custom_connector_loader import (
+    _discover_custom_connectors,
     load_integration_module,
     load_manifest,
     load_templates,
@@ -72,54 +72,54 @@ class BaseIntegration:
     return integration_dir
 
 
-class TestCustomIntegrationDiscovery(TestCase):
+class TestCustomConnectorDiscovery(TestCase):
     def test_discovery_reads_manifests(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
-            _create_mock_integration_dir(tmp_dir, "mydb", "custom-integration-abc1234")
+            _create_mock_integration_dir(tmp_dir, "mydb", "custom-connector-abc1234")
 
             with patch(
-                "apollo.integrations.custom.custom_integration_loader._CUSTOM_INTEGRATIONS_BASE_PATH",
+                "apollo.integrations.custom.custom_connector_loader._CUSTOM_CONNECTORS_BASE_PATH",
                 tmp_dir,
             ):
-                registry = _discover_custom_integrations()
+                registry = _discover_custom_connectors()
 
-            self.assertIn("custom-integration-abc1234", registry)
+            self.assertIn("custom-connector-abc1234", registry)
             self.assertEqual(
-                registry["custom-integration-abc1234"],
+                registry["custom-connector-abc1234"],
                 os.path.join(tmp_dir, "mydb"),
             )
 
-    def test_multiple_integrations(self):
+    def test_multiple_connectors(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
-            _create_mock_integration_dir(tmp_dir, "db1", "custom-integration-aaa")
-            _create_mock_integration_dir(tmp_dir, "db2", "custom-integration-bbb")
+            _create_mock_integration_dir(tmp_dir, "db1", "custom-connector-aaa")
+            _create_mock_integration_dir(tmp_dir, "db2", "custom-connector-bbb")
 
             with patch(
-                "apollo.integrations.custom.custom_integration_loader._CUSTOM_INTEGRATIONS_BASE_PATH",
+                "apollo.integrations.custom.custom_connector_loader._CUSTOM_CONNECTORS_BASE_PATH",
                 tmp_dir,
             ):
-                registry = _discover_custom_integrations()
+                registry = _discover_custom_connectors()
 
             self.assertEqual(len(registry), 2)
-            self.assertIn("custom-integration-aaa", registry)
-            self.assertIn("custom-integration-bbb", registry)
+            self.assertIn("custom-connector-aaa", registry)
+            self.assertIn("custom-connector-bbb", registry)
 
     def test_discovery_empty_directory(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             with patch(
-                "apollo.integrations.custom.custom_integration_loader._CUSTOM_INTEGRATIONS_BASE_PATH",
+                "apollo.integrations.custom.custom_connector_loader._CUSTOM_CONNECTORS_BASE_PATH",
                 tmp_dir,
             ):
-                registry = _discover_custom_integrations()
+                registry = _discover_custom_connectors()
 
             self.assertEqual(registry, {})
 
     def test_discovery_missing_directory(self):
         with patch(
-            "apollo.integrations.custom.custom_integration_loader._CUSTOM_INTEGRATIONS_BASE_PATH",
+            "apollo.integrations.custom.custom_connector_loader._CUSTOM_CONNECTORS_BASE_PATH",
             "/nonexistent/path",
         ):
-            registry = _discover_custom_integrations()
+            registry = _discover_custom_connectors()
 
         self.assertEqual(registry, {})
 
@@ -129,10 +129,10 @@ class TestCustomIntegrationDiscovery(TestCase):
             os.makedirs(os.path.join(tmp_dir, "bad_integration"))
 
             with patch(
-                "apollo.integrations.custom.custom_integration_loader._CUSTOM_INTEGRATIONS_BASE_PATH",
+                "apollo.integrations.custom.custom_connector_loader._CUSTOM_CONNECTORS_BASE_PATH",
                 tmp_dir,
             ):
-                registry = _discover_custom_integrations()
+                registry = _discover_custom_connectors()
 
             self.assertEqual(registry, {})
 
@@ -162,7 +162,7 @@ class TestLoadTemplates(TestCase):
 class TestLoadManifest(TestCase):
     def test_load_manifest(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
-            manifest = {"connection_type": "custom-integration-abc", "name": "mydb"}
+            manifest = {"connection_type": "custom-connector-abc", "name": "mydb"}
             with open(os.path.join(tmp_dir, "manifest.json"), "w") as f:
                 json.dump(manifest, f)
 
@@ -217,7 +217,7 @@ class TestCustomProxyClient(TestCase):
 
         client = CustomProxyClient(
             credentials={"connect_args": {"host": "localhost"}},
-            integration_dir="/opt/custom-integrations/mydb",
+            integration_dir="/opt/custom-connectors/mydb",
         )
         result = client.test_connection()
 
@@ -251,7 +251,7 @@ class TestCustomProxyClient(TestCase):
 
         client = CustomProxyClient(
             credentials={"connect_args": {"host": "localhost"}},
-            integration_dir="/opt/custom-integrations/mydb",
+            integration_dir="/opt/custom-connectors/mydb",
         )
         result = client.execute_sql_query("SELECT name FROM databases")
 
@@ -284,7 +284,7 @@ class TestCustomProxyClient(TestCase):
 
         client = CustomProxyClient(
             credentials={"connect_args": {"host": "localhost"}},
-            integration_dir="/opt/custom-integrations/mydb",
+            integration_dir="/opt/custom-connectors/mydb",
         )
         result = client.fetch_databases()
 
@@ -319,7 +319,7 @@ class TestCustomProxyClient(TestCase):
 
         client = CustomProxyClient(
             credentials={"connect_args": {"host": "localhost"}},
-            integration_dir="/opt/custom-integrations/mydb",
+            integration_dir="/opt/custom-connectors/mydb",
         )
         result = client.fetch_schemas(database_name="mydb")
 
@@ -349,7 +349,7 @@ class TestCustomProxyClient(TestCase):
 
         client = CustomProxyClient(
             credentials={"connect_args": {"host": "localhost"}},
-            integration_dir="/opt/custom-integrations/mydb",
+            integration_dir="/opt/custom-connectors/mydb",
         )
         result = client.fetch_tables(
             database_name="mydb", schemas="public", offset=0, limit=100
@@ -383,7 +383,7 @@ class TestCustomProxyClient(TestCase):
 
         client = CustomProxyClient(
             credentials={"connect_args": {"host": "localhost"}},
-            integration_dir="/opt/custom-integrations/mydb",
+            integration_dir="/opt/custom-connectors/mydb",
         )
         result = client.fetch_query_logs(
             start_time="2024-01-01", end_time="2024-01-02", limit=1000, offset=0
@@ -408,7 +408,7 @@ class TestCustomProxyClient(TestCase):
 
         client = CustomProxyClient(
             credentials={"connect_args": {}},
-            integration_dir="/opt/custom-integrations/mydb",
+            integration_dir="/opt/custom-connectors/mydb",
         )
         result = client.get_templates()
 
@@ -430,7 +430,7 @@ class TestCustomProxyClient(TestCase):
 
         client = CustomProxyClient(
             credentials={"connect_args": {}},
-            integration_dir="/opt/custom-integrations/mydb",
+            integration_dir="/opt/custom-connectors/mydb",
         )
         result = client.get_capabilities()
 
@@ -452,7 +452,7 @@ class TestCustomProxyClient(TestCase):
 
         client = CustomProxyClient(
             credentials={"connect_args": {}},
-            integration_dir="/opt/custom-integrations/mydb",
+            integration_dir="/opt/custom-connectors/mydb",
         )
 
         with self.assertRaises(ValueError) as ctx:
@@ -473,7 +473,7 @@ class TestCustomProxyClient(TestCase):
 
         client = CustomProxyClient(
             credentials={"connect_args": {}},
-            integration_dir="/opt/custom-integrations/mydb",
+            integration_dir="/opt/custom-connectors/mydb",
         )
         client.close()
 
@@ -497,46 +497,44 @@ class TestCustomProxyClient(TestCase):
 
         client = CustomProxyClient(
             credentials={"connect_args": {}},
-            integration_dir="/opt/custom-integrations/mydb",
+            integration_dir="/opt/custom-connectors/mydb",
         )
 
         self.assertEqual(client.wrapped_client, mock_conn)
 
 
 class TestGetConnectionManifests(TestCase):
-    def test_returns_all_integrations(self):
+    def test_returns_all_connectors(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             _create_mock_integration_dir(
                 tmp_dir,
                 "db1",
-                "custom-integration-aaa",
+                "custom-connector-aaa",
                 templates={"get_tables.j2": "SELECT * FROM tables"},
                 capabilities={"capabilities": {"supports_metadata": True}},
             )
             _create_mock_integration_dir(
                 tmp_dir,
                 "db2",
-                "custom-integration-bbb",
+                "custom-connector-bbb",
                 templates={"get_schemas.j2": "SELECT * FROM schemas"},
                 capabilities={"capabilities": {"supports_query_logs": False}},
             )
 
             with patch(
-                "apollo.integrations.custom.custom_integration_loader._CUSTOM_INTEGRATIONS_BASE_PATH",
+                "apollo.integrations.custom.custom_connector_loader._CUSTOM_CONNECTORS_BASE_PATH",
                 tmp_dir,
             ), patch(
-                "apollo.integrations.custom.custom_integration_loader._custom_integration_registry",
+                "apollo.integrations.custom.custom_connector_loader._custom_connector_registry",
                 None,
             ):
                 result = CustomProxyClient.get_connection_manifests()
 
             self.assertEqual(len(result), 2)
 
-            self.assertIn("custom-integration-aaa", result)
-            aaa = result["custom-integration-aaa"]
-            self.assertEqual(
-                aaa["manifest"]["connection_type"], "custom-integration-aaa"
-            )
+            self.assertIn("custom-connector-aaa", result)
+            aaa = result["custom-connector-aaa"]
+            self.assertEqual(aaa["manifest"]["connection_type"], "custom-connector-aaa")
             self.assertEqual(aaa["manifest"]["name"], "db1")
             self.assertEqual(
                 aaa["capabilities"], {"capabilities": {"supports_metadata": True}}
@@ -545,22 +543,20 @@ class TestGetConnectionManifests(TestCase):
                 aaa["templates"], {"get_tables.j2": "SELECT * FROM tables"}
             )
 
-            self.assertIn("custom-integration-bbb", result)
-            bbb = result["custom-integration-bbb"]
-            self.assertEqual(
-                bbb["manifest"]["connection_type"], "custom-integration-bbb"
-            )
+            self.assertIn("custom-connector-bbb", result)
+            bbb = result["custom-connector-bbb"]
+            self.assertEqual(bbb["manifest"]["connection_type"], "custom-connector-bbb")
             self.assertEqual(
                 bbb["templates"], {"get_schemas.j2": "SELECT * FROM schemas"}
             )
 
-    def test_returns_empty_when_no_integrations(self):
+    def test_returns_empty_when_no_connectors(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             with patch(
-                "apollo.integrations.custom.custom_integration_loader._CUSTOM_INTEGRATIONS_BASE_PATH",
+                "apollo.integrations.custom.custom_connector_loader._CUSTOM_CONNECTORS_BASE_PATH",
                 tmp_dir,
             ), patch(
-                "apollo.integrations.custom.custom_integration_loader._custom_integration_registry",
+                "apollo.integrations.custom.custom_connector_loader._custom_connector_registry",
                 None,
             ):
                 result = CustomProxyClient.get_connection_manifests()
@@ -572,29 +568,27 @@ class TestGetConnectionManifests(TestCase):
             _create_mock_integration_dir(
                 tmp_dir,
                 "db1",
-                "custom-integration-aaa",
+                "custom-connector-aaa",
             )
 
             with patch(
-                "apollo.integrations.custom.custom_integration_loader._CUSTOM_INTEGRATIONS_BASE_PATH",
+                "apollo.integrations.custom.custom_connector_loader._CUSTOM_CONNECTORS_BASE_PATH",
                 tmp_dir,
             ), patch(
-                "apollo.integrations.custom.custom_integration_loader._custom_integration_registry",
+                "apollo.integrations.custom.custom_connector_loader._custom_connector_registry",
                 None,
             ):
                 result = CustomProxyClient.get_connection_manifests()
 
-            aaa = result["custom-integration-aaa"]
-            self.assertEqual(
-                aaa["manifest"]["connection_type"], "custom-integration-aaa"
-            )
+            aaa = result["custom-connector-aaa"]
+            self.assertEqual(aaa["manifest"]["connection_type"], "custom-connector-aaa")
             self.assertEqual(aaa["capabilities"], {})
             self.assertEqual(aaa["templates"], {})
 
 
 class TestAgentGetConnectionManifests(TestCase):
     @patch(
-        "apollo.integrations.custom.custom_proxy_client.get_custom_integration_registry",
+        "apollo.integrations.custom.custom_proxy_client.get_custom_connector_registry",
         return_value={},
     )
     def test_returns_ok_response(self, _mock_registry):
@@ -607,7 +601,7 @@ class TestAgentGetConnectionManifests(TestCase):
         self.assertEqual(response.trace_id, "test-trace")
 
     @patch(
-        "apollo.integrations.custom.custom_proxy_client.get_custom_integration_registry",
+        "apollo.integrations.custom.custom_proxy_client.get_custom_connector_registry",
         side_effect=RuntimeError("boom"),
     )
     def test_returns_error_on_failure(self, _mock_registry):

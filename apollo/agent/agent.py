@@ -390,7 +390,7 @@ class Agent:
     def get_connection_manifests(self, trace_id: Optional[str]) -> AgentResponse:
         """
         Returns manifests, capabilities, and templates for all custom
-        integrations installed on this agent.
+        connectors installed on this agent.
         """
         with self._inject_log_context("get_connection_manifests", trace_id):
             try:

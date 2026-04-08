@@ -7,22 +7,22 @@ from typing import Dict, Optional
 
 logger = logging.getLogger(__name__)
 
-_CUSTOM_INTEGRATIONS_BASE_PATH = "/opt/custom-integrations"
+_CUSTOM_CONNECTORS_BASE_PATH = "/opt/custom-connectors"
 
-# Module-level cache: {connection_type: integration_dir_path}
-_custom_integration_registry: Optional[Dict[str, str]] = None
+# Module-level cache: {connection_type: connector_dir_path}
+_custom_connector_registry: Optional[Dict[str, str]] = None
 
 
-def _discover_custom_integrations() -> Dict[str, str]:
+def _discover_custom_connectors() -> Dict[str, str]:
     """
-    Scan the custom integrations directory and build a mapping of
+    Scan the custom connectors directory and build a mapping of
     connection_type -> directory path by reading each manifest.json.
     """
     registry: Dict[str, str] = {}
-    base_path = _CUSTOM_INTEGRATIONS_BASE_PATH
+    base_path = _CUSTOM_CONNECTORS_BASE_PATH
 
     if not os.path.isdir(base_path):
-        logger.info("Custom integrations directory not found: %s", base_path)
+        logger.info("Custom connectors directory not found: %s", base_path)
         return registry
 
     for name in sorted(os.listdir(base_path)):
@@ -32,7 +32,7 @@ def _discover_custom_integrations() -> Dict[str, str]:
 
         manifest_path = os.path.join(integration_dir, "manifest.json")
         if not os.path.isfile(manifest_path):
-            logger.warning("Skipping custom integration %s: no manifest.json", name)
+            logger.warning("Skipping custom connector %s: no manifest.json", name)
             continue
 
         try:
@@ -41,31 +41,31 @@ def _discover_custom_integrations() -> Dict[str, str]:
             connection_type = manifest.get("connection_type")
             if not connection_type:
                 logger.warning(
-                    "Skipping custom integration %s: no connection_type in manifest",
+                    "Skipping custom connector %s: no connection_type in manifest",
                     name,
                 )
                 continue
             registry[connection_type] = integration_dir
             logger.info(
-                "Discovered custom integration: %s -> %s",
+                "Discovered custom connector: %s -> %s",
                 connection_type,
                 integration_dir,
             )
         except Exception:
-            logger.exception("Failed to read manifest for custom integration %s", name)
+            logger.exception("Failed to read manifest for custom connector %s", name)
 
     return registry
 
 
-def get_custom_integration_registry() -> Dict[str, str]:
+def get_custom_connector_registry() -> Dict[str, str]:
     """
-    Return the cached custom integration registry, discovering on first access.
+    Return the cached custom connector registry, discovering on first access.
     Contents are baked into the Docker image so they never change at runtime.
     """
-    global _custom_integration_registry
-    if _custom_integration_registry is None:
-        _custom_integration_registry = _discover_custom_integrations()
-    return _custom_integration_registry
+    global _custom_connector_registry
+    if _custom_connector_registry is None:
+        _custom_connector_registry = _discover_custom_connectors()
+    return _custom_connector_registry
 
 
 def load_integration_module(integration_dir: str) -> types.ModuleType:
@@ -80,7 +80,7 @@ def load_integration_module(integration_dir: str) -> types.ModuleType:
 
     # Use directory name as part of module name for uniqueness
     dir_name = os.path.basename(integration_dir)
-    module_name = f"custom_integration_{dir_name}"
+    module_name = f"custom_connector_{dir_name}"
 
     spec = importlib.util.spec_from_file_location(module_name, module_path)
     if spec is None or spec.loader is None:

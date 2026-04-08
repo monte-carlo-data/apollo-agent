@@ -1150,13 +1150,13 @@ def _get_infra_details() -> Tuple[Dict, int]:
     return response.result, response.status_code
 
 
-@app.route("/api/v1/agent/custom-integrations/manifests", methods=["POST"])
+@app.route("/api/v1/agent/custom-connectors/manifests", methods=["POST"])
 def get_connection_manifests() -> Tuple[Dict, int]:
     """
     Get Connection Manifests
-    Returns manifests, capabilities, and templates for all custom integrations
+    Returns manifests, capabilities, and templates for all custom connectors
     installed on this agent. Used for discovery when the caller does not yet
-    know which custom integrations are available.
+    know which custom connectors are available.
     ---
     tags:
         - Agent Operations
@@ -1174,7 +1174,7 @@ def get_connection_manifests() -> Tuple[Dict, int]:
                   example: 324986b4-b185-4187-b4af-b0c2cd60f7a0
     responses:
         200:
-            description: Returns connection manifests for all custom integrations on this agent.
+            description: Returns connection manifests for all custom connectors on this agent.
     """
     request_dict: Dict = request.json or {}
     trace_id: Optional[str] = request_dict.get("trace_id")

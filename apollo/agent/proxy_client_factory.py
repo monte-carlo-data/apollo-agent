@@ -460,13 +460,13 @@ class ProxyClientFactory:
                 credentials = decode_dictionary(credentials)
             return factory_method(credentials, platform=platform)
 
-        # Check custom integrations before raising an error (opt-in via env var)
-        if os.getenv("MCD_CUSTOM_INTEGRATIONS_ENABLED", "false").lower() == "true":
-            from apollo.integrations.custom.custom_integration_loader import (
-                get_custom_integration_registry,
+        # Check custom connectors before raising an error (opt-in via env var)
+        if os.getenv("MCD_CUSTOM_CONNECTORS_ENABLED", "false").lower() == "true":
+            from apollo.integrations.custom.custom_connector_loader import (
+                get_custom_connector_registry,
             )
 
-            custom_registry = get_custom_integration_registry()
+            custom_registry = get_custom_connector_registry()
             integration_dir = custom_registry.get(connection_type)
             if integration_dir:
                 if credentials:
