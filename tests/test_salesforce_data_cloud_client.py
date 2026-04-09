@@ -158,9 +158,7 @@ class SalesforceDataCloudProxyClientTests(TestCase):
             callback=self.metadata_endpoint,
         )
 
-        self.query_endpoint = Mock(
-            return_value=(200, {}, json.dumps(self.data_response))
-        )
+        self.query_endpoint = Mock(return_value=(200, {}, json.dumps(self.data_response)))
         self.mock_responses.add_callback(
             method=responses.POST,
             url="https://test.salesforce.com/api/v2/query",
@@ -183,9 +181,7 @@ class SalesforceDataCloudProxyClientTests(TestCase):
         )
 
         self.assertFalse(response.is_error)
-        self.assertEqual(
-            response.result[ATTRIBUTE_NAME_RESULT], "salesforce-data-cloud"
-        )
+        self.assertEqual(response.result[ATTRIBUTE_NAME_RESULT], "salesforce-data-cloud")
 
     def test_init_with_client_credentials_flow(self):
         # New DC path: only client_id/client_secret, no core_token.
@@ -206,9 +202,7 @@ class SalesforceDataCloudProxyClientTests(TestCase):
         )
 
         self.assertFalse(response.is_error)
-        self.assertEqual(
-            response.result[ATTRIBUTE_NAME_RESULT], "salesforce-data-cloud"
-        )
+        self.assertEqual(response.result[ATTRIBUTE_NAME_RESULT], "salesforce-data-cloud")
 
     def test_init_with_refresh_token(self):
         # Backward compat: old DCs sent refresh_token="required_but_not_used".
@@ -230,9 +224,7 @@ class SalesforceDataCloudProxyClientTests(TestCase):
         )
 
         self.assertFalse(response.is_error)
-        self.assertEqual(
-            response.result[ATTRIBUTE_NAME_RESULT], "salesforce-data-cloud"
-        )
+        self.assertEqual(response.result[ATTRIBUTE_NAME_RESULT], "salesforce-data-cloud")
 
     def test_list_tables(self):
         operation = {
@@ -255,9 +247,7 @@ class SalesforceDataCloudProxyClientTests(TestCase):
             table = next(t for t in tables if t.get("name") == mock_table["name"])
             self.assertEqual(len(table["fields"]), len(mock_table["fields"]))
             for mock_field in mock_table["fields"]:
-                field = next(
-                    f for f in table["fields"] if f.get("name") == mock_field["name"]
-                )
+                field = next(f for f in table["fields"] if f.get("name") == mock_field["name"])
                 self.assertEqual(field.get("type"), mock_field["type"])
 
         # Verify that the metadata was cached and not re-fetched for fetch_columns
@@ -422,9 +412,7 @@ class SalesforceDataCloudProxyClientTests(TestCase):
         # goes through _token_by_client_creds_flow and raises SalesforceCDPError.
         credentials = {**self.credentials}
         credentials["connect_args"] = {
-            k: v
-            for k, v in self.credentials["connect_args"].items()
-            if k != "core_token"
+            k: v for k, v in self.credentials["connect_args"].items() if k != "core_token"
         }
 
         response = self.agent.execute_operation(
@@ -503,9 +491,7 @@ class SalesforceDataCloudProxyClientTests(TestCase):
             method=responses.POST,
             url="https://test.salesforce.com/services/a360/token",
             status=200,
-            body=json.dumps(
-                {"error": "invalid_dataspace", "message": "Dataspace not found"}
-            ),
+            body=json.dumps({"error": "invalid_dataspace", "message": "Dataspace not found"}),
         )
 
         operation = {
@@ -521,9 +507,7 @@ class SalesforceDataCloudProxyClientTests(TestCase):
 
         credentials = {**self.credentials}
         credentials["connect_args"] = {
-            k: v
-            for k, v in self.credentials["connect_args"].items()
-            if k != "core_token"
+            k: v for k, v in self.credentials["connect_args"].items() if k != "core_token"
         }
 
         response = self.agent.execute_operation(
@@ -623,9 +607,7 @@ class SalesforceDataCloudProxyClientTests(TestCase):
             method=responses.POST,
             url="https://test.salesforce.com/services/a360/token",
             status=200,
-            body=json.dumps(
-                {"error": "invalid_dataspace", "message": "Dataspace not found"}
-            ),
+            body=json.dumps({"error": "invalid_dataspace", "message": "Dataspace not found"}),
         )
 
         client = SalesforceDataCloudProxyClient(
@@ -715,3 +697,160 @@ class SalesforceDataCloudProxyClientTests(TestCase):
         self.assertIn("[REDACTED]", redacted)
         # Non-sensitive fields must still be present
         self.assertIn("expires_in", redacted)
+
+    def test_query_connection_scoped_to_dataspace(self):
+        """
+        When `dataspace` is included in connect_args, the a360/token exchange must include
+        it as a query parameter so queries against tables in non-default dataspaces succeed.
+
+        Without this, the token is scoped to the base tenant and Salesforce returns:
+          NOT_FOUND: DataSourceEntity with developerName = <table> and tenantId = a360/prod/<id> is not found
+        """
+        from urllib.parse import urlparse, parse_qs
+
+        a360_requests = []
+
+        def capturing_a360_endpoint(request):
+            a360_requests.append(request)
+            return (
+                200,
+                {},
+                json.dumps(
+                    {
+                        "access_token": self.api_token,
+                        "expires_in": 3600,
+                        "instance_url": "test.salesforce.com",
+                    }
+                ),
+            )
+
+        self.mock_responses.remove(
+            responses.POST, "https://test.salesforce.com/services/a360/token"
+        )
+        self.mock_responses.add_callback(
+            method=responses.POST,
+            url="https://test.salesforce.com/services/a360/token",
+            callback=capturing_a360_endpoint,
+        )
+
+        credentials = {
+            "connect_args": {
+                **self.credentials["connect_args"],
+                "dataspace": "unified_knowledge",
+            }
+        }
+
+        sql_query = "SELECT Id FROM abc_fit_tests__dll LIMIT 1"
+        commands = [
+            {"method": "cursor", "store": "_cursor"},
+            {"args": [sql_query], "method": "execute", "target": "_cursor"},
+            {"method": "fetchall", "store": "tmp_1", "target": "_cursor"},
+            {"method": "description", "store": "tmp_2", "target": "_cursor"},
+            {"method": "close", "target": "_cursor"},
+            {
+                "kwargs": {
+                    "all_results": {"__reference__": "tmp_1"},
+                    "description": {"__reference__": "tmp_2"},
+                },
+                "method": "build_dict",
+                "target": "__utils",
+            },
+        ]
+        operation = {
+            "commands": commands,
+            "skip_cache": True,
+            "trace_id": "test-dataspace-scoped-query",
+        }
+
+        response = self.agent.execute_operation(
+            connection_type="salesforce-data-cloud",
+            operation_name="test_query_scoped",
+            operation_dict=operation,
+            credentials=credentials,
+        )
+
+        self.assertFalse(response.is_error)
+
+        # The a360/token POST must have been called with dataspace=unified_knowledge
+        self.assertGreater(len(a360_requests), 0, "Expected at least one a360/token call")
+        a360_request = a360_requests[0]
+        query_params = parse_qs(urlparse(a360_request.url).query)
+        self.assertEqual(
+            query_params.get("dataspace"),
+            ["unified_knowledge"],
+            "a360/token POST must include dataspace=unified_knowledge query param",
+        )
+
+    def test_query_connection_unscoped_when_no_dataspace(self):
+        """
+        When `dataspace` is absent from connect_args (default / legacy path), the a360/token
+        exchange must NOT include a dataspace param — existing customers are unaffected.
+        """
+        from urllib.parse import urlparse, parse_qs
+
+        a360_requests = []
+
+        def capturing_a360_endpoint(request):
+            a360_requests.append(request)
+            return (
+                200,
+                {},
+                json.dumps(
+                    {
+                        "access_token": self.api_token,
+                        "expires_in": 3600,
+                        "instance_url": "test.salesforce.com",
+                    }
+                ),
+            )
+
+        self.mock_responses.remove(
+            responses.POST, "https://test.salesforce.com/services/a360/token"
+        )
+        self.mock_responses.add_callback(
+            method=responses.POST,
+            url="https://test.salesforce.com/services/a360/token",
+            callback=capturing_a360_endpoint,
+        )
+
+        # Use default credentials — no dataspace field
+        sql_query = "SELECT Id FROM Account LIMIT 1"
+        commands = [
+            {"method": "cursor", "store": "_cursor"},
+            {"args": [sql_query], "method": "execute", "target": "_cursor"},
+            {"method": "fetchall", "store": "tmp_1", "target": "_cursor"},
+            {"method": "description", "store": "tmp_2", "target": "_cursor"},
+            {"method": "close", "target": "_cursor"},
+            {
+                "kwargs": {
+                    "all_results": {"__reference__": "tmp_1"},
+                    "description": {"__reference__": "tmp_2"},
+                },
+                "method": "build_dict",
+                "target": "__utils",
+            },
+        ]
+        operation = {
+            "commands": commands,
+            "skip_cache": True,
+            "trace_id": "test-unscoped-query",
+        }
+
+        response = self.agent.execute_operation(
+            connection_type="salesforce-data-cloud",
+            operation_name="test_query_unscoped",
+            operation_dict=operation,
+            credentials=self.credentials,
+        )
+
+        self.assertFalse(response.is_error)
+
+        # The a360/token POST must NOT include a dataspace param
+        self.assertGreater(len(a360_requests), 0, "Expected at least one a360/token call")
+        a360_request = a360_requests[0]
+        query_params = parse_qs(urlparse(a360_request.url).query)
+        self.assertNotIn(
+            "dataspace",
+            query_params,
+            "Unscoped path must not include dataspace in a360/token POST",
+        )

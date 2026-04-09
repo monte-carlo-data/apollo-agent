@@ -177,6 +177,10 @@ class SalesforceDataCloudCredentials:
     # Accepted for backwards compatibility; iteration over dataspaces is handled
     # by the data-collector, which calls list_tables(dataspace=X) once per dataspace.
     dataspaces: list[str] | None = None
+    # Single dataspace scope for query execution (profiling, monitors, validation).
+    # When set, the a360/token exchange is scoped to this dataspace so queries
+    # against tables in non-default dataspaces succeed.
+    dataspace: str | None = None
 
 
 class SalesforceDataCloudProxyClient(BaseDbProxyClient):
@@ -189,6 +193,7 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
             client_secret=credentials.client_secret,
             core_token=credentials.core_token,
             refresh_token=credentials.refresh_token,
+            dataspace=credentials.dataspace,
         )
 
     @property
@@ -259,9 +264,7 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
                         "exchange_response_body": body,
                     },
                 )
-                detail = (
-                    f" (HTTP {status}, Salesforce response: {body})" if body else ""
-                )
+                detail = f" (HTTP {status}, Salesforce response: {body})" if body else ""
                 raise RuntimeError(
                     f"Token exchange failed for dataspace '{dataspace}': "
                     f"OAuth response missing key {e}{detail} — "

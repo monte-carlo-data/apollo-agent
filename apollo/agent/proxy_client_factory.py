@@ -21,9 +21,7 @@ logger = logging.getLogger(__name__)
 
 # configure the amount of time connections are cached in memory
 # a value < 0 is used to disable caching
-_CACHE_EXPIRATION_SECONDS = int(
-    os.getenv(CLIENT_CACHE_EXPIRATION_SECONDS_ENV_VAR, "60")
-)
+_CACHE_EXPIRATION_SECONDS = int(os.getenv(CLIENT_CACHE_EXPIRATION_SECONDS_ENV_VAR, "60"))
 
 
 def _get_proxy_client_bigquery(
@@ -296,6 +294,7 @@ def _get_proxy_client_salesforce_data_cloud(
     client_secret = connect_args.get("client_secret")
     core_token = connect_args.get("core_token")
     refresh_token = connect_args.get("refresh_token")
+    dataspace = connect_args.get("dataspace")
 
     if not all([domain, client_id, client_secret]):
         raise ValueError("Missing required connection parameters")
@@ -306,6 +305,7 @@ def _get_proxy_client_salesforce_data_cloud(
         client_secret=client_secret,
         core_token=core_token,
         refresh_token=refresh_token,
+        dataspace=dataspace,
     )
     return SalesforceDataCloudProxyClient(credentials=credentials)
 
@@ -438,9 +438,7 @@ class ProxyClientFactory:
             if client:
                 logger.info(f"Using cached client for {connection_type}")
             else:
-                client = cls._create_proxy_client(
-                    connection_type, credentials, platform
-                )
+                client = cls._create_proxy_client(connection_type, credentials, platform)
                 logger.info(f"Caching {connection_type} client")
                 cls._cache_client(key, client)
             return client
@@ -475,9 +473,7 @@ class ProxyClientFactory:
         if factory_method:
             return factory_method(credentials, platform=platform)
         else:
-            raise AgentError(
-                f"Connection type not supported by this agent: {connection_type}"
-            )
+            raise AgentError(f"Connection type not supported by this agent: {connection_type}")
 
     @staticmethod
     def _get_cache_key(connection_type: str, credentials: Optional[Dict]) -> str:
@@ -507,10 +503,7 @@ class ProxyClientFactory:
         entry = cls._clients_cache.get(key)
 
         # check that entry has not expired
-        if (
-            not entry
-            or (datetime.now() - entry.created_time).seconds > _CACHE_EXPIRATION_SECONDS
-        ):
+        if not entry or (datetime.now() - entry.created_time).seconds > _CACHE_EXPIRATION_SECONDS:
             # dispose client and connection, so we don't have two connections open at the same time
             if entry:
                 cls._dispose_cached_client(key)
