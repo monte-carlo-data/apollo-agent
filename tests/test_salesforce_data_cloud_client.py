@@ -158,7 +158,9 @@ class SalesforceDataCloudProxyClientTests(TestCase):
             callback=self.metadata_endpoint,
         )
 
-        self.query_endpoint = Mock(return_value=(200, {}, json.dumps(self.data_response)))
+        self.query_endpoint = Mock(
+            return_value=(200, {}, json.dumps(self.data_response))
+        )
         self.mock_responses.add_callback(
             method=responses.POST,
             url="https://test.salesforce.com/api/v2/query",
@@ -181,7 +183,9 @@ class SalesforceDataCloudProxyClientTests(TestCase):
         )
 
         self.assertFalse(response.is_error)
-        self.assertEqual(response.result[ATTRIBUTE_NAME_RESULT], "salesforce-data-cloud")
+        self.assertEqual(
+            response.result[ATTRIBUTE_NAME_RESULT], "salesforce-data-cloud"
+        )
 
     def test_init_with_client_credentials_flow(self):
         # New DC path: only client_id/client_secret, no core_token.
@@ -202,7 +206,9 @@ class SalesforceDataCloudProxyClientTests(TestCase):
         )
 
         self.assertFalse(response.is_error)
-        self.assertEqual(response.result[ATTRIBUTE_NAME_RESULT], "salesforce-data-cloud")
+        self.assertEqual(
+            response.result[ATTRIBUTE_NAME_RESULT], "salesforce-data-cloud"
+        )
 
     def test_init_with_refresh_token(self):
         # Backward compat: old DCs sent refresh_token="required_but_not_used".
@@ -224,7 +230,9 @@ class SalesforceDataCloudProxyClientTests(TestCase):
         )
 
         self.assertFalse(response.is_error)
-        self.assertEqual(response.result[ATTRIBUTE_NAME_RESULT], "salesforce-data-cloud")
+        self.assertEqual(
+            response.result[ATTRIBUTE_NAME_RESULT], "salesforce-data-cloud"
+        )
 
     def test_list_tables(self):
         operation = {
@@ -247,7 +255,9 @@ class SalesforceDataCloudProxyClientTests(TestCase):
             table = next(t for t in tables if t.get("name") == mock_table["name"])
             self.assertEqual(len(table["fields"]), len(mock_table["fields"]))
             for mock_field in mock_table["fields"]:
-                field = next(f for f in table["fields"] if f.get("name") == mock_field["name"])
+                field = next(
+                    f for f in table["fields"] if f.get("name") == mock_field["name"]
+                )
                 self.assertEqual(field.get("type"), mock_field["type"])
 
         # Verify that the metadata was cached and not re-fetched for fetch_columns
@@ -412,7 +422,9 @@ class SalesforceDataCloudProxyClientTests(TestCase):
         # goes through _token_by_client_creds_flow and raises SalesforceCDPError.
         credentials = {**self.credentials}
         credentials["connect_args"] = {
-            k: v for k, v in self.credentials["connect_args"].items() if k != "core_token"
+            k: v
+            for k, v in self.credentials["connect_args"].items()
+            if k != "core_token"
         }
 
         response = self.agent.execute_operation(
@@ -491,7 +503,9 @@ class SalesforceDataCloudProxyClientTests(TestCase):
             method=responses.POST,
             url="https://test.salesforce.com/services/a360/token",
             status=200,
-            body=json.dumps({"error": "invalid_dataspace", "message": "Dataspace not found"}),
+            body=json.dumps(
+                {"error": "invalid_dataspace", "message": "Dataspace not found"}
+            ),
         )
 
         operation = {
@@ -507,7 +521,9 @@ class SalesforceDataCloudProxyClientTests(TestCase):
 
         credentials = {**self.credentials}
         credentials["connect_args"] = {
-            k: v for k, v in self.credentials["connect_args"].items() if k != "core_token"
+            k: v
+            for k, v in self.credentials["connect_args"].items()
+            if k != "core_token"
         }
 
         response = self.agent.execute_operation(
@@ -607,7 +623,9 @@ class SalesforceDataCloudProxyClientTests(TestCase):
             method=responses.POST,
             url="https://test.salesforce.com/services/a360/token",
             status=200,
-            body=json.dumps({"error": "invalid_dataspace", "message": "Dataspace not found"}),
+            body=json.dumps(
+                {"error": "invalid_dataspace", "message": "Dataspace not found"}
+            ),
         )
 
         client = SalesforceDataCloudProxyClient(
@@ -772,7 +790,9 @@ class SalesforceDataCloudProxyClientTests(TestCase):
         self.assertFalse(response.is_error)
 
         # The a360/token POST must have been called with dataspace=unified_knowledge
-        self.assertGreater(len(a360_requests), 0, "Expected at least one a360/token call")
+        self.assertGreater(
+            len(a360_requests), 0, "Expected at least one a360/token call"
+        )
         a360_request = a360_requests[0]
         query_params = parse_qs(urlparse(a360_request.url).query)
         self.assertEqual(
@@ -846,7 +866,9 @@ class SalesforceDataCloudProxyClientTests(TestCase):
         self.assertFalse(response.is_error)
 
         # The a360/token POST must NOT include a dataspace param
-        self.assertGreater(len(a360_requests), 0, "Expected at least one a360/token call")
+        self.assertGreater(
+            len(a360_requests), 0, "Expected at least one a360/token call"
+        )
         a360_request = a360_requests[0]
         query_params = parse_qs(urlparse(a360_request.url).query)
         self.assertNotIn(
