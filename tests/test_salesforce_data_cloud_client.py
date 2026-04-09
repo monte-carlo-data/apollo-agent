@@ -876,3 +876,84 @@ class SalesforceDataCloudProxyClientTests(TestCase):
             query_params,
             "Unscoped path must not include dataspace in a360/token POST",
         )
+
+    def test_list_tables_unscoped_even_when_client_has_dataspace(self):
+        """
+        When list_tables(dataspace=None) is called on a proxy client that was
+        instantiated with a dataspace (i.e. a query-execution client), the
+        a360/token exchange must NOT include a dataspace param.  Without this
+        guard a future caller could accidentally receive dataspace-scoped table
+        results while believing the fetch was unscoped.
+        """
+        from urllib.parse import urlparse, parse_qs
+
+        a360_requests = []
+
+        def capturing_a360_endpoint(request):
+            a360_requests.append(request)
+            return (
+                200,
+                {},
+                json.dumps(
+                    {
+                        "access_token": self.api_token,
+                        "expires_in": 3600,
+                        "instance_url": "test.salesforce.com",
+                    }
+                ),
+            )
+
+        self.mock_responses.remove(
+            responses.POST, "https://test.salesforce.com/services/a360/token"
+        )
+        self.mock_responses.add_callback(
+            method=responses.POST,
+            url="https://test.salesforce.com/services/a360/token",
+            callback=capturing_a360_endpoint,
+        )
+
+        # Credentials include a dataspace (as injected by the monolith for query jobs)
+        scoped_credentials = {
+            "connect_args": {
+                "domain": "test.salesforce.com",
+                "client_id": "test_client_id",
+                "client_secret": "test_client_secret",
+                "core_token": "test_core_token",
+                "dataspace": "unified_knowledge",
+            }
+        }
+
+        commands = [
+            {
+                "method": "list_tables",
+                "store": "tables",
+                "kwargs": {"dataspace": None},
+            },
+        ]
+        operation = {
+            "commands": commands,
+            "skip_cache": True,
+            "trace_id": "test-list-tables-unscoped-on-scoped-client",
+        }
+
+        response = self.agent.execute_operation(
+            connection_type="salesforce-data-cloud",
+            operation_name="test_list_tables_unscoped_on_scoped_client",
+            operation_dict=operation,
+            credentials=scoped_credentials,
+        )
+
+        self.assertFalse(response.is_error)
+
+        # Even though the client was created with dataspace=unified_knowledge,
+        # the list_tables(None) call must use an unscoped a360/token exchange
+        self.assertGreater(
+            len(a360_requests), 0, "Expected at least one a360/token call"
+        )
+        for req in a360_requests:
+            query_params = parse_qs(urlparse(req.url).query)
+            self.assertNotIn(
+                "dataspace",
+                query_params,
+                "list_tables(None) on a scoped client must not include dataspace in a360/token POST",
+            )
