@@ -134,19 +134,28 @@ class TestMapperConfigFromDict(TestCase):
         mapper = MapperConfig.from_dict({**_MAPPER_DICT, "passthrough": True})
         self.assertTrue(mapper.passthrough)
 
-    def test_missing_name_raises(self):
-        with self.assertRaises(ValueError) as ctx:
-            MapperConfig.from_dict(
-                {k: v for k, v in _MAPPER_DICT.items() if k != "name"}
-            )
-        self.assertIn("name", str(ctx.exception))
+    def test_name_defaults_to_empty(self):
+        mapper = MapperConfig.from_dict(
+            {k: v for k, v in _MAPPER_DICT.items() if k != "name"}
+        )
+        self.assertEqual("", mapper.name)
 
-    def test_missing_field_map_raises(self):
-        with self.assertRaises(ValueError) as ctx:
-            MapperConfig.from_dict(
-                {k: v for k, v in _MAPPER_DICT.items() if k != "field_map"}
-            )
-        self.assertIn("field_map", str(ctx.exception))
+    def test_flat_dict_shorthand(self):
+        # Mapper can be a flat {key: template} dict — no 'field_map' wrapper required
+        flat = {"host": "{{ raw.hostname }}", "port": "{{ raw.port }}"}
+        mapper = MapperConfig.from_dict(flat)
+        self.assertEqual(flat, mapper.field_map)
+        self.assertEqual("", mapper.name)
+        self.assertFalse(mapper.passthrough)
+
+    def test_dict_without_field_map_key_treated_as_shorthand(self):
+        # A dict without a 'field_map' key is treated as a flat shorthand — the whole
+        # dict becomes the field_map. There is no longer a "missing field_map" error.
+        mapper = MapperConfig.from_dict(
+            {k: v for k, v in _MAPPER_DICT.items() if k != "field_map"}
+        )
+        # _MAPPER_DICT without field_map is {"name": "my_mapper"}, treated as field_map
+        self.assertEqual({"name": "my_mapper"}, mapper.field_map)
 
 
 class TestCtpConfigFromDict(TestCase):
@@ -161,15 +170,25 @@ class TestCtpConfigFromDict(TestCase):
         ctp = CtpConfig.from_dict({**_CTP_DICT, "steps": []})
         self.assertEqual([], ctp.steps)
 
-    def test_missing_name_raises(self):
-        with self.assertRaises(ValueError) as ctx:
-            CtpConfig.from_dict({k: v for k, v in _CTP_DICT.items() if k != "name"})
-        self.assertIn("name", str(ctx.exception))
+    def test_name_defaults_to_empty(self):
+        ctp = CtpConfig.from_dict({k: v for k, v in _CTP_DICT.items() if k != "name"})
+        self.assertEqual("", ctp.name)
 
-    def test_missing_steps_raises(self):
-        with self.assertRaises(ValueError) as ctx:
-            CtpConfig.from_dict({k: v for k, v in _CTP_DICT.items() if k != "steps"})
-        self.assertIn("steps", str(ctx.exception))
+    def test_steps_default_to_empty_list(self):
+        ctp = CtpConfig.from_dict({k: v for k, v in _CTP_DICT.items() if k != "steps"})
+        self.assertEqual([], ctp.steps)
+
+    def test_mapper_only_config(self):
+        # Minimal valid config: just a mapper (flat shorthand)
+        ctp = CtpConfig.from_dict(
+            {"mapper": {"host": "{{ raw.hostname }}", "port": "{{ raw.port }}"}}
+        )
+        self.assertEqual("", ctp.name)
+        self.assertEqual([], ctp.steps)
+        self.assertEqual(
+            {"host": "{{ raw.hostname }}", "port": "{{ raw.port }}"},
+            ctp.mapper.field_map,
+        )
 
     def test_missing_mapper_raises(self):
         with self.assertRaises(ValueError) as ctx:
