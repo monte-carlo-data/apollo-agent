@@ -288,14 +288,18 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
             # returns the default-dataspace view regardless of how this client was
             # instantiated.  This prevents a future caller from accidentally getting
             # dataspace-scoped results while believing the fetch is unscoped.
+            #
+            # Preserve the original auth tokens (core_token / refresh_token) so we
+            # reuse any pre-fetched credentials rather than forcing an unnecessary
+            # client-credentials re-flow.  Only dataspace is cleared to remove scoping.
             if self._credentials.dataspace:
                 unscoped_conn: SalesforceDataCloudConnection | None = (
                     SalesforceDataCloudConnection(
                         f"https://{self._credentials.domain}",
                         client_id=self._credentials.client_id,
                         client_secret=self._credentials.client_secret,
-                        core_token=None,
-                        refresh_token=None,
+                        core_token=self._credentials.core_token,
+                        refresh_token=self._credentials.refresh_token,
                         dataspace=None,
                     )
                 )
