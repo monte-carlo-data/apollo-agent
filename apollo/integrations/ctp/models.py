@@ -34,41 +34,49 @@ class TransformStep:
 
 @dataclass
 class MapperConfig:
-    name: str
     field_map: dict[str, Any]
+    name: str = ""
     schema: type | None = None
     passthrough: bool = False
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> MapperConfig:
-        missing = {"name", "field_map"} - data.keys()
-        if missing:
-            raise ValueError(f"MapperConfig missing required fields: {sorted(missing)}")
+        if "field_map" in data:
+            # Full format: {field_map: {...}, name?: "...", passthrough?: bool}
+            field_map = data["field_map"]
+            name = data.get("name", "")
+            passthrough = data.get("passthrough", False)
+        else:
+            # Shorthand: the entire dict is the field_map (no name or passthrough)
+            field_map = data
+            name = ""
+            passthrough = False
+        if not isinstance(field_map, dict):
+            raise ValueError("MapperConfig 'field_map' must be a dict")
         return cls(
-            name=data["name"],
-            field_map=data["field_map"],
+            field_map=field_map,
+            name=name,
             # schema is always None when deserializing from JSON —
             # it is injected at runtime from the registered CTP for the connection type
             schema=None,
-            passthrough=data.get("passthrough", False),
+            passthrough=passthrough,
         )
 
 
 @dataclass
 class CtpConfig:
-    name: str
-    steps: list[TransformStep]
     mapper: MapperConfig
+    name: str = ""
+    steps: list[TransformStep] = field(default_factory=list)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> CtpConfig:
-        missing = {"name", "steps", "mapper"} - data.keys()
-        if missing:
-            raise ValueError(f"CtpConfig missing required fields: {sorted(missing)}")
+        if "mapper" not in data:
+            raise ValueError("CtpConfig missing required field: 'mapper'")
         return cls(
-            name=data["name"],
-            steps=[TransformStep.from_dict(s) for s in data["steps"]],
             mapper=MapperConfig.from_dict(data["mapper"]),
+            name=data.get("name", ""),
+            steps=[TransformStep.from_dict(s) for s in data.get("steps", [])],
         )
 
 
