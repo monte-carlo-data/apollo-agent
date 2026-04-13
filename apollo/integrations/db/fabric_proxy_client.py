@@ -21,7 +21,7 @@ class MsFabricProxyClient(TSqlBaseDbProxyClient):
     spec, e.g. ``{"Driver": "{ODBC Driver 17 for SQL Server}", "Server": "..."}`` becomes
     ``"Driver={ODBC Driver 17 for SQL Server};Server=..."``.
 
-    Optional credential keys:
+    Optional ``connect_args`` keys (popped before serialization):
     - ``login_timeout``: seconds to wait when establishing a connection (default 15).
     - ``query_timeout_in_seconds``: seconds to wait for a query result (default 840).
     """
