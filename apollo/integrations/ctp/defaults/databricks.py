@@ -50,10 +50,13 @@ DATABRICKS_DEFAULT_CTP = CtpConfig(
             "http_path": "{{ raw.http_path }}",
             # PAT auth — absent when using OAuth (step contributes credentials_provider instead)
             "access_token": "{{ raw.access_token | default(none) }}",
-            "_use_arrow_native_complex_types": "{{ raw._use_arrow_native_complex_types | default(false) }}",
+            "_use_arrow_native_complex_types": "{{ raw._use_arrow_native_complex_types | default(none) }}",
             "_user_agent_entry": "{{ raw._user_agent_entry | default(none) }}",
         },
     ),
+    # Disable Arrow native complex types — required for correct behaviour with the
+    # Databricks SQL connector; injected as a default so custom CTP configs inherit it.
+    connect_args_defaults={"_use_arrow_native_complex_types": False},
 )
 
 CtpRegistry.register("databricks", DATABRICKS_DEFAULT_CTP)

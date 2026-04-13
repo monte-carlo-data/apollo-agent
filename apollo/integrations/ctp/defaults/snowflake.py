@@ -74,7 +74,7 @@ SNOWFLAKE_DEFAULT_CTP = CtpConfig(
             "schema": "{{ raw.schema | default(none) }}",
             "role": "{{ raw.role | default(none) }}",
             "login_timeout": "{{ raw.login_timeout | default(none) }}",
-            "application": "{{ raw.application | default(none) }}",
+            "application": "{{ raw.application | default(none) }}",  # overrides connect_args_defaults when set
             "session_parameters": "{{ raw.session_parameters | default(none) }}",
             # Auth fields — omit when absent so the connector selects the auth mode
             # from whichever field is present (password / private_key / token).
@@ -87,6 +87,9 @@ SNOWFLAKE_DEFAULT_CTP = CtpConfig(
             "authenticator": "{{ raw.authenticator | default(none) }}",
         },
     ),
+    # Partner application name for Snowflake's usage tracking; always "Monte Carlo"
+    # unless overridden explicitly via raw.application in a custom CTP config.
+    connect_args_defaults={"application": "Monte Carlo"},
 )
 
 CtpRegistry.register("snowflake", SNOWFLAKE_DEFAULT_CTP)

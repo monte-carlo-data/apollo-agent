@@ -80,6 +80,13 @@ class CtpRegistry:
         registered = cls._registry.get(connection_type)
         if registered is not None:
             config.mapper.schema = registered.mapper.schema
+            # Inherit connector-level defaults from the registered config so custom
+            # mappers automatically get static constants (e.g. http_scheme, keepalives).
+            # Custom config's own connect_args_defaults take precedence over registered ones.
+            config.connect_args_defaults = {
+                **registered.connect_args_defaults,
+                **config.connect_args_defaults,
+            }
         raw_or_connect_args = credentials.get(_ATTR_CONNECT_ARGS, credentials)
         if not isinstance(raw_or_connect_args, dict):
             return credentials

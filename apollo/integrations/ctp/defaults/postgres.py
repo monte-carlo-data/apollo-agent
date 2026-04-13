@@ -59,6 +59,14 @@ POSTGRES_DEFAULT_CTP = CtpConfig(
             "sslmode": "{{ raw.ssl_mode | default(none) }}",
         },
     ),
+    # TCP keepalives required for AWS PrivateLink; injected as defaults so custom
+    # CTP configs inherit them without having to redeclare them.
+    connect_args_defaults={
+        "keepalives": 1,
+        "keepalives_idle": 30,
+        "keepalives_interval": 10,
+        "keepalives_count": 5,
+    },
 )
 
 from apollo.integrations.ctp.registry import CtpRegistry  # noqa: E402
