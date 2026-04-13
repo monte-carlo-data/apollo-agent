@@ -32,6 +32,7 @@ _RS_EXPECTED_CONNECT_ARGS = {
     "dbname": "db1",
     "user": "u",
     "password": "p",
+    "connect_timeout": 5,
     "keepalives": 1,
     "keepalives_idle": 30,
     "keepalives_interval": 10,
