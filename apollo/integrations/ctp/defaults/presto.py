@@ -46,14 +46,17 @@ PRESTO_DEFAULT_CTP = CtpConfig(
             "catalog": "{{ raw.catalog | default(none) }}",
             "schema": "{{ raw.schema | default(none) }}",
             "request_timeout": "{{ raw.request_timeout | default(none) }}",
-            "http_scheme": "{{ raw.http_scheme | default('http') }}",
-            "max_attempts": 3,
+            "http_scheme": "{{ raw.http_scheme | default(none) }}",
             # auth is omitted from the mapper — the step above contributes it via
             # field_map when raw.auth is present. When absent, auth is not in connect_args.
             # ssl_options is passed through for proxy-side _http_session.verify patching.
             "ssl_options": "{{ raw.ssl_options | default(none) }}",
         },
     ),
+    connect_args_defaults={
+        "http_scheme": "http",  # default scheme; overridden by raw.http_scheme if mapped
+        "max_attempts": 3,
+    },
 )
 
 CtpRegistry.register("presto", PRESTO_DEFAULT_CTP)

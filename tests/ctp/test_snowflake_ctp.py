@@ -142,12 +142,13 @@ class TestSnowflakeCtp(TestCase):
             "schema",
             "role",
             "login_timeout",
-            "application",
             "session_parameters",
             "token",
             "authenticator",
         ):
             self.assertNotIn(field, args, f"expected {field!r} to be absent")
+        # application is always injected as "Monte Carlo" via connect_args_defaults
+        self.assertEqual("Monte Carlo", args["application"])
 
     # ── OAuth via token acquisition ───────────────────────────────────
 

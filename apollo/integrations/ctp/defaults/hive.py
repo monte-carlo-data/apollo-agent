@@ -51,6 +51,8 @@ HIVE_DEFAULT_CTP = CtpConfig(
             "use_ssl": "{{ raw.use_ssl | default(none) }}",
         },
     ),
+    # 14min30s timeout — just under the DC Lambda limit; overridden by raw.timeout if mapped.
+    connect_args_defaults={"timeout": 870},
 )
 
 

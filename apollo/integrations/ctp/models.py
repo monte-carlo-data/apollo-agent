@@ -68,6 +68,7 @@ class CtpConfig:
     mapper: MapperConfig
     name: str = ""
     steps: list[TransformStep] = field(default_factory=list)
+    connect_args_defaults: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> CtpConfig:
@@ -77,6 +78,7 @@ class CtpConfig:
             mapper=MapperConfig.from_dict(data["mapper"]),
             name=data.get("name", ""),
             steps=[TransformStep.from_dict(s) for s in data.get("steps", [])],
+            connect_args_defaults=data.get("connect_args_defaults", {}),
         )
 
 
