@@ -12,7 +12,9 @@ from apollo.agent.logging_utils import LoggingUtils
 from apollo.integrations.ctp.registry import CtpRegistry
 from apollo.integrations.db.fabric_proxy_client import MsFabricProxyClient
 
-_SERVER = "myworkspace.datawarehouse.fabric.microsoft.com,1433"
+_HOST = "myworkspace.datawarehouse.fabric.microsoft.com"
+_PORT = 1433
+_SERVER = f"{_HOST},{_PORT}"
 _DATABASE = "mydb"
 _CLIENT_ID = "my-client-id"
 _CLIENT_SECRET = "my-client-secret"
@@ -204,6 +206,14 @@ class MsFabricProxyClientTests(TestCase):
 class MsFabricCtpRoundTripTests(TestCase):
     """Verify the CTP pipeline produces the expected ODBC dict from flat credentials."""
 
+    _FLAT_CREDS = {
+        "server": _HOST,
+        "database": _DATABASE,
+        "client_id": _CLIENT_ID,
+        "client_secret": _CLIENT_SECRET,
+        "tenant_id": _TENANT_ID,
+    }
+
     def test_ctp_registered(self):
         self.assertIsNotNone(CtpRegistry.get("microsoft-fabric"))
 
@@ -241,6 +251,12 @@ class MsFabricCtpRoundTripTests(TestCase):
                 creds.pop("server")
                 resolved = CtpRegistry.resolve("microsoft-fabric", creds)
                 self.assertEqual(_SERVER, resolved["connect_args"]["SERVER"])
+
+    def test_ctp_resolves_custom_port(self):
+        """A non-default port is included in the SERVER field."""
+        creds = {**self._FLAT_CREDS, "port": 1234}
+        resolved = CtpRegistry.resolve("microsoft-fabric", creds)
+        self.assertEqual(f"{_HOST},1234", resolved["connect_args"]["SERVER"])
 
     def test_ctp_resolves_db_name_alias(self):
         """db_name is accepted as an alias for database."""
