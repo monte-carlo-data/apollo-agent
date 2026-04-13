@@ -22,7 +22,7 @@ _TENANT_ID = "my-tenant-id"
 
 # Flat DC credentials (raw input to CTP)
 _FLAT_CREDS = {
-    "server": _SERVER,
+    "server": _HOST,
     "database": _DATABASE,
     "client_id": _CLIENT_ID,
     "client_secret": _CLIENT_SECRET,
@@ -239,14 +239,14 @@ class MsFabricCtpRoundTripTests(TestCase):
         """host and hostname are accepted as aliases for server."""
         for key in ("host", "hostname"):
             with self.subTest(key=key):
-                creds = {**_FLAT_CREDS, key: _SERVER}
+                creds = {**_FLAT_CREDS, key: _HOST}
                 creds.pop("server")
                 resolved = CtpRegistry.resolve("microsoft-fabric", creds)
                 self.assertEqual(_SERVER, resolved["connect_args"]["SERVER"])
 
     def test_ctp_resolves_custom_port(self):
         """A non-default port is included in the SERVER field."""
-        creds = {**self._FLAT_CREDS, "port": 1234}
+        creds = {**_FLAT_CREDS, "port": 1234}
         resolved = CtpRegistry.resolve("microsoft-fabric", creds)
         self.assertEqual(f"{_HOST},1234", resolved["connect_args"]["SERVER"])
 
