@@ -176,7 +176,7 @@ class MsFabricProxyClientTests(TestCase):
             "microsoft-fabric",
             "run_query",
             operation_dict,
-            _FLAT_CREDS,
+            {"connect_args": _CONNECT_ARGS_DICT},
         )
 
         self.assertIsNone(response.result.get(ATTRIBUTE_NAME_ERROR))
