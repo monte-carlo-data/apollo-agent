@@ -10,7 +10,6 @@ from apollo.common.agent.constants import ATTRIBUTE_NAME_ERROR, ATTRIBUTE_NAME_R
 _DATABRICKS_CREDENTIALS = {
     "server_hostname": "www.test.com",
     "http_path": "/path",
-    "_use_arrow_native_complex_types": False,
 }
 
 

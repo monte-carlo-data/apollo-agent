@@ -11,8 +11,8 @@ def _resolve(credentials: dict) -> dict:
 
 
 class TestDb2Ctp(TestCase):
-    def test_registered(self):
-        self.assertIsNotNone(CtpRegistry.get("db2"))
+    def test_not_registered(self):
+        self.assertIsNone(CtpRegistry.get("db2"))
 
     # ── Basic connection fields ────────────────────────────────────────
 

@@ -11,6 +11,10 @@ from apollo.common.agent.constants import (
     ATTRIBUTE_NAME_ERROR_TYPE,
     ATTRIBUTE_NAME_RESULT,
 )
+from apollo.integrations.databricks.databricks_rest_proxy_client import (
+    AuthenticationMode,
+    DatabricksRestProxyClient,
+)
 
 _WORKSPACE_URL = "https://adb-123.azuredatabricks.net"
 _PAT = "dapi-test-token"
@@ -52,6 +56,50 @@ _OPERATION = {
 }
 
 
+class TestDatabricksRestProxyClientAuthMode(TestCase):
+    """Unit tests for _authentication_mode — no network calls or client init needed."""
+
+    def setUp(self) -> None:
+        # Bypass __init__ so we can test the method in isolation
+        self._client = DatabricksRestProxyClient.__new__(DatabricksRestProxyClient)
+
+    def test_pat_mode(self):
+        self.assertEqual(
+            AuthenticationMode.TOKEN,
+            self._client._authentication_mode(_PAT_CREDENTIALS),
+        )
+
+    def test_databricks_oauth_mode(self):
+        self.assertEqual(
+            AuthenticationMode.DATABRICKS_OAUTH,
+            self._client._authentication_mode(_DATABRICKS_OAUTH_CREDENTIALS),
+        )
+
+    def test_azure_oauth_mode(self):
+        self.assertEqual(
+            AuthenticationMode.AZURE_OAUTH,
+            self._client._authentication_mode(_AZURE_OAUTH_CREDENTIALS),
+        )
+
+    def test_oauth_takes_priority_over_pat(self):
+        """OAuth keys take priority even when a stale PAT is also present."""
+        mixed = {**_DATABRICKS_OAUTH_CREDENTIALS, "databricks_token": "stale-pat"}
+        self.assertEqual(
+            AuthenticationMode.DATABRICKS_OAUTH,
+            self._client._authentication_mode(mixed),
+        )
+
+    def test_empty_credentials_raises(self):
+        with self.assertRaises(RuntimeError):
+            self._client._authentication_mode({})
+
+    def test_missing_secret_raises(self):
+        with self.assertRaises(RuntimeError):
+            self._client._authentication_mode(
+                {"databricks_client_id": _CLIENT_ID}  # no secret
+            )
+
+
 class TestDatabricksRestProxyClientRequests(TestCase):
     """Integration-style tests that exercise the full agent → proxy client path."""
 
@@ -84,8 +132,8 @@ class TestDatabricksRestProxyClientRequests(TestCase):
         )
 
     @patch("requests.request")
-    def test_do_request_with_pre_shaped_connect_args(self, mock_request):
-        """DC-pre-shaped connect_args are unwrapped and run through CTP."""
+    def test_do_request_with_connect_args_format(self, mock_request):
+        """Credentials wrapped under 'connect_args' are unpacked correctly."""
         self._mock_http_success(mock_request, {"result": "ok"})
 
         response = self._agent.execute_operation(
@@ -107,12 +155,13 @@ class TestDatabricksRestProxyClientRequests(TestCase):
 
     @patch("requests.request")
     @patch(
-        "apollo.integrations.ctp.transforms.resolve_databricks_token.oauth_service_principal"
+        "apollo.integrations.databricks.databricks_rest_proxy_client.oauth_service_principal"
     )
-    @patch("apollo.integrations.ctp.transforms.resolve_databricks_token.Config")
+    @patch("apollo.integrations.databricks.databricks_rest_proxy_client.Config")
     def test_do_request_with_databricks_oauth(
         self, mock_config_cls, mock_oauth_provider, mock_request
     ):
+        # Config.__init__ probes the OIDC endpoint; mock the class to avoid network calls.
         self._mock_http_success(mock_request, {"result": "ok"})
         mock_oauth_provider.return_value = Mock(
             return_value={"Authorization": f"Bearer {_OAUTH_TOKEN}"}
@@ -131,6 +180,7 @@ class TestDatabricksRestProxyClientRequests(TestCase):
             client_id=_CLIENT_ID,
             client_secret=_CLIENT_SECRET,
         )
+        mock_oauth_provider.assert_called_once_with(mock_config_cls.return_value)
         self.assertEqual(
             f"Bearer {_OAUTH_TOKEN}",
             mock_request.call_args[1]["headers"]["Authorization"],
@@ -142,12 +192,13 @@ class TestDatabricksRestProxyClientRequests(TestCase):
 
     @patch("requests.request")
     @patch(
-        "apollo.integrations.ctp.transforms.resolve_databricks_token.azure_service_principal"
+        "apollo.integrations.databricks.databricks_rest_proxy_client.azure_service_principal"
     )
-    @patch("apollo.integrations.ctp.transforms.resolve_databricks_token.Config")
+    @patch("apollo.integrations.databricks.databricks_rest_proxy_client.Config")
     def test_do_request_with_azure_oauth(
         self, mock_config_cls, mock_azure_provider, mock_request
     ):
+        # Config.__init__ probes the OIDC endpoint; mock the class to avoid network calls.
         self._mock_http_success(mock_request, {"result": "ok"})
         mock_azure_provider.return_value = Mock(
             return_value={"Authorization": f"Bearer {_OAUTH_TOKEN}"}
@@ -168,6 +219,7 @@ class TestDatabricksRestProxyClientRequests(TestCase):
             azure_tenant_id=_AZURE_TENANT_ID,
             azure_workspace_resource_id=_AZURE_WORKSPACE_RESOURCE_ID,
         )
+        mock_azure_provider.assert_called_once_with(mock_config_cls.return_value)
         self.assertEqual(
             f"Bearer {_OAUTH_TOKEN}",
             mock_request.call_args[1]["headers"]["Authorization"],
@@ -178,7 +230,7 @@ class TestDatabricksRestProxyClientRequests(TestCase):
     # ------------------------------------------------------------------
 
     def test_no_supported_credentials_surfaces_error(self):
-        """Missing token/OAuth keys → CTP pipeline error is surfaced in the agent response."""
+        """Missing token/OAuth keys → RuntimeError is surfaced in the agent response."""
         response = self._agent.execute_operation(
             "databricks-rest",
             "start_warehouse",
@@ -187,9 +239,8 @@ class TestDatabricksRestProxyClientRequests(TestCase):
         )
 
         self.assertIsNotNone(response.result.get(ATTRIBUTE_NAME_ERROR))
-        # Step is skipped when no auth keys are present; mapper raises for missing required field.
         self.assertIn(
-            "token",
+            "No supported credentials mode found",
             response.result.get(ATTRIBUTE_NAME_ERROR),
         )
 

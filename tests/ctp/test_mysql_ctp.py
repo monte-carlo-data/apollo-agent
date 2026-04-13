@@ -8,8 +8,8 @@ from apollo.integrations.ctp.registry import CtpRegistry
 
 
 class TestMysqlCtp(TestCase):
-    def test_registered(self):
-        self.assertIsNotNone(CtpRegistry.get("mysql"))
+    def test_not_registered(self):
+        self.assertIsNone(CtpRegistry.get("mysql"))
 
     def test_resolve_flat_mysql_no_ssl(self):
         result = CtpPipeline().execute(

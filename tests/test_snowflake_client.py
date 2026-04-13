@@ -16,8 +16,6 @@ from apollo.agent.logging_utils import LoggingUtils
 from apollo.agent.proxy_client_factory import ProxyClientFactory
 
 _SF_CREDENTIALS = {"user": "u", "password": "p", "account": "a", "warehouse": "w"}
-# Expected connect() kwargs after CTP applies connect_args_defaults (application injected).
-_SF_EXPECTED_CONNECT_ARGS = {**_SF_CREDENTIALS, "application": "Monte Carlo"}
 
 
 class SnowflakeClientTests(TestCase):
@@ -50,11 +48,7 @@ class SnowflakeClientTests(TestCase):
         )
         self.assertIsNotNone(client)
         mock_connect.assert_called_once_with(
-            application="Monte Carlo",
-            user="u",
-            account="a",
-            warehouse="w",
-            private_key=private_key,
+            user="u", private_key=private_key, account="a", warehouse="w"
         )
 
     @patch("snowflake.connector.connect")
@@ -204,7 +198,7 @@ class SnowflakeClientTests(TestCase):
         self.assertTrue(ATTRIBUTE_NAME_RESULT in response.result)
         result = response.result.get(ATTRIBUTE_NAME_RESULT)
 
-        mock_connect.assert_called_with(**_SF_EXPECTED_CONNECT_ARGS)
+        mock_connect.assert_called_with(**_SF_CREDENTIALS)
         self._mock_cursor.execute.assert_has_calls(
             [
                 call(query, None),

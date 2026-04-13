@@ -5,10 +5,8 @@ from typing import (
 
 import pyodbc
 
-from apollo.integrations.db.tsql_base_db_proxy_client import (
-    TSqlBaseDbProxyClient,
-    odbc_string_from_dict,
-)
+from apollo.common.agent.models import AgentError
+from apollo.integrations.db.tsql_base_db_proxy_client import TSqlBaseDbProxyClient
 
 _ATTR_CONNECT_ARGS = "connect_args"
 
@@ -29,30 +27,18 @@ class SqlServerProxyClient(TSqlBaseDbProxyClient):
             raise ValueError(
                 f"SQL Server agent client requires {_ATTR_CONNECT_ARGS} in credentials"
             )
-        connect_args = credentials[_ATTR_CONNECT_ARGS]
-        if isinstance(connect_args, dict):
-            # CTP path: timeout fields land in connect_args; pop before building ODBC string
-            connect_args = dict(connect_args)
-            login_timeout = connect_args.pop(
-                "login_timeout", self._DEFAULT_LOGIN_TIMEOUT_IN_SECONDS
+        if isinstance(credentials[_ATTR_CONNECT_ARGS], dict):
+            # Older DC versions will send the credentials as a dictionary instead of a string. Gracefully catch these
+            # cases and tell the user to update their DC.
+            raise AgentError(
+                f"Connection details format is not supported. Please update your Date Collector to >16294"
             )
-            query_timeout = connect_args.pop(
-                "query_timeout_in_seconds", self._DEFAULT_QUERY_TIMEOUT_IN_SECONDS
-            )
-            connection_string = odbc_string_from_dict(connect_args)
-        else:
-            # Legacy path: pre-built ODBC string; timeouts at top-level credentials
-            login_timeout = credentials.get(
-                "login_timeout", self._DEFAULT_LOGIN_TIMEOUT_IN_SECONDS
-            )
-            query_timeout = credentials.get(
-                "query_timeout_in_seconds", self._DEFAULT_QUERY_TIMEOUT_IN_SECONDS
-            )
-            connection_string = connect_args
         self._connection = pyodbc.connect(
-            connection_string,
+            credentials[_ATTR_CONNECT_ARGS],
             # Set timeout for establishing connection to db
-            timeout=login_timeout,
+            timeout=credentials.get(
+                "login_timeout", self._DEFAULT_LOGIN_TIMEOUT_IN_SECONDS
+            ),
         )  # type: ignore
 
         # Add output converter to handle datetimeoffset data types that are not supported by pyodbc
@@ -61,7 +47,9 @@ class SqlServerProxyClient(TSqlBaseDbProxyClient):
         )
 
         # Set timeout for any query executed through this connection
-        self._connection.timeout = query_timeout
+        self._connection.timeout = credentials.get(
+            "query_timeout_in_seconds", self._DEFAULT_QUERY_TIMEOUT_IN_SECONDS
+        )
 
     @property
     def wrapped_client(self):

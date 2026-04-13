@@ -25,6 +25,12 @@ class RedshiftClientArgs(TypedDict):
     keepalives_idle: NotRequired[int]
     keepalives_interval: NotRequired[int]
     keepalives_count: NotRequired[int]
+    # Redshift-specific
+    # Note: autocommit is a post-connection attribute on the psycopg2 connection
+    # object, not a connect() parameter. It is read from the top level of
+    # credentials by the proxy client today. Phase 2 will move it into connect_args
+    # and update the proxy client accordingly.
+    autocommit: NotRequired[bool]
 
 
 REDSHIFT_DEFAULT_CTP = CtpConfig(
@@ -54,22 +60,14 @@ REDSHIFT_DEFAULT_CTP = CtpConfig(
             "user": "{{ raw.user | default('awsuser') }}",
             "password": "{{ raw.password }}",
             "connect_timeout": "{{ raw.connect_timeout | default(none) }}",
+            # DC hardcodes these keepalive values for all Redshift connections
+            "keepalives": 1,
+            "keepalives_idle": 30,
+            "keepalives_interval": 10,
+            "keepalives_count": 5,
             # statement_timeout in ms; derived from query_timeout_in_seconds when provided
             "options": "{{ '-c statement_timeout=' ~ (raw.query_timeout_in_seconds | int * 1000) if raw.query_timeout_in_seconds is defined else none }}",
             "sslmode": "{{ raw.ssl_mode | default(none) }}",
         },
     ),
-    # TCP keepalives required for AWS PrivateLink; injected as defaults so custom
-    # CTP configs inherit them without having to redeclare them.
-    connect_args_defaults={
-        "connect_timeout": 5,
-        "keepalives": 1,
-        "keepalives_idle": 30,
-        "keepalives_interval": 10,
-        "keepalives_count": 5,
-    },
 )
-
-from apollo.integrations.ctp.registry import CtpRegistry  # noqa: E402
-
-CtpRegistry.register("redshift", REDSHIFT_DEFAULT_CTP)

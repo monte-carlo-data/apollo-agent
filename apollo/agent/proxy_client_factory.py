@@ -296,7 +296,6 @@ def _get_proxy_client_salesforce_data_cloud(
     client_secret = connect_args.get("client_secret")
     core_token = connect_args.get("core_token")
     refresh_token = connect_args.get("refresh_token")
-    dataspace = connect_args.get("dataspace")
 
     if not all([domain, client_id, client_secret]):
         raise ValueError("Missing required connection parameters")
@@ -307,7 +306,6 @@ def _get_proxy_client_salesforce_data_cloud(
         client_secret=client_secret,
         core_token=core_token,
         refresh_token=refresh_token,
-        dataspace=dataspace,
     )
     return SalesforceDataCloudProxyClient(credentials=credentials)
 
@@ -420,15 +418,12 @@ class ProxyClientFactory:
         credentials: Optional[Dict],
         skip_cache: bool,
         platform: str,
-        ctp_config: Optional[Dict] = None,
     ) -> BaseProxyClient:
         # skip_cache is a flag sent by the client, and can be used to force a new client to be created
         # it defaults to False
         if skip_cache:
             try:
-                return cls._create_proxy_client(
-                    connection_type, credentials, platform, ctp_config=ctp_config
-                )
+                return cls._create_proxy_client(connection_type, credentials, platform)
             except Exception:
                 logger.exception(f"Failed to create {connection_type} client")
                 raise
@@ -444,7 +439,7 @@ class ProxyClientFactory:
                 logger.info(f"Using cached client for {connection_type}")
             else:
                 client = cls._create_proxy_client(
-                    connection_type, credentials, platform, ctp_config=ctp_config
+                    connection_type, credentials, platform
                 )
                 logger.info(f"Caching {connection_type} client")
                 cls._cache_client(key, client)
@@ -468,19 +463,11 @@ class ProxyClientFactory:
 
     @classmethod
     def _create_proxy_client(
-        cls,
-        connection_type: str,
-        credentials: Optional[Dict],
-        platform: str,
-        ctp_config: Optional[Dict] = None,
+        cls, connection_type: str, credentials: Optional[Dict], platform: str
     ) -> BaseProxyClient:
         if credentials:
             credentials = decode_dictionary(credentials)
-        if ctp_config and credentials:
-            credentials = CtpRegistry.resolve_custom(
-                connection_type, credentials, ctp_config, context={"platform": platform}
-            )
-        elif credentials and CtpRegistry.get(connection_type):
+        if credentials and CtpRegistry.get(connection_type):
             credentials = CtpRegistry.resolve(
                 connection_type, credentials, context={"platform": platform}
             )

@@ -1,4 +1,9 @@
 # tests/ctp/test_power_bi_ctp.py
+#
+# The proxy client reads credentials flat and calls MSAL internally, then forwards
+# token + auth_type="Bearer" to HttpProxyClient. Not registered until Phase 2 updates
+# PowerBiProxyClient to read from connect_args.
+# Tests use CtpPipeline().execute() directly and mock MSAL calls.
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
@@ -33,8 +38,8 @@ def _pu_creds(**kwargs) -> dict:
 
 
 class TestPowerBiCtp(TestCase):
-    def test_powerbi_registered(self):
-        self.assertIsNotNone(CtpRegistry.get("power-bi"))
+    def test_powerbi_not_registered(self):
+        self.assertIsNone(CtpRegistry.get("power-bi"))
 
     # ── Service principal flow ────────────────────────────────────────
 

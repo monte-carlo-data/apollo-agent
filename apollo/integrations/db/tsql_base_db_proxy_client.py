@@ -5,25 +5,6 @@ from typing import List
 from apollo.integrations.db.base_db_proxy_client import BaseDbProxyClient
 
 
-def odbc_escape(value: str) -> str:
-    """Escape an ODBC connection string value by wrapping in braces if it contains special chars.
-
-    Values containing ``;``, ``{``, ``}``, or ``=`` are wrapped in curly braces.  Any literal
-    ``}`` inside the value is doubled (``}}``) per the ODBC spec.  Values already wrapped in a
-    matching ``{...}`` pair (e.g. driver names) are left unchanged.
-    """
-    if value.startswith("{") and value.endswith("}"):
-        return value
-    if any(c in value for c in (";", "{", "}", "=")):
-        return "{" + value.replace("}", "}}") + "}"
-    return value
-
-
-def odbc_string_from_dict(connect_args: dict) -> str:
-    """Serialize a dict of ODBC key-value pairs to a connection string."""
-    return ";".join(f"{k}={odbc_escape(str(v))}" for k, v in connect_args.items())
-
-
 class TSqlBaseDbProxyClient(BaseDbProxyClient):
     """Base class for pyodbc-based T-SQL clients (SQL Server, Azure SQL, MS Fabric).
 

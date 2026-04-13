@@ -60,7 +60,7 @@ class TestProxyClientFactoryCtp(TestCase):
         )
         self.assertEqual("mydb", captured["credentials"]["connect_args"]["dbname"])
 
-    def test_http_credentials_run_through_ctp(self):
+    def test_http_credentials_pass_through_unchanged(self):
         http_creds = {"token": "Bearer abc123"}
         captured = {}
 
@@ -75,17 +75,12 @@ class TestProxyClientFactoryCtp(TestCase):
             with self.assertRaises(StopIteration):
                 ProxyClientFactory._create_proxy_client("http", http_creds, "local")
 
-        # http is registered in CTP — credentials are wrapped in connect_args
-        self.assertIn("connect_args", captured["credentials"])
-        self.assertEqual(
-            "Bearer abc123", captured["credentials"]["connect_args"]["token"]
-        )
+        # http is not in the CTP registry — credentials must NOT be wrapped
+        self.assertNotIn("connect_args", captured["credentials"])
+        self.assertEqual("Bearer abc123", captured["credentials"]["token"])
 
-    def test_dc_shaped_credentials_run_through_ctp(self):
-        # DC pre-shapes credentials into connect_args before calling the agent.
-        # CTP unwraps the inner dict and runs it through the pipeline, so
-        # field aliases (e.g. database → dbname) are normalised on both paths.
-        dc_shaped = {"connect_args": {"host": "db.example.com", "database": "mydb"}}
+    def test_legacy_connect_args_not_overwritten_by_ctp(self):
+        legacy = {"connect_args": {"host": "h", "dbname": "d"}}
         captured = {}
 
         def fake_factory(credentials, platform):
@@ -98,10 +93,7 @@ class TestProxyClientFactoryCtp(TestCase):
         ):
             with self.assertRaises(StopIteration):
                 ProxyClientFactory._create_proxy_client(
-                    _TEST_CONNECTION_TYPE, dc_shaped, "local"
+                    _TEST_CONNECTION_TYPE, legacy, "local"
                 )
 
-        self.assertIn("connect_args", captured["credentials"])
-        ca = captured["credentials"]["connect_args"]
-        self.assertEqual("db.example.com", ca["host"])
-        self.assertEqual("mydb", ca["dbname"])
+        self.assertEqual(legacy, captured["credentials"])

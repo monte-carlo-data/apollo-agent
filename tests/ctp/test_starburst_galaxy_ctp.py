@@ -9,8 +9,8 @@ from apollo.integrations.ctp.registry import CtpRegistry
 
 
 class TestStarburstGalaxyCtp(TestCase):
-    def test_registered(self):
-        self.assertIsNotNone(CtpRegistry.get("starburst-galaxy"))
+    def test_not_registered(self):
+        self.assertIsNone(CtpRegistry.get("starburst-galaxy"))
 
     def test_resolve_flat_starburst_galaxy_credentials(self):
         result = CtpPipeline().execute(

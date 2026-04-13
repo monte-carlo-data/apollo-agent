@@ -165,14 +165,10 @@ class TestHttpClient(TestCase):
 
     @patch("requests.request")
     def test_http_request_with_custom_auth_header(self, mock_request):
-        # Use connect_args directly (DC pre-shaped path) so CTP pass-through applies.
-        # auth_type=None means no prefix: header value is the bare token.
         credentials = {
-            "connect_args": {
-                "auth_header": "Api-Key",
-                "auth_type": None,
-                "token": "1234",
-            }
+            "auth_header": "Api-Key",
+            "auth_type": None,
+            "token": "1234",
         }
         mock_response = create_autospec(Response)
         mock_request.return_value = mock_response
@@ -190,7 +186,7 @@ class TestHttpClient(TestCase):
             "GET",
             "https://test.com/path",
             headers={
-                "Api-Key": "1234",
+                credentials["auth_header"]: credentials["token"],
                 "User-Agent": _HTTP_USER_AGENT,
             },
         )
@@ -349,20 +345,20 @@ class TestHttpClient(TestCase):
         )
 
     @patch("requests.request")
-    def test_http_request_with_ssl_options_ca_data(self, mock_request):
-        """Test that ssl_verify path in connect_args is forwarded to requests as verify."""
+    @patch("builtins.open", new_callable=mock_open)
+    def test_http_request_with_ssl_options_ca_data(self, mock_file, mock_request):
+        """Test that ssl_options with ca_data configures SSL verification with a cert file"""
         mock_response = create_autospec(Response)
         mock_request.return_value = mock_response
         expected_result = {"ok": True}
         mock_response.json.return_value = expected_result
 
-        # Use connect_args directly (DC pre-shaped / CTP-resolved path) so ssl_verify
-        # is already a file path — no temp-file creation needed in the proxy client.
+        ca_data = "-----BEGIN CERTIFICATE-----\nMIIDtest\n-----END CERTIFICATE-----"
         credentials = {
-            "connect_args": {
-                "token": "test_token",
-                "ssl_verify": "/tmp/fake_ca.pem",
-            }
+            "token": "test_token",
+            "ssl_options": {
+                "ca_data": ca_data,
+            },
         }
 
         operation = deepcopy(_HTTP_OPERATION)
@@ -373,9 +369,10 @@ class TestHttpClient(TestCase):
             credentials,
         )
 
+        # Verify request was made with verify pointing to a cert file path
         call_kwargs = mock_request.call_args[1]
         self.assertIn("verify", call_kwargs)
-        self.assertTrue(call_kwargs["verify"].endswith(".pem"))
+        self.assertTrue(call_kwargs["verify"].endswith("_http_ca.pem"))
 
         self.assertTrue(ATTRIBUTE_NAME_RESULT in response.result)
         self.assertEqual(expected_result, response.result.get(ATTRIBUTE_NAME_RESULT))

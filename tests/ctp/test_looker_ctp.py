@@ -1,4 +1,8 @@
 # tests/ctp/test_looker_ctp.py
+#
+# Not registered: proxy client reads flat credentials and writes the looker-sdk INI
+# file itself; CTP output would break that flow. Phase 2 adds a write_ini_file
+# transform and updates the proxy client. Tests use CtpPipeline().execute() directly.
 from unittest import TestCase
 
 from apollo.integrations.ctp.defaults.looker import LOOKER_DEFAULT_CTP
@@ -11,8 +15,8 @@ def _resolve(credentials: dict) -> dict:
 
 
 class TestLookerCtp(TestCase):
-    def test_looker_registered(self):
-        self.assertIsNotNone(CtpRegistry.get("looker"))
+    def test_looker_not_registered(self):
+        self.assertIsNone(CtpRegistry.get("looker"))
 
     def test_basic_connection(self):
         args = _resolve(
@@ -46,19 +50,3 @@ class TestLookerCtp(TestCase):
             }
         )
         self.assertFalse(args["verify_ssl"])
-
-    def test_ini_file_written(self):
-        import os
-
-        args = _resolve(
-            {
-                "base_url": "https://mycompany.looker.com",
-                "client_id": "id",
-                "client_secret": "secret",
-            }
-        )
-        ini_path = args.get("ini_file_path")
-        self.assertIsNotNone(ini_path)
-        self.assertTrue(ini_path.endswith(".ini"))
-        if os.path.exists(ini_path):
-            os.unlink(ini_path)

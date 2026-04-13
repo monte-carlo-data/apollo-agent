@@ -13,14 +13,15 @@ class RedshiftProxyClient(PostgresProxyClient):
     Proxy client for Redshift.
     Credentials are expected to be supplied under "connect_args" and will be passed directly to `psycopg2.connect`, so
     only attributes supported as parameters by `psycopg2.connect` should be passed.
-    autocommit is always enabled on the connection.
+    If "autocommit" is present in credentials it will be set in _connection.autocommit.
     """
 
     def __init__(self, credentials: Optional[Dict], **kwargs):  # type: ignore
         PostgresProxyClient.__init__(
             self, credentials=credentials, client_type="redshift"
         )
-        self._connection.autocommit = True
+        if credentials and credentials.get("autocommit", False):
+            self._connection.autocommit = True
 
     def disable_decoding_in_driver(self):
         """

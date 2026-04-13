@@ -8,8 +8,8 @@ from apollo.integrations.ctp.registry import CtpRegistry
 
 
 class TestPostgresCtp(TestCase):
-    def test_registered(self):
-        self.assertIsNotNone(CtpRegistry.get("postgres"))
+    def test_not_registered(self):
+        self.assertIsNone(CtpRegistry.get("postgres"))
 
     def test_resolve_flat_postgres_credentials_applies_ctp(self):
         result = CtpPipeline().execute(

@@ -1,7 +1,6 @@
 from typing import NotRequired, TypedDict
 
 from apollo.integrations.ctp.models import CtpConfig, MapperConfig
-from apollo.integrations.ctp.registry import CtpRegistry
 
 
 class BqClientArgs(TypedDict):
@@ -45,5 +44,3 @@ BIGQUERY_DEFAULT_CTP = CtpConfig(
         },
     ),
 )
-
-CtpRegistry.register("bigquery", BIGQUERY_DEFAULT_CTP)

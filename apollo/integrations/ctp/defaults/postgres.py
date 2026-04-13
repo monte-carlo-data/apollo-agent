@@ -52,23 +52,10 @@ POSTGRES_DEFAULT_CTP = CtpConfig(
         field_map={
             "host": "{{ raw.host }}",
             "port": "{{ raw.port }}",
-            # DC sends driver-native "dbname"; flat credentials use "database" or "db_name"
-            "dbname": "{{ raw.database | default(raw.db_name) | default(raw.dbname) }}",
+            "dbname": "{{ raw.database }}",
             "user": "{{ raw.user }}",
             "password": "{{ raw.password }}",
             "sslmode": "{{ raw.ssl_mode | default(none) }}",
         },
     ),
-    # TCP keepalives required for AWS PrivateLink; injected as defaults so custom
-    # CTP configs inherit them without having to redeclare them.
-    connect_args_defaults={
-        "keepalives": 1,
-        "keepalives_idle": 30,
-        "keepalives_interval": 10,
-        "keepalives_count": 5,
-    },
 )
-
-from apollo.integrations.ctp.registry import CtpRegistry  # noqa: E402
-
-CtpRegistry.register("postgres", POSTGRES_DEFAULT_CTP)

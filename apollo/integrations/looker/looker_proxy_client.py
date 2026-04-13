@@ -1,6 +1,7 @@
 import os
+import uuid
 from enum import Enum
-from typing import Dict, Any, Sequence, Optional, List
+from typing import Dict, Any, Sequence, Optional, List, TextIO
 
 import attr
 from attr import asdict
@@ -16,6 +17,7 @@ from apollo.common.agent.constants import (
     ATTRIBUTE_VALUE_TYPE_LOOKER_CATEGORY,
 )
 from apollo.common.agent.serde import AgentSerializer
+from apollo.agent.utils import AgentUtils
 from apollo.integrations.base_proxy_client import BaseProxyClient
 
 _LOOKER_DIRECTORY = "looker"
@@ -30,18 +32,30 @@ class LookerProxyClient(BaseProxyClient):
     """
 
     def __init__(self, credentials: Optional[Dict], **kwargs):  # type: ignore
+        """
+        initializing the looker client. The credentials dictionary should include the following:
+        base_url (string)
+        client_id (string)
+        client_secret (string)
+        verify_ssl (boolean) (default is true)
+        """
         if not credentials:
             raise ValueError("Credentials are required for Looker")
 
-        creds = credentials["connect_args"]
-        self._temp_file_path = creds["ini_file_path"]
-        self._client_id = creds.get("client_id")
-        self._client_secret = creds.get("client_secret")
+        self._temp_file_path = AgentUtils.temp_file_path(
+            sub_folder=_LOOKER_DIRECTORY, extension="ini"
+        )
+
+        self._client_id = credentials.get("client_id")
+        self._client_secret = credentials.get("client_secret")
+
+        with open(self._temp_file_path, "w") as output_file:
+            self._write_connection_to_file(output_file, credentials)
         self._client = init40(self._temp_file_path)
         # we cannot remove temp_file_path here, it's used when we call the first method, like all_dashboards
 
     def __del__(self):
-        if self._temp_file_path and os.path.exists(self._temp_file_path):
+        if self._temp_file_path:
             os.remove(self._temp_file_path)
 
     def login(self, transport_options: Optional[Dict]):
@@ -56,6 +70,12 @@ class LookerProxyClient(BaseProxyClient):
                 TransportOptions(**transport_options) if transport_options else None
             ),
         )
+
+    @staticmethod
+    def _write_connection_to_file(output_file: TextIO, credentials: Dict) -> None:
+        output_file.write("[Looker]\n")
+        for key in credentials.keys():
+            output_file.write(f"{key}={credentials[key]}\n")
 
     @property
     def wrapped_client(self):

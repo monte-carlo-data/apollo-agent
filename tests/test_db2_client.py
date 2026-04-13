@@ -12,11 +12,14 @@ STRING_TYPE = ibm_db_dbi.DBAPITypeObject(("CHARACTER", "CHAR", "VARCHAR"))
 NUMBER_TYPE = ibm_db_dbi.DBAPITypeObject(("DECIMAL",))
 
 _DB2_CREDENTIALS = {
-    "host": "localhost",
-    "port": "50000",
-    "database": "testdb",
-    "user": "testuser",
-    "password": "testpass",
+    "connect_args": {
+        "DATABASE": "testdb",
+        "HOSTNAME": "localhost",
+        "PORT": "50000",
+        "PROTOCOL": "TCPIP",
+        "UID": "testuser",
+        "PWD": "testpass",
+    }
 }
 
 
@@ -98,7 +101,7 @@ class Db2ClientTests(TestCase):
         }
         self.assertEqual(result.result[ATTRIBUTE_NAME_RESULT], expected_result)
 
-        expected_connection_string = "HOSTNAME=localhost;PORT=50000;DATABASE=testdb;UID=testuser;PWD=testpass;PROTOCOL=TCPIP"
+        expected_connection_string = "DATABASE=testdb;HOSTNAME=localhost;PORT=50000;PROTOCOL=TCPIP;UID=testuser;PWD=testpass"
         mock_ibm_db_connect.assert_called_once_with(expected_connection_string, "", "")
 
     @patch("ibm_db_dbi.Connection")

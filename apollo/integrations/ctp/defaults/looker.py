@@ -1,6 +1,6 @@
 from typing import NotRequired, Required, TypedDict
 
-from apollo.integrations.ctp.models import CtpConfig, MapperConfig, TransformStep
+from apollo.integrations.ctp.models import CtpConfig, MapperConfig
 
 
 class LookerClientArgs(TypedDict):
@@ -8,26 +8,15 @@ class LookerClientArgs(TypedDict):
     client_id: Required[str]
     client_secret: Required[str]
     verify_ssl: NotRequired[bool]  # default True
-    ini_file_path: Required[
-        str
-    ]  # path to temp INI file written by write_ini_file transform
 
 
 LOOKER_DEFAULT_CTP = CtpConfig(
     name="looker-default",
     steps=[
-        TransformStep(
-            type="write_ini_file",
-            input={
-                "section": "Looker",
-                "base_url": "{{ raw.base_url }}",
-                "client_id": "{{ raw.client_id }}",
-                "client_secret": "{{ raw.client_secret }}",
-                "verify_ssl": "{{ raw.verify_ssl | default(true) }}",
-            },
-            output={"path": "looker_ini_path"},
-            field_map={"ini_file_path": "{{ derived.looker_ini_path }}"},
-        ),
+        # Phase 2: add a write_ini_file transform that materialises these fields
+        # into a temp [Looker] INI file and stores the path in state.derived.
+        # The proxy client would then call init40(connect_args["ini_file_path"])
+        # instead of writing the INI itself.
     ],
     mapper=MapperConfig(
         name="looker_client_args",
@@ -41,6 +30,8 @@ LOOKER_DEFAULT_CTP = CtpConfig(
     ),
 )
 
-from apollo.integrations.ctp.registry import CtpRegistry  # noqa: E402
-
-CtpRegistry.register("looker", LOOKER_DEFAULT_CTP)
+# Not registered: the proxy client reads credentials flat and writes an INI file
+# by iterating credentials.keys(). After CTP the output is {"connect_args": {...}},
+# which would write connect_args=<dict> into the INI — wrong.
+# Phase 2 will add a write_ini_file transform and update the proxy client to accept
+# the file path from connect_args, then register here.

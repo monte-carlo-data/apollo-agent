@@ -11,10 +11,7 @@ class PowerBiClientArgs(TypedDict):
 POWERBI_DEFAULT_CTP = CtpConfig(
     name="powerbi-default",
     steps=[
-        # Resolve MSAL token from raw credentials. Skipped when credentials are
-        # pre-shaped (DC path) and a token is already present.
         TransformStep(
-            when="raw.auth_mode is defined",
             type="resolve_msal_token",
             input={
                 "auth_mode": "{{ raw.auth_mode }}",
@@ -33,13 +30,11 @@ POWERBI_DEFAULT_CTP = CtpConfig(
         schema=PowerBiClientArgs,
         field_map={
             "auth_type": "Bearer",
-            # Passed through when token is already resolved (DC pre-shaped path).
-            # Overridden by the resolve_msal_token step field_map when auth_mode is present.
-            "token": "{{ raw.token | default(none) }}",
         },
     ),
 )
 
-from apollo.integrations.ctp.registry import CtpRegistry  # noqa: E402
-
-CtpRegistry.register("power-bi", POWERBI_DEFAULT_CTP)
+# Not registered: the proxy client reads credentials flat and calls MSAL internally,
+# then forwards token + auth_type="Bearer" to HttpProxyClient.
+# Phase 2 will update PowerBiProxyClient to read from connect_args["token"] directly,
+# then register here.

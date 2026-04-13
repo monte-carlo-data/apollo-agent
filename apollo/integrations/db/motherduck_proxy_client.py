@@ -36,12 +36,7 @@ class MotherDuckProxyClient(BaseDbProxyClient):
             path = "/tmp"
             os.environ["HOME"] = path
             os.makedirs(path, exist_ok=True)
-        connect_args = credentials[_ATTR_CONNECT_ARGS]
-        if isinstance(connect_args, dict):
-            connect_args = (
-                f"md:{connect_args['db_name']}?motherduck_token={connect_args['token']}"
-            )
-        self._connection = duckdb.connect(connect_args)  # type: ignore
+        self._connection = duckdb.connect(credentials[_ATTR_CONNECT_ARGS])  # type: ignore
 
     @property
     def wrapped_client(self):

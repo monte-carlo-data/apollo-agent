@@ -88,11 +88,6 @@ MYSQL_DEFAULT_CTP = CtpConfig(
             "port": "{{ raw.port }}",
             "user": "{{ raw.user }}",
             "password": "{{ raw.password }}",
-            "database": "{{ raw.database | default(none) }}",
         },
     ),
 )
-
-from apollo.integrations.ctp.registry import CtpRegistry  # noqa: E402
-
-CtpRegistry.register("mysql", MYSQL_DEFAULT_CTP)

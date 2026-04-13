@@ -32,11 +32,10 @@ class GitCloneClient:
     GIT_TYPE = {"ssh": "SSH", "https": "HTTPS"}
 
     def __init__(self, credentials: Dict, **kwargs):  # type: ignore
-        creds = credentials.get("connect_args", credentials)
-        self._repo_url = creds["repo_url"]
-        self._token = creds.get("token")
-        self._username = creds.get("username")
-        self._ssh_key = base64.b64decode(creds.get("ssh_key", ""))
+        self._repo_url = credentials["repo_url"]
+        self._token = credentials.get("token")
+        self._username = credentials.get("username")
+        self._ssh_key = base64.b64decode(credentials.get("ssh_key", ""))
 
         if self._token:
             # remove https if it was included for https calls

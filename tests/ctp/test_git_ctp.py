@@ -1,4 +1,8 @@
 # tests/ctp/test_git_ctp.py
+#
+# GitProxyClient currently reads credentials flat, so GIT_DEFAULT_CTP is not
+# registered in CtpRegistry._discover(). Tests import the config directly and
+# call CtpPipeline().execute() rather than going through CtpRegistry.resolve().
 from unittest import TestCase
 
 from apollo.integrations.ctp.defaults.git import GIT_DEFAULT_CTP
@@ -11,8 +15,8 @@ def _resolve(credentials: dict) -> dict:
 
 
 class TestGitCtp(TestCase):
-    def test_registered(self):
-        self.assertIsNotNone(CtpRegistry.get("git"))
+    def test_git_not_registered(self):
+        self.assertIsNone(CtpRegistry.get("git"))
 
     def test_resolve_https_token_auth(self):
         result = _resolve(

@@ -80,51 +80,53 @@ class TableauProxyClient(BaseProxyClient):
     """
 
     def __init__(self, credentials: Optional[Dict], **kwargs: Any):  # noqa
+        """
+        initializing the tableau client. The credentials dictionary should include the following:
+        username (string)
+        client_id (string)
+        secret_id (string)
+        secret_value (string)
+        server_name (string)
+        site_name (string) (default is "")
+        verify_ssl (boolean) (default is true)
+        expiration_seconds (int) (default is 300)
+        """
         if not credentials:
             raise ValueError("Credentials are required for Tableau")
 
-        creds = credentials["connect_args"]
-        self._site_name = creds.get("site_name", "")
-        server_name = creds["server_name"]
-        self.verify_ssl = creds.get("verify_ssl", True)
+        self._user_name = credentials["username"]
+        self._client_id = credentials["client_id"]
+        self._secret_id = credentials["secret_id"]
+        self._secret_value = credentials["secret_value"]
+        self._site_name = credentials.get("site_name", "")
+        self._token_expiration_seconds = credentials.get(
+            "token_expiration_seconds", _DEFAULT_TOKEN_EXPIRATION_SECONDS
+        )
+        server_name = credentials["server_name"]
+        self.verify_ssl = credentials.get("verify_ssl", True)
         self._server = Server(server_name)
         self._server.add_http_options({"verify": self.verify_ssl})
         self._server.use_server_version()
-
-        # Flat credentials path: store Connected App fields and regenerate a fresh JWT
-        # on every _sign_in() call to avoid expiry (JWTs are short-lived, ~5 minutes).
-        # DC pre-shaped path: only token is present; use it directly.
-        self._client_id = creds.get("client_id")
-        self._secret_id = creds.get("secret_id")
-        self._secret_value = creds.get("secret_value")
-        self._username = creds.get("username")
-        self._expiration_seconds = (
-            creds.get("token_expiration_seconds") or _DEFAULT_TOKEN_EXPIRATION_SECONDS
-        )
-        self._token = creds.get("token")  # DC pre-shaped path fallback
 
     @property
     def wrapped_client(self):
         return self
 
-    def _sign_in(self):
-        if self._client_id:
-            token = generate_jwt(
-                user_name=self._username,
-                client_id=self._client_id,
-                secret_id=self._secret_id,
-                secret_value=self._secret_value,
-                expiration_seconds=self._expiration_seconds,
-            )
-        else:
-            token = self._token
+    def _sign_in(self, expiration_seconds: int):
+        token = generate_jwt(
+            user_name=self._user_name,
+            client_id=self._client_id,
+            secret_id=self._secret_id,
+            secret_value=self._secret_value,
+            expiration_seconds=expiration_seconds,
+        )
         auth = JwtAuth(token=token, site_id=self._site_name)
         self._server.auth.sign_in(auth)
 
     def metadata_query(
         self, query: str, variables: Optional[Dict] = None, abort_on_error: bool = False
     ) -> Dict:
-        self._sign_in()
+        self._sign_in(self._token_expiration_seconds)
         return self._server.metadata.query(
             query=query, variables=variables, abort_on_error=abort_on_error
         )
@@ -137,7 +139,7 @@ class TableauProxyClient(BaseProxyClient):
         data: Optional[str] = None,
         params: Optional[str] = None,
     ) -> Tuple[str, int]:
-        self._sign_in()
+        self._sign_in(self._token_expiration_seconds)
         headers = {
             "X-Tableau-Auth": self._server.auth_token,
             "Content-Type": content_type,

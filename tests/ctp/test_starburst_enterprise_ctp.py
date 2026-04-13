@@ -12,8 +12,8 @@ _CA_PEM = "-----BEGIN CERTIFICATE-----\nMIID...\n-----END CERTIFICATE-----"
 
 
 class TestStarburstEnterpriseCtp(TestCase):
-    def test_registered(self):
-        self.assertIsNotNone(CtpRegistry.get("starburst-enterprise"))
+    def test_not_registered(self):
+        self.assertIsNone(CtpRegistry.get("starburst-enterprise"))
 
     def test_resolve_flat_no_ssl_options(self):
         result = CtpPipeline().execute(

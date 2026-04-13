@@ -60,7 +60,7 @@ class GlueTests(TestCase):
         mock_session_instance.client.return_value = mock_boto_client
         mock_session.return_value = mock_session_instance
 
-        GlueProxyClient({"connect_args": _GLUE_CREDENTIALS_WITH_CERT})
+        GlueProxyClient(_GLUE_CREDENTIALS_WITH_CERT)
 
         mock_session_instance.client.assert_called_once_with(
             "glue", verify="/tmp/glue_ca_bundle.pem"

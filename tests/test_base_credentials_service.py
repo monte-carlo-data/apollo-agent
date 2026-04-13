@@ -6,63 +6,12 @@ from apollo.integrations.ctp.pipeline import CtpPipeline
 from apollo.integrations.ctp.registry import CtpRegistry
 
 
-class TestMergeConnectArgs(TestCase):
-    def setUp(self):
-        self.svc = BaseCredentialsService()
-
+class TestBaseCredentialsService(TestCase):
     def test_plain_credentials_returned_unchanged(self):
+        svc = BaseCredentialsService()
         creds = {"connect_args": {"host": "h", "port": 5432}}
-        result = self.svc.get_credentials(creds)
+        result = svc.get_credentials(creds)
         self.assertEqual({"connect_args": {"host": "h", "port": 5432}}, result)
-
-    def test_only_incoming_has_connect_args(self):
-        """External creds without connect_args get the incoming connect_args injected."""
-        incoming = {"connect_args": {"username": "user"}}
-        external = {"host": "db.example.com"}
-        result = self.svc._merge_connect_args(
-            incoming_credentials=incoming, external_credentials=external
-        )
-        self.assertEqual(
-            {"host": "db.example.com", "connect_args": {"username": "user"}}, result
-        )
-
-    def test_only_external_has_connect_args(self):
-        """When incoming has no connect_args, external is returned as-is."""
-        incoming = {"aws_secret": "my-secret"}
-        external = {"connect_args": {"host": "db.example.com", "password": "secret"}}
-        result = self.svc._merge_connect_args(
-            incoming_credentials=incoming, external_credentials=external
-        )
-        self.assertEqual(
-            {"connect_args": {"host": "db.example.com", "password": "secret"}}, result
-        )
-
-    def test_both_have_connect_args_external_wins_on_conflict(self):
-        """Keys present in both are resolved in favour of the external (secret) value."""
-        incoming = {"connect_args": {"username": "override", "ssl": True}}
-        external = {"connect_args": {"username": "db-user", "password": "secret"}}
-        result = self.svc._merge_connect_args(
-            incoming_credentials=incoming, external_credentials=external
-        )
-        self.assertEqual(
-            {
-                "connect_args": {
-                    "username": "db-user",
-                    "password": "secret",
-                    "ssl": True,
-                }
-            },
-            result,
-        )
-
-    def test_non_dict_connect_args_returns_external_unchanged(self):
-        """If either connect_args is a connection string (non-dict), external is returned as-is."""
-        incoming = {"connect_args": "host=db.example.com password=secret"}
-        external = {"connect_args": "host=other.example.com"}
-        result = self.svc._merge_connect_args(
-            incoming_credentials=incoming, external_credentials=external
-        )
-        self.assertEqual({"connect_args": "host=other.example.com"}, result)
 
 
 class TestPassthroughCtp(TestCase):

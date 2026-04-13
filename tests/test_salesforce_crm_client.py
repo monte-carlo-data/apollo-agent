@@ -1,21 +1,7 @@
-import json
-import logging
 from unittest import TestCase
 from unittest.mock import patch, MagicMock
 
-from apollo.agent.agent import Agent
-from apollo.agent.logging_utils import LoggingUtils
-from apollo.common.agent.constants import ATTRIBUTE_NAME_ERROR
-from apollo.interfaces.lambda_function.json_log_formatter import JsonLogFormatter
 from apollo.integrations.db.salesforce_crm_proxy_client import SalesforceCRMProxyClient
-
-_OPERATION = {
-    "trace_id": "ctp-safety-test",
-    "skip_cache": True,
-    "commands": [
-        {"method": "execute", "args": ["SELECT Id FROM Account LIMIT 1"]},
-    ],
-}
 
 
 class SalesforceCRMProxyClientTests(TestCase):
@@ -705,93 +691,3 @@ class SalesforceCRMProxyClientTests(TestCase):
         self.assertEqual(result["rowcount"], 0)
         self.assertEqual(result["records"], [])
         self.assertEqual(result["description"], [])
-
-
-class _ListHandler(logging.Handler):
-    def __init__(self, records: list):
-        super().__init__()
-        self._records = records
-
-    def emit(self, record: logging.LogRecord) -> None:
-        self._records.append(record)
-
-
-class SalesforceCrmCtpCredentialSafetyTests(TestCase):
-    """Verify that no credential values appear in agent error responses (DC→Sentry path)."""
-
-    _INSTANCE = "myorg.salesforce.com"
-    _USER = "admin@example.salesforce.com"
-    _PASSWORD = "s3cr3t_p@ssw0rd!"
-    _SECURITY_TOKEN = "XYZTOKEN123"
-
-    def setUp(self):
-        self._agent = Agent(LoggingUtils())
-        self._log_records: list = []
-        self._log_handler = _ListHandler(self._log_records)
-        logging.getLogger().addHandler(self._log_handler)
-
-    def tearDown(self):
-        logging.getLogger().removeHandler(self._log_handler)
-
-    def _flat_creds(self, **overrides):
-        creds = {
-            "user": self._USER,
-            "password": self._PASSWORD,
-            "security_token": self._SECURITY_TOKEN,
-        }
-        creds.update(overrides)
-        return creds
-
-    def _assert_no_credential_leak(self, response) -> None:
-        """Serialize the entire result dict — catches leaks in error, exception, AND stack_trace."""
-        serialized = json.dumps(response.result, default=str)
-        self.assertNotIn(self._PASSWORD, serialized, "password leaked in response")
-        self.assertNotIn(
-            self._SECURITY_TOKEN, serialized, "security_token leaked in response"
-        )
-
-    def _assert_no_password_in_logs(self) -> None:
-        json_formatter = JsonLogFormatter()
-        for record in self._log_records:
-            output = json_formatter.format(record)
-            self.assertNotIn(self._PASSWORD, output, "password leaked in log output")
-
-    @patch("apollo.integrations.db.salesforce_crm_proxy_client.Salesforce")
-    def test_connect_failure_is_actionable_and_safe(self, mock_sf):
-        """Driver connection failure: instance URL visible in error, no password in response."""
-        mock_sf.side_effect = Exception(
-            f"Failed to connect to instance: {self._INSTANCE}"
-        )
-
-        response = self._agent.execute_operation(
-            "salesforce-crm", "run_query", _OPERATION, self._flat_creds()
-        )
-
-        self.assertIn(ATTRIBUTE_NAME_ERROR, response.result)
-        error = response.result[ATTRIBUTE_NAME_ERROR]
-        self.assertIn(
-            self._INSTANCE, error, "error should show where connection failed"
-        )
-        self._assert_no_credential_leak(response)
-        self._assert_no_password_in_logs()
-
-    @patch("apollo.integrations.db.salesforce_crm_proxy_client.Salesforce")
-    def test_auth_failure_is_actionable_and_safe(self, mock_sf):
-        """Auth failure: error is actionable (INVALID_LOGIN visible), password never in response."""
-        mock_sf.side_effect = Exception(
-            f"INVALID_LOGIN: Failed for user '{self._USER}': invalid credentials"
-        )
-
-        response = self._agent.execute_operation(
-            "salesforce-crm", "run_query", _OPERATION, self._flat_creds()
-        )
-
-        self.assertIn(ATTRIBUTE_NAME_ERROR, response.result)
-        error = response.result[ATTRIBUTE_NAME_ERROR]
-        self.assertIn("INVALID_LOGIN", error, "error should indicate auth failure")
-        serialized = json.dumps(response.result, default=str)
-        self.assertNotIn(self._PASSWORD, serialized, "password leaked in response")
-        self.assertNotIn(
-            self._SECURITY_TOKEN, serialized, "security_token leaked in response"
-        )
-        self._assert_no_password_in_logs()

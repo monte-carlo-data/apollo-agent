@@ -177,10 +177,6 @@ class SalesforceDataCloudCredentials:
     # Accepted for backwards compatibility; iteration over dataspaces is handled
     # by the data-collector, which calls list_tables(dataspace=X) once per dataspace.
     dataspaces: list[str] | None = None
-    # Single dataspace scope for query execution (profiling, monitors, validation).
-    # When set, the a360/token exchange is scoped to this dataspace so queries
-    # against tables in non-default dataspaces succeed.
-    dataspace: str | None = None
 
 
 class SalesforceDataCloudProxyClient(BaseDbProxyClient):
@@ -193,7 +189,6 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
             client_secret=credentials.client_secret,
             core_token=credentials.core_token,
             refresh_token=credentials.refresh_token,
-            dataspace=credentials.dataspace,
         )
 
     @property
@@ -283,31 +278,8 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
                 f"Salesforce Data Cloud: fetching tables (unscoped, "
                 f"domain={self._credentials.domain})"
             )
-            # If the base connection was created with a dataspace (for query execution),
-            # use a fresh unscoped connection here so that list_tables(None) always
-            # returns the default-dataspace view regardless of how this client was
-            # instantiated.  This prevents a future caller from accidentally getting
-            # dataspace-scoped results while believing the fetch is unscoped.
-            #
-            # Preserve the original auth tokens (core_token / refresh_token) so we
-            # reuse any pre-fetched credentials rather than forcing an unnecessary
-            # client-credentials re-flow.  Only dataspace is cleared to remove scoping.
-            if self._credentials.dataspace:
-                unscoped_conn: SalesforceDataCloudConnection | None = (
-                    SalesforceDataCloudConnection(
-                        f"https://{self._credentials.domain}",
-                        client_id=self._credentials.client_id,
-                        client_secret=self._credentials.client_secret,
-                        core_token=self._credentials.core_token,
-                        refresh_token=self._credentials.refresh_token,
-                        dataspace=None,
-                    )
-                )
-            else:
-                unscoped_conn = None
-            conn_to_use = unscoped_conn or self._connection
             try:
-                tables = conn_to_use.list_tables()
+                tables = self._connection.list_tables()
             except SalesforceCDPError as e:
                 raise RuntimeError(
                     f"Token exchange failed: {e} — verify credentials are valid"
@@ -317,9 +289,6 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
                     f"Token exchange failed: OAuth response missing key {e} — "
                     f"verify credentials are valid"
                 ) from e
-            finally:
-                if unscoped_conn is not None:
-                    unscoped_conn.close()
             logger.info(
                 "Salesforce Data Cloud: fetched tables (unscoped)",
                 extra={"table_count": len(tables)},

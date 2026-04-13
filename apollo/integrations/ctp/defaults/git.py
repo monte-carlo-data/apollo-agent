@@ -2,6 +2,26 @@ from typing import NotRequired, Required, TypedDict
 
 from apollo.integrations.ctp.models import CtpConfig, MapperConfig
 
+# NOTE: This config is intentionally NOT registered in CtpRegistry._discover().
+#
+# GitProxyClient (and GitCloneClient) read credentials flat — credentials["repo_url"],
+# credentials.get("token"), etc. — rather than from credentials["connect_args"]. DC
+# also sends flat credentials for git with no connect_args wrapper, so the legacy
+# short-circuit in CtpRegistry.resolve() does not protect it.
+#
+# If this config were registered today, resolve() would wrap output in
+# {"connect_args": {...}} and the proxy client would immediately raise ValueError
+# ("Credentials are required for Git" / "repo_url" KeyError).
+#
+# Phase 2 work required before registering:
+#   1. Update GitCloneClient.__init__ to read repo_url/token/username/ssh_key from
+#      credentials["connect_args"] instead of the top-level credentials dict.
+#   2. Add `import apollo.integrations.ctp.defaults.git` to CtpRegistry._discover().
+#
+# Invariant proxy client logic that stays in GitCloneClient (not CTP concerns):
+#   - base64.b64decode(ssh_key) — always decode, no branching
+#   - repo_url.lstrip("https://") when token present — URL construction detail
+
 
 class GitClientArgs(TypedDict):
     repo_url: Required[str]
@@ -27,6 +47,6 @@ GIT_DEFAULT_CTP = CtpConfig(
     ),
 )
 
-from apollo.integrations.ctp.registry import CtpRegistry  # noqa: E402
-
-CtpRegistry.register("git", GIT_DEFAULT_CTP)
+# Intentionally not registered — see module docstring above.
+# from apollo.integrations.ctp.registry import CtpRegistry  # noqa: E402
+# CtpRegistry.register("git", GIT_DEFAULT_CTP)

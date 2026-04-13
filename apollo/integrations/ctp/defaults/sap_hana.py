@@ -38,21 +38,15 @@ SAP_HANA_DEFAULT_CTP = CtpConfig(
         name="sap_hana_client_args",
         schema=SapHanaClientArgs,
         field_map={
-            # DC pre-shapes to connect_args with driver-native name 'address'; flat path uses 'host'
-            "address": "{{ raw.host | default(raw.address) }}",
+            "address": "{{ raw.host }}",
             "port": "{{ raw.port }}",
             "user": "{{ raw.user }}",
             "password": "{{ raw.password }}",
-            # DC uses 'databaseName'; flat path uses 'db_name'
-            "databaseName": "{{ raw.db_name | default(raw.databaseName) | default(none) }}",
-            # Flat path: seconds → milliseconds conversion.
-            # DC pre-shapes: already in milliseconds as connectTimeout / communicationTimeout.
-            "connectTimeout": "{{ raw.login_timeout_in_seconds | int * 1000 if raw.login_timeout_in_seconds is defined else raw.connectTimeout | default(none) }}",
-            "communicationTimeout": "{{ raw.query_timeout_in_seconds | int * 1000 if raw.query_timeout_in_seconds is defined else raw.communicationTimeout | default(none) }}",
+            "databaseName": "{{ raw.db_name | default(none) }}",
+            # DC sends login_timeout_in_seconds / query_timeout_in_seconds in seconds;
+            # hdbcli expects milliseconds
+            "connectTimeout": "{{ raw.login_timeout_in_seconds | int * 1000 if raw.login_timeout_in_seconds is defined else none }}",
+            "communicationTimeout": "{{ raw.query_timeout_in_seconds | int * 1000 if raw.query_timeout_in_seconds is defined else none }}",
         },
     ),
 )
-
-from apollo.integrations.ctp.registry import CtpRegistry  # noqa: E402
-
-CtpRegistry.register("sap-hana", SAP_HANA_DEFAULT_CTP)

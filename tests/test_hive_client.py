@@ -118,15 +118,7 @@ class HiveClientTests(TestCase):
         self.assertTrue(ATTRIBUTE_NAME_RESULT in response.result)
         result = response.result.get(ATTRIBUTE_NAME_RESULT)
 
-        mock_connect.assert_called_with(
-            host="localhost",
-            port=10000,
-            user="foo",
-            database="fizz",
-            auth_mechanism="PLAIN",
-            timeout=870,
-            use_ssl=False,
-        )
+        mock_connect.assert_called_with(**_HIVE_CREDENTIALS)
         self._mock_cursor.execute.assert_has_calls(
             [
                 call(query, None),
