@@ -62,7 +62,7 @@ REDSHIFT_DEFAULT_CTP = CtpConfig(
     # TCP keepalives required for AWS PrivateLink; injected as defaults so custom
     # CTP configs inherit them without having to redeclare them.
     connect_args_defaults={
-        "connect_timeout": 5,
+        "connect_timeout": 30,
         "keepalives": 1,
         "keepalives_idle": 30,
         "keepalives_interval": 10,

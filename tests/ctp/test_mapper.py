@@ -139,15 +139,17 @@ class TestMapperSchemaValidation(TestCase):
         self.assertEqual("mapper_validation", ctx.exception.stage)
         self.assertIn("port", str(ctx.exception))
 
-    def test_unknown_field_passes_through(self):
-        # Fields not in the schema are not coerced but are allowed through — driver catches any error.
+    def test_unknown_field_raises(self):
+        # Fields not in the schema are rejected — prevents typos from silently passing bad args to the driver.
         mapper, config = self._mapper(
             {"host": "{{ raw.host }}", "port": "{{ raw.port }}", "bad_key": "value"},
             schema=_MinimalSchema,
         )
         state = PipelineState(raw={"host": "localhost", "port": 5432})
-        result = mapper.execute(config, state)
-        self.assertEqual("value", result["bad_key"])
+        with self.assertRaises(CtpPipelineError) as ctx:
+            mapper.execute(config, state)
+        self.assertEqual("mapper_validation", ctx.exception.stage)
+        self.assertIn("bad_key", str(ctx.exception))
 
     def test_string_port_coerced_to_int(self):
         # Port arrives as string (DC-style); schema says int → mapper coerces.
@@ -176,8 +178,8 @@ class TestMapperSchemaValidation(TestCase):
         self.assertIsInstance(result["port"], int)
         self.assertEqual(5432, result["port"])
 
-    def test_unknown_field_not_coerced(self):
-        # Unknown fields are passed through as-is without type coercion.
+    def test_unknown_field_raises_regardless_of_value_type(self):
+        # Unknown fields are rejected even when their values wouldn't need coercion.
         mapper, config = self._mapper(
             {
                 "host": "{{ raw.host }}",
@@ -187,8 +189,10 @@ class TestMapperSchemaValidation(TestCase):
             schema=_MinimalSchema,
         )
         state = PipelineState(raw={"host": "h", "port": 5432, "extra": "some_string"})
-        result = mapper.execute(config, state)
-        self.assertEqual("some_string", result["extra"])
+        with self.assertRaises(CtpPipelineError) as ctx:
+            mapper.execute(config, state)
+        self.assertEqual("mapper_validation", ctx.exception.stage)
+        self.assertIn("extra", str(ctx.exception))
 
     def test_passthrough_skips_schema_validation(self):
         # passthrough=True with a schema that would fail (missing required keys)

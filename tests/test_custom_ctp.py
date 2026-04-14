@@ -263,6 +263,24 @@ class TestValidateCtp(TestCase):
         self.assertFalse(result["valid"])
         self.assertTrue(any("token" in e for e in result["errors"]))
 
+    def test_unknown_mapper_keys_returns_error(self):
+        """A mapper field_map with keys not in the TypedDict schema is flagged."""
+        ctp_with_unknown_key = {
+            "name": "unknown-key-ctp",
+            "steps": [],
+            "mapper": {
+                "name": "m",
+                "field_map": {
+                    "databricks_workspace_url": "{{ raw.databricks_workspace_url }}",
+                    "token": "{{ raw.custom_token }}",
+                    "passwordx": "{{ raw.bad }}",  # not in DatabricksRestClientArgs
+                },
+            },
+        }
+        result = validate_ctp_config("databricks-rest", ctp_with_unknown_key)
+        self.assertFalse(result["valid"])
+        self.assertTrue(any("passwordx" in e for e in result["errors"]))
+
     def test_unknown_connection_type_validates_without_schema(self):
         """An unknown connection type has no schema to inject — valid if well-formed."""
         result = validate_ctp_config("unknown-type", _CUSTOM_CTP)
