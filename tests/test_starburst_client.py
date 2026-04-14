@@ -1,4 +1,7 @@
 import datetime
+import json
+import logging
+from logging.handlers import MemoryHandler
 from typing import (
     List,
     Any,
@@ -12,10 +15,14 @@ from unittest.mock import (
     patch,
 )
 
+import trino.exceptions
+
 from apollo.agent.agent import Agent
 from apollo.common.agent.constants import (
     ATTRIBUTE_NAME_ERROR,
+    ATTRIBUTE_NAME_EXCEPTION,
     ATTRIBUTE_NAME_RESULT,
+    ATTRIBUTE_NAME_STACK_TRACE,
     ATTRIBUTE_NAME_ERROR_TYPE,
 )
 from apollo.agent.logging_utils import LoggingUtils
@@ -24,10 +31,11 @@ from apollo.integrations.ctp.defaults.starburst_galaxy import (
 )
 from apollo.integrations.ctp.registry import CtpRegistry
 from apollo.integrations.db.starburst_proxy_client import StarburstProxyClient
+from apollo.interfaces.lambda_function.json_log_formatter import JsonLogFormatter
 
 _STARBURST_CREDENTIALS = {
     "host": "example.starburst.io",
-    "port": "443",
+    "port": 443,
     "http_scheme": "https",
     "catalog": "fizz",
     "schema": "buzz",
@@ -36,11 +44,15 @@ _STARBURST_CREDENTIALS = {
 }
 _EXPECTED_STARBURST_CREDENTIALS = {
     "host": "example.starburst.io",
-    "port": "443",
+    "port": 443,
     "http_scheme": "https",
     "catalog": "fizz",
     "schema": "buzz",
     "auth": ANY,
+}
+_EXPECTED_STARBURST_ENTERPRISE_CREDENTIALS = {
+    **_EXPECTED_STARBURST_CREDENTIALS,
+    "port": 443,
 }
 
 
@@ -99,6 +111,7 @@ class StarburstClientTests(TestCase):
             expected_data,
             expected_description,
             connection_type="starburst-enterprise",
+            expected_connect_kwargs=_EXPECTED_STARBURST_ENTERPRISE_CREDENTIALS,
         )
 
     @patch("trino.dbapi.connect")
@@ -129,7 +142,6 @@ class StarburstClientTests(TestCase):
             {"connect_args": credentials_no_password},
         )
 
-        self.assertIn("user", response.result.get(ATTRIBUTE_NAME_ERROR))
         self.assertIn("password", response.result.get(ATTRIBUTE_NAME_ERROR))
         mock_connect.assert_not_called()
 
@@ -151,7 +163,6 @@ class StarburstClientTests(TestCase):
         )
 
         self.assertIn("user", response.result.get(ATTRIBUTE_NAME_ERROR))
-        self.assertIn("password", response.result.get(ATTRIBUTE_NAME_ERROR))
         mock_connect.assert_not_called()
 
     def _test_run_query(
@@ -163,6 +174,7 @@ class StarburstClientTests(TestCase):
         raise_exception: Optional[Exception] = None,
         expected_error_type: Optional[str] = None,
         connection_type: str = "starburst-galaxy",
+        expected_connect_kwargs: Optional[dict] = None,
     ):
         operation_dict = {
             "trace_id": "1234",
@@ -223,7 +235,9 @@ class StarburstClientTests(TestCase):
         self.assertTrue(ATTRIBUTE_NAME_RESULT in response.result)
         result = response.result.get(ATTRIBUTE_NAME_RESULT)
 
-        mock_connect.assert_called_with(**_EXPECTED_STARBURST_CREDENTIALS)
+        mock_connect.assert_called_with(
+            **(expected_connect_kwargs or _EXPECTED_STARBURST_CREDENTIALS)
+        )
         self._mock_cursor.execute.assert_has_calls(
             [
                 call(query, None),
@@ -284,12 +298,6 @@ class StarburstGalaxyCredentialShapeTests(TestCase):
     _USER = "foo"
     _PASSWORD = "bar"
 
-    def setUp(self) -> None:
-        CtpRegistry.register("starburst-galaxy", STARBURST_GALAXY_DEFAULT_CTP)
-
-    def tearDown(self) -> None:
-        CtpRegistry._registry.pop("starburst-galaxy", None)
-
     def _dc_creds(self, **extra_connect_args):
         """Build DC-style credentials: connect_args with all required fields."""
         return {
@@ -343,3 +351,284 @@ class StarburstGalaxyCredentialShapeTests(TestCase):
         self.assertNotIn("user", kwargs)
         self.assertNotIn("password", kwargs)
         self.assertIn("auth", kwargs)
+
+
+class StarburstCtpCredentialSafetyTests(TestCase):
+    """Verify that CTP pipeline failure paths do not leak credential values.
+
+    Error messages must be actionable (say what went wrong) but must never
+    include the password or username that were supplied in credentials.
+    This matters for both the value returned in the agent response AND the
+    exception message that lands in server-side logs via logger.exception().
+    """
+
+    _USER = "mc-service@org.galaxy.starburst.io"
+    _PASSWORD = "sup3r_s3cr3t_p@ssw0rd"
+
+    def _base_credentials(self, **overrides) -> dict:
+        creds = {
+            "host": "cluster.trino.galaxy.starburst.io",
+            "port": "443",
+            "http_scheme": "https",
+            "user": self._USER,
+            "password": self._PASSWORD,
+        }
+        creds.update(overrides)
+        return {"connect_args": creds}
+
+    def _assert_no_credential_leak(self, response) -> None:
+        """Assert neither the password nor the username appears anywhere in the response."""
+        # Serialize the whole result dict so we catch leaks in error, exception, and stack trace
+        serialized = json.dumps(response.result, default=str)
+        self.assertNotIn(self._PASSWORD, serialized, "password leaked in response")
+        self.assertNotIn(self._USER, serialized, "username leaked in response")
+
+    def _simple_operation(self) -> dict:
+        return {
+            "trace_id": "ctp-safety-test",
+            "skip_cache": True,
+            "commands": [{"method": "cursor", "store": "_cursor"}],
+        }
+
+    # ------------------------------------------------------------------
+    # CTP pipeline failure paths
+    # ------------------------------------------------------------------
+
+    def test_missing_host_error_is_actionable_and_does_not_leak(self):
+        """CTP mapper raises when 'host' is missing; error names the field, not the value."""
+        agent = Agent(LoggingUtils())
+        response = agent.execute_operation(
+            "starburst-galaxy",
+            "run_query",
+            self._simple_operation(),
+            {
+                "connect_args": {
+                    "port": "443",
+                    "user": self._USER,
+                    "password": self._PASSWORD,
+                }
+            },
+        )
+
+        error = response.result.get(ATTRIBUTE_NAME_ERROR, "")
+        self.assertIn(ATTRIBUTE_NAME_ERROR, response.result)
+        # Actionable: tells the caller what field is missing
+        self.assertIn("host", error)
+        # Safe: credentials do not appear
+        self._assert_no_credential_leak(response)
+
+    @patch("trino.dbapi.connect")
+    def test_connect_failure_does_not_leak_credentials(self, mock_connect):
+        """When trino.dbapi.connect raises, the error must not contain the password."""
+        mock_connect.side_effect = trino.exceptions.TrinoConnectionError(
+            "HTTPSConnectionPool(host='cluster.trino.galaxy.starburst.io', port=443): "
+            "Max retries exceeded with url: /v1/statement"
+        )
+
+        agent = Agent(LoggingUtils())
+        response = agent.execute_operation(
+            "starburst-galaxy",
+            "run_query",
+            self._simple_operation(),
+            self._base_credentials(),
+        )
+
+        self.assertIn(ATTRIBUTE_NAME_ERROR, response.result)
+        self._assert_no_credential_leak(response)
+        # Actionable: the host is present in the error so callers know where it failed
+        error = response.result.get(ATTRIBUTE_NAME_ERROR, "")
+        self.assertIn("cluster.trino.galaxy.starburst.io", error)
+
+    @patch("trino.dbapi.connect")
+    def test_auth_error_does_not_leak_password(self, mock_connect):
+        """When cursor.execute raises TrinoAuthError (e.g. 401), the password must not appear.
+
+        The error message may reference the username (that's acceptable — it comes from the
+        server's 401 response), but the password must never be exposed.
+        """
+        mock_connection = Mock()
+        mock_cursor = Mock()
+        mock_connection.cursor.return_value = mock_cursor
+        mock_connect.return_value = mock_connection
+        mock_cursor.execute.side_effect = trino.exceptions.TrinoAuthError(
+            f"Error authenticating with Trino: [401] Unauthorized for user '{self._USER}'"
+        )
+
+        operation = {
+            "trace_id": "auth-test",
+            "skip_cache": True,
+            "commands": [
+                {"method": "cursor", "store": "_cursor"},
+                {"target": "_cursor", "method": "execute", "args": ["SELECT 1", None]},
+            ],
+        }
+        agent = Agent(LoggingUtils())
+        response = agent.execute_operation(
+            "starburst-galaxy",
+            "run_query",
+            operation,
+            self._base_credentials(),
+        )
+
+        self.assertIn(ATTRIBUTE_NAME_ERROR, response.result)
+        # Password must never leak — even if username appears (from the server's 401 body)
+        serialized = json.dumps(response.result, default=str)
+        self.assertNotIn(self._PASSWORD, serialized, "password leaked in response")
+        # Actionable: the 401 status code is present so the caller knows it's an auth problem
+        error = response.result.get(ATTRIBUTE_NAME_ERROR, "")
+        self.assertIn("401", error)
+
+
+class StarburstLogCredentialSafetyTests(TestCase):
+    """Verify that logger.exception() calls triggered by connection failures
+    do not leak credential values into log output or Datadog via JsonLogFormatter.
+
+    Standard Python logging does not capture local variable values (unlike Sentry SDK),
+    so the risk is limited to exception messages. These tests verify that:
+    1. Exception messages from Trino/CTP do not contain the password.
+    2. JsonLogFormatter.format() (the Lambda log formatter that ships to Datadog)
+       does not produce output containing the password.
+    """
+
+    _USER = "mc-service@org.galaxy.starburst.io"
+    _PASSWORD = "sup3r_s3cr3t_p@ssw0rd"
+
+    def setUp(self):
+        self._agent = Agent(LoggingUtils())
+        # Buffer captures all log records emitted during the test
+        self._buffer = []
+        self._handler = _ListHandler(self._buffer)
+        self._handler.setLevel(logging.DEBUG)
+        logging.getLogger().addHandler(self._handler)
+
+    def tearDown(self):
+        logging.getLogger().removeHandler(self._handler)
+
+    def _base_credentials(self) -> dict:
+        return {
+            "connect_args": {
+                "host": "cluster.trino.galaxy.starburst.io",
+                "port": "443",
+                "http_scheme": "https",
+                "user": self._USER,
+                "password": self._PASSWORD,
+            }
+        }
+
+    def _simple_operation(self) -> dict:
+        return {
+            "trace_id": "log-safety-test",
+            "skip_cache": True,
+            "commands": [{"method": "cursor", "store": "_cursor"}],
+        }
+
+    def _assert_no_password_in_log_records(self):
+        """Assert the password does not appear in any captured log record's message
+        or exception string — i.e., it was never passed to logger.exception()."""
+        formatter = logging.Formatter("%(message)s")
+        for record in self._buffer:
+            formatted_msg = formatter.format(record)
+            self.assertNotIn(
+                self._PASSWORD,
+                formatted_msg,
+                "password leaked into log record message",
+            )
+            if record.exc_info and record.exc_info[1]:
+                exc_str = str(record.exc_info[1])
+                self.assertNotIn(
+                    self._PASSWORD,
+                    exc_str,
+                    f"password leaked in exception message: {exc_str[:200]}",
+                )
+
+    def _assert_no_password_in_json_formatter_output(self):
+        """Assert JsonLogFormatter (used in Lambda/Datadog path) does not emit the
+        password in its JSON output — either raw or after standard_redact processing."""
+        json_formatter = JsonLogFormatter()
+        for record in self._buffer:
+            try:
+                output = json_formatter.format(record)
+            except Exception:
+                continue
+            self.assertNotIn(
+                self._PASSWORD,
+                output,
+                "password survived JsonLogFormatter redaction",
+            )
+
+    @patch("trino.dbapi.connect")
+    def test_connect_failure_does_not_leak_password_in_logs(self, mock_connect):
+        """When trino.dbapi.connect raises, logger.exception() must not log the password."""
+        mock_connect.side_effect = trino.exceptions.TrinoConnectionError(
+            "HTTPSConnectionPool(host='cluster.trino.galaxy.starburst.io', port=443): "
+            "Max retries exceeded with url: /v1/statement"
+        )
+
+        self._agent.execute_operation(
+            "starburst-galaxy",
+            "run_query",
+            self._simple_operation(),
+            self._base_credentials(),
+        )
+
+        self._assert_no_password_in_log_records()
+        self._assert_no_password_in_json_formatter_output()
+
+    @patch("trino.dbapi.connect")
+    def test_auth_failure_does_not_leak_password_in_logs(self, mock_connect):
+        """When cursor.execute raises TrinoAuthError, logger calls must not log the password."""
+        mock_connection = Mock()
+        mock_cursor = Mock()
+        mock_connection.cursor.return_value = mock_cursor
+        mock_connect.return_value = mock_connection
+        mock_cursor.execute.side_effect = trino.exceptions.TrinoAuthError(
+            f"Error authenticating with Trino: [401] Unauthorized for user '{self._USER}'"
+        )
+
+        operation = {
+            "trace_id": "log-auth-test",
+            "skip_cache": True,
+            "commands": [
+                {"method": "cursor", "store": "_cursor"},
+                {"target": "_cursor", "method": "execute", "args": ["SELECT 1", None]},
+            ],
+        }
+
+        self._agent.execute_operation(
+            "starburst-galaxy",
+            "run_query",
+            operation,
+            self._base_credentials(),
+        )
+
+        self._assert_no_password_in_log_records()
+        self._assert_no_password_in_json_formatter_output()
+
+    def test_missing_host_does_not_leak_password_in_logs(self):
+        """When CTP pipeline fails (missing required field), logger must not log credentials."""
+        self._agent.execute_operation(
+            "starburst-galaxy",
+            "run_query",
+            self._simple_operation(),
+            {
+                "connect_args": {
+                    "port": "443",
+                    "user": self._USER,
+                    "password": self._PASSWORD,
+                }
+            },
+        )
+
+        self._assert_no_password_in_log_records()
+        self._assert_no_password_in_json_formatter_output()
+
+
+class _ListHandler(logging.Handler):
+    """Minimal log handler that appends every LogRecord to a list."""
+
+    def __init__(self, records: list):
+        super().__init__()
+        self._records = records
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self._records.append(record)

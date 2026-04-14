@@ -2,28 +2,12 @@ from typing import Optional, Any
 
 import pyodbc
 
-from apollo.integrations.db.tsql_base_db_proxy_client import TSqlBaseDbProxyClient
+from apollo.integrations.db.tsql_base_db_proxy_client import (
+    TSqlBaseDbProxyClient,
+    odbc_string_from_dict,
+)
 
 _ATTR_CONNECT_ARGS = "connect_args"
-
-
-def _odbc_escape(value: str) -> str:
-    """Escape an ODBC connection string value by wrapping in braces if it contains special chars.
-
-    ODBC connection string values containing ``;``, ``{``, ``}``, or ``=`` must be wrapped
-    in curly braces to prevent them from being interpreted as key-value delimiters.
-    Any literal ``}`` inside the value is doubled (``}}``) per the ODBC spec.
-
-    Values that are already wrapped in a matching ``{...}`` pair (e.g. driver names like
-    ``{ODBC Driver 18 for SQL Server}``) are left unchanged — they are already correctly
-    quoted for ODBC.
-    """
-    if value.startswith("{") and value.endswith("}"):
-        # Already brace-wrapped (e.g. driver names) — leave as-is.
-        return value
-    if any(c in value for c in (";", "{", "}", "=")):
-        return "{" + value.replace("}", "}}") + "}"
-    return value
 
 
 class MsFabricProxyClient(TSqlBaseDbProxyClient):
@@ -57,6 +41,8 @@ class MsFabricProxyClient(TSqlBaseDbProxyClient):
                 f"{_ATTR_CONNECT_ARGS} must be a dict, "
                 f"got {type(connect_args).__name__}"
             )
+        # CTP path: timeout fields land in connect_args; pop before building ODBC string
+        connect_args = dict(connect_args)
         login_timeout = connect_args.pop(
             "login_timeout", self._DEFAULT_LOGIN_TIMEOUT_IN_SECONDS
         )

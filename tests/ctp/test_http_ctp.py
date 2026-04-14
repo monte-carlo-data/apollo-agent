@@ -1,8 +1,4 @@
 # tests/ctp/test_http_ctp.py
-#
-# HttpProxyClient currently reads credentials flat, so HTTP_DEFAULT_CTP is not
-# registered in CtpRegistry._discover(). Tests import the config directly and
-# call CtpPipeline().execute() rather than going through CtpRegistry.resolve().
 import os
 from unittest import TestCase
 
@@ -16,9 +12,8 @@ def _resolve(credentials: dict) -> dict:
 
 
 class TestHttpCtp(TestCase):
-    def test_http_not_registered(self):
-        # Confirm the config is deliberately absent from the registry.
-        self.assertIsNone(CtpRegistry.get("http"))
+    def test_registered(self):
+        self.assertIsNotNone(CtpRegistry.get("http"))
 
     def test_resolve_token_auth(self):
         result = _resolve({"token": "mytoken"})

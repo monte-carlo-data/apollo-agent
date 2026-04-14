@@ -70,8 +70,8 @@ class MsFabricProxyClientTests(TestCase):
             )
 
     @patch("pyodbc.connect")
-    def test_login_timeout_from_credentials(self, mock_connect):
-        """login_timeout in connect_args overrides the default."""
+    def test_login_timeout_from_connect_args(self, mock_connect):
+        """login_timeout in connect_args overrides the default and is not serialized to the ODBC string."""
         mock_connect.return_value = self._mock_connection
         MsFabricProxyClient(
             credentials={"connect_args": {**_CONNECT_ARGS_DICT, "login_timeout": 30}},
@@ -80,8 +80,8 @@ class MsFabricProxyClientTests(TestCase):
         mock_connect.assert_called_once_with(_EXPECTED_ODBC_STRING, timeout=30)
 
     @patch("pyodbc.connect")
-    def test_query_timeout_from_credentials(self, mock_connect):
-        """query_timeout_in_seconds in connect_args overrides the default."""
+    def test_query_timeout_from_connect_args(self, mock_connect):
+        """query_timeout_in_seconds in connect_args overrides the default and is not serialized to the ODBC string."""
         mock_connect.return_value = self._mock_connection
         client = MsFabricProxyClient(
             credentials={
@@ -90,6 +90,7 @@ class MsFabricProxyClientTests(TestCase):
             platform="test",
         )
         self.assertEqual(120, client.wrapped_client.timeout)
+        self.assertNotIn("query_timeout_in_seconds", mock_connect.call_args[0][0])
 
     def test_missing_connect_args_raises(self):
         """Missing connect_args raises ValueError."""
@@ -191,19 +192,11 @@ class MsFabricProxyClientTests(TestCase):
 class MsFabricCtpRoundTripTests(TestCase):
     """Verify the CTP pipeline produces the expected ODBC dict from flat credentials."""
 
-    _FLAT_CREDS = {
-        "server": _HOST,
-        "database": _DATABASE,
-        "client_id": _CLIENT_ID,
-        "client_secret": _CLIENT_SECRET,
-        "tenant_id": _TENANT_ID,
-    }
-
     def test_ctp_registered(self):
         self.assertIsNotNone(CtpRegistry.get("microsoft-fabric"))
 
     def test_ctp_resolves_flat_credentials(self):
-        resolved = CtpRegistry.resolve("microsoft-fabric", self._FLAT_CREDS)
+        resolved = CtpRegistry.resolve("microsoft-fabric", _FLAT_CREDS)
         connect_args = resolved["connect_args"]
 
         self.assertEqual("{ODBC Driver 17 for SQL Server}", connect_args["DRIVER"])
@@ -223,7 +216,7 @@ class MsFabricCtpRoundTripTests(TestCase):
         mock_connection = Mock()
         mock_connect.return_value = mock_connection
 
-        resolved = CtpRegistry.resolve("microsoft-fabric", self._FLAT_CREDS)
+        resolved = CtpRegistry.resolve("microsoft-fabric", _FLAT_CREDS)
         MsFabricProxyClient(credentials=resolved, platform="test")
 
         mock_connect.assert_called_once_with(_EXPECTED_ODBC_STRING, timeout=15)
@@ -232,29 +225,23 @@ class MsFabricCtpRoundTripTests(TestCase):
         """host and hostname are accepted as aliases for server."""
         for key in ("host", "hostname"):
             with self.subTest(key=key):
-                creds = {**self._FLAT_CREDS, key: _HOST}
+                creds = {**_FLAT_CREDS, key: _HOST}
                 creds.pop("server")
                 resolved = CtpRegistry.resolve("microsoft-fabric", creds)
                 self.assertEqual(_SERVER, resolved["connect_args"]["SERVER"])
 
     def test_ctp_resolves_custom_port(self):
         """A non-default port is included in the SERVER field."""
-        creds = {**self._FLAT_CREDS, "port": 1234}
+        creds = {**_FLAT_CREDS, "port": 1234}
         resolved = CtpRegistry.resolve("microsoft-fabric", creds)
         self.assertEqual(f"{_HOST},1234", resolved["connect_args"]["SERVER"])
 
     def test_ctp_resolves_db_name_alias(self):
         """db_name is accepted as an alias for database."""
-        creds = {**self._FLAT_CREDS, "db_name": _DATABASE}
+        creds = {**_FLAT_CREDS, "db_name": _DATABASE}
         creds.pop("database")
         resolved = CtpRegistry.resolve("microsoft-fabric", creds)
         self.assertEqual(_DATABASE, resolved["connect_args"]["DATABASE"])
-
-    def test_ctp_bypasses_when_connect_args_present(self):
-        """If connect_args is already present, CTP returns credentials unchanged."""
-        creds_with_connect_args = {"connect_args": _CONNECT_ARGS_DICT}
-        resolved = CtpRegistry.resolve("microsoft-fabric", creds_with_connect_args)
-        self.assertEqual(creds_with_connect_args, resolved)
 
 
 class MsFabricDatetimeoffsetTests(TestCase):

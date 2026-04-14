@@ -1,6 +1,7 @@
 from unittest import TestCase
 from unittest.mock import (
     MagicMock,
+    call,
     create_autospec,
     patch,
 )
@@ -18,13 +19,27 @@ from apollo.common.agent.constants import (
 from apollo.agent.logging_utils import LoggingUtils
 from apollo.integrations.tableau.tableau_proxy_client import JwtAuth
 
+# DC pre-shaped credentials: token already resolved by the DC.
 _TABLEAU_CREDENTIALS = {
-    "server_name": "https://prod-useast-a.online.tableau.com",
-    "site_name": "mc_dev",
-    "username": "test@example.com",
-    "client_id": "client_id",
-    "secret_id": "secret_id",
-    "secret_value": "secret_value",
+    "connect_args": {
+        "server_name": "https://prod-useast-a.online.tableau.com",
+        "site_name": "mc_dev",
+        "token": "fake.jwt.token",
+        "verify_ssl": True,
+    }
+}
+
+# Flat Connected App credentials: proxy client generates JWT per sign-in.
+_CONNECTED_APP_CREDENTIALS = {
+    "connect_args": {
+        "server_name": "https://prod-useast-a.online.tableau.com",
+        "site_name": "mc_dev",
+        "client_id": "client-uuid",
+        "secret_id": "secret-uuid",
+        "secret_value": "supersecret",
+        "username": "alice@example.com",
+        "verify_ssl": True,
+    }
 }
 
 
@@ -40,14 +55,11 @@ class TableauTests(TestCase):
 
     @patch("apollo.integrations.tableau.tableau_proxy_client.JwtAuth")
     @patch("apollo.integrations.tableau.tableau_proxy_client.Server")
-    @patch("apollo.integrations.tableau.tableau_proxy_client.generate_jwt")
     def test_metadata_query(
         self,
-        mock_jwt_gen: MagicMock,
         mock_server_init: MagicMock,
         mock_creds_init: MagicMock,
     ):
-        mock_jwt_gen.return_value = "fake_jwt"
         mock_server_init.return_value = self._mock_client
         mock_creds_init.return_value = self._mock_creds
         self._mock_metadata.query.return_value = {"foo": ["bar", "baz"]}
@@ -82,11 +94,8 @@ class TableauTests(TestCase):
 
     @patch("apollo.integrations.tableau.tableau_proxy_client.JwtAuth")
     @patch("apollo.integrations.tableau.tableau_proxy_client.Server")
-    @patch("apollo.integrations.tableau.tableau_proxy_client.generate_jwt")
     @patch("requests.request")
-    def test_api_request(
-        self, mock_request, mock_jwt_gen, mock_server_init, mock_creds_init
-    ):
+    def test_api_request(self, mock_request, mock_server_init, mock_creds_init):
         mock_response = create_autospec(Response)
         mock_request.return_value = mock_response
         expected_result = (
@@ -98,7 +107,6 @@ class TableauTests(TestCase):
         mock_response.status_code = 200
         mock_response.text = expected_result
 
-        mock_jwt_gen.return_value = "fake_jwt"
         mock_server_init.return_value = self._mock_client
         mock_creds_init.return_value = self._mock_creds
         self._mock_client.baseurl = "https://example.com"
@@ -144,10 +152,9 @@ class TableauTests(TestCase):
 
     @patch("apollo.integrations.tableau.tableau_proxy_client.JwtAuth")
     @patch("apollo.integrations.tableau.tableau_proxy_client.Server")
-    @patch("apollo.integrations.tableau.tableau_proxy_client.generate_jwt")
     @patch("requests.request")
     def test_api_request_with_url(
-        self, mock_request, mock_jwt_gen, mock_server_init, mock_creds_init
+        self, mock_request, mock_server_init, mock_creds_init
     ):
         mock_response = create_autospec(Response)
         mock_request.return_value = mock_response
@@ -160,7 +167,6 @@ class TableauTests(TestCase):
         mock_response.status_code = 200
         mock_response.text = expected_result
 
-        mock_jwt_gen.return_value = "fake_jwt"
         mock_server_init.return_value = self._mock_client
         mock_creds_init.return_value = self._mock_creds
         self._mock_client.baseurl = "https://example.com"
@@ -202,4 +208,38 @@ class TableauTests(TestCase):
             },
             params={"pageNumber": 1, "pageSize": 10},
             verify=True,
+        )
+
+    @patch("apollo.integrations.tableau.tableau_proxy_client.generate_jwt")
+    @patch("apollo.integrations.tableau.tableau_proxy_client.JwtAuth")
+    @patch("apollo.integrations.tableau.tableau_proxy_client.Server")
+    def test_generate_jwt_called_per_sign_in(
+        self, mock_server_init, mock_jwt_auth, mock_generate_jwt
+    ):
+        """JWT is regenerated on every _sign_in() call to avoid expiry (flat credentials path)."""
+        mock_server_init.return_value = self._mock_client
+        mock_jwt_auth.return_value = self._mock_creds
+        mock_generate_jwt.side_effect = ["jwt-call-1", "jwt-call-2"]
+        self._mock_metadata.query.return_value = {}
+
+        self._agent.execute_operation(
+            "tableau",
+            "_query",
+            {
+                "trace_id": "1234",
+                "skip_cache": True,
+                "commands": [
+                    {"method": "metadata_query", "kwargs": {"query": "q1"}},
+                    {"method": "metadata_query", "kwargs": {"query": "q2"}},
+                ],
+            },
+            credentials=_CONNECTED_APP_CREDENTIALS,
+        )
+
+        self.assertEqual(2, mock_generate_jwt.call_count)
+        mock_jwt_auth.assert_has_calls(
+            [
+                call(token="jwt-call-1", site_id="mc_dev"),
+                call(token="jwt-call-2", site_id="mc_dev"),
+            ]
         )

@@ -1,9 +1,4 @@
 # tests/ctp/test_sql_server_ctp.py
-#
-# The proxy clients currently expect connect_args to be a pre-built ODBC string
-# (constructed by the DC). CTP produces a dict of ODBC key-value pairs that Phase 2
-# will serialize. These configs are not registered; tests use CtpPipeline().execute()
-# directly.
 from unittest import TestCase
 
 from apollo.integrations.ctp.defaults.sql_server import (
@@ -26,10 +21,10 @@ def _resolve(config, credentials: dict) -> dict:
 
 
 class TestSqlServerCtp(TestCase):
-    def test_sql_server_variants_not_registered(self):
+    def test_sql_server_variants_registered(self):
         for connection_type, _ in _ALL_CONFIGS:
             with self.subTest(connection_type=connection_type):
-                self.assertIsNone(CtpRegistry.get(connection_type))
+                self.assertIsNotNone(CtpRegistry.get(connection_type))
 
     # ── Basic connection fields ────────────────────────────────────────
 

@@ -7,8 +7,8 @@ from apollo.integrations.ctp.registry import CtpRegistry
 
 
 class TestSalesforceCrmCtp(TestCase):
-    def test_not_registered(self):
-        self.assertIsNone(CtpRegistry.get("salesforce-crm"))
+    def test_registered(self):
+        self.assertIsNotNone(CtpRegistry.get("salesforce-crm"))
 
     def test_resolve_token_auth(self):
         result = CtpPipeline().execute(

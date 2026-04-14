@@ -1,6 +1,7 @@
 from typing import Any, NotRequired, Required, TypedDict
 
 from apollo.integrations.ctp.models import CtpConfig, MapperConfig
+from apollo.integrations.ctp.registry import CtpRegistry
 
 
 class HiveClientArgs(TypedDict):
@@ -51,3 +52,6 @@ HIVE_DEFAULT_CTP = CtpConfig(
         },
     ),
 )
+
+
+CtpRegistry.register("hive", HIVE_DEFAULT_CTP)

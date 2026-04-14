@@ -1,5 +1,7 @@
 import base64
 import datetime
+import json
+import logging
 from typing import (
     Iterable,
     List,
@@ -22,7 +24,15 @@ _MYSQL_CREDENTIALS = {
     "host": "www.test.com",
     "user": "u",
     "password": "p",
-    "port": "3306",
+    "port": 3306,
+}
+
+# Expected connect_args after CTP passes through _MYSQL_CREDENTIALS unchanged (DC path).
+_EXPECTED_MYSQL_CONNECT_ARGS = {
+    "host": "www.test.com",
+    "user": "u",
+    "password": "p",
+    "port": 3306,
 }
 
 
@@ -144,7 +154,7 @@ class MySqlClientTests(TestCase):
         self.assertTrue(ATTRIBUTE_NAME_RESULT in response.result)
         result = response.result.get(ATTRIBUTE_NAME_RESULT)
 
-        mock_connect.assert_called_with(**_MYSQL_CREDENTIALS)
+        mock_connect.assert_called_with(**_EXPECTED_MYSQL_CONNECT_ARGS)
         self._mock_cursor.execute.assert_has_calls(
             [
                 call(query, query_args),
@@ -190,3 +200,109 @@ class MySqlClientTests(TestCase):
             }
         else:
             return value
+
+
+class _ListHandler(logging.Handler):
+    def __init__(self, records):
+        super().__init__()
+        self._records = records
+
+    def emit(self, record):
+        self._records.append(record)
+
+
+class MysqlCtpCredentialSafetyTests(TestCase):
+    """CTP connection errors must be actionable without leaking credentials."""
+
+    _HOST = "db.example.com"
+    _USER = "svc_account@example.com"
+    _PASSWORD = "s3cr3t_p@ssw0rd!"
+
+    _OPERATION = {
+        "trace_id": "ctp-safety-test",
+        "skip_cache": True,
+        "commands": [
+            {"method": "cursor", "store": "_cursor"},
+            {"target": "_cursor", "method": "execute", "args": ["SELECT 1", None]},
+        ],
+    }
+
+    def setUp(self):
+        self._agent = Agent(LoggingUtils())
+        self._log_records = []
+        self._log_handler = _ListHandler(self._log_records)
+        logging.getLogger().addHandler(self._log_handler)
+
+    def tearDown(self):
+        logging.getLogger().removeHandler(self._log_handler)
+
+    def _assert_no_credential_leak(self, response) -> None:
+        serialized = json.dumps(response.result, default=str)
+        self.assertNotIn(self._PASSWORD, serialized, "password leaked in response")
+        self.assertNotIn(self._USER, serialized, "username leaked in response")
+
+    @patch("pymysql.connect")
+    def test_connect_failure_is_actionable_and_safe(self, mock_connect):
+        """Connection failure exposes the hostname but not the password."""
+        mock_connect.side_effect = Exception(
+            f"Can't connect to MySQL server on '{self._HOST}'"
+        )
+        response = self._agent.execute_operation(
+            "mysql",
+            "run_query",
+            self._OPERATION,
+            {
+                "host": self._HOST,
+                "port": "3306",
+                "user": self._USER,
+                "password": self._PASSWORD,
+            },
+        )
+        self.assertIn(ATTRIBUTE_NAME_ERROR, response.result)
+        error = response.result.get(ATTRIBUTE_NAME_ERROR, "")
+        self.assertIn(self._HOST, error)
+        self._assert_no_credential_leak(response)
+
+    @patch("pymysql.connect")
+    def test_auth_failure_is_actionable_and_safe(self, mock_connect):
+        """Auth failure surfaces a useful error without leaking credentials."""
+        mock_connect.side_effect = Exception("1045 (28000): Access denied for user")
+        response = self._agent.execute_operation(
+            "mysql",
+            "run_query",
+            self._OPERATION,
+            {
+                "host": self._HOST,
+                "port": "3306",
+                "user": self._USER,
+                "password": self._PASSWORD,
+            },
+        )
+        self.assertIn(ATTRIBUTE_NAME_ERROR, response.result)
+        error = response.result.get(ATTRIBUTE_NAME_ERROR, "")
+        self.assertIn("1045", error)
+        self._assert_no_credential_leak(response)
+
+    @patch("pymysql.connect")
+    def test_log_output_does_not_leak_credentials(self, mock_connect):
+        """JsonLogFormatter (Datadog/Lambda path) never emits the password."""
+        from apollo.interfaces.lambda_function.json_log_formatter import (
+            JsonLogFormatter,
+        )
+
+        mock_connect.side_effect = Exception(f"Can't connect to {self._HOST}")
+        self._agent.execute_operation(
+            "mysql",
+            "run_query",
+            self._OPERATION,
+            {
+                "host": self._HOST,
+                "port": "3306",
+                "user": self._USER,
+                "password": self._PASSWORD,
+            },
+        )
+        formatter = JsonLogFormatter()
+        for record in self._log_records:
+            output = formatter.format(record)
+            self.assertNotIn(self._PASSWORD, output)

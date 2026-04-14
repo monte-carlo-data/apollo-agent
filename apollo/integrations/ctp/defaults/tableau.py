@@ -1,32 +1,26 @@
 from typing import NotRequired, Required, TypedDict
 
-from apollo.integrations.ctp.models import CtpConfig, MapperConfig, TransformStep
+from apollo.integrations.ctp.models import CtpConfig, MapperConfig
 
 
 class TableauClientArgs(TypedDict):
     server_name: Required[str]
-    token: Required[str]  # pre-generated JWT from generate_jwt transform
     site_name: NotRequired[str]  # defaults to "" (default site)
     verify_ssl: NotRequired[bool]  # defaults to True
+    # DC pre-shaped path: token already resolved by the DC.
+    token: NotRequired[str]
+    # Flat credentials path: Connected App fields passed through so the proxy client
+    # can regenerate a fresh JWT on every sign-in (avoids 5-minute JWT expiry).
+    client_id: NotRequired[str]
+    secret_id: NotRequired[str]
+    secret_value: NotRequired[str]
+    username: NotRequired[str]
+    token_expiration_seconds: NotRequired[int]
 
 
 TABLEAU_DEFAULT_CTP = CtpConfig(
     name="tableau-default",
-    steps=[
-        # No `when` guard — JWT generation is always required for Tableau Connected Apps.
-        TransformStep(
-            type="generate_jwt",
-            input={
-                "username": "{{ raw.username }}",
-                "client_id": "{{ raw.client_id }}",
-                "secret_id": "{{ raw.secret_id }}",
-                "secret_value": "{{ raw.secret_value }}",
-                "expiration_seconds": "{{ raw.token_expiration_seconds | default(none) }}",
-            },
-            output={"token": "tableau_jwt"},
-            field_map={"token": "{{ derived.tableau_jwt }}"},
-        ),
-    ],
+    steps=[],
     mapper=MapperConfig(
         name="tableau_client_args",
         schema=TableauClientArgs,
@@ -34,11 +28,18 @@ TABLEAU_DEFAULT_CTP = CtpConfig(
             "server_name": "{{ raw.server_name }}",
             "site_name": "{{ raw.site_name | default('') }}",
             "verify_ssl": "{{ raw.verify_ssl | default(true) }}",
+            # DC pre-shaped path passes token directly; flat path passes Connected App
+            # fields so the proxy client can regenerate the JWT per sign-in.
+            "token": "{{ raw.token | default(none) }}",
+            "client_id": "{{ raw.client_id | default(none) }}",
+            "secret_id": "{{ raw.secret_id | default(none) }}",
+            "secret_value": "{{ raw.secret_value | default(none) }}",
+            "username": "{{ raw.username | default(none) }}",
+            "token_expiration_seconds": "{{ raw.token_expiration_seconds | default(none) }}",
         },
     ),
 )
 
-# Not registered: the proxy client reads credentials flat (not from connect_args)
-# and calls generate_jwt internally on each sign-in.
-# Phase 2 will update TableauProxyClient to read from connect_args["token"],
-# connect_args["server_name"], etc., then register here.
+from apollo.integrations.ctp.registry import CtpRegistry  # noqa: E402
+
+CtpRegistry.register("tableau", TABLEAU_DEFAULT_CTP)

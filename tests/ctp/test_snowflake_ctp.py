@@ -28,8 +28,8 @@ def _generate_pem(passphrase: bytes | None = None) -> bytes:
 
 
 class TestSnowflakeCtp(TestCase):
-    def test_not_registered(self):
-        self.assertIsNone(CtpRegistry.get("snowflake"))
+    def test_registered(self):
+        self.assertIsNotNone(CtpRegistry.get("snowflake"))
 
     # ── Password auth ─────────────────────────────────────────────────
 

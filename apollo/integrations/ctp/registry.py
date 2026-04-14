@@ -15,7 +15,31 @@ def _discover() -> None:
     Called once on first registry access. Add new connector imports here as
     their proxy clients are updated in Phase 2 to read from connect_args.
     """
+    import apollo.integrations.ctp.defaults.aws  # noqa: F401
+    import apollo.integrations.ctp.defaults.bigquery  # noqa: F401
+    import apollo.integrations.ctp.defaults.databricks  # noqa: F401
+    import apollo.integrations.ctp.defaults.db2  # noqa: F401
+    import apollo.integrations.ctp.defaults.dremio  # noqa: F401
     import apollo.integrations.ctp.defaults.fabric  # noqa: F401
+    import apollo.integrations.ctp.defaults.git  # noqa: F401
+    import apollo.integrations.ctp.defaults.http  # noqa: F401
+    import apollo.integrations.ctp.defaults.hive  # noqa: F401
+    import apollo.integrations.ctp.defaults.motherduck  # noqa: F401
+    import apollo.integrations.ctp.defaults.presto  # noqa: F401
+    import apollo.integrations.ctp.defaults.snowflake  # noqa: F401
+    import apollo.integrations.ctp.defaults.teradata  # noqa: F401
+    import apollo.integrations.ctp.defaults.starburst_galaxy  # noqa: F401
+    import apollo.integrations.ctp.defaults.redshift  # noqa: F401
+    import apollo.integrations.ctp.defaults.sap_hana  # noqa: F401
+    import apollo.integrations.ctp.defaults.salesforce_crm  # noqa: F401
+    import apollo.integrations.ctp.defaults.starburst_enterprise  # noqa: F401
+    import apollo.integrations.ctp.defaults.postgres  # noqa: F401
+    import apollo.integrations.ctp.defaults.sql_server  # noqa: F401
+    import apollo.integrations.ctp.defaults.tableau  # noqa: F401
+    import apollo.integrations.ctp.defaults.power_bi  # noqa: F401
+    import apollo.integrations.ctp.defaults.looker  # noqa: F401
+    import apollo.integrations.ctp.defaults.mysql  # noqa: F401
+    import apollo.integrations.ctp.defaults.oracle  # noqa: F401
 
 
 def _ensure_initialized() -> None:
@@ -47,21 +71,27 @@ class CtpRegistry:
         """
         Run the registered CTP pipeline for connection_type and return
         {"connect_args": <pipeline output>}.
-        If credentials already have connect_args, returns unchanged (legacy path).
+        If credentials contain connect_args (DC pre-shaped path), the inner dict
+        is unwrapped and run through the pipeline — both flat and pre-shaped
+        credentials follow the same transform path.
         Raises CtpPipelineError if connection_type is not registered.
         """
         _ensure_initialized()
-        if _ATTR_CONNECT_ARGS in credentials:
-            return credentials
-
         config = cls.get(connection_type)
         if config is None:
             raise CtpPipelineError(
                 stage="registry",
                 message=f"No CTP config registered for '{connection_type}'. Call CtpRegistry.get() before resolve().",
             )
+        # Unwrap pre-shaped connect_args so both flat and DC-pre-shaped credentials
+        # follow the same transform path through the pipeline.
+        # If connect_args is not a dict (e.g. a pre-built ODBC string), pass through
+        # unchanged — the pipeline cannot interpret non-dict credentials.
+        raw_or_connect_args = credentials.get(_ATTR_CONNECT_ARGS, credentials)
+        if not isinstance(raw_or_connect_args, dict):
+            return credentials
         return {
             _ATTR_CONNECT_ARGS: CtpPipeline().execute(
-                config, credentials, context=context or {}
+                config, raw_or_connect_args, context=context or {}
             )
         }
