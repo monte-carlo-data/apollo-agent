@@ -1,10 +1,4 @@
 # tests/ctp/test_presto_ctp.py
-#
-# Two Phase 2 blockers prevent registration:
-# 1. SSL uses credentials["ssl_options"] via http_session.verify; CTP output drops it.
-# 2. proxy client pops "auth" without a default; mapper omits None values so auth would
-#    be absent when not provided, raising KeyError on connect_args.pop("auth").
-# Tests use CtpPipeline().execute() directly.
 import prestodb
 from unittest import TestCase
 
@@ -18,8 +12,8 @@ def _resolve(credentials: dict) -> dict:
 
 
 class TestPrestoCtp(TestCase):
-    def test_presto_not_registered(self):
-        self.assertIsNone(CtpRegistry.get("presto"))
+    def test_registered(self):
+        self.assertIsNotNone(CtpRegistry.get("presto"))
 
     # ── Basic connection fields ────────────────────────────────────────
 
@@ -76,6 +70,5 @@ class TestPrestoCtp(TestCase):
 
     def test_auth_absent_when_not_provided(self):
         # When auth is not in raw credentials, the step is skipped (when guard).
-        # Phase 2 will update proxy client to use pop("auth", None).
         args = _resolve({"host": "h", "user": "u"})
         self.assertNotIn("auth", args)

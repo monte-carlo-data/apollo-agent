@@ -1,8 +1,4 @@
 # tests/ctp/test_aws_ctp.py
-#
-# BaseAwsProxyClient currently reads credentials flat, so no AWS CTP config is
-# registered in CtpRegistry._discover(). Tests import configs directly and
-# call CtpPipeline().execute() rather than going through CtpRegistry.resolve().
 from unittest import TestCase
 
 from apollo.integrations.ctp.defaults.aws import (
@@ -30,10 +26,10 @@ _ALL_CONFIGS = [
 
 
 class TestAwsCtp(TestCase):
-    def test_aws_services_not_registered(self):
+    def test_aws_services_registered(self):
         for connection_type, _ in _ALL_CONFIGS:
             with self.subTest(connection_type=connection_type):
-                self.assertIsNone(CtpRegistry.get(connection_type))
+                self.assertIsNotNone(CtpRegistry.get(connection_type))
 
     def test_resolve_with_assumable_role(self):
         for _, config in _ALL_CONFIGS:

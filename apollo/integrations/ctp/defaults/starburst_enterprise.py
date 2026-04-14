@@ -66,6 +66,12 @@ STARBURST_ENTERPRISE_DEFAULT_CTP = CtpConfig(
             "http_scheme": "https",
             "catalog": "{{ raw.catalog | default(none) }}",
             "schema": "{{ raw.schema | default(none) }}",
+            # Pass through verify when DC already resolved it (step wins on collision for flat creds)
+            "verify": "{{ raw.verify | default(none) }}",
         },
     ),
 )
+
+from apollo.integrations.ctp.registry import CtpRegistry  # noqa: E402
+
+CtpRegistry.register("starburst-enterprise", STARBURST_ENTERPRISE_DEFAULT_CTP)

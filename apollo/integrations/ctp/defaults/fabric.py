@@ -27,13 +27,16 @@ MS_FABRIC_DEFAULT_CTP = CtpConfig(
         schema=MsFabricOdbcArgs,
         field_map={
             "DRIVER": "{ODBC Driver 17 for SQL Server}",
-            "SERVER": "{{ raw.server | default(raw.host) | default(raw.hostname) }}",
+            "SERVER": "{{ raw.server | default(raw.host) | default(raw.hostname) }},{{ raw.port | default(1433) }}",
             "DATABASE": "{{ raw.database | default(raw.db_name) }}",
             "Authentication": "ActiveDirectoryServicePrincipal",
             "UID": "{{ raw.client_id }}@{{ raw.tenant_id }}",
             "PWD": "{{ raw.client_secret }}",
             "Encrypt": "yes",
             "TrustServerCertificate": "no",
+            # Timeout fields — not ODBC params; proxy client pops these before building the connection string
+            "login_timeout": "{{ raw.login_timeout | default(none) }}",
+            "query_timeout_in_seconds": "{{ raw.query_timeout_in_seconds | default(none) }}",
         },
     ),
 )
@@ -41,4 +44,4 @@ MS_FABRIC_DEFAULT_CTP = CtpConfig(
 
 from apollo.integrations.ctp.registry import CtpRegistry  # noqa: E402
 
-CtpRegistry.register("microsoft-fabric", MS_FABRIC_DEFAULT_CTP)
+# CtpRegistry.register("microsoft-fabric", MS_FABRIC_DEFAULT_CTP)

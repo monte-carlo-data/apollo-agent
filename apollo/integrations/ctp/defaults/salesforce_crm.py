@@ -32,7 +32,7 @@ SALESFORCE_CRM_DEFAULT_CTP = CtpConfig(
         schema=SalesforceCrmClientArgs,
         field_map={
             # Token auth
-            "username": "{{ raw.user | default(none) }}",
+            "username": "{{ raw.user | default(raw.username) | default(none) }}",
             "password": "{{ raw.password | default(none) }}",
             "security_token": "{{ raw.security_token | default(none) }}",
             # OAuth auth
@@ -43,3 +43,7 @@ SALESFORCE_CRM_DEFAULT_CTP = CtpConfig(
         },
     ),
 )
+
+from apollo.integrations.ctp.registry import CtpRegistry  # noqa: E402
+
+CtpRegistry.register("salesforce-crm", SALESFORCE_CRM_DEFAULT_CTP)

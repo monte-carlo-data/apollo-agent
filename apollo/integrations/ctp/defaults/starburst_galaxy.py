@@ -69,3 +69,7 @@ STARBURST_GALAXY_DEFAULT_CTP = CtpConfig(
         },
     ),
 )
+
+from apollo.integrations.ctp.registry import CtpRegistry  # noqa: E402
+
+CtpRegistry.register("starburst-galaxy", STARBURST_GALAXY_DEFAULT_CTP)

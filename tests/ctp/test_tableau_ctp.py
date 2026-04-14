@@ -1,17 +1,11 @@
 # tests/ctp/test_tableau_ctp.py
-#
-# The proxy client reads credentials flat (not from connect_args) and calls
-# generate_jwt internally on each sign-in. Not registered until Phase 2 updates
-# TableauProxyClient to read from connect_args.
-# Tests use CtpPipeline().execute() directly.
-import jwt
 from unittest import TestCase
 
 from apollo.integrations.ctp.defaults.tableau import TABLEAU_DEFAULT_CTP
 from apollo.integrations.ctp.pipeline import CtpPipeline
 from apollo.integrations.ctp.registry import CtpRegistry
 
-_CREDS = {
+_CONNECTED_APP_CREDS = {
     "username": "alice@example.com",
     "client_id": "client-uuid-1234",
     "secret_id": "secret-uuid-5678",
@@ -25,63 +19,55 @@ def _resolve(credentials: dict) -> dict:
 
 
 class TestTableauCtp(TestCase):
-    def test_tableau_not_registered(self):
-        self.assertIsNone(CtpRegistry.get("tableau"))
+    def test_tableau_registered(self):
+        self.assertIsNotNone(CtpRegistry.get("tableau"))
 
-    # ── JWT generation ────────────────────────────────────────────────
+    # ── Flat credentials (Connected App) path ────────────────────────────
 
-    def test_token_is_jwt_string(self):
-        args = _resolve(_CREDS)
-        self.assertIsInstance(args["token"], str)
-        # verify it decodes as a valid HS256 JWT
-        payload = jwt.decode(
-            args["token"],
-            key=_CREDS["secret_value"],
-            algorithms=["HS256"],
-            audience="tableau",
+    def test_connected_app_fields_passed_through(self):
+        # JWT is generated per sign-in by the proxy client; CTP passes raw fields through.
+        args = _resolve(_CONNECTED_APP_CREDS)
+        self.assertEqual("client-uuid-1234", args["client_id"])
+        self.assertEqual("secret-uuid-5678", args["secret_id"])
+        self.assertEqual("supersecret", args["secret_value"])
+        self.assertEqual("alice@example.com", args["username"])
+        self.assertIsNone(args.get("token"))
+
+    def test_custom_expiration_seconds_passed_through(self):
+        args = _resolve({**_CONNECTED_APP_CREDS, "token_expiration_seconds": 120})
+        self.assertEqual(120, args["token_expiration_seconds"])
+
+    def test_expiration_seconds_defaults_to_none(self):
+        args = _resolve(_CONNECTED_APP_CREDS)
+        self.assertIsNone(args.get("token_expiration_seconds"))
+
+    # ── DC pre-shaped path ───────────────────────────────────────────────
+
+    def test_pre_shaped_token_passed_through(self):
+        args = _resolve(
+            {"server_name": "https://tableau.example.com", "token": "pre.built.jwt"}
         )
-        self.assertEqual(_CREDS["username"], payload["sub"])
-        self.assertEqual(_CREDS["client_id"], payload["iss"])
+        self.assertEqual("pre.built.jwt", args["token"])
+        self.assertIsNone(args.get("client_id"))
 
-    def test_token_headers(self):
-        args = _resolve(_CREDS)
-        header = jwt.get_unverified_header(args["token"])
-        self.assertEqual(_CREDS["client_id"], header["iss"])
-        self.assertEqual(_CREDS["secret_id"], header["kid"])
-
-    def test_custom_expiration_seconds(self):
-        import time
-
-        creds = {**_CREDS, "token_expiration_seconds": 120}
-        args = _resolve(creds)
-        payload = jwt.decode(
-            args["token"],
-            key=_CREDS["secret_value"],
-            algorithms=["HS256"],
-            audience="tableau",
-        )
-        ttl = payload["exp"] - time.time()
-        self.assertLess(ttl, 130)
-        self.assertGreater(ttl, 100)
-
-    # ── Server / connection fields ────────────────────────────────────
+    # ── Server / connection fields ────────────────────────────────────────
 
     def test_server_name_in_output(self):
-        args = _resolve(_CREDS)
+        args = _resolve(_CONNECTED_APP_CREDS)
         self.assertEqual("https://tableau.example.com", args["server_name"])
 
     def test_site_name_defaults_to_empty_string(self):
-        args = _resolve(_CREDS)
+        args = _resolve(_CONNECTED_APP_CREDS)
         self.assertEqual("", args["site_name"])
 
     def test_site_name_override(self):
-        args = _resolve({**_CREDS, "site_name": "MySite"})
+        args = _resolve({**_CONNECTED_APP_CREDS, "site_name": "MySite"})
         self.assertEqual("MySite", args["site_name"])
 
     def test_verify_ssl_defaults_to_true(self):
-        args = _resolve(_CREDS)
+        args = _resolve(_CONNECTED_APP_CREDS)
         self.assertTrue(args["verify_ssl"])
 
     def test_verify_ssl_override(self):
-        args = _resolve({**_CREDS, "verify_ssl": False})
+        args = _resolve({**_CONNECTED_APP_CREDS, "verify_ssl": False})
         self.assertFalse(args["verify_ssl"])
