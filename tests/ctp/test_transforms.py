@@ -794,3 +794,209 @@ class TestResolveDatabricksOauthTransform(TestCase):
 
     def test_registered(self):
         self.assertIsNotNone(TransformRegistry.get("resolve_databricks_oauth"))
+
+
+# ── ResolveRedshiftCredentialsTransform ───────────────────────────────────────
+
+from apollo.integrations.ctp.transforms.resolve_redshift_credentials import (
+    ResolveRedshiftCredentialsTransform,
+)
+
+_REDSHIFT_RAW = {
+    "cluster_identifier": "my-cluster",
+    "db_user": "iam_alice",
+    "db_name": "mydb",
+    "aws_region": "us-east-1",
+}
+
+_FAKE_CREDENTIALS = {
+    "DbUser": "iam:iam_alice:123456",
+    "DbPassword": "AmazingPassword123!",
+    "Expiration": "2099-01-01T00:00:00Z",
+}
+
+
+def _make_redshift_step(
+    extra_input=None, user_key="federated_user", password_key="federated_password"
+):
+    inp = {k: "{{ raw." + k + " }}" for k in _REDSHIFT_RAW}
+    if extra_input:
+        inp.update(extra_input)
+    return TransformStep(
+        type="resolve_redshift_credentials",
+        input=inp,
+        output={"user": user_key, "password": password_key},
+    )
+
+
+@patch("apollo.integrations.ctp.transforms.resolve_redshift_credentials.boto3")
+class TestResolveRedshiftCredentialsTransform(TestCase):
+    def _mock_redshift_client(self, mock_boto3):
+        mock_client = MagicMock()
+        mock_client.get_cluster_credentials.return_value = _FAKE_CREDENTIALS
+        mock_boto3.Session.return_value.client.return_value = mock_client
+        return mock_client
+
+    def test_stores_db_user_and_password_in_derived(self, mock_boto3):
+        mock_client = self._mock_redshift_client(mock_boto3)
+        state = PipelineState(raw=_REDSHIFT_RAW)
+        ResolveRedshiftCredentialsTransform().execute(_make_redshift_step(), state)
+        self.assertEqual("iam:iam_alice:123456", state.derived["federated_user"])
+        self.assertEqual("AmazingPassword123!", state.derived["federated_password"])
+
+    def test_calls_get_cluster_credentials_with_required_params(self, mock_boto3):
+        mock_client = self._mock_redshift_client(mock_boto3)
+        state = PipelineState(raw=_REDSHIFT_RAW)
+        ResolveRedshiftCredentialsTransform().execute(_make_redshift_step(), state)
+        mock_client.get_cluster_credentials.assert_called_once_with(
+            DbUser="iam_alice",
+            DbName="mydb",
+            ClusterIdentifier="my-cluster",
+        )
+
+    def test_duration_seconds_passed_when_provided(self, mock_boto3):
+        mock_client = self._mock_redshift_client(mock_boto3)
+        state = PipelineState(raw={**_REDSHIFT_RAW, "duration_seconds": 1800})
+        step = _make_redshift_step(
+            extra_input={"duration_seconds": "{{ raw.duration_seconds }}"}
+        )
+        ResolveRedshiftCredentialsTransform().execute(step, state)
+        call_kwargs = mock_client.get_cluster_credentials.call_args.kwargs
+        self.assertEqual(1800, call_kwargs["DurationSeconds"])
+
+    def test_invalid_duration_seconds_raises_ctp_error(self, mock_boto3):
+        state = PipelineState(raw={**_REDSHIFT_RAW, "duration_seconds": "abc"})
+        step = _make_redshift_step(
+            extra_input={"duration_seconds": "{{ raw.duration_seconds }}"}
+        )
+        with self.assertRaises(CtpPipelineError) as ctx:
+            ResolveRedshiftCredentialsTransform().execute(step, state)
+        self.assertIn("duration_seconds", str(ctx.exception))
+
+    def test_creates_session_with_correct_region(self, mock_boto3):
+        self._mock_redshift_client(mock_boto3)
+        state = PipelineState(raw=_REDSHIFT_RAW)
+        ResolveRedshiftCredentialsTransform().execute(_make_redshift_step(), state)
+        mock_boto3.Session.assert_called_once_with(region_name="us-east-1")
+
+    def test_assumes_role_when_provided(self, mock_boto3):
+        mock_sts = MagicMock()
+        mock_sts.assume_role.return_value = {
+            "Credentials": {
+                "AccessKeyId": "AKIA...",
+                "SecretAccessKey": "secret",
+                "SessionToken": "token",
+            }
+        }
+        mock_boto3.client.return_value = mock_sts
+        self._mock_redshift_client(mock_boto3)
+
+        state = PipelineState(
+            raw={**_REDSHIFT_RAW, "assumable_role": "arn:aws:iam::123:role/MyRole"}
+        )
+        step = _make_redshift_step(
+            extra_input={"assumable_role": "{{ raw.assumable_role }}"}
+        )
+        ResolveRedshiftCredentialsTransform().execute(step, state)
+
+        mock_boto3.client.assert_called_with("sts")
+        mock_sts.assume_role.assert_called_once()
+        call_kwargs = mock_sts.assume_role.call_args.kwargs
+        self.assertEqual("arn:aws:iam::123:role/MyRole", call_kwargs["RoleArn"])
+
+    def test_assumes_role_with_external_id(self, mock_boto3):
+        mock_sts = MagicMock()
+        mock_sts.assume_role.return_value = {
+            "Credentials": {
+                "AccessKeyId": "AKIA...",
+                "SecretAccessKey": "secret",
+                "SessionToken": "token",
+            }
+        }
+        mock_boto3.client.return_value = mock_sts
+        self._mock_redshift_client(mock_boto3)
+
+        state = PipelineState(
+            raw={
+                **_REDSHIFT_RAW,
+                "assumable_role": "arn:aws:iam::123:role/MyRole",
+                "external_id": "ext-123",
+            }
+        )
+        step = _make_redshift_step(
+            extra_input={
+                "assumable_role": "{{ raw.assumable_role }}",
+                "external_id": "{{ raw.external_id }}",
+            }
+        )
+        ResolveRedshiftCredentialsTransform().execute(step, state)
+        call_kwargs = mock_sts.assume_role.call_args.kwargs
+        self.assertEqual("ext-123", call_kwargs["ExternalId"])
+
+    def test_api_error_raises_ctp_error(self, mock_boto3):
+        # Simulate a botocore ClientError — its str() echoes back DbUser/DbName/ClusterIdentifier,
+        # so the error message must use only the AWS error code, not str(exc).
+        client_error = Exception("some error")
+        client_error.response = {"Error": {"Code": "AccessDenied", "Message": "User: iam_alice is not authorized"}}  # type: ignore[attr-defined]
+        mock_client = MagicMock()
+        mock_client.get_cluster_credentials.side_effect = client_error
+        mock_boto3.Session.return_value.client.return_value = mock_client
+
+        state = PipelineState(raw=_REDSHIFT_RAW)
+        with self.assertRaises(CtpPipelineError) as ctx:
+            ResolveRedshiftCredentialsTransform().execute(_make_redshift_step(), state)
+        error_str = str(ctx.exception)
+        self.assertIn("AccessDenied", error_str)
+        # Verify credentials are NOT leaked into the error message
+        self.assertNotIn("iam_alice", error_str)
+        self.assertNotIn("mydb", error_str)
+        self.assertNotIn("my-cluster", error_str)
+
+    def test_custom_output_keys_used(self, mock_boto3):
+        self._mock_redshift_client(mock_boto3)
+        state = PipelineState(raw=_REDSHIFT_RAW)
+        step = _make_redshift_step(user_key="rs_user", password_key="rs_pass")
+        ResolveRedshiftCredentialsTransform().execute(step, state)
+        self.assertIn("rs_user", state.derived)
+        self.assertIn("rs_pass", state.derived)
+
+    def test_missing_required_input_raises(self, mock_boto3):
+        for missing in ("cluster_identifier", "db_user", "db_name", "aws_region"):
+            inp = {k: "{{ raw." + k + " }}" for k in _REDSHIFT_RAW if k != missing}
+            step = TransformStep(
+                type="resolve_redshift_credentials",
+                input=inp,
+                output={"user": "u", "password": "p"},
+            )
+            with self.assertRaises(CtpPipelineError) as ctx:
+                ResolveRedshiftCredentialsTransform().execute(
+                    step, PipelineState(raw=_REDSHIFT_RAW)
+                )
+            self.assertIn(missing, str(ctx.exception))
+
+    def test_missing_user_output_raises(self, mock_boto3):
+        step = TransformStep(
+            type="resolve_redshift_credentials",
+            input={k: "{{ raw." + k + " }}" for k in _REDSHIFT_RAW},
+            output={"password": "p"},
+        )
+        with self.assertRaises(CtpPipelineError) as ctx:
+            ResolveRedshiftCredentialsTransform().execute(
+                step, PipelineState(raw=_REDSHIFT_RAW)
+            )
+        self.assertIn("user", str(ctx.exception))
+
+    def test_missing_password_output_raises(self, mock_boto3):
+        step = TransformStep(
+            type="resolve_redshift_credentials",
+            input={k: "{{ raw." + k + " }}" for k in _REDSHIFT_RAW},
+            output={"user": "u"},
+        )
+        with self.assertRaises(CtpPipelineError) as ctx:
+            ResolveRedshiftCredentialsTransform().execute(
+                step, PipelineState(raw=_REDSHIFT_RAW)
+            )
+        self.assertIn("password", str(ctx.exception))
+
+    def test_registered(self, mock_boto3):
+        self.assertIsNotNone(TransformRegistry.get("resolve_redshift_credentials"))
