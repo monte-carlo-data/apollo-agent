@@ -998,5 +998,51 @@ class TestResolveRedshiftCredentialsTransform(TestCase):
             )
         self.assertIn("password", str(ctx.exception))
 
+    def test_sts_error_raises_ctp_error_without_role_arn(self, mock_boto3):
+        import botocore.exceptions
+
+        role_arn = "arn:aws:iam::123456789012:role/SecretRole"
+        mock_sts = MagicMock()
+        mock_sts.assume_role.side_effect = botocore.exceptions.ClientError(
+            {
+                "Error": {
+                    "Code": "AccessDenied",
+                    "Message": "Not authorized to assume role",
+                }
+            },
+            "AssumeRole",
+        )
+        mock_boto3.client.return_value = mock_sts
+
+        state = PipelineState(raw={**_REDSHIFT_RAW, "assumable_role": role_arn})
+        step = _make_redshift_step(
+            extra_input={"assumable_role": "{{ raw.assumable_role }}"}
+        )
+        with self.assertRaises(CtpPipelineError) as ctx:
+            ResolveRedshiftCredentialsTransform().execute(step, state)
+        error_str = str(ctx.exception)
+        # Error code must appear in the message
+        self.assertIn("AccessDenied", error_str)
+        # Role ARN must NOT be leaked into the error message
+        self.assertNotIn(role_arn, error_str)
+
+    def test_duration_seconds_below_minimum_raises(self, mock_boto3):
+        state = PipelineState(raw={**_REDSHIFT_RAW, "duration_seconds": 899})
+        step = _make_redshift_step(
+            extra_input={"duration_seconds": "{{ raw.duration_seconds }}"}
+        )
+        with self.assertRaises(CtpPipelineError) as ctx:
+            ResolveRedshiftCredentialsTransform().execute(step, state)
+        self.assertIn("899", str(ctx.exception))
+
+    def test_duration_seconds_above_maximum_raises(self, mock_boto3):
+        state = PipelineState(raw={**_REDSHIFT_RAW, "duration_seconds": 3601})
+        step = _make_redshift_step(
+            extra_input={"duration_seconds": "{{ raw.duration_seconds }}"}
+        )
+        with self.assertRaises(CtpPipelineError) as ctx:
+            ResolveRedshiftCredentialsTransform().execute(step, state)
+        self.assertIn("3601", str(ctx.exception))
+
     def test_registered(self, mock_boto3):
         self.assertIsNotNone(TransformRegistry.get("resolve_redshift_credentials"))
