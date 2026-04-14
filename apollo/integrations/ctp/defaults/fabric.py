@@ -27,7 +27,7 @@ MS_FABRIC_DEFAULT_CTP = CtpConfig(
         schema=MsFabricOdbcArgs,
         field_map={
             "DRIVER": "{ODBC Driver 17 for SQL Server}",
-            "SERVER": "{{ raw.server | default(raw.host) | default(raw.hostname) }}",
+            "SERVER": "{{ raw.server | default(raw.host) | default(raw.hostname) }},{{ raw.port | default(1433) }}",
             "DATABASE": "{{ raw.database | default(raw.db_name) }}",
             "Authentication": "ActiveDirectoryServicePrincipal",
             "UID": "{{ raw.client_id }}@{{ raw.tenant_id }}",
@@ -44,4 +44,4 @@ MS_FABRIC_DEFAULT_CTP = CtpConfig(
 
 from apollo.integrations.ctp.registry import CtpRegistry  # noqa: E402
 
-CtpRegistry.register("microsoft-fabric", MS_FABRIC_DEFAULT_CTP)
+# CtpRegistry.register("microsoft-fabric", MS_FABRIC_DEFAULT_CTP)

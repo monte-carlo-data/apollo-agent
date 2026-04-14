@@ -23,7 +23,7 @@ Several clients use `pyodbc` (fabric, azure_database, sql_server). They share:
 - `_handle_datetimeoffset(dto_value)` — converts the raw bytes to a timezone-aware `datetime`
 - `_process_description(col)` — overrides base class to use `col[1].__name__` (pyodbc returns
   the Python type object, not a type code)
-- Default timeouts: `login_timeout=15s`, `query_timeout_in_seconds=840s` (14 minutes)
+- Default timeouts: `login_timeout=15s`, `query_timeout_in_seconds=840s` (14 minutes). These keys are passed inside `connect_args` and popped before the dict is serialized to an ODBC string.
 
 These are shared via `TSqlBaseDbProxyClient` in `tsql_base_db_proxy_client.py`, which all three clients inherit from.
 
