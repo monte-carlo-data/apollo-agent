@@ -292,3 +292,65 @@ class TestValidateCtp(TestCase):
         self.assertFalse(result["valid"])
         self.assertIsInstance(result["errors"], list)
         self.assertTrue(len(result["errors"]) > 0)
+
+    def test_missing_required_key_with_steps_is_warning_not_error(self):
+        """When a required key is absent from top-level field_map but steps are present,
+        the result is valid=True with a warning (not an error)."""
+        ctp_with_step_covering_token = {
+            "name": "step-covered-ctp",
+            # Step contributes "token" via its own field_map at runtime.
+            "steps": [
+                {
+                    "type": "resolve_databricks_token",
+                    "when": "raw.databricks_token is defined",
+                    "input": {
+                        "workspace_url": "{{ raw.databricks_workspace_url }}",
+                        "databricks_token": "{{ raw.databricks_token }}",
+                    },
+                    "output": {"token": "resolved_token"},
+                    "field_map": {"token": "{{ derived.resolved_token }}"},
+                }
+            ],
+            "mapper": {
+                "name": "m",
+                "field_map": {
+                    # "token" intentionally omitted — step provides it
+                    "databricks_workspace_url": "{{ raw.databricks_workspace_url }}",
+                },
+            },
+        }
+        result = validate_ctp_config("databricks-rest", ctp_with_step_covering_token)
+        self.assertTrue(result["valid"])
+        self.assertEqual([], result["errors"])
+        self.assertTrue(any("token" in w for w in result["warnings"]))
+
+    def test_step_field_map_unknown_key_returns_error(self):
+        """A step field_map containing a key not in the TypedDict schema is flagged."""
+        ctp_with_bad_step_key = {
+            "name": "bad-step-key-ctp",
+            "steps": [
+                {
+                    "type": "resolve_databricks_token",
+                    "when": "raw.databricks_token is defined",
+                    "input": {
+                        "workspace_url": "{{ raw.databricks_workspace_url }}",
+                        "databricks_token": "{{ raw.databricks_token }}",
+                    },
+                    "output": {"token": "resolved_token"},
+                    "field_map": {
+                        "token": "{{ derived.resolved_token }}",
+                        "not_a_real_key": "{{ raw.something }}",  # unknown
+                    },
+                }
+            ],
+            "mapper": {
+                "name": "m",
+                "field_map": {
+                    "databricks_workspace_url": "{{ raw.databricks_workspace_url }}",
+                    "token": "{{ raw.token | default(none) }}",
+                },
+            },
+        }
+        result = validate_ctp_config("databricks-rest", ctp_with_bad_step_key)
+        self.assertFalse(result["valid"])
+        self.assertTrue(any("not_a_real_key" in e for e in result["errors"]))

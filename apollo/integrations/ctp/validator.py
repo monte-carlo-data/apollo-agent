@@ -35,16 +35,19 @@ def validate_ctp_config(
 ) -> dict[str, Any]:
     """Validate a custom CTP config dict structurally without executing the pipeline.
 
-    Returns ``{"valid": True, "errors": []}`` on success, or
-    ``{"valid": False, "errors": [...]}`` with one entry per problem found.
+    Returns ``{"valid": True, "errors": [], "warnings": []}`` on success, or
+    ``{"valid": False, "errors": [...], "warnings": [...]}`` with one entry per
+    problem found.  Missing required keys that may be covered by steps are reported
+    as warnings rather than errors and do not affect ``valid``.
     """
     errors: list[str] = []
+    warnings: list[str] = []
 
     # 1. Deserialize
     try:
         config = CtpConfig.from_dict(ctp_config)
     except ValueError as e:
-        return {"valid": False, "errors": [str(e)]}
+        return {"valid": False, "errors": [str(e)], "warnings": []}
 
     # 2. Inject schema from the registered CTP so required-key coverage can be checked
     registered = CtpRegistry.get(connection_type)
@@ -89,7 +92,7 @@ def validate_ctp_config(
         missing = required - provided
         if missing:
             if config.steps:
-                errors.append(
+                warnings.append(
                     f"Mapper field_map may be missing required keys "
                     f"(steps may provide them): {sorted(missing)}"
                 )
@@ -103,4 +106,13 @@ def validate_ctp_config(
                 f"Mapper field_map contains unknown keys not in schema: {sorted(unknown)}"
             )
 
-    return {"valid": len(errors) == 0, "errors": errors}
+        # 6. Unknown-key check for each step's field_map
+        for step in config.steps:
+            step_unknown = set(step.field_map.keys()) - allowed
+            if step_unknown:
+                errors.append(
+                    f"Step '{step.type}' field_map contains unknown keys not in schema: "
+                    f"{sorted(step_unknown)}"
+                )
+
+    return {"valid": len(errors) == 0, "errors": errors, "warnings": warnings}
