@@ -422,7 +422,9 @@ class ProxyClientFactory:
     ) -> BaseProxyClient:
         # skip_cache is a flag sent by the client, and can be used to force a new client to be created
         # it defaults to False
-        if skip_cache:
+        # ctp_config is not included in the cache key, so bypass the cache when a custom CTP is
+        # provided to avoid serving a previously cached client with different resolved credentials
+        if skip_cache or ctp_config:
             try:
                 return cls._create_proxy_client(
                     connection_type, credentials, platform, ctp_config=ctp_config
