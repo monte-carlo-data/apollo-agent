@@ -176,7 +176,7 @@ class MsFabricProxyClientTests(TestCase):
             "microsoft-fabric",
             "run_query",
             operation_dict,
-            _FLAT_CREDS,
+            {"connect_args": _CONNECT_ARGS_DICT},
         )
 
         self.assertIsNone(response.result.get(ATTRIBUTE_NAME_ERROR))
@@ -240,7 +240,7 @@ class MsFabricCtpRoundTripTests(TestCase):
 
     def test_ctp_resolves_custom_port(self):
         """A non-default port is included in the SERVER field."""
-        creds = {**self._FLAT_CREDS, "port": 1234}
+        creds = {**_FLAT_CREDS, "port": 1234}
         resolved = CtpRegistry.resolve("microsoft-fabric", creds)
         self.assertEqual(f"{_HOST},1234", resolved["connect_args"]["SERVER"])
 
