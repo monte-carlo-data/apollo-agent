@@ -6,8 +6,8 @@ from apollo.integrations.ctp.registry import CtpRegistry
 
 
 class TestHiveCtp(TestCase):
-    def test_not_registered(self):
-        self.assertIsNone(CtpRegistry.get("hive"))
+    def test_registered(self):
+        self.assertIsNotNone(CtpRegistry.get("hive"))
 
     def test_resolve_flat_hive_credentials(self):
         result = CtpPipeline().execute(

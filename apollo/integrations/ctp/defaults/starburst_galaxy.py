@@ -63,9 +63,15 @@ STARBURST_GALAXY_DEFAULT_CTP = CtpConfig(
             "port": "{{ raw.port }}",  # DC casts to int: int(port or 443); mapper coerces str→int
             "user": "{{ raw.user }}",
             "password": "{{ raw.password }}",
-            "http_scheme": "https",
             "catalog": "{{ raw.catalog | default(none) }}",
             "schema": "{{ raw.schema | default(none) }}",
         },
     ),
+    # Starburst Galaxy always uses HTTPS; injected as a default so custom CTP
+    # configs inherit it without having to redeclare it.
+    connect_args_defaults={"http_scheme": "https"},
 )
+
+from apollo.integrations.ctp.registry import CtpRegistry  # noqa: E402
+
+CtpRegistry.register("starburst-galaxy", STARBURST_GALAXY_DEFAULT_CTP)

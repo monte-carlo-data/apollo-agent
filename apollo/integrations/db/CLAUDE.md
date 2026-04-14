@@ -13,7 +13,7 @@ The standard credential key for connection details is `connect_args`. The value 
   (preferred path for new integrations).
 
 Proxy clients that accept a dict must serialize it to the driver format in `__init__`.
-See `MsFabricProxyClient._odbc_escape` for the ODBC dict→string serialization pattern
+See `odbc_string_from_dict` in `tsql_base_db_proxy_client.py` for the ODBC dict→string serialization pattern
 (values with special chars must be brace-escaped per the ODBC spec).
 
 ### pyodbc clients

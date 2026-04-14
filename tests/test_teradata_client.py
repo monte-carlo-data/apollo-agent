@@ -24,7 +24,7 @@ from apollo.integrations.db.teradata_proxy_client import (
 
 _TERADATA_CREDENTIALS = {
     "host": "www.example.com",
-    "dbs_port": "3306",
+    "port": 3306,
     "user": "u",
     "password": "p",
 }
@@ -40,25 +40,28 @@ class TeradataClientTests(TestCase):
 
     @patch("teradatasql.connect")
     def test_connect_with_ssl(self, mock_connect):
-        # Create creds with ssl options
-        teradata_creds = copy(_TERADATA_CREDENTIALS)
-        teradata_creds["sslmode"] = "VERIFY-FULL"
+        # Simulate CTP-resolved connect_args (dbs_port key) with ssl_options at top level.
+        ctp_connect_args = {
+            "host": "www.example.com",
+            "dbs_port": 3306,
+            "user": "u",
+            "password": "p",
+            "sslmode": "VERIFY-FULL",
+        }
         credentials = {
-            _ATTR_CONNECT_ARGS: teradata_creds,
+            _ATTR_CONNECT_ARGS: ctp_connect_args,
             "ssl_options": {"ca_data": "cert-string-here"},
         }
-        # Use it to create a teradata proxy client
         TeradataProxyClient(credentials)
 
-        # Validate connection params were passed correctly
         expected_connection_parameters = {
-            "host": _TERADATA_CREDENTIALS.get("host"),
-            "user": _TERADATA_CREDENTIALS.get("user"),
-            "password": _TERADATA_CREDENTIALS.get("password"),
-            "https_port": _TERADATA_CREDENTIALS.get("dbs_port"),
+            "host": "www.example.com",
+            "user": "u",
+            "password": "p",
+            "https_port": 3306,
             "sslmode": "VERIFY-FULL",
             "encryptdata": "true",
-            "sslca": f"/tmp/{hashlib.sha256(_TERADATA_CREDENTIALS.get('host').encode()).hexdigest()[:12]}_teradata_ca.pem",
+            "sslca": f"/tmp/{hashlib.sha256('www.example.com'.encode()).hexdigest()[:12]}_teradata_ca.pem",
         }
         mock_connect.assert_called_with(**expected_connection_parameters)
 
@@ -153,7 +156,15 @@ class TeradataClientTests(TestCase):
         self.assertTrue(ATTRIBUTE_NAME_RESULT in response.result)
         result = response.result.get(ATTRIBUTE_NAME_RESULT)
 
-        mock_connect.assert_called_with(**_TERADATA_CREDENTIALS)
+        mock_connect.assert_called_with(
+            host="www.example.com",
+            dbs_port=3306,
+            user="u",
+            password="p",
+            tmode="TERA",
+            sslmode="PREFER",
+            logmech="TD2",
+        )
         self._mock_cursor.execute.assert_has_calls(
             [
                 call(query, query_args),

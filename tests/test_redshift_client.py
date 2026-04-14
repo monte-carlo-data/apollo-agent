@@ -1,4 +1,6 @@
 import datetime
+import json
+import logging
 from typing import List, Any, Optional
 from unittest import TestCase
 from unittest.mock import Mock, call, patch
@@ -11,13 +13,30 @@ from apollo.common.agent.constants import (
     ATTRIBUTE_NAME_ERROR_TYPE,
 )
 from apollo.agent.logging_utils import LoggingUtils
+from apollo.interfaces.lambda_function.json_log_formatter import JsonLogFormatter
 
-_RS_CREDENTIALS = {
+# Flat (raw) credentials — what the CTP pipeline receives from DC in the future,
+# or what test_ctp_local.sh sends on the CTP path.
+_RS_FLAT_CREDENTIALS = {
     "host": "www.test.com",
     "user": "u",
     "password": "p",
     "port": "5439",
     "db_name": "db1",
+}
+
+# Expected connect() kwargs after CTP transforms flat credentials.
+_RS_EXPECTED_CONNECT_ARGS = {
+    "host": "www.test.com",
+    "port": 5439,
+    "dbname": "db1",
+    "user": "u",
+    "password": "p",
+    "connect_timeout": 5,
+    "keepalives": 1,
+    "keepalives_idle": 30,
+    "keepalives_interval": 10,
+    "keepalives_count": 5,
 }
 
 
@@ -128,9 +147,7 @@ class RedshiftClientTests(TestCase):
             "redshift",
             "run_query",
             operation_dict,
-            {
-                "connect_args": _RS_CREDENTIALS,
-            },
+            _RS_FLAT_CREDENTIALS,
         )
 
         if raise_exception:
@@ -146,13 +163,9 @@ class RedshiftClientTests(TestCase):
         self.assertTrue(ATTRIBUTE_NAME_RESULT in response.result)
         result = response.result.get(ATTRIBUTE_NAME_RESULT)
 
-        mock_connect.assert_called_with(
-            **_RS_CREDENTIALS,
-            keepalives=1,
-            keepalives_idle=30,
-            keepalives_interval=10,
-            keepalives_count=5,
-        )
+        # After CTP the connect() call receives transformed args: port as int,
+        # db_name → dbname, and hardcoded keepalives from the field_map.
+        mock_connect.assert_called_with(**_RS_EXPECTED_CONNECT_ARGS)
         self._mock_cursor.execute.assert_has_calls(
             [
                 call(query, None),
@@ -195,3 +208,134 @@ class RedshiftClientTests(TestCase):
             }
         else:
             return value
+
+
+_OPERATION = {
+    "trace_id": "ctp-safety-test",
+    "skip_cache": True,
+    "commands": [
+        {"method": "cursor", "store": "_cursor"},
+        {"target": "_cursor", "method": "execute", "args": ["SELECT 1", None]},
+        {"target": "_cursor", "method": "fetchall", "store": "tmp_1"},
+        {"target": "_cursor", "method": "description", "store": "tmp_2"},
+        {"target": "_cursor", "method": "rowcount", "store": "tmp_3"},
+        {
+            "target": "__utils",
+            "method": "build_dict",
+            "kwargs": {
+                "all_results": {"__reference__": "tmp_1"},
+                "description": {"__reference__": "tmp_2"},
+                "rowcount": {"__reference__": "tmp_3"},
+            },
+        },
+    ],
+}
+
+
+class _ListHandler(logging.Handler):
+    def __init__(self, records: list):
+        super().__init__()
+        self._records = records
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self._records.append(record)
+
+
+class RedshiftCtpCredentialSafetyTests(TestCase):
+    """Verify that no credential values appear in agent error responses (DC→Sentry path)."""
+
+    _HOST = "redshift-cluster.abc123.us-east-1.redshift.amazonaws.com"
+    _USER = "admin"
+    _PASSWORD = "s3cr3t_p@ssw0rd!"
+
+    def setUp(self):
+        self._agent = Agent(LoggingUtils())
+        self._log_records: list = []
+        self._log_handler = _ListHandler(self._log_records)
+        logging.getLogger().addHandler(self._log_handler)
+
+    def tearDown(self):
+        logging.getLogger().removeHandler(self._log_handler)
+
+    def _flat_creds(self, **overrides):
+        creds = {
+            "host": self._HOST,
+            "user": self._USER,
+            "password": self._PASSWORD,
+            "port": "5439",
+            "db_name": "dev",
+        }
+        creds.update(overrides)
+        return creds
+
+    def _assert_no_credential_leak(self, response) -> None:
+        """Serialize the entire result dict — catches leaks in error, exception, AND stack_trace."""
+        serialized = json.dumps(response.result, default=str)
+        self.assertNotIn(self._PASSWORD, serialized, "password leaked in response")
+        self.assertNotIn(self._USER, serialized, "username leaked in response")
+
+    def _assert_no_password_in_logs(self) -> None:
+        json_formatter = JsonLogFormatter()
+        for record in self._log_records:
+            output = json_formatter.format(record)
+            self.assertNotIn(self._PASSWORD, output, "password leaked in log output")
+
+    @patch("psycopg2.connect")
+    def test_missing_required_field_error_is_actionable_and_safe(self, mock_connect):
+        """CTP validation failure: error names the missing field, no credentials in response."""
+        creds = self._flat_creds()
+        del creds["host"]
+
+        response = self._agent.execute_operation(
+            "redshift", "run_query", _OPERATION, creds
+        )
+
+        self.assertIn(ATTRIBUTE_NAME_ERROR, response.result)
+        error = response.result[ATTRIBUTE_NAME_ERROR]
+        self.assertIn("host", error, "error should name the missing field")
+        mock_connect.assert_not_called()
+        self._assert_no_credential_leak(response)
+        self._assert_no_password_in_logs()
+
+    @patch("psycopg2.connect")
+    def test_connect_failure_is_actionable_and_safe(self, mock_connect):
+        """Driver connection failure: hostname visible in error, no password in response."""
+        import psycopg2
+
+        mock_connect.side_effect = psycopg2.OperationalError(
+            f"could not connect to server: Connection refused\n"
+            f'\tIs the server running on host "{self._HOST}" and accepting\n'
+            f"\tTCP/IP connections on port 5439?"
+        )
+
+        response = self._agent.execute_operation(
+            "redshift", "run_query", _OPERATION, self._flat_creds()
+        )
+
+        self.assertIn(ATTRIBUTE_NAME_ERROR, response.result)
+        error = response.result[ATTRIBUTE_NAME_ERROR]
+        self.assertIn(self._HOST, error, "error should show where connection failed")
+        self._assert_no_credential_leak(response)
+        self._assert_no_password_in_logs()
+
+    @patch("psycopg2.connect")
+    def test_auth_failure_is_actionable_and_safe(self, mock_connect):
+        """Auth failure: status visible in error, password never in response."""
+        import psycopg2
+
+        mock_connection = Mock()
+        mock_cursor = Mock()
+        mock_connection.cursor.return_value = mock_cursor
+        mock_connect.return_value = mock_connection
+        mock_cursor.execute.side_effect = psycopg2.OperationalError(
+            f'FATAL:  password authentication failed for user "{self._USER}"'
+        )
+
+        response = self._agent.execute_operation(
+            "redshift", "run_query", _OPERATION, self._flat_creds()
+        )
+
+        self.assertIn(ATTRIBUTE_NAME_ERROR, response.result)
+        serialized = json.dumps(response.result, default=str)
+        self.assertNotIn(self._PASSWORD, serialized, "password leaked in response")
+        self._assert_no_password_in_logs()

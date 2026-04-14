@@ -34,6 +34,11 @@ class CtpPipeline:
             result = self._mapper.execute(
                 config.mapper, state, step_field_maps=step_field_maps
             )
+            # Merge connector-level defaults under the mapper output so that
+            # static constants (e.g. http_scheme, keepalives) survive CTP
+            # replacement even when a custom mapper omits them.  Mapper wins.
+            if config.connect_args_defaults:
+                result = {**config.connect_args_defaults, **result}
         finally:
             # Scrub credential state regardless of success or failure so that raw
             # credentials and derived secrets (tokens, keys) cannot leak into

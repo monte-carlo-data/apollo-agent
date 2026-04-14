@@ -1,6 +1,7 @@
 from typing import Any, NotRequired, Required, TypedDict
 
 from apollo.integrations.ctp.models import CtpConfig, MapperConfig
+from apollo.integrations.ctp.registry import CtpRegistry
 
 
 class HiveClientArgs(TypedDict):
@@ -50,4 +51,9 @@ HIVE_DEFAULT_CTP = CtpConfig(
             "use_ssl": "{{ raw.use_ssl | default(none) }}",
         },
     ),
+    # 14min30s timeout — just under the DC Lambda limit; overridden by raw.timeout if mapped.
+    connect_args_defaults={"timeout": 870},
 )
+
+
+CtpRegistry.register("hive", HIVE_DEFAULT_CTP)

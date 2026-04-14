@@ -16,7 +16,6 @@ from apollo.common.agent.constants import (
     ATTRIBUTE_NAME_ERROR_TYPE,
 )
 from apollo.agent.logging_utils import LoggingUtils
-from apollo.common.agent.models import AgentError
 from apollo.integrations.db.sql_server_proxy_client import SqlServerProxyClient
 
 _SQL_SERVER_CREDENTIALS = (
@@ -37,11 +36,68 @@ class SqlServerClientTests(TestCase):
         self._mock_connection.cursor.return_value = self._mock_cursor
         self.maxDiff = None
 
-    def test_wrong_connection_detail_datatype(self):
-        # Older DC versions will send the credentials as a dictionary instead of a string. Testing to make sure we
-        # gracefully handle these cases
-        with self.assertRaises(AgentError):
-            SqlServerProxyClient(credentials={"connect_args": {"a": "dictionary"}})
+    @patch("pyodbc.connect")
+    def test_dict_connect_args_serialized(self, mock_connect):
+        # CTP path: connect_args is a dict produced by the pipeline; proxy client
+        # serializes it to an ODBC connection string before calling pyodbc.connect.
+        mock_connect.return_value = self._mock_connection
+        SqlServerProxyClient(
+            credentials={
+                "connect_args": {
+                    "DRIVER": "{ODBC Driver 17 for SQL Server}",
+                    "SERVER": "tcp:db.example.com,1433",
+                    "UID": "alice",
+                    "PWD": "s3cr3t",
+                    "MARS_Connection": "Yes",
+                }
+            }
+        )
+        expected = (
+            "DRIVER={ODBC Driver 17 for SQL Server};"
+            "SERVER=tcp:db.example.com,1433;"
+            "UID=alice;"
+            "PWD=s3cr3t;"
+            "MARS_Connection=Yes"
+        )
+        mock_connect.assert_called_once_with(expected, timeout=15)
+
+    @patch("pyodbc.connect")
+    def test_dict_login_timeout_used_and_not_in_odbc_string(self, mock_connect):
+        mock_connect.return_value = self._mock_connection
+        SqlServerProxyClient(
+            credentials={
+                "connect_args": {
+                    "DRIVER": "{ODBC Driver 17 for SQL Server}",
+                    "SERVER": "tcp:db.example.com,1433",
+                    "UID": "alice",
+                    "PWD": "s3cr3t",
+                    "MARS_Connection": "Yes",
+                    "login_timeout": 42,
+                }
+            }
+        )
+        args, kwargs = mock_connect.call_args
+        self.assertEqual(42, kwargs.get("timeout", args[1] if len(args) > 1 else None))
+        self.assertNotIn("login_timeout", args[0])
+
+    @patch("pyodbc.connect")
+    def test_dict_query_timeout_used_and_not_in_odbc_string(self, mock_connect):
+        mock_connect.return_value = self._mock_connection
+        client = SqlServerProxyClient(
+            credentials={
+                "connect_args": {
+                    "DRIVER": "{ODBC Driver 17 for SQL Server}",
+                    "SERVER": "tcp:db.example.com,1433",
+                    "UID": "alice",
+                    "PWD": "s3cr3t",
+                    "MARS_Connection": "Yes",
+                    "query_timeout_in_seconds": 99,
+                }
+            }
+        )
+        self.assertEqual(99, client.wrapped_client.timeout)
+        odbc_string = mock_connect.call_args[0][0]
+        self.assertNotIn("query_timeout_in_seconds", odbc_string)
 
     @patch("pyodbc.connect")
     def test_query(self, mock_connect):

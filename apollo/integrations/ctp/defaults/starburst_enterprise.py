@@ -63,9 +63,17 @@ STARBURST_ENTERPRISE_DEFAULT_CTP = CtpConfig(
             "port": "{{ raw.port }}",  # DC input has port as string e.g. "8443"; mapper coerces str→int
             "user": "{{ raw.user }}",
             "password": "{{ raw.password }}",
-            "http_scheme": "https",
             "catalog": "{{ raw.catalog | default(none) }}",
             "schema": "{{ raw.schema | default(none) }}",
+            # Pass through verify when DC already resolved it (step wins on collision for flat creds)
+            "verify": "{{ raw.verify | default(none) }}",
         },
     ),
+    # Starburst Enterprise always uses HTTPS; injected as a default so custom CTP
+    # configs inherit it without having to redeclare it.
+    connect_args_defaults={"http_scheme": "https"},
 )
+
+from apollo.integrations.ctp.registry import CtpRegistry  # noqa: E402
+
+CtpRegistry.register("starburst-enterprise", STARBURST_ENTERPRISE_DEFAULT_CTP)

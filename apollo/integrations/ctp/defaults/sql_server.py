@@ -14,9 +14,6 @@ class SqlServerOdbcArgs(TypedDict):
     MARS_Connection: NotRequired[str]  # "Yes" — multiple active result sets
     Encrypt: NotRequired[str]  # "yes" / "no" / "strict"
     TrustServerCertificate: NotRequired[str]  # "yes" / "no"
-    # Note: login_timeout and query_timeout_in_seconds are read by the proxy client
-    # from the top level of credentials (not inside connect_args). Phase 2 will
-    # move them here and update the proxy client accordingly.
 
 
 _SQL_SERVER_BASE_FIELD_MAP = {
@@ -26,6 +23,9 @@ _SQL_SERVER_BASE_FIELD_MAP = {
     "UID": "{{ raw.user | default(raw.username) }}",
     "PWD": "{{ raw.password }}",
     "MARS_Connection": "Yes",
+    # Timeout fields — not ODBC params; proxy clients pop these before building the connection string
+    "login_timeout": "{{ raw.login_timeout | default(none) }}",
+    "query_timeout_in_seconds": "{{ raw.query_timeout_in_seconds | default(none) }}",
 }
 
 SQL_SERVER_DEFAULT_CTP = CtpConfig(
@@ -64,7 +64,8 @@ AZURE_DEDICATED_SQL_POOL_DEFAULT_CTP = CtpConfig(
     ),
 )
 
-# Not registered: the proxy clients currently expect connect_args to be a pre-built
-# ODBC string (produced by the DC). CTP produces a dict of ODBC key-value pairs.
-# Phase 2 will update the proxy clients to accept a dict and serialize it to a string,
-# then these configs will be registered in CtpRegistry._discover().
+from apollo.integrations.ctp.registry import CtpRegistry  # noqa: E402
+
+CtpRegistry.register("sql-server", SQL_SERVER_DEFAULT_CTP)
+CtpRegistry.register("azure-sql-database", AZURE_SQL_DATABASE_DEFAULT_CTP)
+CtpRegistry.register("azure-dedicated-sql-pool", AZURE_DEDICATED_SQL_POOL_DEFAULT_CTP)

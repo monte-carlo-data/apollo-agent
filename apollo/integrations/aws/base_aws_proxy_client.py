@@ -30,12 +30,13 @@ class BaseAwsProxyClient(BaseProxyClient):
     """
 
     def __init__(self, service_type: str, credentials: Optional[Dict], **kwargs: Any):
+        creds = credentials.get("connect_args") if credentials else None
         self._client = self.create_boto_client(
             service_type=service_type,
-            assumable_role=credentials.get("assumable_role") if credentials else None,
-            aws_region=credentials.get("aws_region") if credentials else None,
-            external_id=credentials.get("external_id") if credentials else None,
-            ssl_options=credentials.get("ssl_options") if credentials else None,
+            assumable_role=creds.get("assumable_role") if creds else None,
+            aws_region=creds.get("aws_region") if creds else None,
+            external_id=creds.get("external_id") if creds else None,
+            ssl_options=creds.get("ssl_options") if creds else None,
         )
 
     @property

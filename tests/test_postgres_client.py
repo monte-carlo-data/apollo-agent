@@ -1,4 +1,6 @@
 import datetime
+import json
+import logging
 import os
 import tempfile
 from typing import List, Any, Optional
@@ -13,7 +15,6 @@ from apollo.common.agent.constants import (
     ATTRIBUTE_NAME_ERROR_TYPE,
 )
 from apollo.agent.logging_utils import LoggingUtils
-from apollo.integrations.ctp.defaults.postgres import POSTGRES_DEFAULT_CTP
 from apollo.integrations.ctp.registry import CtpRegistry
 from apollo.integrations.db.postgres_proxy_client import PostgresProxyClient
 
@@ -21,8 +22,8 @@ _POSTGRES_CREDENTIALS = {
     "host": "www.test.com",
     "user": "u",
     "password": "p",
-    "port": "5432",
-    "db_name": "db1",
+    "port": 5432,
+    "dbname": "db1",
 }
 
 _POSTGRES_FLAT_CREDENTIALS = {
@@ -31,6 +32,16 @@ _POSTGRES_FLAT_CREDENTIALS = {
     "password": "p",
     "port": "5432",
     "database": "db1",
+}
+
+# Expected connect_args after CTP resolves _POSTGRES_FLAT_CREDENTIALS (flat path)
+# or passes through _POSTGRES_CREDENTIALS unchanged (DC connect_args path).
+_EXPECTED_POSTGRES_CONNECT_ARGS = {
+    "host": "www.test.com",
+    "port": 5432,
+    "user": "u",
+    "password": "p",
+    "dbname": "db1",
 }
 
 
@@ -160,7 +171,7 @@ class PostgresClientTests(TestCase):
         result = response.result.get(ATTRIBUTE_NAME_RESULT)
 
         mock_connect.assert_called_with(
-            **_POSTGRES_CREDENTIALS,
+            **_EXPECTED_POSTGRES_CONNECT_ARGS,
             keepalives=1,
             keepalives_idle=30,
             keepalives_interval=10,
@@ -210,14 +221,7 @@ class PostgresClientTests(TestCase):
 
 class PostgresCtpPathTests(TestCase):
     def setUp(self) -> None:
-        CtpRegistry.register("postgres", POSTGRES_DEFAULT_CTP)
         self._agent = Agent(LoggingUtils())
-        self._mock_connection = Mock()
-        self._mock_cursor = Mock()
-        self._mock_connection.cursor.return_value = self._mock_cursor
-
-    def tearDown(self) -> None:
-        CtpRegistry._registry.pop("postgres", None)
         self._mock_connection = Mock()
         self._mock_cursor = Mock()
         self._mock_connection.cursor.return_value = self._mock_cursor
@@ -285,17 +289,14 @@ class PostgresCredentialShapeTests(TestCase):
     _CA_PEM = "-----BEGIN CERTIFICATE-----\nFAKE\n-----END CERTIFICATE-----"
 
     def setUp(self) -> None:
-        CtpRegistry.register("postgres", POSTGRES_DEFAULT_CTP)
-
-    def tearDown(self) -> None:
-        CtpRegistry._registry.pop("postgres", None)
+        pass  # postgres registered via _discover() in Phase 2
 
     def _dc_creds(self, **extra_connect_args):
-        """Build DC-style credentials: connect_args with driver-native key names."""
+        """Build DC-style credentials: connect_args with driver-native key names and int port."""
         return {
             "connect_args": {
                 "host": self._HOST,
-                "port": self._PORT_STR,
+                "port": int(self._PORT_STR),
                 "dbname": "mydb",
                 "user": self._USER,
                 "password": self._PASSWORD,
@@ -382,3 +383,135 @@ class PostgresCredentialShapeTests(TestCase):
         self.assertTrue(os.path.exists(cert_path))
         self.assertEqual("require", kwargs["sslmode"])
         os.unlink(cert_path)
+
+
+class _ListHandler(logging.Handler):
+    def __init__(self, records):
+        super().__init__()
+        self._records = records
+
+    def emit(self, record):
+        self._records.append(record)
+
+
+class PostgresCtpCredentialSafetyTests(TestCase):
+    """CTP validation and connection errors must be actionable without leaking credentials."""
+
+    _HOST = "db.example.com"
+    _USER = "admin@example.com"
+    _PASSWORD = "s3cr3t_p@ssw0rd!"
+
+    _OPERATION = {
+        "trace_id": "ctp-safety-test",
+        "skip_cache": True,
+        "commands": [
+            {"method": "cursor", "store": "_cursor"},
+            {"target": "_cursor", "method": "execute", "args": ["SELECT 1", None]},
+        ],
+    }
+
+    def setUp(self):
+        self._agent = Agent(LoggingUtils())
+        self._log_records = []
+        self._log_handler = _ListHandler(self._log_records)
+        logging.getLogger().addHandler(self._log_handler)
+
+    def tearDown(self):
+        logging.getLogger().removeHandler(self._log_handler)
+
+    def _assert_no_credential_leak(self, response) -> None:
+        serialized = json.dumps(response.result, default=str)
+        self.assertNotIn(self._PASSWORD, serialized, "password leaked in response")
+        self.assertNotIn(self._USER, serialized, "username leaked in response")
+
+    @patch("psycopg2.connect")
+    def test_missing_required_host_is_actionable_and_safe(self, mock_connect):
+        """CTP validation: missing host produces an actionable error without leaking creds."""
+        response = self._agent.execute_operation(
+            "postgres",
+            "run_query",
+            self._OPERATION,
+            # host intentionally omitted — Required[str] in schema
+            {
+                "port": "5432",
+                "database": "mydb",
+                "user": self._USER,
+                "password": self._PASSWORD,
+            },
+        )
+        mock_connect.assert_not_called()
+        self.assertIn(ATTRIBUTE_NAME_ERROR, response.result)
+        error = response.result.get(ATTRIBUTE_NAME_ERROR, "")
+        self.assertIn("host", error)
+        self._assert_no_credential_leak(response)
+
+    @patch("psycopg2.connect")
+    def test_connect_failure_is_actionable_and_safe(self, mock_connect):
+        """Connection failure exposes the hostname but not the password."""
+        mock_connect.side_effect = Exception(
+            f"could not connect to server: {self._HOST}:5432"
+        )
+        response = self._agent.execute_operation(
+            "postgres",
+            "run_query",
+            self._OPERATION,
+            {
+                "host": self._HOST,
+                "port": "5432",
+                "database": "mydb",
+                "user": self._USER,
+                "password": self._PASSWORD,
+            },
+        )
+        self.assertIn(ATTRIBUTE_NAME_ERROR, response.result)
+        error = response.result.get(ATTRIBUTE_NAME_ERROR, "")
+        self.assertIn(self._HOST, error)
+        self._assert_no_credential_leak(response)
+
+    @patch("psycopg2.connect")
+    def test_auth_failure_is_actionable_and_safe(self, mock_connect):
+        """Auth failure surfaces a useful error without leaking credentials."""
+        mock_connect.side_effect = Exception(
+            "FATAL: password authentication failed for user"
+        )
+        response = self._agent.execute_operation(
+            "postgres",
+            "run_query",
+            self._OPERATION,
+            {
+                "host": self._HOST,
+                "port": "5432",
+                "database": "mydb",
+                "user": self._USER,
+                "password": self._PASSWORD,
+            },
+        )
+        self.assertIn(ATTRIBUTE_NAME_ERROR, response.result)
+        error = response.result.get(ATTRIBUTE_NAME_ERROR, "")
+        self.assertIn("authentication failed", error)
+        self._assert_no_credential_leak(response)
+
+    @patch("psycopg2.connect")
+    def test_log_output_does_not_leak_credentials(self, mock_connect):
+        """JsonLogFormatter (Datadog/Lambda path) never emits the password."""
+        from apollo.interfaces.lambda_function.json_log_formatter import (
+            JsonLogFormatter,
+        )
+
+        mock_connect.side_effect = Exception(f"could not connect to {self._HOST}")
+        self._agent.execute_operation(
+            "postgres",
+            "run_query",
+            self._OPERATION,
+            {
+                "host": self._HOST,
+                "port": "5432",
+                "database": "mydb",
+                "user": self._USER,
+                "password": self._PASSWORD,
+            },
+        )
+        formatter = JsonLogFormatter()
+        for record in self._log_records:
+            output = formatter.format(record)
+            self.assertNotIn(self._PASSWORD, output)
