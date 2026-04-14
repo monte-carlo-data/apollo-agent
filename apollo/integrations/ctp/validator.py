@@ -79,11 +79,11 @@ def validate_ctp_config(
                 if err:
                     errors.append(err)
 
-    # 5. Schema coverage: mapper field_map must cover all TypedDict required keys.
-    # If steps are present they may also contribute keys, so missing keys are a
-    # warning rather than a hard failure in that case.
+    # 5. Schema coverage: mapper field_map must cover all TypedDict required keys,
+    # and must not contain keys outside the schema (required or optional).
     if config.mapper.schema is not None:
         required = config.mapper.schema.__required_keys__
+        allowed = required | config.mapper.schema.__optional_keys__
         provided = set(config.mapper.field_map.keys())
         missing = required - provided
         if missing:
@@ -96,5 +96,10 @@ def validate_ctp_config(
                 errors.append(
                     f"Mapper field_map is missing required keys: {sorted(missing)}"
                 )
+        unknown = provided - allowed
+        if unknown:
+            errors.append(
+                f"Mapper field_map contains unknown keys not in schema: {sorted(unknown)}"
+            )
 
     return {"valid": len(errors) == 0, "errors": errors}
