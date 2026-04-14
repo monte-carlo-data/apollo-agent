@@ -934,14 +934,23 @@ class TestResolveRedshiftCredentialsTransform(TestCase):
         self.assertEqual("ext-123", call_kwargs["ExternalId"])
 
     def test_api_error_raises_ctp_error(self, mock_boto3):
+        # Simulate a botocore ClientError — its str() echoes back DbUser/DbName/ClusterIdentifier,
+        # so the error message must use only the AWS error code, not str(exc).
+        client_error = Exception("some error")
+        client_error.response = {"Error": {"Code": "AccessDenied", "Message": "User: iam_alice is not authorized"}}  # type: ignore[attr-defined]
         mock_client = MagicMock()
-        mock_client.get_cluster_credentials.side_effect = Exception("AccessDenied")
+        mock_client.get_cluster_credentials.side_effect = client_error
         mock_boto3.Session.return_value.client.return_value = mock_client
 
         state = PipelineState(raw=_REDSHIFT_RAW)
         with self.assertRaises(CtpPipelineError) as ctx:
             ResolveRedshiftCredentialsTransform().execute(_make_redshift_step(), state)
-        self.assertIn("AccessDenied", str(ctx.exception))
+        error_str = str(ctx.exception)
+        self.assertIn("AccessDenied", error_str)
+        # Verify credentials are NOT leaked into the error message
+        self.assertNotIn("iam_alice", error_str)
+        self.assertNotIn("mydb", error_str)
+        self.assertNotIn("my-cluster", error_str)
 
     def test_custom_output_keys_used(self, mock_boto3):
         self._mock_redshift_client(mock_boto3)

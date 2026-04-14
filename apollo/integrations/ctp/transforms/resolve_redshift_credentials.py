@@ -120,10 +120,15 @@ class ResolveRedshiftCredentialsTransform(Transform):
         try:
             response = redshift_client.get_cluster_credentials(**params)
         except Exception as exc:
+            error_code = (
+                getattr(exc, "response", {})
+                .get("Error", {})
+                .get("Code", type(exc).__name__)
+            )
             raise CtpPipelineError(
                 stage="transform_execute",
                 step_name=step_name,
-                message=f"Failed to get Redshift cluster credentials: {exc}",
+                message=f"Failed to get Redshift cluster credentials: {error_code}",
             ) from exc
 
         return response["DbUser"], response["DbPassword"]
