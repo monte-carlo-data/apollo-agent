@@ -10,14 +10,15 @@ Validates a caller-supplied CtpConfig dict without executing the pipeline:
 """
 from typing import Any
 
-from jinja2 import Environment, TemplateSyntaxError
+from jinja2 import TemplateSyntaxError
+from jinja2.sandbox import SandboxedEnvironment
 
 from apollo.integrations.ctp.errors import CtpPipelineError
 from apollo.integrations.ctp.models import CtpConfig
 from apollo.integrations.ctp.registry import CtpRegistry
 from apollo.integrations.ctp.transforms.registry import TransformRegistry
 
-_syntax_env = Environment()
+_syntax_env = SandboxedEnvironment()
 
 
 def _check_template_syntax(template: str, location: str) -> str | None:
