@@ -1,7 +1,9 @@
+import time
 from typing import Optional
 
 import boto3
 
+from apollo.agent.utils import AgentUtils
 from apollo.integrations.ctp.errors import CtpPipelineError
 from apollo.integrations.ctp.models import PipelineState, TransformStep
 from apollo.integrations.ctp.template import TemplateEngine
@@ -77,6 +79,11 @@ class ResolveRedshiftCredentialsTransform(Transform):
                     step_name=step.type,
                     message=f"'duration_seconds' must be an integer, got: {duration_seconds!r}",
                 ) from exc
+            if not (900 <= duration_seconds <= 3600):
+                raise CtpPipelineError(
+                    stage="transform_input",
+                    message=f"'duration_seconds' must be between 900 and 3600, got {duration_seconds}",
+                )
 
         db_user_out, db_password_out = self._get_cluster_credentials(
             cluster_identifier=cluster_identifier,
@@ -141,10 +148,6 @@ def _create_redshift_client(
 ):
     """Create a boto3 Redshift client, optionally assuming an IAM role first."""
     if assumable_role:
-        import time
-
-        from apollo.agent.utils import AgentUtils
-
         session_name = f"mcd_{AgentUtils.generate_random_str(rand_len=5)}_{time.time()}"
         assume_role_params: dict = {
             "RoleArn": assumable_role,
@@ -153,7 +156,18 @@ def _create_redshift_client(
         if external_id:
             assume_role_params["ExternalId"] = external_id
 
-        assumed = boto3.client("sts").assume_role(**assume_role_params)
+        try:
+            assumed = boto3.client("sts").assume_role(**assume_role_params)
+        except Exception as exc:
+            error_code = (
+                getattr(exc, "response", {})
+                .get("Error", {})
+                .get("Code", type(exc).__name__)
+            )
+            raise CtpPipelineError(
+                stage="transform_execute",
+                message=f"Failed to assume role: {error_code}",
+            ) from exc
         creds = assumed["Credentials"]
         session = boto3.Session(
             aws_access_key_id=creds["AccessKeyId"],
