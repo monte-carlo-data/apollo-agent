@@ -105,7 +105,7 @@ class CustomProxyClient(BaseProxyClient):
             "get_tables_query_template.j2",
             database_name=database_name,
             schemas=schemas,
-            tables=tables,
+            table_names=tables,
             offset=offset,
             limit=limit,
         )
