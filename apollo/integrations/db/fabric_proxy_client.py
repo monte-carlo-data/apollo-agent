@@ -50,22 +50,7 @@ class MsFabricProxyClient(TSqlBaseDbProxyClient):
             "query_timeout_in_seconds", self._DEFAULT_QUERY_TIMEOUT_IN_SECONDS
         )
 
-        # TODO: uncomment this when factoring in CTP
-        # connection_string = ";".join(
-        #     f"{k}={_odbc_escape(str(v))}" for k, v in connect_args.items()
-        # )
-
-        # TODO: Delete this when factoring in CTP
-        connection_string = (
-            f"DRIVER={{ODBC Driver 17 for SQL Server}};"
-            f"Server={connect_args['server']},{connect_args.get('port') or 1443};"
-            f"Database={connect_args['database']};"
-            f"Authentication=ActiveDirectoryServicePrincipal;"
-            f"UID={ connect_args['client_id'] }@{ connect_args['tenant_id'] };"
-            f"PWD={ connect_args['client_secret'] };"
-            "Encrypt=yes;"
-            "TrustServerCertificate=no;"
-        )
+        connection_string = odbc_string_from_dict(connect_args)
 
         self._connection = pyodbc.connect(
             connection_string,

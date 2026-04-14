@@ -1,6 +1,6 @@
 import datetime
 from typing import List, Any, Optional
-from unittest import TestCase, skip
+from unittest import TestCase
 from unittest.mock import Mock, call, patch
 
 from apollo.agent.agent import Agent
@@ -14,14 +14,13 @@ from apollo.integrations.db.fabric_proxy_client import MsFabricProxyClient
 
 _HOST = "myworkspace.datawarehouse.fabric.microsoft.com"
 _PORT = 1433
-_SERVER = f"{_HOST},{_PORT}"
 _DATABASE = "mydb"
 _CLIENT_ID = "my-client-id"
 _CLIENT_SECRET = "my-client-secret"
 _TENANT_ID = "my-tenant-id"
 
-# Flat credentials as the proxy client currently receives them (CTP bypassed — see fabric.py TODO)
-_CONNECT_ARGS_DICT = {
+# Flat DC credentials — raw input to the CTP pipeline.
+_FLAT_CREDS = {
     "server": _HOST,
     "database": _DATABASE,
     "client_id": _CLIENT_ID,
@@ -29,21 +28,30 @@ _CONNECT_ARGS_DICT = {
     "tenant_id": _TENANT_ID,
 }
 
-# ODBC connection string produced by MsFabricProxyClient from the flat credentials above.
-# Default port is 1443 when "port" is omitted from connect_args.
-_EXPECTED_ODBC_STRING = (
-    f"DRIVER={{ODBC Driver 17 for SQL Server}};"
-    f"Server={_HOST},1443;"
-    f"Database={_DATABASE};"
-    f"Authentication=ActiveDirectoryServicePrincipal;"
-    f"UID={_CLIENT_ID}@{_TENANT_ID};"
-    f"PWD={_CLIENT_SECRET};"
-    "Encrypt=yes;"
-    "TrustServerCertificate=no;"
-)
+# Post-CTP ODBC dict: connect_args_defaults keys first, then mapper output.
+# This is what MsFabricProxyClient receives after CtpRegistry.resolve().
+_CONNECT_ARGS_DICT = {
+    # From connect_args_defaults
+    "DRIVER": "{ODBC Driver 17 for SQL Server}",
+    "Authentication": "ActiveDirectoryServicePrincipal",
+    "Encrypt": "yes",
+    "TrustServerCertificate": "no",
+    # From mapper
+    "SERVER": f"{_HOST},{_PORT}",
+    "DATABASE": _DATABASE,
+    "UID": f"{_CLIENT_ID}@{_TENANT_ID}",
+    "PWD": _CLIENT_SECRET,
+}
+
+# ODBC string produced by odbc_string_from_dict(_CONNECT_ARGS_DICT).
+# Values in _CONNECT_ARGS_DICT have no special chars that need escaping, so
+# a plain join matches what odbc_string_from_dict produces.
+_EXPECTED_ODBC_STRING = ";".join(f"{k}={v}" for k, v in _CONNECT_ARGS_DICT.items())
 
 
 class MsFabricProxyClientTests(TestCase):
+    """Unit tests for MsFabricProxyClient — pass the post-CTP ODBC dict directly."""
+
     def setUp(self) -> None:
         self._agent = Agent(LoggingUtils())
         self._mock_connection = Mock()
@@ -52,8 +60,8 @@ class MsFabricProxyClientTests(TestCase):
         self.maxDiff = None
 
     @patch("pyodbc.connect")
-    def test_connect_args_dict_produces_odbc_string(self, mock_connect):
-        """connect_args as flat credentials dict → hardcoded ODBC string passed to pyodbc.connect."""
+    def test_connect_args_dict_serialized_to_odbc_string(self, mock_connect):
+        """connect_args as ODBC dict → serialized connection string passed to pyodbc.connect."""
         mock_connect.return_value = self._mock_connection
         MsFabricProxyClient(
             credentials={"connect_args": _CONNECT_ARGS_DICT},
@@ -122,8 +130,19 @@ class MsFabricProxyClientTests(TestCase):
             )
 
     @patch("pyodbc.connect")
+    def test_dict_value_with_semicolon_is_escaped(self, mock_connect):
+        """connect_args dict values containing semicolons are brace-escaped in the ODBC string."""
+        mock_connect.return_value = self._mock_connection
+        tricky_secret = "p@ss;word=1"
+        creds = {**_CONNECT_ARGS_DICT, "PWD": tricky_secret}
+        MsFabricProxyClient(credentials={"connect_args": creds}, platform="test")
+        call_args = mock_connect.call_args[0][0]
+        self.assertIn("PWD={p@ss;word=1}", call_args)
+        self.assertNotIn("PWD=p@ss;word=1", call_args)
+
+    @patch("pyodbc.connect")
     def test_query_via_agent(self, mock_connect):
-        """End-to-end query through the Agent using connect_args dict."""
+        """End-to-end query through the Agent using flat credentials (CTP resolves automatically)."""
         query = "SELECT name, value FROM dbo.table"
         expected_data = [["foo", 1], ["bar", 2]]
         expected_description = [
@@ -176,7 +195,7 @@ class MsFabricProxyClientTests(TestCase):
             "microsoft-fabric",
             "run_query",
             operation_dict,
-            {"connect_args": _CONNECT_ARGS_DICT},
+            _FLAT_CREDS,
         )
 
         self.assertIsNone(response.result.get(ATTRIBUTE_NAME_ERROR))
@@ -188,7 +207,6 @@ class MsFabricProxyClientTests(TestCase):
         self.assertEqual(data, result["all_results"])
 
 
-@skip("CTP registration temporarily disabled — see fabric.py TODO")
 class MsFabricCtpRoundTripTests(TestCase):
     """Verify the CTP pipeline produces the expected ODBC dict from flat credentials."""
 
@@ -197,18 +215,7 @@ class MsFabricCtpRoundTripTests(TestCase):
 
     def test_ctp_resolves_flat_credentials(self):
         resolved = CtpRegistry.resolve("microsoft-fabric", _FLAT_CREDS)
-        connect_args = resolved["connect_args"]
-
-        self.assertEqual("{ODBC Driver 17 for SQL Server}", connect_args["DRIVER"])
-        self.assertEqual(_SERVER, connect_args["SERVER"])
-        self.assertEqual(_DATABASE, connect_args["DATABASE"])
-        self.assertEqual(
-            "ActiveDirectoryServicePrincipal", connect_args["Authentication"]
-        )
-        self.assertEqual(f"{_CLIENT_ID}@{_TENANT_ID}", connect_args["UID"])
-        self.assertEqual(_CLIENT_SECRET, connect_args["PWD"])
-        self.assertEqual("yes", connect_args["Encrypt"])
-        self.assertEqual("no", connect_args["TrustServerCertificate"])
+        self.assertEqual(_CONNECT_ARGS_DICT, resolved["connect_args"])
 
     @patch("pyodbc.connect")
     def test_ctp_to_proxy_client_end_to_end(self, mock_connect):
@@ -228,7 +235,7 @@ class MsFabricCtpRoundTripTests(TestCase):
                 creds = {**_FLAT_CREDS, key: _HOST}
                 creds.pop("server")
                 resolved = CtpRegistry.resolve("microsoft-fabric", creds)
-                self.assertEqual(_SERVER, resolved["connect_args"]["SERVER"])
+                self.assertEqual(f"{_HOST},{_PORT}", resolved["connect_args"]["SERVER"])
 
     def test_ctp_resolves_custom_port(self):
         """A non-default port is included in the SERVER field."""
@@ -242,6 +249,29 @@ class MsFabricCtpRoundTripTests(TestCase):
         creds.pop("database")
         resolved = CtpRegistry.resolve("microsoft-fabric", creds)
         self.assertEqual(_DATABASE, resolved["connect_args"]["DATABASE"])
+
+    def test_connect_args_defaults_inherited_by_custom_ctp(self):
+        """A custom CTP that only maps dynamic fields still gets the static Fabric defaults."""
+        custom_ctp = {
+            "mapper": {
+                "field_map": {
+                    "SERVER": "{{ raw.server }},{{ raw.port | default(1433) }}",
+                    "DATABASE": "{{ raw.database }}",
+                    "UID": "{{ raw.client_id }}@{{ raw.tenant_id }}",
+                    "PWD": "{{ raw.client_secret }}",
+                }
+            }
+        }
+        resolved = CtpRegistry.resolve_custom(
+            "microsoft-fabric", _FLAT_CREDS, custom_ctp
+        )
+        connect_args = resolved["connect_args"]
+        self.assertEqual("{ODBC Driver 17 for SQL Server}", connect_args["DRIVER"])
+        self.assertEqual(
+            "ActiveDirectoryServicePrincipal", connect_args["Authentication"]
+        )
+        self.assertEqual("yes", connect_args["Encrypt"])
+        self.assertEqual("no", connect_args["TrustServerCertificate"])
 
 
 class MsFabricDatetimeoffsetTests(TestCase):
