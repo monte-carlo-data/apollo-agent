@@ -68,6 +68,16 @@ class ResolveRedshiftCredentialsTransform(Transform):
             step.input.get("duration_seconds", "{{ none }}"), state
         )
 
+        if duration_seconds is not None:
+            try:
+                duration_seconds = int(duration_seconds)
+            except (ValueError, TypeError) as exc:
+                raise CtpPipelineError(
+                    stage="transform_input",
+                    step_name=step.type,
+                    message=f"'duration_seconds' must be an integer, got: {duration_seconds!r}",
+                ) from exc
+
         db_user_out, db_password_out = self._get_cluster_credentials(
             cluster_identifier=cluster_identifier,
             db_user=db_user,
@@ -75,9 +85,7 @@ class ResolveRedshiftCredentialsTransform(Transform):
             aws_region=aws_region,
             assumable_role=assumable_role,
             external_id=external_id,
-            duration_seconds=(
-                int(duration_seconds) if duration_seconds is not None else None
-            ),
+            duration_seconds=duration_seconds,
             step_name=step.type,
         )
 

@@ -864,6 +864,15 @@ class TestResolveRedshiftCredentialsTransform(TestCase):
         call_kwargs = mock_client.get_cluster_credentials.call_args.kwargs
         self.assertEqual(1800, call_kwargs["DurationSeconds"])
 
+    def test_invalid_duration_seconds_raises_ctp_error(self, mock_boto3):
+        state = PipelineState(raw={**_REDSHIFT_RAW, "duration_seconds": "abc"})
+        step = _make_redshift_step(
+            extra_input={"duration_seconds": "{{ raw.duration_seconds }}"}
+        )
+        with self.assertRaises(CtpPipelineError) as ctx:
+            ResolveRedshiftCredentialsTransform().execute(step, state)
+        self.assertIn("duration_seconds", str(ctx.exception))
+
     def test_creates_session_with_correct_region(self, mock_boto3):
         self._mock_redshift_client(mock_boto3)
         state = PipelineState(raw=_REDSHIFT_RAW)
