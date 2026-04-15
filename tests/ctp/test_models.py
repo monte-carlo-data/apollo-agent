@@ -114,6 +114,26 @@ class TestTransformStepFromDict(TestCase):
             )
         self.assertIn("output", str(ctx.exception))
 
+    def test_non_str_type_raises(self):
+        with self.assertRaises(ValueError) as ctx:
+            TransformStep.from_dict({**_STEP_DICT, "type": 123})
+        self.assertIn("type", str(ctx.exception))
+
+    def test_non_dict_input_raises(self):
+        with self.assertRaises(ValueError) as ctx:
+            TransformStep.from_dict({**_STEP_DICT, "input": "bad"})
+        self.assertIn("input", str(ctx.exception))
+
+    def test_non_dict_output_raises(self):
+        with self.assertRaises(ValueError) as ctx:
+            TransformStep.from_dict({**_STEP_DICT, "output": ["bad"]})
+        self.assertIn("output", str(ctx.exception))
+
+    def test_non_dict_field_map_raises(self):
+        with self.assertRaises(ValueError) as ctx:
+            TransformStep.from_dict({**_STEP_DICT, "field_map": ["bad"]})
+        self.assertIn("field_map", str(ctx.exception))
+
 
 class TestMapperConfigFromDict(TestCase):
     def test_required_fields(self):
@@ -198,6 +218,21 @@ class TestCtpConfigFromDict(TestCase):
     def test_invalid_step_raises(self):
         with self.assertRaises(ValueError):
             CtpConfig.from_dict({**_CTP_DICT, "steps": [{"type": "something"}]})
+
+    def test_steps_not_a_list_raises(self):
+        with self.assertRaises(ValueError) as ctx:
+            CtpConfig.from_dict({**_CTP_DICT, "steps": {"type": "something"}})
+        self.assertIn("steps", str(ctx.exception))
+
+    def test_steps_not_a_list_of_dicts_raises(self):
+        with self.assertRaises(ValueError) as ctx:
+            CtpConfig.from_dict({**_CTP_DICT, "steps": ["not-a-dict"]})
+        self.assertIn("steps", str(ctx.exception))
+
+    def test_connect_args_defaults_not_a_dict_raises(self):
+        with self.assertRaises(ValueError) as ctx:
+            CtpConfig.from_dict({**_CTP_DICT, "connect_args_defaults": ["bad"]})
+        self.assertIn("connect_args_defaults", str(ctx.exception))
 
     def test_round_trip(self):
         ctp = CtpConfig.from_dict(_CTP_DICT)

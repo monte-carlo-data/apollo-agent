@@ -44,6 +44,14 @@ def validate_ctp_config(
     warnings: list[str] = []
 
     # 1. Deserialize
+    if not isinstance(ctp_config, dict):
+        return {
+            "valid": False,
+            "errors": [
+                f"ctp_config must be a JSON object, got {type(ctp_config).__name__}"
+            ],
+            "warnings": [],
+        }
     try:
         config = CtpConfig.from_dict(ctp_config)
     except ValueError as e:
