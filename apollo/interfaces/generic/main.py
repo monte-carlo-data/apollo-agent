@@ -267,8 +267,24 @@ def ctp_validate(connection_type: str) -> Tuple[Dict, int]:
                         type: array
                         items:
                             type: string
+                    warnings:
+                        type: array
+                        items:
+                            type: string
+        400:
+            description: Invalid or missing request body.
+            schema:
+                properties:
+                    valid:
+                        type: boolean
+                    errors:
+                        type: array
+                        items:
+                            type: string
     """
-    json_request: Dict = request.json or {}
+    if not request.is_json or not isinstance(request.json, dict):
+        return {"valid": False, "errors": ["Request body must be a JSON object"]}, 400
+    json_request: Dict = request.json
     ctp_config = json_request.get("ctp_config")
     if ctp_config is None:
         return {"valid": False, "errors": ["ctp_config is required"]}, 400

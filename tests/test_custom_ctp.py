@@ -1,4 +1,4 @@
-# tests/test_ctp_config.py
+# tests/test_custom_ctp.py
 """Integration tests for custom CTP support in execute_operation.
 
 Uses the databricks-rest connection type as the test vehicle because it has a
@@ -292,6 +292,15 @@ class TestValidateCtp(TestCase):
         self.assertFalse(result["valid"])
         self.assertIsInstance(result["errors"], list)
         self.assertTrue(len(result["errors"]) > 0)
+
+    def test_non_dict_ctp_config_returns_error(self):
+        """Non-dict ctp_config returns valid=False without raising."""
+        for bad_value in (["a", "list"], "a string", 42, None):
+            with self.subTest(value=bad_value):
+                result = validate_ctp_config("databricks-rest", bad_value)
+                self.assertFalse(result["valid"])
+                self.assertTrue(len(result["errors"]) > 0)
+                self.assertEqual([], result["warnings"])
 
     def test_missing_required_key_with_steps_is_warning_not_error(self):
         """When a required key is absent from top-level field_map but steps are present,
