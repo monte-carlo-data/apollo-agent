@@ -426,7 +426,7 @@ class ProxyClientFactory:
         # it defaults to False
         # ctp_config is not included in the cache key, so bypass the cache when a custom CTP is
         # provided to avoid serving a previously cached client with different resolved credentials
-        if skip_cache or ctp_config:
+        if skip_cache or ctp_config is not None:
             try:
                 return cls._create_proxy_client(
                     connection_type, credentials, platform, ctp_config=ctp_config
@@ -478,7 +478,7 @@ class ProxyClientFactory:
     ) -> BaseProxyClient:
         if credentials:
             credentials = decode_dictionary(credentials)
-        if ctp_config and credentials:
+        if ctp_config is not None and credentials:
             credentials = CtpRegistry.resolve_custom(
                 connection_type, credentials, ctp_config, context={"platform": platform}
             )

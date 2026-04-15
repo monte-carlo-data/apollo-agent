@@ -270,7 +270,7 @@ def ctp_validate(connection_type: str) -> Tuple[Dict, int]:
     """
     json_request: Dict = request.json or {}
     ctp_config = json_request.get("ctp_config")
-    if not ctp_config:
+    if ctp_config is None:
         return {"valid": False, "errors": ["ctp_config is required"]}, 400
     result = validate_ctp_config(connection_type, ctp_config)
     return result, 200
