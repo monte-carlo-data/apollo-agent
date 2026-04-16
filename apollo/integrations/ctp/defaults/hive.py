@@ -54,6 +54,8 @@ HIVE_DEFAULT_CTP = CtpConfig(
             "kerberos_service_name": "{{ raw.kerberos_service_name | default(none) }}",
         },
     ),
+    # 14min30s timeout — just under the DC Lambda limit; overridden by raw.timeout if mapped.
+    connect_args_defaults={"timeout": 870},
 )
 
 
