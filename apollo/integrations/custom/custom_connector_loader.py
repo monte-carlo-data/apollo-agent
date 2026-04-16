@@ -121,16 +121,3 @@ def load_manifest(connector_dir: str) -> Dict:
 
     with open(manifest_path) as f:
         return json.load(f)
-
-
-def load_capabilities(connector_dir: str) -> Dict:
-    """
-    Read capabilities.json from the connector directory.
-    Returns the parsed dict, or empty dict if not found.
-    """
-    capabilities_path = os.path.join(connector_dir, "capabilities.json")
-    if not os.path.isfile(capabilities_path):
-        return {}
-
-    with open(capabilities_path) as f:
-        return json.load(f)

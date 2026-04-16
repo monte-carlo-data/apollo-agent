@@ -9,7 +9,6 @@ from apollo.integrations.custom.custom_connector_loader import (
     load_connector_module,
     load_manifest,
     load_templates,
-    load_capabilities,
 )
 from apollo.agent.agent import Agent
 from apollo.integrations.custom.custom_proxy_client import CustomProxyClient
@@ -21,13 +20,21 @@ def _create_mock_connector_dir(
     connection_type,
     templates=None,
     capabilities=None,
+    metrics=None,
 ):
     """Helper to create a mock connector directory structure."""
     connector_dir = os.path.join(tmp_dir, name)
     os.makedirs(connector_dir, exist_ok=True)
 
-    # manifest.json
-    manifest = {"connection_type": connection_type, "name": name}
+    # manifest.json — capabilities and metrics live inside the manifest
+    manifest = {
+        "connection_type": connection_type,
+        "connection_name": name,
+    }
+    if capabilities is not None:
+        manifest["capabilities"] = capabilities
+    if metrics is not None:
+        manifest["metrics"] = metrics
     with open(os.path.join(connector_dir, "manifest.json"), "w") as f:
         json.dump(manifest, f)
 
@@ -63,11 +70,6 @@ class BaseConnector:
         for filename, content in templates.items():
             with open(os.path.join(templates_dir, filename), "w") as f:
                 f.write(content)
-
-    # capabilities.json
-    if capabilities:
-        with open(os.path.join(connector_dir, "capabilities.json"), "w") as f:
-            json.dump(capabilities, f)
 
     return connector_dir
 
@@ -176,23 +178,6 @@ class TestLoadManifest(TestCase):
             self.assertEqual(result, {})
 
 
-class TestLoadCapabilities(TestCase):
-    def test_load_capabilities(self):
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            caps = {"capabilities": {"supports_metadata": True}}
-            with open(os.path.join(tmp_dir, "capabilities.json"), "w") as f:
-                json.dump(caps, f)
-
-            result = load_capabilities(tmp_dir)
-
-            self.assertEqual(result, caps)
-
-    def test_load_capabilities_no_file(self):
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            result = load_capabilities(tmp_dir)
-            self.assertEqual(result, {})
-
-
 class TestCustomProxyClient(TestCase):
     def setUp(self):
         self._mock_module = MagicMock()
@@ -202,7 +187,7 @@ class TestCustomProxyClient(TestCase):
         self._mock_connector.create_cursor.return_value = Mock()
 
     @patch(
-        "apollo.integrations.custom.custom_proxy_client.load_capabilities",
+        "apollo.integrations.custom.custom_proxy_client.load_manifest",
         return_value={"capabilities": {"supports_metadata": True}},
     )
     @patch(
@@ -211,7 +196,7 @@ class TestCustomProxyClient(TestCase):
     )
     @patch("apollo.integrations.custom.custom_proxy_client.load_connector_module")
     def test_test_connection(
-        self, mock_load_module, mock_load_templates, mock_load_caps
+        self, mock_load_module, mock_load_templates, mock_load_manifest
     ):
         mock_load_module.return_value = self._mock_module
 
@@ -226,7 +211,7 @@ class TestCustomProxyClient(TestCase):
         self._mock_connector.create_cursor.assert_called_once()
 
     @patch(
-        "apollo.integrations.custom.custom_proxy_client.load_capabilities",
+        "apollo.integrations.custom.custom_proxy_client.load_manifest",
         return_value={},
     )
     @patch(
@@ -235,7 +220,7 @@ class TestCustomProxyClient(TestCase):
     )
     @patch("apollo.integrations.custom.custom_proxy_client.load_connector_module")
     def test_execute_sql_query(
-        self, mock_load_module, mock_load_templates, mock_load_caps
+        self, mock_load_module, mock_load_templates, mock_load_manifest
     ):
         mock_load_module.return_value = self._mock_module
         self._mock_connector.fetch_all_results.return_value = [
@@ -262,7 +247,7 @@ class TestCustomProxyClient(TestCase):
         self.assertEqual(result["rowcount"], 2)
 
     @patch(
-        "apollo.integrations.custom.custom_proxy_client.load_capabilities",
+        "apollo.integrations.custom.custom_proxy_client.load_manifest",
         return_value={},
     )
     @patch(
@@ -273,7 +258,7 @@ class TestCustomProxyClient(TestCase):
     )
     @patch("apollo.integrations.custom.custom_proxy_client.load_connector_module")
     def test_fetch_databases(
-        self, mock_load_module, mock_load_templates, mock_load_caps
+        self, mock_load_module, mock_load_templates, mock_load_manifest
     ):
         mock_load_module.return_value = self._mock_module
         self._mock_connector.fetch_all_results.return_value = [["db1"], ["db2"]]
@@ -294,7 +279,7 @@ class TestCustomProxyClient(TestCase):
         self.assertEqual(result["all_results"], [["db1"], ["db2"]])
 
     @patch(
-        "apollo.integrations.custom.custom_proxy_client.load_capabilities",
+        "apollo.integrations.custom.custom_proxy_client.load_manifest",
         return_value={},
     )
     @patch(
@@ -304,7 +289,9 @@ class TestCustomProxyClient(TestCase):
         },
     )
     @patch("apollo.integrations.custom.custom_proxy_client.load_connector_module")
-    def test_fetch_schemas(self, mock_load_module, mock_load_templates, mock_load_caps):
+    def test_fetch_schemas(
+        self, mock_load_module, mock_load_templates, mock_load_manifest
+    ):
         mock_load_module.return_value = self._mock_module
         self._mock_connector.fetch_all_results.return_value = [
             ["public"],
@@ -329,7 +316,7 @@ class TestCustomProxyClient(TestCase):
         self.assertEqual(result["all_results"], [["public"], ["information_schema"]])
 
     @patch(
-        "apollo.integrations.custom.custom_proxy_client.load_capabilities",
+        "apollo.integrations.custom.custom_proxy_client.load_manifest",
         return_value={},
     )
     @patch(
@@ -339,7 +326,9 @@ class TestCustomProxyClient(TestCase):
         },
     )
     @patch("apollo.integrations.custom.custom_proxy_client.load_connector_module")
-    def test_fetch_tables(self, mock_load_module, mock_load_templates, mock_load_caps):
+    def test_fetch_tables(
+        self, mock_load_module, mock_load_templates, mock_load_manifest
+    ):
         mock_load_module.return_value = self._mock_module
         self._mock_connector.fetch_all_results.return_value = [["t1"], ["t2"]]
         cursor = self._mock_connector.create_cursor.return_value
@@ -361,7 +350,7 @@ class TestCustomProxyClient(TestCase):
         self.assertEqual(result["all_results"], [["t1"], ["t2"]])
 
     @patch(
-        "apollo.integrations.custom.custom_proxy_client.load_capabilities",
+        "apollo.integrations.custom.custom_proxy_client.load_manifest",
         return_value={},
     )
     @patch(
@@ -372,7 +361,7 @@ class TestCustomProxyClient(TestCase):
     )
     @patch("apollo.integrations.custom.custom_proxy_client.load_connector_module")
     def test_fetch_query_logs(
-        self, mock_load_module, mock_load_templates, mock_load_caps
+        self, mock_load_module, mock_load_templates, mock_load_manifest
     ):
         mock_load_module.return_value = self._mock_module
         self._mock_connector.fetch_all_results.return_value = [["q1"], ["q2"]]
@@ -395,7 +384,7 @@ class TestCustomProxyClient(TestCase):
         self.assertEqual(result["all_results"], [["q1"], ["q2"]])
 
     @patch(
-        "apollo.integrations.custom.custom_proxy_client.load_capabilities",
+        "apollo.integrations.custom.custom_proxy_client.load_manifest",
         return_value={},
     )
     @patch(
@@ -403,7 +392,9 @@ class TestCustomProxyClient(TestCase):
         return_value={"get_tables.j2": "SELECT * FROM tables"},
     )
     @patch("apollo.integrations.custom.custom_proxy_client.load_connector_module")
-    def test_get_templates(self, mock_load_module, mock_load_templates, mock_load_caps):
+    def test_get_templates(
+        self, mock_load_module, mock_load_templates, mock_load_manifest
+    ):
         mock_load_module.return_value = self._mock_module
 
         client = CustomProxyClient(
@@ -415,7 +406,7 @@ class TestCustomProxyClient(TestCase):
         self.assertEqual(result, {"get_tables.j2": "SELECT * FROM tables"})
 
     @patch(
-        "apollo.integrations.custom.custom_proxy_client.load_capabilities",
+        "apollo.integrations.custom.custom_proxy_client.load_manifest",
         return_value={"capabilities": {"supports_metadata": True}},
     )
     @patch(
@@ -424,7 +415,7 @@ class TestCustomProxyClient(TestCase):
     )
     @patch("apollo.integrations.custom.custom_proxy_client.load_connector_module")
     def test_get_capabilities(
-        self, mock_load_module, mock_load_templates, mock_load_caps
+        self, mock_load_module, mock_load_templates, mock_load_manifest
     ):
         mock_load_module.return_value = self._mock_module
 
@@ -434,10 +425,10 @@ class TestCustomProxyClient(TestCase):
         )
         result = client.get_capabilities()
 
-        self.assertEqual(result, {"capabilities": {"supports_metadata": True}})
+        self.assertEqual(result, {"supports_metadata": True})
 
     @patch(
-        "apollo.integrations.custom.custom_proxy_client.load_capabilities",
+        "apollo.integrations.custom.custom_proxy_client.load_manifest",
         return_value={},
     )
     @patch(
@@ -446,7 +437,7 @@ class TestCustomProxyClient(TestCase):
     )
     @patch("apollo.integrations.custom.custom_proxy_client.load_connector_module")
     def test_missing_template_raises(
-        self, mock_load_module, mock_load_templates, mock_load_caps
+        self, mock_load_module, mock_load_templates, mock_load_manifest
     ):
         mock_load_module.return_value = self._mock_module
 
@@ -460,7 +451,7 @@ class TestCustomProxyClient(TestCase):
         self.assertIn("Unknown template", str(ctx.exception))
 
     @patch(
-        "apollo.integrations.custom.custom_proxy_client.load_capabilities",
+        "apollo.integrations.custom.custom_proxy_client.load_manifest",
         return_value={},
     )
     @patch(
@@ -468,7 +459,7 @@ class TestCustomProxyClient(TestCase):
         return_value={},
     )
     @patch("apollo.integrations.custom.custom_proxy_client.load_connector_module")
-    def test_close(self, mock_load_module, mock_load_templates, mock_load_caps):
+    def test_close(self, mock_load_module, mock_load_templates, mock_load_manifest):
         mock_load_module.return_value = self._mock_module
 
         client = CustomProxyClient(
@@ -480,7 +471,7 @@ class TestCustomProxyClient(TestCase):
         self._mock_connector.close_connection.assert_called_once()
 
     @patch(
-        "apollo.integrations.custom.custom_proxy_client.load_capabilities",
+        "apollo.integrations.custom.custom_proxy_client.load_manifest",
         return_value={},
     )
     @patch(
@@ -489,7 +480,7 @@ class TestCustomProxyClient(TestCase):
     )
     @patch("apollo.integrations.custom.custom_proxy_client.load_connector_module")
     def test_wrapped_client_returns_connection(
-        self, mock_load_module, mock_load_templates, mock_load_caps
+        self, mock_load_module, mock_load_templates, mock_load_manifest
     ):
         mock_load_module.return_value = self._mock_module
         mock_conn = Mock()
@@ -511,14 +502,14 @@ class TestGetConnectionManifests(TestCase):
                 "db1",
                 "custom-connector-aaa",
                 templates={"get_tables.j2": "SELECT * FROM tables"},
-                capabilities={"capabilities": {"supports_metadata": True}},
+                capabilities={"supports_metadata": True},
             )
             _create_mock_connector_dir(
                 tmp_dir,
                 "db2",
                 "custom-connector-bbb",
                 templates={"get_schemas.j2": "SELECT * FROM schemas"},
-                capabilities={"capabilities": {"supports_query_logs": False}},
+                capabilities={"supports_query_logs": False},
             )
 
             with patch(
@@ -535,10 +526,11 @@ class TestGetConnectionManifests(TestCase):
             self.assertIn("custom-connector-aaa", result)
             aaa = result["custom-connector-aaa"]
             self.assertEqual(aaa["manifest"]["connection_type"], "custom-connector-aaa")
-            self.assertEqual(aaa["manifest"]["name"], "db1")
+            self.assertEqual(aaa["manifest"]["connection_name"], "db1")
             self.assertEqual(
-                aaa["capabilities"], {"capabilities": {"supports_metadata": True}}
+                aaa["manifest"]["capabilities"], {"supports_metadata": True}
             )
+            self.assertNotIn("capabilities", aaa)
             self.assertEqual(
                 aaa["templates"], {"get_tables.j2": "SELECT * FROM tables"}
             )
@@ -563,7 +555,7 @@ class TestGetConnectionManifests(TestCase):
 
             self.assertEqual(result, {})
 
-    def test_handles_missing_capabilities_and_templates(self):
+    def test_handles_missing_templates(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             _create_mock_connector_dir(
                 tmp_dir,
@@ -582,7 +574,7 @@ class TestGetConnectionManifests(TestCase):
 
             aaa = result["custom-connector-aaa"]
             self.assertEqual(aaa["manifest"]["connection_type"], "custom-connector-aaa")
-            self.assertEqual(aaa["capabilities"], {})
+            self.assertNotIn("capabilities", aaa)
             self.assertEqual(aaa["templates"], {})
 
 

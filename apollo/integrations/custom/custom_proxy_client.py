@@ -7,7 +7,6 @@ from jinja2.sandbox import ImmutableSandboxedEnvironment
 from apollo.integrations.base_proxy_client import BaseProxyClient
 from apollo.integrations.custom.custom_connector_loader import (
     get_custom_connector_registry,
-    load_capabilities,
     load_connector_module,
     load_manifest,
     load_templates,
@@ -70,7 +69,8 @@ class CustomProxyClient(BaseProxyClient):
             for name, content in raw_templates.items()
             if name in _COMPILED_TEMPLATE_NAMES
         }
-        self._capabilities = load_capabilities(connector_dir)
+        manifest = load_manifest(connector_dir)
+        self._capabilities = manifest.get("capabilities", {})
 
         logger.info("Opened custom connector connection from %s", connector_dir)
 
@@ -142,20 +142,19 @@ class CustomProxyClient(BaseProxyClient):
         return self._templates
 
     def get_capabilities(self) -> Dict:
-        """Return the capabilities.json contents."""
+        """Return the capabilities from the manifest."""
         return self._capabilities
 
     @staticmethod
     def get_connection_manifests() -> Dict[str, Dict[str, Any]]:
         """
-        Discover all custom connectors and return their manifests,
-        capabilities, and templates.
+        Discover all custom connectors and return their manifests and
+        templates.
 
         Returns a dict keyed by connection_type, e.g.:
             {
                 "custom-connector-abc1234": {
                     "manifest": {...},
-                    "capabilities": {...},
                     "templates": {"get_tables.j2": "...", ...}
                 }
             }
@@ -165,7 +164,6 @@ class CustomProxyClient(BaseProxyClient):
         for connection_type, connector_dir in registry.items():
             result[connection_type] = {
                 "manifest": load_manifest(connector_dir),
-                "capabilities": load_capabilities(connector_dir),
                 "templates": load_templates(connector_dir),
             }
         return result
