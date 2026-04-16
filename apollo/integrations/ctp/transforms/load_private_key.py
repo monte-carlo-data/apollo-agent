@@ -30,20 +30,12 @@ class LoadPrivateKeyTransform(Transform):
         {"private_key": "{{ derived.<output_key> }}"}
     """
 
-    def execute(self, step: TransformStep, state: PipelineState) -> None:
-        if "pem" not in step.input:
-            raise CtpPipelineError(
-                stage="transform_input",
-                step_name=step.type,
-                message="'pem' is required in load_private_key input",
-            )
-        if "private_key" not in step.output:
-            raise CtpPipelineError(
-                stage="transform_output",
-                step_name=step.type,
-                message="'private_key' is required in load_private_key output",
-            )
+    required_input_keys = ("pem",)
+    optional_input_keys = ("password",)
+    required_output_keys = ("private_key",)
+    optional_output_keys = ()
 
+    def _execute(self, step: TransformStep, state: PipelineState) -> None:
         pem = TemplateEngine.render(step.input["pem"], state)
         pem_bytes = pem.encode() if isinstance(pem, str) else pem
 

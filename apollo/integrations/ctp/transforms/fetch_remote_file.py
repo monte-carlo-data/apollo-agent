@@ -23,20 +23,12 @@ class FetchRemoteFileTransform(Transform):
         platform: agent platform string — required when mechanism != "url"
     """
 
-    def execute(self, step: TransformStep, state: PipelineState) -> None:
-        if "url" not in step.input:
-            raise CtpPipelineError(
-                stage="transform_input",
-                step_name=step.type,
-                message="'url' is required in fetch_remote_file input",
-            )
-        if not step.output.get("path"):
-            raise CtpPipelineError(
-                stage="transform_output",
-                step_name=step.type,
-                message="'path' output key required",
-            )
+    required_input_keys = ("url",)
+    optional_input_keys = ("sub_folder", "mechanism")
+    required_output_keys = ("path",)
+    optional_output_keys = ()
 
+    def _execute(self, step: TransformStep, state: PipelineState) -> None:
         url = TemplateEngine.render(step.input["url"], state)
         sub_folder = step.input.get("sub_folder")
         raw_mechanism = step.input.get("mechanism", "url")

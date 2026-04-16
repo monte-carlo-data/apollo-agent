@@ -36,14 +36,19 @@ class ResolveDatabricksTokenTransform(Transform):
       - ``token``: key in ``state.derived`` where the resolved token string is stored
     """
 
-    def execute(self, step: TransformStep, state: PipelineState) -> None:
-        output_key = step.output.get("token")
-        if not output_key:
-            raise CtpPipelineError(
-                stage="transform_output",
-                step_name=step.type,
-                message="'token' output key required",
-            )
+    optional_input_keys = (
+        "workspace_url",
+        "databricks_token",
+        "client_id",
+        "client_secret",
+        "azure_tenant_id",
+        "azure_workspace_resource_id",
+    )
+    required_output_keys = ("token",)
+    optional_output_keys = ()
+
+    def _execute(self, step: TransformStep, state: PipelineState) -> None:
+        output_key = step.output["token"]
 
         workspace_url = TemplateEngine.render(
             step.input.get("workspace_url", "{{ none }}"), state

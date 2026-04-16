@@ -22,14 +22,12 @@ class ResolvePrestoAuthTransform(Transform):
     object is produced.
     """
 
-    def execute(self, step: TransformStep, state: PipelineState) -> None:
-        if "auth" not in step.input:
-            raise CtpPipelineError(
-                stage="transform_input",
-                step_name=step.type,
-                message="'auth' key required in step input",
-            )
+    required_input_keys = ("auth",)
+    optional_input_keys = ()
+    required_output_keys = ("auth",)
+    optional_output_keys = ()
 
+    def _execute(self, step: TransformStep, state: PipelineState) -> None:
         auth_config = TemplateEngine.render(step.input["auth"], state)
 
         if not auth_config:
@@ -54,14 +52,7 @@ class ResolvePrestoAuthTransform(Transform):
                     message=f"Missing required key in auth config: '{required_key}'",
                 )
 
-        output_key = step.output.get("auth")
-        if not output_key:
-            raise CtpPipelineError(
-                stage="transform_output",
-                step_name=step.type,
-                message="'auth' output key required",
-            )
-
+        output_key = step.output["auth"]
         state.derived[output_key] = prestodb.auth.BasicAuthentication(
             auth_config["username"], auth_config["password"]
         )

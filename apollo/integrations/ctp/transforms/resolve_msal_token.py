@@ -36,14 +36,19 @@ class ResolveMsalTokenTransform(Transform):
       - ``token``: key name in ``state.derived`` where the access token string is stored
     """
 
-    def execute(self, step: TransformStep, state: PipelineState) -> None:
-        output_key = step.output.get("token")
-        if not output_key:
-            raise CtpPipelineError(
-                stage="transform_output",
-                step_name=step.type,
-                message="'token' output key required",
-            )
+    optional_input_keys = (
+        "auth_mode",
+        "client_id",
+        "tenant_id",
+        "client_secret",
+        "username",
+        "password",
+    )
+    required_output_keys = ("token",)
+    optional_output_keys = ()
+
+    def _execute(self, step: TransformStep, state: PipelineState) -> None:
+        output_key = step.output["token"]
 
         auth_mode = TemplateEngine.render(
             step.input.get("auth_mode", "{{ none }}"), state
