@@ -8,8 +8,6 @@ from apollo.integrations.ctp.template import TemplateEngine
 from apollo.integrations.ctp.transforms.base import Transform
 from apollo.integrations.ctp.transforms.registry import TransformRegistry
 
-_REQUIRED_INPUTS = ("server_hostname", "client_id", "client_secret")
-
 
 class ResolveDatabricksOauthTransform(Transform):
     """
@@ -36,22 +34,13 @@ class ResolveDatabricksOauthTransform(Transform):
     ``databricks-sql-connector`` invokes when it needs fresh credentials.
     """
 
-    def execute(self, step: TransformStep, state: PipelineState) -> None:
-        for key in _REQUIRED_INPUTS:
-            if key not in step.input:
-                raise CtpPipelineError(
-                    stage="transform_input",
-                    step_name=step.type,
-                    message=f"'{key}' key required in step input",
-                )
+    required_input_keys = ("server_hostname", "client_id", "client_secret")
+    optional_input_keys = ("azure_tenant_id", "azure_workspace_resource_id")
+    required_output_keys = ("credentials_provider",)
+    optional_output_keys = ()
 
-        output_key = step.output.get("credentials_provider")
-        if not output_key:
-            raise CtpPipelineError(
-                stage="transform_output",
-                step_name=step.type,
-                message="'credentials_provider' output key required",
-            )
+    def _execute(self, step: TransformStep, state: PipelineState) -> None:
+        output_key = step.output["credentials_provider"]
 
         host = TemplateEngine.render(step.input["server_hostname"], state)
         client_id = TemplateEngine.render(step.input["client_id"], state)

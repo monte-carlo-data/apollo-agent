@@ -3,14 +3,12 @@ from datetime import datetime, timedelta
 
 import jwt
 
-from apollo.integrations.ctp.errors import CtpPipelineError
 from apollo.integrations.ctp.models import PipelineState, TransformStep
 from apollo.integrations.ctp.template import TemplateEngine
 from apollo.integrations.ctp.transforms.base import Transform
 from apollo.integrations.ctp.transforms.registry import TransformRegistry
 
 _DEFAULT_EXPIRATION_SECONDS = 60 * 5  # 5 minutes
-_REQUIRED_INPUTS = ("username", "client_id", "secret_id", "secret_value")
 
 # Scopes required by Tableau Connected Apps
 _TABLEAU_SCOPES = [
@@ -40,22 +38,13 @@ class GenerateJwtTransform(Transform):
       - ``token``: key name in ``state.derived`` where the signed JWT string is stored
     """
 
-    def execute(self, step: TransformStep, state: PipelineState) -> None:
-        for key in _REQUIRED_INPUTS:
-            if key not in step.input:
-                raise CtpPipelineError(
-                    stage="transform_input",
-                    step_name=step.type,
-                    message=f"'{key}' key required in step input",
-                )
+    required_input_keys = ("username", "client_id", "secret_id", "secret_value")
+    optional_input_keys = ("expiration_seconds",)
+    required_output_keys = ("token",)
+    optional_output_keys = ()
 
-        output_key = step.output.get("token")
-        if not output_key:
-            raise CtpPipelineError(
-                stage="transform_output",
-                step_name=step.type,
-                message="'token' output key required",
-            )
+    def _execute(self, step: TransformStep, state: PipelineState) -> None:
+        output_key = step.output["token"]
 
         username = TemplateEngine.render(step.input["username"], state)
         client_id = TemplateEngine.render(step.input["client_id"], state)

@@ -29,14 +29,12 @@ class ResolveSslOptionsTransform(Transform):
                       cert_data is present).
     """
 
-    def execute(self, step: TransformStep, state: PipelineState) -> None:
-        if "ssl_options" not in step.input:
-            raise CtpPipelineError(
-                stage="transform_input",
-                step_name=step.type,
-                message="'ssl_options' is required in resolve_ssl_options input",
-            )
+    required_input_keys = ("ssl_options",)
+    optional_input_keys = ()
+    required_output_keys = ()
+    optional_output_keys = ("ssl_options", "ca_path", "ssl_context")
 
+    def _execute(self, step: TransformStep, state: PipelineState) -> None:
         ssl_options_raw = TemplateEngine.render(step.input["ssl_options"], state)
         if not isinstance(ssl_options_raw, dict):
             raise CtpPipelineError(
