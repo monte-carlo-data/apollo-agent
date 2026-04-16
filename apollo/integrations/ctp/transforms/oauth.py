@@ -42,20 +42,12 @@ class OAuthTransform(Transform):
         token (required): derived key where the access_token string is stored.
     """
 
-    def execute(self, step: TransformStep, state: PipelineState) -> None:
-        if "oauth" not in step.input:
-            raise CtpPipelineError(
-                stage="transform_input",
-                step_name=step.type,
-                message="'oauth' is required in oauth transform input",
-            )
-        if "token" not in step.output:
-            raise CtpPipelineError(
-                stage="transform_output",
-                step_name=step.type,
-                message="'token' is required in oauth transform output",
-            )
+    required_input_keys = ("oauth",)
+    optional_input_keys = ()
+    required_output_keys = ("token",)
+    optional_output_keys = ()
 
+    def _execute(self, step: TransformStep, state: PipelineState) -> None:
         oauth_config = TemplateEngine.render(step.input["oauth"], state)
 
         for key in _REQUIRED_OAUTH_KEYS:

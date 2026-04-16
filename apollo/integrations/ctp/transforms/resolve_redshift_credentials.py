@@ -34,25 +34,12 @@ class ResolveRedshiftCredentialsTransform(Transform):
       - ``password``: key in ``state.derived`` where the resolved ``DbPassword`` string is stored
     """
 
-    _REQUIRED_INPUT = ("cluster_identifier", "db_user", "db_name", "aws_region")
-    _REQUIRED_OUTPUT = ("user", "password")
+    required_input_keys = ("cluster_identifier", "db_user", "db_name", "aws_region")
+    optional_input_keys = ("assumable_role", "external_id", "duration_seconds")
+    required_output_keys = ("user", "password")
+    optional_output_keys = ()
 
-    def execute(self, step: TransformStep, state: PipelineState) -> None:
-        for key in self._REQUIRED_INPUT:
-            if key not in step.input:
-                raise CtpPipelineError(
-                    stage="transform_input",
-                    step_name=step.type,
-                    message=f"'{key}' is required in resolve_redshift_credentials input",
-                )
-        for key in self._REQUIRED_OUTPUT:
-            if key not in step.output:
-                raise CtpPipelineError(
-                    stage="transform_output",
-                    step_name=step.type,
-                    message=f"'{key}' is required in resolve_redshift_credentials output",
-                )
-
+    def _execute(self, step: TransformStep, state: PipelineState) -> None:
         cluster_identifier = TemplateEngine.render(
             step.input["cluster_identifier"], state
         )

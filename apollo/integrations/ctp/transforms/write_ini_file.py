@@ -1,7 +1,6 @@
 import os
 import tempfile
 
-from apollo.integrations.ctp.errors import CtpPipelineError
 from apollo.integrations.ctp.models import PipelineState, TransformStep
 from apollo.integrations.ctp.template import TemplateEngine
 from apollo.integrations.ctp.transforms.base import Transform
@@ -41,22 +40,13 @@ class WriteIniFileTransform(Transform):
         )
     """
 
-    def execute(self, step: TransformStep, state: PipelineState) -> None:
-        if _SECTION_KEY not in step.input:
-            raise CtpPipelineError(
-                stage="transform_execute",
-                step_name=step.type,
-                message=f"'{_SECTION_KEY}' key required in step input",
-            )
+    required_input_keys = (_SECTION_KEY,)
+    optional_input_keys = None  # accepts arbitrary extra keys as INI field entries
+    required_output_keys = ("path",)
+    optional_output_keys = ()
 
-        output_key = step.output.get("path")
-        if not output_key:
-            raise CtpPipelineError(
-                stage="transform_execute",
-                step_name=step.type,
-                message="'path' output key required",
-            )
-
+    def _execute(self, step: TransformStep, state: PipelineState) -> None:
+        output_key = step.output["path"]
         section = TemplateEngine.render(step.input[_SECTION_KEY], state)
 
         fields = {}

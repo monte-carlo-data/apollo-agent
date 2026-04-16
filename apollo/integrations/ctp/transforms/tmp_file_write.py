@@ -1,7 +1,6 @@
 import os
 import tempfile
 
-from apollo.integrations.ctp.errors import CtpPipelineError
 from apollo.integrations.ctp.models import PipelineState, TransformStep
 from apollo.integrations.ctp.template import TemplateEngine
 from apollo.integrations.ctp.transforms.base import Transform
@@ -9,23 +8,15 @@ from apollo.integrations.ctp.transforms.registry import TransformRegistry
 
 
 class TmpFileWriteTransform(Transform):
-    def execute(self, step: TransformStep, state: PipelineState) -> None:
-        if "contents" not in step.input:
-            raise CtpPipelineError(
-                stage="transform_input",
-                step_name=step.type,
-                message="'contents' is required in tmp_file_write input",
-            )
+    required_input_keys = ("contents",)
+    optional_input_keys = ("file_suffix", "mode")
+    required_output_keys = ("path",)
+    optional_output_keys = ()
 
+    def _execute(self, step: TransformStep, state: PipelineState) -> None:
         contents = TemplateEngine.render(step.input["contents"], state)
         file_suffix = step.input.get("file_suffix", "")
         mode_str = step.input.get("mode", "0600")
-        if "path" not in step.output:
-            raise CtpPipelineError(
-                stage="transform_output",
-                step_name=step.type,
-                message="'path' is required in tmp_file_write output",
-            )
         output_key = step.output["path"]
 
         is_bytes = isinstance(contents, bytes)
