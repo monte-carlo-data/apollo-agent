@@ -49,8 +49,13 @@ HIVE_DEFAULT_CTP = CtpConfig(
             "user": "{{ raw.user | default(none) }}",
             "password": "{{ raw.password | default(none) }}",
             "use_ssl": "{{ raw.use_ssl | default(none) }}",
+            "use_http_transport": "{{ raw.use_http_transport | default(none) }}",
+            "http_path": "{{ raw.http_path | default(none) }}",
+            "kerberos_service_name": "{{ raw.kerberos_service_name | default(none) }}",
         },
     ),
+    # 14min30s timeout — just under the DC Lambda limit; overridden by raw.timeout if mapped.
+    connect_args_defaults={"timeout": 870},
 )
 
 

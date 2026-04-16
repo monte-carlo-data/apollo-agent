@@ -70,16 +70,23 @@ class Mapper:
                     message=f"Missing required fields: {sorted(missing)}",
                 )
 
-            # Coerce known fields to their declared types; unknown fields pass through.
+            # Reject unknown keys — passing unrecognised args to the driver silently
+            # masks typos and can cause connection failures that are hard to diagnose.
+            allowed_keys = (
+                config.schema.__required_keys__ | config.schema.__optional_keys__
+            )
+            unknown = result.keys() - allowed_keys
+            if unknown:
+                raise CtpPipelineError(
+                    stage="mapper_validation",
+                    message=f"Unknown fields not in schema {config.schema.__name__}: {sorted(unknown)}",
+                )
+
             schema_annotations = typing.get_type_hints(
                 config.schema, include_extras=True
             )
             result = {
-                key: (
-                    _coerce(value, schema_annotations[key])
-                    if key in schema_annotations
-                    else value
-                )
+                key: _coerce(value, schema_annotations[key])
                 for key, value in result.items()
             }
 

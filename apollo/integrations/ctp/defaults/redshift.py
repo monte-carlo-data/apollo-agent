@@ -54,16 +54,20 @@ REDSHIFT_DEFAULT_CTP = CtpConfig(
             "user": "{{ raw.user | default('awsuser') }}",
             "password": "{{ raw.password }}",
             "connect_timeout": "{{ raw.connect_timeout | default(none) }}",
-            # DC hardcodes these keepalive values for all Redshift connections
-            "keepalives": 1,
-            "keepalives_idle": 30,
-            "keepalives_interval": 10,
-            "keepalives_count": 5,
             # statement_timeout in ms; derived from query_timeout_in_seconds when provided
             "options": "{{ '-c statement_timeout=' ~ (raw.query_timeout_in_seconds | int * 1000) if raw.query_timeout_in_seconds is defined else none }}",
             "sslmode": "{{ raw.ssl_mode | default(none) }}",
         },
     ),
+    # TCP keepalives required for AWS PrivateLink; injected as defaults so custom
+    # CTP configs inherit them without having to redeclare them.
+    connect_args_defaults={
+        "connect_timeout": 30,
+        "keepalives": 1,
+        "keepalives_idle": 30,
+        "keepalives_interval": 10,
+        "keepalives_count": 5,
+    },
 )
 
 from apollo.integrations.ctp.registry import CtpRegistry  # noqa: E402

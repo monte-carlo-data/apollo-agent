@@ -66,10 +66,11 @@ ORACLE_DEFAULT_CTP = CtpConfig(
             "dsn": "{{ raw.dsn | default(none) }}",
             "user": "{{ raw.user | default(none) }}",
             "password": "{{ raw.password | default(none) }}",
-            # Proxy client default is 1 (keepalive every minute); CTP matches that behaviour
-            "expire_time": "{{ raw.expire_time | default(1) }}",
+            "expire_time": "{{ raw.expire_time | default(none) }}",
         },
     ),
+    # Keep-alive every minute; required for AWS PrivateLink connections.
+    connect_args_defaults={"expire_time": 1},
 )
 
 from apollo.integrations.ctp.registry import CtpRegistry  # noqa: E402
