@@ -1,41 +1,28 @@
-import logging
 from typing import Any, Dict, List, Optional, Tuple
-
-import requests
 
 from apollo.integrations.base_proxy_client import BaseProxyClient
 from apollo.integrations.http.http_proxy_client import HttpProxyClient
 
-logger = logging.getLogger(__name__)
-
 _ATTR_CONNECT_ARGS = "connect_args"
-
-_DEFAULT_BASE_URL = "https://dm-us.informaticacloud.com"
-_DEFAULT_AUTH_VERSION = "v3"
-
-_V2_LOGIN_PATH = "/ma/api/v2/user/login"
-_V3_LOGIN_PATH = "/saas/public/core/v3/login"
-
-_INTEGRATION_CLOUD_PRODUCT_NAME = "Integration Cloud"
-
-
-class InformaticaLoginError(Exception):
-    pass
 
 
 class InformaticaProxyClient(BaseProxyClient):
     """
     Proxy client for Informatica Cloud connections.
 
-    Performs V2 or V3 login in __init__ using form-encoded credentials, then exposes
-    do_http_request() for API calls authenticated with the session ID returned by login.
+    Expects connect_args (produced by the CTP pipeline, specifically the
+    resolve_informatica_session transform) to contain a pre-resolved session:
 
-    Expected credentials shape:
-        credentials["connect_args"]:
-            username          (required)
-            password          (required)
-            informatica_auth  (optional, "v2" or "v3", default "v3")
-            base_url          (optional login base URL, default "https://dm-us.informaticacloud.com")
+        connect_args:
+            session_id    (required): icSessionId from the Informatica login response
+            api_base_url  (required): API base URL from the Informatica login response
+
+    All authentication — V2 password, V3 password, or JWT loginOAuth — is handled
+    upstream in the CTP pipeline. This client is auth-method agnostic.
+
+    The icSessionId header is always used for API calls regardless of how the session
+    was obtained. This is intentional: the DC currently calls only V2 API endpoints,
+    which require icSessionId (not INFA-SESSION-ID).
     """
 
     def __init__(self, credentials: Optional[Dict], **kwargs: Any):
@@ -46,29 +33,22 @@ class InformaticaProxyClient(BaseProxyClient):
 
         connect_args: Dict[str, Any] = credentials[_ATTR_CONNECT_ARGS]
 
-        username = connect_args.get("username")
-        password = connect_args.get("password")
-        if not username or not password:
+        session_id = connect_args.get("session_id")
+        api_base_url = connect_args.get("api_base_url")
+
+        if not session_id:
             raise ValueError(
-                "Informatica agent client requires 'username' and 'password' in connect_args"
+                "Informatica agent client requires 'session_id' in connect_args"
+            )
+        if not api_base_url:
+            raise ValueError(
+                "Informatica agent client requires 'api_base_url' in connect_args"
             )
 
-        auth_version: str = connect_args.get("informatica_auth", _DEFAULT_AUTH_VERSION)
-        login_base_url: str = connect_args.get("base_url", _DEFAULT_BASE_URL).rstrip(
-            "/"
-        )
+        self._api_base_url: str = api_base_url.rstrip("/")
 
-        if auth_version == "v2":
-            self._api_base_url, session_id = self._login_v2(
-                login_base_url, username, password
-            )
-        else:
-            self._api_base_url, session_id = self._login_v3(
-                login_base_url, username, password
-            )
-
-        # icSessionId is used for all API calls regardless of auth version — this is coupled
-        # to V2 API usage, not the auth version.
+        # icSessionId is used for all API calls — this is coupled to V2 API usage,
+        # not the auth method used to obtain the session.
         http_credentials: Dict[str, Any] = {
             "token": session_id,
             "auth_header": "icSessionId",
@@ -79,77 +59,6 @@ class InformaticaProxyClient(BaseProxyClient):
     @property
     def wrapped_client(self):
         return None
-
-    # -------------------------------------------------------------------------
-    # Login helpers
-    # -------------------------------------------------------------------------
-
-    @staticmethod
-    def _login_v2(login_base_url: str, username: str, password: str) -> Tuple[str, str]:
-        """
-        Performs V2 login and returns (api_base_url, session_id).
-        Raises InformaticaLoginError on failure.
-        """
-        url = f"{login_base_url}{_V2_LOGIN_PATH}"
-        response = requests.post(url, data={"username": username, "password": password})
-        try:
-            response.raise_for_status()
-            body = response.json()
-            server_url = body.get("serverUrl")
-            session_id = body.get("icSessionId")
-            if not server_url or not session_id:
-                raise InformaticaLoginError(
-                    "Informatica V2 login failed: response did not contain expected "
-                    "serverUrl or icSessionId"
-                )
-            return server_url, session_id
-        except InformaticaLoginError:
-            raise
-        except Exception as exc:
-            raise InformaticaLoginError(
-                "Informatica V2 login failed: unexpected error during login"
-            ) from exc
-
-    @staticmethod
-    def _login_v3(login_base_url: str, username: str, password: str) -> Tuple[str, str]:
-        """
-        Performs V3 login and returns (api_base_url, session_id).
-        Raises InformaticaLoginError on failure.
-        """
-        url = f"{login_base_url}{_V3_LOGIN_PATH}"
-        response = requests.post(url, data={"username": username, "password": password})
-        try:
-            response.raise_for_status()
-            body = response.json()
-
-            products = body.get("products") or []
-            api_base_url = next(
-                (
-                    p.get("baseApiUrl")
-                    for p in products
-                    if p.get("name") == _INTEGRATION_CLOUD_PRODUCT_NAME
-                ),
-                None,
-            )
-            user_info = body.get("userInfo") or {}
-            session_id = user_info.get("sessionId")
-
-            if not api_base_url or not session_id:
-                raise InformaticaLoginError(
-                    "Informatica V3 login failed: response did not contain expected "
-                    "Integration Cloud baseApiUrl or userInfo.sessionId"
-                )
-            return api_base_url, session_id
-        except InformaticaLoginError:
-            raise
-        except Exception as exc:
-            raise InformaticaLoginError(
-                "Informatica V3 login failed: unexpected error during login"
-            ) from exc
-
-    # -------------------------------------------------------------------------
-    # HTTP request
-    # -------------------------------------------------------------------------
 
     def do_http_request(
         self,
@@ -192,10 +101,6 @@ class InformaticaProxyClient(BaseProxyClient):
             retry_status_code_ranges=retry_status_code_ranges,
             data=data,
         )
-
-    # -------------------------------------------------------------------------
-    # Error handling - delegate to HttpProxyClient for HTTP errors
-    # -------------------------------------------------------------------------
 
     def get_error_type(self, error: Exception) -> Optional[str]:
         http_error_type = self._http_client.get_error_type(error)

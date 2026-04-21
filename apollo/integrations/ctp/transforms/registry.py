@@ -21,6 +21,7 @@ def _discover() -> None:
     import apollo.integrations.ctp.transforms.resolve_databricks_oauth  # noqa: F401
     import apollo.integrations.ctp.transforms.resolve_databricks_token  # noqa: F401
     import apollo.integrations.ctp.transforms.resolve_redshift_credentials  # noqa: F401
+    import apollo.integrations.ctp.transforms.resolve_informatica_session  # noqa: F401
 
 
 def _ensure_initialized() -> None:
