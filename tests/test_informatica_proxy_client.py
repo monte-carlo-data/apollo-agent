@@ -7,7 +7,6 @@ from apollo.agent.agent import Agent
 from apollo.agent.logging_utils import LoggingUtils
 from apollo.common.agent.constants import (
     ATTRIBUTE_NAME_ERROR,
-    ATTRIBUTE_NAME_RESULT,
     ATTRIBUTE_NAME_ERROR_TYPE,
 )
 from apollo.interfaces.lambda_function.json_log_formatter import JsonLogFormatter
@@ -132,7 +131,7 @@ class InformaticaHttpTests(TestCase):
         """POST requests forward the JSON payload."""
         mock_request.return_value = _make_api_mock({"id": "job-123"})
 
-        self._agent.execute_operation(
+        response = self._agent.execute_operation(
             "informatica",
             "http_request",
             _make_operation(
@@ -141,16 +140,7 @@ class InformaticaHttpTests(TestCase):
             {"connect_args": _RESOLVED_CONNECT_ARGS},
         )
 
-        self.assertIsNone(
-            self._agent.execute_operation(
-                "informatica",
-                "http_request",
-                _make_operation(
-                    "/api/v2/jobs", http_method="POST", payload={"name": "new-job"}
-                ),
-                {"connect_args": _RESOLVED_CONNECT_ARGS},
-            ).result.get(ATTRIBUTE_NAME_ERROR)
-        )
+        self.assertIsNone(response.result.get(ATTRIBUTE_NAME_ERROR))
         self.assertEqual(mock_request.call_args[0][0], "POST")
         self.assertEqual(mock_request.call_args[1].get("json"), {"name": "new-job"})
 
