@@ -15,6 +15,29 @@ _INTEGRATION_CLOUD_PRODUCT_NAME = "Integration Cloud"
 _DEFAULT_BASE_URL = "https://dm-us.informaticacloud.com"
 
 
+def _login_failure_detail(exc: Exception) -> str:
+    """Return a safe, diagnostic detail string for a login exception.
+
+    Includes HTTP status code and Informatica error text for HTTPError (safe —
+    response body never contains credentials), or the exception class name for
+    other errors.
+    """
+    if isinstance(exc, requests.HTTPError) and exc.response is not None:
+        detail = f"HTTP {exc.response.status_code}"
+        try:
+            body = exc.response.json()
+            # Informatica error responses use "@type" and "message" or top-level "message"
+            message = body.get("message") or body.get("error")
+            if message:
+                detail += f": {message}"
+        except Exception:
+            text = (exc.response.text or "")[:200].strip()
+            if text:
+                detail += f": {text}"
+        return detail
+    return type(exc).__name__
+
+
 class ResolveInformaticaSessionTransform(Transform):
     """Exchange Informatica credentials for a session ID and API base URL.
 
@@ -166,7 +189,7 @@ class ResolveInformaticaSessionTransform(Transform):
             raise CtpPipelineError(
                 stage="transform_execute",
                 step_name=step_name,
-                message="Informatica V2 login failed",
+                message=f"Informatica V2 login failed: {_login_failure_detail(exc)}",
             ) from exc
 
     @staticmethod
@@ -180,7 +203,7 @@ class ResolveInformaticaSessionTransform(Transform):
         try:
             response = requests.post(
                 f"{base_url}{_V3_LOGIN_PATH}",
-                data={"username": username, "password": password},
+                json={"username": username, "password": password},
             )
             response.raise_for_status()
             body = response.json()
@@ -211,7 +234,7 @@ class ResolveInformaticaSessionTransform(Transform):
             raise CtpPipelineError(
                 stage="transform_execute",
                 step_name=step_name,
-                message="Informatica V3 login failed",
+                message=f"Informatica V3 login failed: {_login_failure_detail(exc)}",
             ) from exc
 
     @staticmethod
@@ -248,7 +271,7 @@ class ResolveInformaticaSessionTransform(Transform):
             raise CtpPipelineError(
                 stage="transform_execute",
                 step_name=step_name,
-                message="Informatica JWT login failed",
+                message=f"Informatica JWT login failed: {_login_failure_detail(exc)}",
             ) from exc
 
 

@@ -88,6 +88,25 @@ class TestInformaticaCtpPipeline(TestCase):
         self.assertEqual("session-v3-xyz", result["session_id"])
 
 
+class TestInformaticaCtpPreResolvedPath(TestCase):
+    """Verify the when= guard skips login when session_id is already present."""
+
+    @patch("requests.post")
+    def test_pre_resolved_session_skips_login_step(self, mock_post):
+        """When session_id is present in raw, the resolve_informatica_session step is skipped."""
+        result = CtpPipeline().execute(
+            INFORMATICA_DEFAULT_CTP,
+            {
+                "session_id": "pre-existing-session",
+                "api_base_url": "https://na1.informaticacloud.com",
+            },
+        )
+
+        mock_post.assert_not_called()
+        self.assertEqual("pre-existing-session", result["session_id"])
+        self.assertEqual("https://na1.informaticacloud.com", result["api_base_url"])
+
+
 class TestInformaticaCtpFactoryResolution(TestCase):
     """Verify CTP pipeline runs before InformaticaProxyClient is instantiated."""
 

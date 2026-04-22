@@ -186,6 +186,27 @@ class TestV3PasswordMode(TestCase):
         self.assertIn("/saas/public/core/v3/login", login_url)
 
     @patch("requests.post")
+    def test_v3_login_sends_credentials_as_json(self, mock_post):
+        """V3 endpoint requires application/json — must use json=, not data=."""
+        mock_post.return_value = _mock_post(_V3_LOGIN_RESPONSE)
+
+        step = _make_step(
+            {
+                "username": "{{ raw.username }}",
+                "password": "{{ raw.password }}",
+                "informatica_auth": "v3",
+                "base_url": _BASE_URL,
+            }
+        )
+        _run(step, {"username": "myuser", "password": "mypass"})
+
+        call_kwargs = mock_post.call_args[1]
+        self.assertEqual(
+            {"username": "myuser", "password": "mypass"}, call_kwargs["json"]
+        )
+        self.assertNotIn("data", call_kwargs)
+
+    @patch("requests.post")
     def test_v3_response_ignores_non_integration_cloud_products(self, mock_post):
         """Only the 'Integration Cloud' product's baseApiUrl is used."""
         mock_post.return_value = _mock_post(_V3_LOGIN_RESPONSE)
@@ -452,7 +473,9 @@ class TestErrorPaths(TestCase):
         )
         with self.assertRaises(CtpPipelineError) as ctx:
             _run(step, {})
-        self.assertIn("login failed", str(ctx.exception).lower())
+        error_msg = str(ctx.exception)
+        self.assertIn("login failed", error_msg.lower())
+        self.assertIn("HTTP 401", error_msg)
 
 
 # ---------------------------------------------------------------------------
