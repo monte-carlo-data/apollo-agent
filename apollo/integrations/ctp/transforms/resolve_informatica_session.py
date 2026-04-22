@@ -18,12 +18,23 @@ _DEFAULT_BASE_URL = "https://dm-us.informaticacloud.com"
 def _login_failure_detail(exc: Exception) -> str:
     """Return a safe, diagnostic detail string for a login exception.
 
-    Includes HTTP status code for HTTPError (safe — response body is never
-    included), or the exception class name for other errors. Credentials are
-    never present in either form.
+    Includes HTTP status code and Informatica error text for HTTPError (safe —
+    response body never contains credentials), or the exception class name for
+    other errors.
     """
     if isinstance(exc, requests.HTTPError) and exc.response is not None:
-        return f"HTTP {exc.response.status_code}"
+        detail = f"HTTP {exc.response.status_code}"
+        try:
+            body = exc.response.json()
+            # Informatica error responses use "@type" and "message" or top-level "message"
+            message = body.get("message") or body.get("error")
+            if message:
+                detail += f": {message}"
+        except Exception:
+            text = (exc.response.text or "")[:200].strip()
+            if text:
+                detail += f": {text}"
+        return detail
     return type(exc).__name__
 
 
