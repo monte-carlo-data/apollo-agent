@@ -192,7 +192,7 @@ class ResolveInformaticaSessionTransform(Transform):
         try:
             response = requests.post(
                 f"{base_url}{_V3_LOGIN_PATH}",
-                data={"username": username, "password": password},
+                json={"username": username, "password": password},
             )
             response.raise_for_status()
             body = response.json()
