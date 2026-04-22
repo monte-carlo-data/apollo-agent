@@ -342,6 +342,16 @@ def _get_proxy_client_starburst_enterprise(
     return StarburstEnterpriseProxyClient(credentials=credentials, platform=platform)
 
 
+def _get_proxy_client_informatica(
+    credentials: Optional[Dict], **kwargs  # type: ignore
+) -> BaseProxyClient:
+    from apollo.integrations.http.informatica_proxy_client import (
+        InformaticaProxyClient,
+    )
+
+    return InformaticaProxyClient(credentials=credentials)
+
+
 def _get_proxy_client_db2(
     credentials: Optional[Dict], platform: str, **kwargs  # type: ignore
 ) -> BaseProxyClient:
@@ -400,6 +410,7 @@ _CLIENT_FACTORY_MAPPING = {
     "clickhouse": _get_proxy_client_clickhouse,
     "starburst-galaxy": _get_proxy_client_starburst_galaxy,
     "starburst-enterprise": _get_proxy_client_starburst_enterprise,
+    "informatica": _get_proxy_client_informatica,
 }
 
 
