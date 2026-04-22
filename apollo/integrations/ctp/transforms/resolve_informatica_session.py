@@ -15,6 +15,18 @@ _INTEGRATION_CLOUD_PRODUCT_NAME = "Integration Cloud"
 _DEFAULT_BASE_URL = "https://dm-us.informaticacloud.com"
 
 
+def _login_failure_detail(exc: Exception) -> str:
+    """Return a safe, diagnostic detail string for a login exception.
+
+    Includes HTTP status code for HTTPError (safe — response body is never
+    included), or the exception class name for other errors. Credentials are
+    never present in either form.
+    """
+    if isinstance(exc, requests.HTTPError) and exc.response is not None:
+        return f"HTTP {exc.response.status_code}"
+    return type(exc).__name__
+
+
 class ResolveInformaticaSessionTransform(Transform):
     """Exchange Informatica credentials for a session ID and API base URL.
 
@@ -166,7 +178,7 @@ class ResolveInformaticaSessionTransform(Transform):
             raise CtpPipelineError(
                 stage="transform_execute",
                 step_name=step_name,
-                message="Informatica V2 login failed",
+                message=f"Informatica V2 login failed: {_login_failure_detail(exc)}",
             ) from exc
 
     @staticmethod
@@ -211,7 +223,7 @@ class ResolveInformaticaSessionTransform(Transform):
             raise CtpPipelineError(
                 stage="transform_execute",
                 step_name=step_name,
-                message="Informatica V3 login failed",
+                message=f"Informatica V3 login failed: {_login_failure_detail(exc)}",
             ) from exc
 
     @staticmethod
@@ -248,7 +260,7 @@ class ResolveInformaticaSessionTransform(Transform):
             raise CtpPipelineError(
                 stage="transform_execute",
                 step_name=step_name,
-                message="Informatica JWT login failed",
+                message=f"Informatica JWT login failed: {_login_failure_detail(exc)}",
             ) from exc
 
 

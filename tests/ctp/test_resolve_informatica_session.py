@@ -452,7 +452,9 @@ class TestErrorPaths(TestCase):
         )
         with self.assertRaises(CtpPipelineError) as ctx:
             _run(step, {})
-        self.assertIn("login failed", str(ctx.exception).lower())
+        error_msg = str(ctx.exception)
+        self.assertIn("login failed", error_msg.lower())
+        self.assertIn("HTTP 401", error_msg)
 
 
 # ---------------------------------------------------------------------------
