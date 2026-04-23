@@ -1,5 +1,3 @@
-from typing import Optional
-
 import requests
 
 from apollo.integrations.ctp.errors import CtpPipelineError
@@ -13,6 +11,7 @@ _V3_LOGIN_PATH = "/saas/public/core/v3/login"
 _JWT_LOGIN_PATH = "/ma/api/v2/user/loginOAuth"
 _INTEGRATION_CLOUD_PRODUCT_NAME = "Integration Cloud"
 _DEFAULT_BASE_URL = "https://dm-us.informaticacloud.com"
+_LOGIN_TIMEOUT = 30  # seconds — matches the OAuth transform convention
 
 
 def _login_failure_detail(exc: Exception) -> str:
@@ -171,6 +170,7 @@ class ResolveInformaticaSessionTransform(Transform):
             response = requests.post(
                 f"{base_url}{_V2_LOGIN_PATH}",
                 data={"username": username, "password": password},
+                timeout=_LOGIN_TIMEOUT,
             )
             response.raise_for_status()
             body = response.json()
@@ -204,6 +204,7 @@ class ResolveInformaticaSessionTransform(Transform):
             response = requests.post(
                 f"{base_url}{_V3_LOGIN_PATH}",
                 json={"username": username, "password": password},
+                timeout=_LOGIN_TIMEOUT,
             )
             response.raise_for_status()
             body = response.json()
@@ -253,6 +254,7 @@ class ResolveInformaticaSessionTransform(Transform):
             response = requests.post(
                 f"{base_url}{_JWT_LOGIN_PATH}",
                 json={"orgId": org_id, "oauthToken": jwt_token},
+                timeout=_LOGIN_TIMEOUT,
             )
             response.raise_for_status()
             body = response.json()

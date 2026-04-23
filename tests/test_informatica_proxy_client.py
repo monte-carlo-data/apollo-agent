@@ -224,11 +224,11 @@ class InformaticaProxyClientSafetyTests(TestCase):
             {"connect_args": {}},
         )
         self.assertIn(ATTRIBUTE_NAME_ERROR, response.result)
-        # Error must mention what's needed — not expose internal state or credentials.
+        # Error must name what's missing so the user knows what to fix.
         error = response.result[ATTRIBUTE_NAME_ERROR]
         self.assertTrue(
-            len(error) > 0,
-            "Error message must be non-empty",
+            any(token in error for token in ("username", "jwt_token", "session_id")),
+            f"Error must name the missing credential input, got: {error!r}",
         )
 
     @patch("requests.request")
