@@ -369,6 +369,40 @@ class TestOutputKeys(TestCase):
 
 
 # ---------------------------------------------------------------------------
+# Timeout
+# ---------------------------------------------------------------------------
+
+
+class TestLoginTimeout(TestCase):
+    """All three login paths must pass timeout= to requests.post."""
+
+    @patch("requests.post")
+    def test_v2_login_passes_timeout(self, mock_post):
+        mock_post.return_value = _mock_post(_V2_LOGIN_RESPONSE)
+        step = _make_step(
+            {"username": "u", "password": "p", "informatica_auth": "v2", "base_url": _BASE_URL}
+        )
+        _run(step, {})
+        self.assertEqual(30, mock_post.call_args[1]["timeout"])
+
+    @patch("requests.post")
+    def test_v3_login_passes_timeout(self, mock_post):
+        mock_post.return_value = _mock_post(_V3_LOGIN_RESPONSE)
+        step = _make_step(
+            {"username": "u", "password": "p", "informatica_auth": "v3", "base_url": _BASE_URL}
+        )
+        _run(step, {})
+        self.assertEqual(30, mock_post.call_args[1]["timeout"])
+
+    @patch("requests.post")
+    def test_jwt_login_passes_timeout(self, mock_post):
+        mock_post.return_value = _mock_post(_JWT_LOGIN_RESPONSE)
+        step = _make_step({"jwt_token": "tok", "org_id": "org", "base_url": _BASE_URL})
+        _run(step, {})
+        self.assertEqual(30, mock_post.call_args[1]["timeout"])
+
+
+# ---------------------------------------------------------------------------
 # Error paths
 # ---------------------------------------------------------------------------
 
