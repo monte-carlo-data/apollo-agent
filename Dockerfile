@@ -22,6 +22,9 @@ RUN apt-get install -y --no-install-recommends git
 RUN apt-get install -y --no-install-recommends libcrypt1
 # openssh-client required by git client
 RUN apt-get install -y openssh-client
+# CVE-2025-15467: OpenSSL stack-based OOB write in CMS AuthEnvelopedData (CRITICAL)
+# Upgrade openssl and libssl3 to patched version >= 3.5.4
+RUN apt-get install -y --no-install-recommends openssl libssl3
 
 RUN python -m venv $VENV_DIR
 RUN . $VENV_DIR/bin/activate && pip install --no-cache-dir -r requirements.txt
@@ -109,7 +112,8 @@ COPY --from=lambda-builder "${LAMBDA_TASK_ROOT}" "${LAMBDA_TASK_ROOT}"
 
 # install unixodbc and 'ODBC Driver 17 for SQL Server', needed for Azure Dedicated SQL Pools
 # install git needed for looker views collection
-RUN dnf -y update
+# CVE-2025-15467: upgrade openssl to patched version
+RUN dnf -y update openssl
 RUN dnf -y install unixODBC git
 RUN curl https://packages.microsoft.com/config/rhel/7/prod.repo \
     | tee /etc/yum.repos.d/mssql-release.repo
