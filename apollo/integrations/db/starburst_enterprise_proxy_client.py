@@ -1,11 +1,10 @@
 import base64
-import hashlib
 import logging
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import trino
 
-from apollo.integrations.db.base_db_proxy_client import BaseDbProxyClient, SslOptions
+from apollo.integrations.db.base_db_proxy_client import BaseDbProxyClient
 from apollo.integrations.http.http_proxy_client import HttpProxyClient
 
 logger = logging.getLogger(__name__)
@@ -48,22 +47,8 @@ class StarburstEnterpriseProxyClient(BaseDbProxyClient):
                 "Starburst Enterprise agent client requires 'host' in connect_args"
             )
 
-        # Handle SSL options - used for both Trino and HTTP requests
-        ssl_options = SslOptions(**(connect_args.pop("ssl_options", {}) or {}))
-        self._ssl_verify: Union[bool, str, None] = None
-
-        if ssl_options.ca_data and not ssl_options.disabled:
-            host_hash = hashlib.sha256(self._host.encode()).hexdigest()[:12]
-            cert_file = f"/tmp/{host_hash}_starburst_enterprise_ca.pem"
-            ssl_options.write_ca_data_to_temp_file(cert_file, upsert=True)
-            self._ssl_verify = cert_file
-            logger.info("Starburst Enterprise SSL configured")
-
-        if ssl_options.disabled:
-            self._ssl_verify = False
-
-        if self._ssl_verify is not None:
-            connect_args["verify"] = self._ssl_verify
+        # SSL verify value resolved by CTP pipeline (verify: False, cert path, or absent)
+        self._ssl_verify: Union[bool, str, None] = connect_args.get("verify")
 
         # Setup Trino connection (same as base StarburstProxyClient)
         if "user" not in connect_args or "password" not in connect_args:

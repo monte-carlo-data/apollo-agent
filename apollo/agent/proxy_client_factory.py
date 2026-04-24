@@ -10,6 +10,7 @@ from apollo.common.agent.env_vars import CLIENT_CACHE_EXPIRATION_SECONDS_ENV_VAR
 from apollo.common.agent.models import AgentError
 from apollo.common.agent.serde import decode_dictionary
 from apollo.integrations.base_proxy_client import BaseProxyClient
+from apollo.integrations.ctp.registry import CtpRegistry
 from apollo.integrations.db.salesforce_data_cloud_proxy_client import (
     SalesforceDataCloudProxyClient,
     SalesforceDataCloudCredentials,
@@ -43,6 +44,16 @@ def _get_proxy_client_databricks(
     )
 
     return DatabricksSqlWarehouseProxyClient(credentials=credentials)
+
+
+def _get_proxy_client_databricks_rest(
+    credentials: Optional[Dict], **kwargs  # type: ignore
+) -> BaseProxyClient:
+    from apollo.integrations.databricks.databricks_rest_proxy_client import (
+        DatabricksRestProxyClient,
+    )
+
+    return DatabricksRestProxyClient(credentials=credentials)
 
 
 def _get_proxy_client_http(credentials: Optional[Dict], **kwargs) -> BaseProxyClient:  # type: ignore
@@ -285,10 +296,9 @@ def _get_proxy_client_salesforce_data_cloud(
     client_secret = connect_args.get("client_secret")
     core_token = connect_args.get("core_token")
     refresh_token = connect_args.get("refresh_token")
+    dataspace = connect_args.get("dataspace")
 
-    if not all([domain, client_id, client_secret]) or not any(
-        [core_token, refresh_token]
-    ):
+    if not all([domain, client_id, client_secret]):
         raise ValueError("Missing required connection parameters")
 
     credentials = SalesforceDataCloudCredentials(
@@ -297,6 +307,7 @@ def _get_proxy_client_salesforce_data_cloud(
         client_secret=client_secret,
         core_token=core_token,
         refresh_token=refresh_token,
+        dataspace=dataspace,
     )
     return SalesforceDataCloudProxyClient(credentials=credentials)
 
@@ -331,12 +342,30 @@ def _get_proxy_client_starburst_enterprise(
     return StarburstEnterpriseProxyClient(credentials=credentials, platform=platform)
 
 
+def _get_proxy_client_informatica(
+    credentials: Optional[Dict], **kwargs  # type: ignore
+) -> BaseProxyClient:
+    from apollo.integrations.http.informatica_proxy_client import (
+        InformaticaProxyClient,
+    )
+
+    return InformaticaProxyClient(credentials=credentials)
+
+
 def _get_proxy_client_db2(
     credentials: Optional[Dict], platform: str, **kwargs  # type: ignore
 ) -> BaseProxyClient:
     from apollo.integrations.db.db2_proxy_client import Db2ProxyClient
 
     return Db2ProxyClient(credentials=credentials, platform=platform)
+
+
+def _get_proxy_client_microsoft_fabric(
+    credentials: Optional[Dict], platform: str, **kwargs  # type: ignore
+) -> BaseProxyClient:
+    from apollo.integrations.db.fabric_proxy_client import MsFabricProxyClient
+
+    return MsFabricProxyClient(credentials=credentials, platform=platform)
 
 
 @dataclass
@@ -348,6 +377,7 @@ class ProxyClientCacheEntry:
 _CLIENT_FACTORY_MAPPING = {
     "bigquery": _get_proxy_client_bigquery,
     "databricks": _get_proxy_client_databricks,
+    "databricks-rest": _get_proxy_client_databricks_rest,
     "db2": _get_proxy_client_db2,
     "http": _get_proxy_client_http,
     "s3": _get_proxy_client_s3,
@@ -373,12 +403,14 @@ _CLIENT_FACTORY_MAPPING = {
     "hive": _get_proxy_client_hive,
     "msk-connect": _get_proxy_client_msk_connect,
     "msk-kafka": _get_proxy_client_msk_kafka,
+    "microsoft-fabric": _get_proxy_client_microsoft_fabric,
     "dremio": _get_proxy_client_dremio,
     "salesforce-crm": _get_proxy_client_salesforce_crm,
     "salesforce-data-cloud": _get_proxy_client_salesforce_data_cloud,
     "clickhouse": _get_proxy_client_clickhouse,
     "starburst-galaxy": _get_proxy_client_starburst_galaxy,
     "starburst-enterprise": _get_proxy_client_starburst_enterprise,
+    "informatica": _get_proxy_client_informatica,
 }
 
 
@@ -399,12 +431,17 @@ class ProxyClientFactory:
         credentials: Optional[Dict],
         skip_cache: bool,
         platform: str,
+        ctp_config: Optional[Dict] = None,
     ) -> BaseProxyClient:
         # skip_cache is a flag sent by the client, and can be used to force a new client to be created
         # it defaults to False
-        if skip_cache:
+        # ctp_config is not included in the cache key, so bypass the cache when a custom CTP is
+        # provided to avoid serving a previously cached client with different resolved credentials
+        if skip_cache or ctp_config is not None:
             try:
-                return cls._create_proxy_client(connection_type, credentials, platform)
+                return cls._create_proxy_client(
+                    connection_type, credentials, platform, ctp_config=ctp_config
+                )
             except Exception:
                 logger.exception(f"Failed to create {connection_type} client")
                 raise
@@ -420,7 +457,7 @@ class ProxyClientFactory:
                 logger.info(f"Using cached client for {connection_type}")
             else:
                 client = cls._create_proxy_client(
-                    connection_type, credentials, platform
+                    connection_type, credentials, platform, ctp_config=ctp_config
                 )
                 logger.info(f"Caching {connection_type} client")
                 cls._cache_client(key, client)
@@ -444,12 +481,24 @@ class ProxyClientFactory:
 
     @classmethod
     def _create_proxy_client(
-        cls, connection_type: str, credentials: Optional[Dict], platform: str
+        cls,
+        connection_type: str,
+        credentials: Optional[Dict],
+        platform: str,
+        ctp_config: Optional[Dict] = None,
     ) -> BaseProxyClient:
+        if credentials:
+            credentials = decode_dictionary(credentials)
+        if ctp_config is not None and credentials:
+            credentials = CtpRegistry.resolve_custom(
+                connection_type, credentials, ctp_config, context={"platform": platform}
+            )
+        elif credentials and CtpRegistry.get(connection_type):
+            credentials = CtpRegistry.resolve(
+                connection_type, credentials, context={"platform": platform}
+            )
         factory_method = _CLIENT_FACTORY_MAPPING.get(connection_type)
         if factory_method:
-            if credentials:
-                credentials = decode_dictionary(credentials)
             return factory_method(credentials, platform=platform)
         else:
             raise AgentError(
