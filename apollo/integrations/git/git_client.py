@@ -6,7 +6,7 @@ import shutil
 from dataclasses import dataclass
 from itertools import chain
 from pathlib import Path
-from typing import Dict, List, Generator
+from typing import Dict, List, Generator, Optional
 
 import git
 
@@ -23,11 +23,22 @@ class GitCloneClient:
     """
     Git client used to clone a repo, both ssh and https protocols are supported.
     It exposes a method that returns an iterator for all files matching a list of extensions.
+
+    Optional ``ssl_options`` (dict, HTTPS only) honored on the credentials payload:
+
+    - ``ca_data`` (str, PEM-encoded): inline CA bundle written to ``_CA_BUNDLE_FILE`` and
+      passed to git via ``-c http.sslCAInfo``. Use this for self-managed Git providers
+      whose root CA is not in the agent image's default trust store.
+    - ``skip_verification`` / ``skip_cert_verification`` (bool): when truthy, sets
+      ``-c http.sslVerify=false``. Logged as a warning.
+
+    Unknown keys in ``ssl_options`` are ignored. ``ssl_options`` is no-op for SSH clones.
     """
 
     # Only /tmp is writable in lambda.
     _REPO_DIR = Path("/tmp/repo")
     _KEY_FILE = Path("/tmp/mcd_rsa")
+    _CA_BUNDLE_FILE = Path("/tmp/git_ca_bundle.pem")
 
     GIT_TYPE = {"ssh": "SSH", "https": "HTTPS"}
 
@@ -37,10 +48,11 @@ class GitCloneClient:
         self._token = creds.get("token")
         self._username = creds.get("username")
         self._ssh_key = base64.b64decode(creds.get("ssh_key", ""))
+        self._ssl_options: Dict = creds.get("ssl_options") or {}
 
         if self._token:
-            # remove https if it was included for https calls
-            self._repo_url = self._repo_url.lstrip("https://")
+            # remove the scheme if it was included so the token can be inserted before the host
+            self._repo_url = self._repo_url.removeprefix("https://")
 
     def get_files(
         self, file_extensions: List[str]
@@ -69,7 +81,7 @@ class GitCloneClient:
         Executes `git --version` and returns the output in a dictionary with two keys: `stdout` and `stderr`.
         :return: the output for `git --version`.
         """
-        stdout, stderr = git.exec_command("--version")
+        stdout, stderr = git.exec_command("--version")  # type: ignore[attr-defined]
         return {
             "stdout": stdout.decode("utf-8") if stdout else "",
             "stderr": stderr.decode("utf-8") if stderr else "",
@@ -117,13 +129,51 @@ class GitCloneClient:
             # This allows for support of bitbucket as they handle access tokens slightly differently
             url = f"https://{self._username}:{self._token}@{self._repo_url}"
         # Use depth 1 to bring only the latest revision.
-        git_params = ["clone", "--depth", "1", url, str(self._REPO_DIR)]
+        ssl_config = self._build_ssl_config_args()
+        git_params = [*ssl_config, "clone", "--depth", "1", url, str(self._REPO_DIR)]
         try:
-            git.exec_command(*git_params)
-        except git.exceptions.GitExecutionError as e:
+            git.exec_command(*git_params)  # type: ignore[attr-defined]
+        except git.exceptions.GitExecutionError as e:  # type: ignore[attr-defined]
             password_removed_message = self._replace_passwords_in_urls(str(e))
 
-            raise git.exceptions.GitExecutionError(password_removed_message)
+            raise git.exceptions.GitExecutionError(password_removed_message)  # type: ignore[attr-defined]
+
+    def _build_ssl_config_args(self) -> List[str]:
+        """
+        Translate ``ssl_options`` into ``git -c <key>=<value>`` arguments for HTTPS clones.
+
+        Returns an empty list when no SSL options are supplied or when only unsupported
+        keys are present. Writes the inline CA bundle to ``_CA_BUNDLE_FILE`` when ``ca_data``
+        is set so git can read it via ``http.sslCAInfo``.
+        """
+        if not self._ssl_options:
+            return []
+
+        args: List[str] = []
+        ca_data: Optional[str] = self._ssl_options.get("ca_data")
+        # Accept both monolith v1 (skip_verification) and v2 (skip_cert_verification) field names.
+        skip_verification = bool(
+            self._ssl_options.get("skip_verification")
+            or self._ssl_options.get("skip_cert_verification")
+        )
+
+        if ca_data:
+            self._write_ca_bundle(ca_data)
+            args.extend(["-c", f"http.sslCAInfo={self._CA_BUNDLE_FILE}"])
+
+        if skip_verification:
+            logger.warning(
+                "TLS verification disabled for git clone via ssl_options.skip_verification"
+            )
+            args.extend(["-c", "http.sslVerify=false"])
+
+        return args
+
+    def _write_ca_bundle(self, ca_data: str) -> None:
+        """Persist a PEM-encoded CA bundle to a writable location for git's sslCAInfo."""
+        logger.info(f"Write CA bundle to file: {self._CA_BUNDLE_FILE}")
+        self._CA_BUNDLE_FILE.write_text(ca_data)
+        self._CA_BUNDLE_FILE.chmod(0o400)
 
     @staticmethod
     def _replace_passwords_in_urls(text: str, placeholder: str = "********"):
@@ -162,7 +212,7 @@ class GitCloneClient:
         env = {**os.environ, **{"GIT_SSH_COMMAND": f"ssh {ssh_options}"}}
         # Use depth 1 to bring only the latest revision.
         git_params = ["clone", "--depth", "1", self._repo_url, str(self._REPO_DIR)]
-        git.exec_command(*git_params, env=env)
+        git.exec_command(*git_params, env=env)  # type: ignore[attr-defined]
 
     @property
     def repo_url(self):

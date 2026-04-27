@@ -7,6 +7,8 @@ from apollo.integrations.git.git_client import GitCloneClient, GitFileData
 from apollo.integrations.git.git_proxy_client import GitProxyClient
 from apollo.integrations.storage.storage_proxy_client import StorageProxyClient
 
+CA_PEM = "-----BEGIN CERTIFICATE-----\nFAKECERT\n-----END CERTIFICATE-----\n"
+
 
 class GitTests(TestCase):
     @patch("apollo.integrations.git.git_client.git")
@@ -57,6 +59,156 @@ class GitTests(TestCase):
 
         self.assertEqual("https://pre-signed-url", result["url"])
         self.assertIsNotNone(result.get("key"))
+
+    @patch("apollo.integrations.git.git_client.git")
+    def test_https_clone_without_ssl_options(self, git_mock):
+        """No ssl_options on credentials => existing git clone command, no -c flags."""
+        client = GitCloneClient(
+            credentials={
+                "repo_url": "github.com/gh_account/repo.git",
+                "token": "TOKEN",
+            }
+        )
+        client._https_git_clone()
+        git_mock.exec_command.assert_called_once_with(
+            "clone",
+            "--depth",
+            "1",
+            "https://oauth2:TOKEN@github.com/gh_account/repo.git",
+            "/tmp/repo",
+        )
+
+    @patch.object(GitCloneClient, "_write_ca_bundle")
+    @patch("apollo.integrations.git.git_client.git")
+    def test_https_clone_with_ca_data(self, git_mock, write_ca_mock):
+        """ca_data => writes the bundle and passes -c http.sslCAInfo=<file>."""
+        client = GitCloneClient(
+            credentials={
+                "repo_url": "self-managed.example.com/grp/repo.git",
+                "token": "TOKEN",
+                "ssl_options": {"ca_data": CA_PEM},
+            }
+        )
+        client._https_git_clone()
+        write_ca_mock.assert_called_once_with(CA_PEM)
+        git_mock.exec_command.assert_called_once_with(
+            "-c",
+            f"http.sslCAInfo={GitCloneClient._CA_BUNDLE_FILE}",
+            "clone",
+            "--depth",
+            "1",
+            "https://oauth2:TOKEN@self-managed.example.com/grp/repo.git",
+            "/tmp/repo",
+        )
+
+    @patch("apollo.integrations.git.git_client.git")
+    def test_https_clone_with_skip_verification(self, git_mock):
+        """skip_verification=True => -c http.sslVerify=false."""
+        client = GitCloneClient(
+            credentials={
+                "repo_url": "github.com/gh_account/repo.git",
+                "token": "TOKEN",
+                "ssl_options": {"skip_verification": True},
+            }
+        )
+        client._https_git_clone()
+        git_mock.exec_command.assert_called_once_with(
+            "-c",
+            "http.sslVerify=false",
+            "clone",
+            "--depth",
+            "1",
+            "https://oauth2:TOKEN@github.com/gh_account/repo.git",
+            "/tmp/repo",
+        )
+
+    @patch("apollo.integrations.git.git_client.git")
+    def test_https_clone_with_skip_cert_verification_alias(self, git_mock):
+        """v2 schema uses skip_cert_verification — same effect as skip_verification."""
+        client = GitCloneClient(
+            credentials={
+                "repo_url": "github.com/gh_account/repo.git",
+                "token": "TOKEN",
+                "ssl_options": {"skip_cert_verification": True},
+            }
+        )
+        client._https_git_clone()
+        git_mock.exec_command.assert_called_once_with(
+            "-c",
+            "http.sslVerify=false",
+            "clone",
+            "--depth",
+            "1",
+            "https://oauth2:TOKEN@github.com/gh_account/repo.git",
+            "/tmp/repo",
+        )
+
+    @patch.object(GitCloneClient, "_write_ca_bundle")
+    @patch("apollo.integrations.git.git_client.git")
+    def test_https_clone_with_ca_data_and_skip_verification(
+        self, git_mock, write_ca_mock
+    ):
+        client = GitCloneClient(
+            credentials={
+                "repo_url": "self-managed.example.com/grp/repo.git",
+                "token": "TOKEN",
+                "ssl_options": {"ca_data": CA_PEM, "skip_verification": True},
+            }
+        )
+        client._https_git_clone()
+        write_ca_mock.assert_called_once_with(CA_PEM)
+        git_mock.exec_command.assert_called_once_with(
+            "-c",
+            f"http.sslCAInfo={GitCloneClient._CA_BUNDLE_FILE}",
+            "-c",
+            "http.sslVerify=false",
+            "clone",
+            "--depth",
+            "1",
+            "https://oauth2:TOKEN@self-managed.example.com/grp/repo.git",
+            "/tmp/repo",
+        )
+
+    @patch("apollo.integrations.git.git_client.git")
+    def test_https_clone_ignores_unknown_ssl_options(self, git_mock):
+        """Unknown ssl_options keys (e.g. mechanism, cert) are ignored — not forwarded to git."""
+        client = GitCloneClient(
+            credentials={
+                "repo_url": "github.com/gh_account/repo.git",
+                "token": "TOKEN",
+                "ssl_options": {"mechanism": "url", "cert": "ignored"},
+            }
+        )
+        client._https_git_clone()
+        git_mock.exec_command.assert_called_once_with(
+            "clone",
+            "--depth",
+            "1",
+            "https://oauth2:TOKEN@github.com/gh_account/repo.git",
+            "/tmp/repo",
+        )
+
+    @patch("apollo.integrations.git.git_client.git")
+    def test_ssh_clone_ignores_ssl_options(self, git_mock):
+        """ssl_options is irrelevant for SSH clones; never produces -c flags."""
+        client = GitCloneClient(
+            credentials={
+                "repo_url": "git@github.com:gh_account/repo.git",
+                "ssh_key": base64.b64encode(b"SSH TEST KEY"),
+                "ssl_options": {"ca_data": CA_PEM, "skip_verification": True},
+            }
+        )
+        with patch.object(client, "_KEY_FILE"):
+            client.write_key()
+            client._ssh_git_clone()
+        git_mock.exec_command.assert_called_with(
+            "clone",
+            "--depth",
+            "1",
+            "git@github.com:gh_account/repo.git",
+            "/tmp/repo",
+            env=ANY,
+        )
 
     @patch("apollo.integrations.git.git_client.git")
     def test_git_version(self, git_mock):
