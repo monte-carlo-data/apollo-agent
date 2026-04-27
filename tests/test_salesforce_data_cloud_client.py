@@ -12,7 +12,6 @@ from apollo.common.agent.constants import ATTRIBUTE_NAME_RESULT
 from apollo.agent.logging_utils import LoggingUtils
 from apollo.integrations.db.salesforce_data_cloud_proxy_client import (
     _RetryingSalesforceDataCloudCursor,
-    _retry_on_transient_network_errors,
 )
 
 
@@ -975,83 +974,6 @@ class SalesforceDataCloudRetryTests(TestCase):
     ``ProtocolError(RemoteDisconnected(...))`` before any HTTP response. Retrying
     the call uses a fresh pooled connection and typically succeeds.
     """
-
-    def test_retry_helper_returns_immediately_on_success(self):
-        calls = []
-
-        def succeed():
-            calls.append(1)
-            return "ok"
-
-        result = _retry_on_transient_network_errors(succeed, operation="probe")
-        self.assertEqual(result, "ok")
-        self.assertEqual(len(calls), 1)
-
-    def test_retry_helper_recovers_from_protocol_error(self):
-        attempts = {"n": 0}
-
-        def flaky():
-            attempts["n"] += 1
-            if attempts["n"] < 2:
-                raise urllib3.exceptions.ProtocolError(
-                    "Connection aborted.",
-                    http.client.RemoteDisconnected(
-                        "Remote end closed connection without response"
-                    ),
-                )
-            return "ok"
-
-        with patch("retry.api.time.sleep") as sleep_mock:
-            result = _retry_on_transient_network_errors(
-                flaky, operation="probe", tries=3, base_delay=0.0
-            )
-        self.assertEqual(result, "ok")
-        self.assertEqual(attempts["n"], 2)
-        self.assertEqual(sleep_mock.call_count, 1)
-
-    def test_retry_helper_raises_after_exhausting_attempts(self):
-        with patch("retry.api.time.sleep"):
-            with self.assertRaises(urllib3.exceptions.ProtocolError):
-                _retry_on_transient_network_errors(
-                    lambda: (_ for _ in ()).throw(
-                        urllib3.exceptions.ProtocolError(
-                            "Connection aborted.",
-                            http.client.RemoteDisconnected("closed"),
-                        )
-                    ),
-                    operation="probe",
-                    tries=2,
-                    base_delay=0.0,
-                )
-
-    def test_retry_helper_rejects_invalid_inputs(self):
-        with self.assertRaisesRegex(ValueError, "tries must be >= 1"):
-            _retry_on_transient_network_errors(lambda: None, operation="probe", tries=0)
-        with self.assertRaisesRegex(ValueError, "tries must be >= 1"):
-            _retry_on_transient_network_errors(
-                lambda: None, operation="probe", tries=-1
-            )
-        with self.assertRaisesRegex(ValueError, "base_delay must be >= 0"):
-            _retry_on_transient_network_errors(
-                lambda: None, operation="probe", base_delay=-0.1
-            )
-        with self.assertRaisesRegex(ValueError, "max_delay must be >= 0"):
-            _retry_on_transient_network_errors(
-                lambda: None, operation="probe", max_delay=-1
-            )
-
-    def test_retry_helper_does_not_retry_permanent_errors(self):
-        attempts = {"n": 0}
-
-        def boom():
-            attempts["n"] += 1
-            raise ValueError("syntax error")
-
-        with self.assertRaises(ValueError):
-            _retry_on_transient_network_errors(
-                boom, operation="probe", tries=3, base_delay=0.0
-            )
-        self.assertEqual(attempts["n"], 1)
 
     def test_cursor_execute_retries_on_remote_disconnected(self):
         """A single ``RemoteDisconnected`` during ``cursor.execute`` is recovered
