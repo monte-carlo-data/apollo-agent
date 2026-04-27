@@ -1,13 +1,18 @@
+import http.client
 import json
 import uuid
 from unittest import TestCase
 from unittest.mock import Mock, patch
 
 import responses
+import urllib3.exceptions
 
 from apollo.agent.agent import Agent
 from apollo.common.agent.constants import ATTRIBUTE_NAME_RESULT
 from apollo.agent.logging_utils import LoggingUtils
+from apollo.integrations.db.salesforce_data_cloud_proxy_client import (
+    _RetryingSalesforceDataCloudCursor,
+)
 
 
 class SalesforceDataCloudProxyClientTests(TestCase):
@@ -957,3 +962,164 @@ class SalesforceDataCloudProxyClientTests(TestCase):
                 query_params,
                 "list_tables(None) on a scoped client must not include dataspace in a360/token POST",
             )
+
+
+class SalesforceDataCloudRetryTests(TestCase):
+    """Cover the transient-network-error retry that wraps cursor and list_tables.
+
+    The motivating failure: hourly metric monitors fail intermittently with
+    ``AgentClientError. ('Connection aborted.', RemoteDisconnected('Remote end
+    closed connection without response'))``. A pooled keep-alive connection that
+    Salesforce's edge LB has silently closed gets reused → urllib3 raises
+    ``ProtocolError(RemoteDisconnected(...))`` before any HTTP response. Retrying
+    the call uses a fresh pooled connection and typically succeeds.
+    """
+
+    def test_cursor_execute_retries_on_remote_disconnected(self):
+        """A single ``RemoteDisconnected`` during ``cursor.execute`` is recovered
+        without surfacing the error to the caller."""
+        # Build a cursor against a fake connection — we patch QuerySubmitter
+        # directly so the cursor's HTTP path is exercised in isolation.
+        connection = Mock()
+        connection.closed = False
+        cursor = _RetryingSalesforceDataCloudCursor(connection)
+
+        json_results = {
+            "data": [["a"]],
+            "metadata": {"col": {"type": "VARCHAR", "placeInOrder": 0, "typeCode": 12}},
+            "done": True,
+            "rowCount": 1,
+        }
+        attempts = {"n": 0}
+
+        def flaky_execute(_connection, _query):
+            attempts["n"] += 1
+            if attempts["n"] == 1:
+                raise urllib3.exceptions.ProtocolError(
+                    "Connection aborted.",
+                    http.client.RemoteDisconnected(
+                        "Remote end closed connection without response"
+                    ),
+                )
+            return json_results
+
+        with (
+            patch(
+                "salesforcecdpconnector.cursor.QuerySubmitter.execute",
+                side_effect=flaky_execute,
+            ),
+            patch("retry.api.time.sleep"),
+        ):
+            cursor.execute("select 1")
+
+        self.assertEqual(attempts["n"], 2)
+        self.assertTrue(cursor.has_result)
+
+    def test_cursor_execute_propagates_after_retry_budget_exhausted(self):
+        connection = Mock()
+        connection.closed = False
+        cursor = _RetryingSalesforceDataCloudCursor(connection)
+
+        def always_fail(_connection, _query):
+            raise urllib3.exceptions.ProtocolError(
+                "Connection aborted.",
+                http.client.RemoteDisconnected("closed"),
+            )
+
+        with (
+            patch(
+                "salesforcecdpconnector.cursor.QuerySubmitter.execute",
+                side_effect=always_fail,
+            ),
+            patch("retry.api.time.sleep"),
+        ):
+            with self.assertRaises(urllib3.exceptions.ProtocolError):
+                cursor.execute("select 1")
+
+    def test_cursor_fetchall_retries_on_transient_error(self):
+        """``fetchall`` (which paginates via ``QuerySubmitter.get_next_batch``)
+        also retries on transient errors."""
+        connection = Mock()
+        connection.closed = False
+        cursor = _RetryingSalesforceDataCloudCursor(connection)
+        # Prime the cursor as if execute() succeeded with one batch and more to fetch.
+        cursor.has_result = True
+        cursor.has_next = True
+        cursor.next_batch_id = "batch-1"
+        cursor.data = [["row0"]]
+        cursor.description = []
+
+        next_batch = {"data": [["row1"]], "done": True, "metadata": {}}
+        attempts = {"n": 0}
+
+        def flaky_next_batch(_connection, _batch_id):
+            attempts["n"] += 1
+            if attempts["n"] == 1:
+                raise ConnectionResetError("connection reset by peer")
+            return next_batch
+
+        with (
+            patch(
+                "salesforcecdpconnector.cursor.QuerySubmitter.get_next_batch",
+                side_effect=flaky_next_batch,
+            ),
+            patch("retry.api.time.sleep"),
+        ):
+            result = cursor.fetchall()
+
+        self.assertEqual(attempts["n"], 2)
+        self.assertEqual(result, [["row0"], ["row1"]])
+
+    def test_list_tables_retries_on_transient_error(self):
+        """``SalesforceDataCloudProxyClient.list_tables`` (unscoped path) recovers
+        from a single transient ``RemoteDisconnected`` raised by the underlying
+        connection. Confirms the ``list_tables`` retry wrapper at the proxy
+        layer (the cursor retry doesn't cover this path)."""
+        from apollo.integrations.db.salesforce_data_cloud_proxy_client import (
+            SalesforceDataCloudProxyClient,
+            SalesforceDataCloudCredentials,
+        )
+
+        credentials = SalesforceDataCloudCredentials(
+            domain="test.salesforce.com",
+            client_id="cid",
+            client_secret="csec",
+            core_token="t",
+            refresh_token=None,
+        )
+        # Bypass the real connection construction; we only need the
+        # SalesforceDataCloudProxyClient instance to exercise its list_tables.
+        with patch(
+            "apollo.integrations.db.salesforce_data_cloud_proxy_client."
+            "SalesforceDataCloudConnection"
+        ) as conn_class:
+            attempts = {"n": 0}
+            fake_table = Mock()
+            fake_table.name = "Account"
+            fake_table.display_name = "Account"
+            fake_table.category = "OBJECT"
+            fake_table.fields = []
+
+            def flaky_list_tables():
+                attempts["n"] += 1
+                if attempts["n"] == 1:
+                    raise urllib3.exceptions.ProtocolError(
+                        "Connection aborted.",
+                        http.client.RemoteDisconnected(
+                            "Remote end closed connection without response"
+                        ),
+                    )
+                return [fake_table]
+
+            conn_instance = Mock()
+            conn_instance.list_tables.side_effect = flaky_list_tables
+            conn_class.return_value = conn_instance
+
+            client = SalesforceDataCloudProxyClient(credentials=credentials)
+
+            with patch("retry.api.time.sleep"):
+                result = client.list_tables()
+
+        self.assertEqual(attempts["n"], 2)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["name"], "Account")
