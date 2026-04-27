@@ -55,7 +55,17 @@ def _retry_on_transient_network_errors(
     A short retry on a fresh pooled connection clears it. Permanent errors
     (``SalesforceCDPError``, auth failures, query syntax) are not in the catch
     list and propagate immediately.
+
+    Raises ``ValueError`` if ``attempts < 1`` or any delay parameter is negative
+    so misconfiguration surfaces as a clear caller error rather than an obscure
+    runtime ``AssertionError``.
     """
+    if attempts < 1:
+        raise ValueError(f"attempts must be >= 1, got {attempts}")
+    if base_delay < 0:
+        raise ValueError(f"base_delay must be >= 0, got {base_delay}")
+    if max_delay < 0:
+        raise ValueError(f"max_delay must be >= 0, got {max_delay}")
     last_exc: BaseException | None = None
     for attempt in range(1, attempts + 1):
         try:

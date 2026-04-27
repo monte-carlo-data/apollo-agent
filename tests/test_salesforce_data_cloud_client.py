@@ -1028,6 +1028,24 @@ class SalesforceDataCloudRetryTests(TestCase):
                     base_delay=0.0,
                 )
 
+    def test_retry_helper_rejects_invalid_inputs(self):
+        with self.assertRaisesRegex(ValueError, "attempts must be >= 1"):
+            _retry_on_transient_network_errors(
+                lambda: None, operation="probe", attempts=0
+            )
+        with self.assertRaisesRegex(ValueError, "attempts must be >= 1"):
+            _retry_on_transient_network_errors(
+                lambda: None, operation="probe", attempts=-1
+            )
+        with self.assertRaisesRegex(ValueError, "base_delay must be >= 0"):
+            _retry_on_transient_network_errors(
+                lambda: None, operation="probe", base_delay=-0.1
+            )
+        with self.assertRaisesRegex(ValueError, "max_delay must be >= 0"):
+            _retry_on_transient_network_errors(
+                lambda: None, operation="probe", max_delay=-1
+            )
+
     def test_retry_helper_does_not_retry_permanent_errors(self):
         attempts = {"n": 0}
 
@@ -1141,3 +1159,59 @@ class SalesforceDataCloudRetryTests(TestCase):
 
         self.assertEqual(attempts["n"], 2)
         self.assertEqual(result, [["row0"], ["row1"]])
+
+    def test_list_tables_retries_on_transient_error(self):
+        """``SalesforceDataCloudProxyClient.list_tables`` (unscoped path) recovers
+        from a single transient ``RemoteDisconnected`` raised by the underlying
+        connection. Confirms the ``list_tables`` retry wrapper at the proxy
+        layer (the cursor retry doesn't cover this path)."""
+        from apollo.integrations.db.salesforce_data_cloud_proxy_client import (
+            SalesforceDataCloudProxyClient,
+            SalesforceDataCloudCredentials,
+        )
+
+        credentials = SalesforceDataCloudCredentials(
+            domain="test.salesforce.com",
+            client_id="cid",
+            client_secret="csec",
+            core_token="t",
+            refresh_token=None,
+        )
+        # Bypass the real connection construction; we only need the
+        # SalesforceDataCloudProxyClient instance to exercise its list_tables.
+        with patch(
+            "apollo.integrations.db.salesforce_data_cloud_proxy_client."
+            "SalesforceDataCloudConnection"
+        ) as conn_class:
+            attempts = {"n": 0}
+            fake_table = Mock()
+            fake_table.name = "Account"
+            fake_table.display_name = "Account"
+            fake_table.category = "OBJECT"
+            fake_table.fields = []
+
+            def flaky_list_tables():
+                attempts["n"] += 1
+                if attempts["n"] == 1:
+                    raise urllib3.exceptions.ProtocolError(
+                        "Connection aborted.",
+                        http.client.RemoteDisconnected(
+                            "Remote end closed connection without response"
+                        ),
+                    )
+                return [fake_table]
+
+            conn_instance = Mock()
+            conn_instance.list_tables.side_effect = flaky_list_tables
+            conn_class.return_value = conn_instance
+
+            client = SalesforceDataCloudProxyClient(credentials=credentials)
+
+            with patch(
+                "apollo.integrations.db.salesforce_data_cloud_proxy_client.time.sleep"
+            ):
+                result = client.list_tables()
+
+        self.assertEqual(attempts["n"], 2)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["name"], "Account")
