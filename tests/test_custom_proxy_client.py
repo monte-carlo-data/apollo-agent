@@ -139,6 +139,35 @@ class TestCustomConnectorDiscovery(TestCase):
             self.assertEqual(registry, {})
 
 
+class TestLoadConnectorModule(TestCase):
+    def test_successful_load(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            _create_mock_connector_dir(tmp_dir, "mydb", "custom-connector-abc")
+            connector_dir = os.path.join(tmp_dir, "mydb")
+
+            module = load_connector_module(connector_dir)
+
+            self.assertTrue(hasattr(module, "BaseConnector"))
+            connector = module.BaseConnector()
+            self.assertEqual(connector.create_connection(), "mock_connection")
+
+    def test_missing_connector_py(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            # Directory exists but no connector.py
+            with self.assertRaises(FileNotFoundError) as ctx:
+                load_connector_module(tmp_dir)
+            self.assertIn("connector.py not found", str(ctx.exception))
+
+    def test_syntax_error_in_connector(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            connector_path = os.path.join(tmp_dir, "connector.py")
+            with open(connector_path, "w") as f:
+                f.write("class BaseConnector:\n    def bad_method(self\n")
+
+            with self.assertRaises(SyntaxError):
+                load_connector_module(tmp_dir)
+
+
 class TestLoadTemplates(TestCase):
     def test_load_templates(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

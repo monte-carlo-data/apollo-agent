@@ -518,8 +518,6 @@ class ProxyClientFactory:
             custom_registry = get_custom_connector_registry()
             connector_dir = custom_registry.get(connection_type)
             if connector_dir:
-                if credentials:
-                    credentials = decode_dictionary(credentials)
                 return _get_proxy_client_custom(
                     credentials, connector_dir=connector_dir
                 )
