@@ -1,10 +1,11 @@
 import http.client
 import logging
 from dataclasses import dataclass
-from typing import Any, Callable, NoReturn, TypeVar
+from typing import Any, NoReturn
 
 import requests
 import urllib3.exceptions
+from retry import retry
 from retry.api import retry_call
 from salesforcecdpconnector.connection import SalesforceCDPConnection
 from salesforcecdpconnector.cursor import SalesforceCDPCursor
@@ -14,8 +15,6 @@ from salesforcecdpconnector.genie_table import GenieTable, Field
 from apollo.integrations.db.base_db_proxy_client import BaseDbProxyClient
 
 logger = logging.getLogger(__name__)
-
-T = TypeVar("T")
 
 # Transient network errors that occur when a pooled HTTP connection to Salesforce's
 # edge has been silently closed by the LB after idle, then the agent reuses it on
@@ -33,95 +32,18 @@ _TRANSIENT_NETWORK_ERRORS: tuple[type[Exception], ...] = (
     requests.exceptions.ChunkedEncodingError,
 )
 
-# Default retry policy. ``tries`` includes the initial call.
-_RETRY_TRIES = 3
-_RETRY_BASE_DELAY_SECS = 0.5
-_RETRY_MAX_DELAY_SECS = 4.0
-_RETRY_BACKOFF = 2
-
-
-class _StructuredRetryLogger:
-    """Adapter for the ``retry`` library that converts its hardcoded
-    ``logger.warning(formatted_msg)`` calls into structured records suitable
-    for Datadog filtering on ``sfdc_*`` fields.
-
-    The library calls ``warning()`` once per failed attempt before sleeping;
-    this adapter re-emits the entry through our module logger with
-    ``extra={...}`` so operators can build dashboards/alerts off
-    ``sfdc_operation``, ``sfdc_retry_attempt``, ``sfdc_retry_exhausted``, etc.
-    """
-
-    def __init__(self, operation: str) -> None:
-        self._operation = operation
-        self._attempt = 0
-
-    def warning(self, msg: str, *args: Any, **kwargs: Any) -> None:
-        self._attempt += 1
-        logger.warning(
-            "Salesforce Data Cloud: transient network error on '%s' (attempt %d); retrying",
-            self._operation,
-            self._attempt,
-            extra={
-                "sfdc_operation": self._operation,
-                "sfdc_retry_attempt": self._attempt,
-                "sfdc_retry_exhausted": False,
-                "sfdc_error": str(msg)[:500],
-            },
-        )
-
-
-def _retry_on_transient_network_errors(
-    func: Callable[[], T],
-    *,
-    operation: str,
-    tries: int = _RETRY_TRIES,
-    base_delay: float = _RETRY_BASE_DELAY_SECS,
-    max_delay: float = _RETRY_MAX_DELAY_SECS,
-    backoff: float = _RETRY_BACKOFF,
-) -> T:
-    """Run *func* with retries on transient HTTP/TCP errors.
-
-    Wraps ``retry.api.retry_call`` with a structured-logger adapter (per-attempt
-    warnings) plus an explicit "exhausted" log line at the end so operators can
-    alert on ``sfdc_retry_exhausted:true`` directly. Permanent errors
-    (``SalesforceCDPError``, auth failures, query syntax) are not in the catch
-    list and propagate immediately.
-
-    Raises ``ValueError`` if ``tries < 1`` or any delay parameter is negative so
-    misconfiguration surfaces as a clear caller error rather than an obscure
-    runtime failure.
-    """
-    if tries < 1:
-        raise ValueError(f"tries must be >= 1, got {tries}")
-    if base_delay < 0:
-        raise ValueError(f"base_delay must be >= 0, got {base_delay}")
-    if max_delay < 0:
-        raise ValueError(f"max_delay must be >= 0, got {max_delay}")
-    try:
-        return retry_call(
-            func,
-            exceptions=_TRANSIENT_NETWORK_ERRORS,
-            tries=tries,
-            delay=base_delay,
-            max_delay=max_delay,
-            backoff=backoff,
-            # The retry library duck-types the logger — anything with `.warning()`
-            # is accepted (line 50 of retry/api.py). Pyright's annotation is
-            # tighter (`Logger | None`).
-            logger=_StructuredRetryLogger(operation),  # type: ignore[arg-type]
-        )
-    except _TRANSIENT_NETWORK_ERRORS as exc:
-        logger.warning(
-            "Salesforce Data Cloud: transient network error on '%s' after retries; giving up",
-            operation,
-            extra={
-                "sfdc_operation": operation,
-                "sfdc_retry_exhausted": True,
-                "sfdc_error_type": type(exc).__name__,
-                "sfdc_error": str(exc)[:500],
-            },
-        )
-        raise
+# Retry config shared by `@retry` decorations and `retry_call(...)` invocations.
+# tries includes the initial call; backoff multiplies delay each attempt up to
+# max_delay. Logger is passed so retry-library warnings flow through this
+# module's logger rather than retry.logging_logger.
+_RETRY_KWARGS: dict[str, Any] = {
+    "exceptions": _TRANSIENT_NETWORK_ERRORS,
+    "tries": 3,
+    "delay": 0.5,
+    "max_delay": 4,
+    "backoff": 2,
+    "logger": logger,
+}
 
 
 class _CapturingSession(requests.Session):
@@ -222,31 +144,21 @@ class _RetryingSalesforceDataCloudCursor(SalesforceCDPCursor):
     ``rollback``, etc.) from the upstream class unchanged.
     """
 
+    @retry(**_RETRY_KWARGS)
     def execute(self, query: Any, params: Any = None) -> None:
-        return _retry_on_transient_network_errors(
-            lambda: super(_RetryingSalesforceDataCloudCursor, self).execute(
-                query, params
-            ),
-            operation="cursor.execute",
-        )
+        return super().execute(query, params)
 
+    @retry(**_RETRY_KWARGS)
     def fetchall(self) -> Any:
-        return _retry_on_transient_network_errors(
-            lambda: super(_RetryingSalesforceDataCloudCursor, self).fetchall(),
-            operation="cursor.fetchall",
-        )
+        return super().fetchall()
 
+    @retry(**_RETRY_KWARGS)
     def fetchone(self) -> Any:
-        return _retry_on_transient_network_errors(
-            lambda: super(_RetryingSalesforceDataCloudCursor, self).fetchone(),
-            operation="cursor.fetchone",
-        )
+        return super().fetchone()
 
+    @retry(**_RETRY_KWARGS)
     def fetchmany(self, size: Any = None) -> Any:
-        return _retry_on_transient_network_errors(
-            lambda: super(_RetryingSalesforceDataCloudCursor, self).fetchmany(size),
-            operation="cursor.fetchmany",
-        )
+        return super().fetchmany(size)
 
 
 class SalesforceDataCloudConnection(SalesforceCDPConnection):
@@ -387,10 +299,7 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
             )
             capturing = _attach_capturing_session(conn)
             try:
-                tables: list[GenieTable] = _retry_on_transient_network_errors(
-                    conn.list_tables,
-                    operation="list_tables(scoped)",
-                )
+                tables: list[GenieTable] = retry_call(conn.list_tables, **_RETRY_KWARGS)
             except SalesforceCDPError as e:
                 body = _redact_body(capturing.last_exchange_body if capturing else None)
                 status = capturing.last_exchange_status if capturing else None
@@ -468,10 +377,7 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
                 unscoped_conn = None
             conn_to_use = unscoped_conn or self._connection
             try:
-                tables = _retry_on_transient_network_errors(
-                    conn_to_use.list_tables,
-                    operation="list_tables(unscoped)",
-                )
+                tables = retry_call(conn_to_use.list_tables, **_RETRY_KWARGS)
             except SalesforceCDPError as e:
                 raise RuntimeError(
                     f"Token exchange failed: {e} — verify credentials are valid"
