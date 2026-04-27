@@ -1001,20 +1001,16 @@ class SalesforceDataCloudRetryTests(TestCase):
                 )
             return "ok"
 
-        with patch(
-            "apollo.integrations.db.salesforce_data_cloud_proxy_client.time.sleep"
-        ) as sleep_mock:
+        with patch("retry.api.time.sleep") as sleep_mock:
             result = _retry_on_transient_network_errors(
-                flaky, operation="probe", attempts=3, base_delay=0.0
+                flaky, operation="probe", tries=3, base_delay=0.0
             )
         self.assertEqual(result, "ok")
         self.assertEqual(attempts["n"], 2)
         self.assertEqual(sleep_mock.call_count, 1)
 
     def test_retry_helper_raises_after_exhausting_attempts(self):
-        with patch(
-            "apollo.integrations.db.salesforce_data_cloud_proxy_client.time.sleep"
-        ):
+        with patch("retry.api.time.sleep"):
             with self.assertRaises(urllib3.exceptions.ProtocolError):
                 _retry_on_transient_network_errors(
                     lambda: (_ for _ in ()).throw(
@@ -1024,18 +1020,16 @@ class SalesforceDataCloudRetryTests(TestCase):
                         )
                     ),
                     operation="probe",
-                    attempts=2,
+                    tries=2,
                     base_delay=0.0,
                 )
 
     def test_retry_helper_rejects_invalid_inputs(self):
-        with self.assertRaisesRegex(ValueError, "attempts must be >= 1"):
+        with self.assertRaisesRegex(ValueError, "tries must be >= 1"):
+            _retry_on_transient_network_errors(lambda: None, operation="probe", tries=0)
+        with self.assertRaisesRegex(ValueError, "tries must be >= 1"):
             _retry_on_transient_network_errors(
-                lambda: None, operation="probe", attempts=0
-            )
-        with self.assertRaisesRegex(ValueError, "attempts must be >= 1"):
-            _retry_on_transient_network_errors(
-                lambda: None, operation="probe", attempts=-1
+                lambda: None, operation="probe", tries=-1
             )
         with self.assertRaisesRegex(ValueError, "base_delay must be >= 0"):
             _retry_on_transient_network_errors(
@@ -1055,7 +1049,7 @@ class SalesforceDataCloudRetryTests(TestCase):
 
         with self.assertRaises(ValueError):
             _retry_on_transient_network_errors(
-                boom, operation="probe", attempts=3, base_delay=0.0
+                boom, operation="probe", tries=3, base_delay=0.0
             )
         self.assertEqual(attempts["n"], 1)
 
@@ -1092,9 +1086,7 @@ class SalesforceDataCloudRetryTests(TestCase):
                 "salesforcecdpconnector.cursor.QuerySubmitter.execute",
                 side_effect=flaky_execute,
             ),
-            patch(
-                "apollo.integrations.db.salesforce_data_cloud_proxy_client.time.sleep"
-            ),
+            patch("retry.api.time.sleep"),
         ):
             cursor.execute("select 1")
 
@@ -1117,9 +1109,7 @@ class SalesforceDataCloudRetryTests(TestCase):
                 "salesforcecdpconnector.cursor.QuerySubmitter.execute",
                 side_effect=always_fail,
             ),
-            patch(
-                "apollo.integrations.db.salesforce_data_cloud_proxy_client.time.sleep"
-            ),
+            patch("retry.api.time.sleep"),
         ):
             with self.assertRaises(urllib3.exceptions.ProtocolError):
                 cursor.execute("select 1")
@@ -1151,9 +1141,7 @@ class SalesforceDataCloudRetryTests(TestCase):
                 "salesforcecdpconnector.cursor.QuerySubmitter.get_next_batch",
                 side_effect=flaky_next_batch,
             ),
-            patch(
-                "apollo.integrations.db.salesforce_data_cloud_proxy_client.time.sleep"
-            ),
+            patch("retry.api.time.sleep"),
         ):
             result = cursor.fetchall()
 
@@ -1207,9 +1195,7 @@ class SalesforceDataCloudRetryTests(TestCase):
 
             client = SalesforceDataCloudProxyClient(credentials=credentials)
 
-            with patch(
-                "apollo.integrations.db.salesforce_data_cloud_proxy_client.time.sleep"
-            ):
+            with patch("retry.api.time.sleep"):
                 result = client.list_tables()
 
         self.assertEqual(attempts["n"], 2)
