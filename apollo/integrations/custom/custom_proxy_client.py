@@ -5,9 +5,10 @@ from jinja2 import Template
 from jinja2.sandbox import ImmutableSandboxedEnvironment
 
 from apollo.integrations.base_proxy_client import BaseProxyClient
-from apollo.integrations.custom.custom_integration_loader import (
-    load_capabilities,
-    load_integration_module,
+from apollo.integrations.custom.custom_connector_loader import (
+    get_custom_connector_registry,
+    load_connector_module,
+    load_manifest,
     load_templates,
 )
 
@@ -31,10 +32,10 @@ _COMPILED_TEMPLATE_NAMES = frozenset(
 
 class CustomProxyClient(BaseProxyClient):
     """
-    Proxy client for custom database integrations loaded from
-    /opt/custom-integrations/{name}/.
+    Proxy client for custom database connectors loaded from
+    /opt/custom-connectors/{name}/.
 
-    The integration module is expected to define a BaseIntegration class
+    The connector module is expected to define a BaseConnector class
     with methods: create_connection, create_cursor, execute_query,
     fetch_all_results, close_connection.
     """
@@ -42,39 +43,40 @@ class CustomProxyClient(BaseProxyClient):
     def __init__(
         self,
         credentials: Optional[Dict],
-        integration_dir: str,
+        connector_dir: str,
         **kwargs: Any,
     ):
-        module = load_integration_module(integration_dir)
-        self._integration = module.BaseIntegration()
+        module = load_connector_module(connector_dir)
+        self._connector = module.BaseConnector()
 
         if not credentials or _ATTR_CONNECT_ARGS not in credentials:
             raise ValueError(
-                f"Custom-integration agent client requires {_ATTR_CONNECT_ARGS} in credentials"
+                f"Custom-connector agent client requires {_ATTR_CONNECT_ARGS} in credentials"
             )
 
-        self._integration.credentials = credentials[_ATTR_CONNECT_ARGS]
-        self._integration.connection = self._integration.create_connection()
-        self._integration.cursor = self._integration.create_cursor()
+        self._connector.credentials = credentials[_ATTR_CONNECT_ARGS]
+        self._connector.connection = self._connector.create_connection()
+        self._connector.cursor = self._connector.create_cursor()
 
         jinja_env = ImmutableSandboxedEnvironment(
             trim_blocks=True,
             lstrip_blocks=True,
         )
-        raw_templates = load_templates(integration_dir)
+        raw_templates = load_templates(connector_dir)
         self._templates = raw_templates
         self._compiled_templates: Dict[str, Template] = {
             name: jinja_env.from_string(content)
             for name, content in raw_templates.items()
             if name in _COMPILED_TEMPLATE_NAMES
         }
-        self._capabilities = load_capabilities(integration_dir)
+        manifest = load_manifest(connector_dir)
+        self._capabilities = manifest.get("capabilities", {})
 
-        logger.info("Opened custom integration connection from %s", integration_dir)
+        logger.info("Opened custom connector connection from %s", connector_dir)
 
     @property
     def wrapped_client(self):
-        return self._integration.connection
+        return self._connector.connection
 
     def test_connection(self) -> Dict[str, bool]:
         """Connection is established in __init__; if we got here it succeeded."""
@@ -103,7 +105,7 @@ class CustomProxyClient(BaseProxyClient):
             "get_tables_query_template.j2",
             database_name=database_name,
             schemas=schemas,
-            tables=tables,
+            table_names=tables,
             offset=offset,
             limit=limit,
         )
@@ -140,8 +142,31 @@ class CustomProxyClient(BaseProxyClient):
         return self._templates
 
     def get_capabilities(self) -> Dict:
-        """Return the capabilities.json contents."""
+        """Return the capabilities from the manifest."""
         return self._capabilities
+
+    @staticmethod
+    def get_connection_manifests() -> Dict[str, Dict[str, Any]]:
+        """
+        Discover all custom connectors and return their manifests and
+        templates.
+
+        Returns a dict keyed by connection_type, e.g.:
+            {
+                "custom-connector-abc1234": {
+                    "manifest": {...},
+                    "templates": {"get_tables.j2": "...", ...}
+                }
+            }
+        """
+        registry = get_custom_connector_registry()
+        result: Dict[str, Dict[str, Any]] = {}
+        for connection_type, connector_dir in registry.items():
+            result[connection_type] = {
+                "manifest": load_manifest(connector_dir),
+                "templates": load_templates(connector_dir),
+            }
+        return result
 
     def _render_and_execute(
         self, template_name: str, **template_vars: Any
@@ -158,10 +183,10 @@ class CustomProxyClient(BaseProxyClient):
 
     def _execute_and_collect(self, query: str) -> Dict[str, Any]:
         """Execute a query and collect results with metadata."""
-        self._integration.execute_query(query)
-        all_results = self._integration.fetch_all_results()
+        self._connector.execute_query(query)
+        all_results = self._connector.fetch_all_results()
 
-        cursor = self._integration.cursor
+        cursor = self._connector.cursor
         description = None
         if hasattr(cursor, "description") and cursor.description:
             description = [
@@ -181,7 +206,7 @@ class CustomProxyClient(BaseProxyClient):
 
     def close(self):
         try:
-            self._integration.close_connection()
-            logger.info("Closed custom integration connection")
+            self._connector.close_connection()
+            logger.info("Closed custom connector connection")
         except Exception:
-            logger.exception("Error closing custom integration connection")
+            logger.exception("Error closing custom connector connection")

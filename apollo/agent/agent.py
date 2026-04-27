@@ -387,6 +387,25 @@ class Agent:
                     "get_infra_details failed:"
                 )
 
+    def get_connection_manifests(self, trace_id: Optional[str]) -> AgentResponse:
+        """
+        Returns manifests, capabilities, and templates for all custom
+        connectors installed on this agent.
+        """
+        with self._inject_log_context("get_connection_manifests", trace_id):
+            try:
+                logger.info("get_connection_manifests requested")
+                from apollo.integrations.custom.custom_proxy_client import (
+                    CustomProxyClient,
+                )
+
+                manifests = CustomProxyClient.get_connection_manifests()
+                return AgentUtils.agent_ok_response(manifests, trace_id)
+            except Exception:  # noqa
+                return AgentUtils.agent_response_for_last_exception(
+                    "get_connection_manifests failed:"
+                )
+
     def _check_updater(self) -> AgentUpdater:
         if not self.updater:
             raise AgentConfigurationError("No updater configured")

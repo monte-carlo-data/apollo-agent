@@ -1150,6 +1150,38 @@ def _get_infra_details() -> Tuple[Dict, int]:
     return response.result, response.status_code
 
 
+@app.route("/api/v1/agent/custom-connectors/manifests", methods=["POST"])
+def get_connection_manifests() -> Tuple[Dict, int]:
+    """
+    Get Connection Manifests
+    Returns manifests, capabilities, and templates for all custom connectors
+    installed on this agent. Used for discovery when the caller does not yet
+    know which custom connectors are available.
+    ---
+    tags:
+        - Agent Operations
+    produces:
+        - application/json
+    parameters:
+        - in: body
+          name: body
+          schema:
+            id: ConnectionManifestsRequest
+            properties:
+                trace_id:
+                  type: string
+                  description: An optional trace_id
+                  example: 324986b4-b185-4187-b4af-b0c2cd60f7a0
+    responses:
+        200:
+            description: Returns connection manifests for all custom connectors on this agent.
+    """
+    request_dict: Dict = request.json or {}
+    trace_id: Optional[str] = request_dict.get("trace_id")
+    response = agent.get_connection_manifests(trace_id=trace_id)
+    return response.result, response.status_code
+
+
 @app.route("/api/v1/test/network/outbound_ip_address", methods=["GET"])
 def get_outbound_ip_address() -> Tuple[Dict, int]:
     """
