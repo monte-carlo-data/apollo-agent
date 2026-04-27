@@ -367,7 +367,7 @@ def _get_proxy_client_custom(
 
     return CustomProxyClient(credentials=credentials, connector_dir=connector_dir)
 
-  
+
 def _get_proxy_client_microsoft_fabric(
     credentials: Optional[Dict], platform: str, **kwargs  # type: ignore
 ) -> BaseProxyClient:
