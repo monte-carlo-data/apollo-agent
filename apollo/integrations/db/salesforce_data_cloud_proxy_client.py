@@ -1,15 +1,103 @@
+import http.client
 import logging
+import time
 from dataclasses import dataclass
-from typing import Any, NoReturn
+from typing import Any, Callable, NoReturn, TypeVar
 
 import requests
+import urllib3.exceptions
 from salesforcecdpconnector.connection import SalesforceCDPConnection
+from salesforcecdpconnector.cursor import SalesforceCDPCursor
 from salesforcecdpconnector.exceptions import Error as SalesforceCDPError
 from salesforcecdpconnector.genie_table import GenieTable, Field
 
 from apollo.integrations.db.base_db_proxy_client import BaseDbProxyClient
 
 logger = logging.getLogger(__name__)
+
+T = TypeVar("T")
+
+# Transient network errors that occur when a pooled HTTP connection to Salesforce's
+# edge has been silently closed by the LB after idle, then the agent reuses it on
+# the next request. Salesforce drops the TCP socket without sending an HTTP
+# response, urllib3 raises ProtocolError(RemoteDisconnected(...)), and the call
+# fails. Retrying on a fresh connection from the pool typically succeeds.
+# See: hourly metric monitor failures with `AgentClientError. ('Connection
+# aborted.', RemoteDisconnected('Remote end closed connection without response'))`.
+_TRANSIENT_NETWORK_ERRORS: tuple[type[BaseException], ...] = (
+    urllib3.exceptions.ProtocolError,
+    http.client.RemoteDisconnected,
+    ConnectionResetError,
+    ConnectionAbortedError,
+    requests.exceptions.ConnectionError,
+    requests.exceptions.ChunkedEncodingError,
+)
+
+# Default retry policy. Attempts include the initial call.
+_RETRY_ATTEMPTS = 3
+_RETRY_BASE_DELAY_SECS = 0.5
+_RETRY_MAX_DELAY_SECS = 4.0
+
+
+def _retry_on_transient_network_errors(
+    func: Callable[..., T],
+    *,
+    operation: str,
+    attempts: int = _RETRY_ATTEMPTS,
+    base_delay: float = _RETRY_BASE_DELAY_SECS,
+    max_delay: float = _RETRY_MAX_DELAY_SECS,
+) -> T:
+    """Run *func* and retry on transient HTTP/TCP errors with exponential backoff.
+
+    Salesforce Data Cloud's edge load balancer closes idle keep-alive connections,
+    so the next reuse from urllib3's connection pool occasionally raises
+    ``RemoteDisconnected`` / ``ProtocolError`` before any HTTP response arrives.
+    A short retry on a fresh pooled connection clears it. Permanent errors
+    (``SalesforceCDPError``, auth failures, query syntax) are not in the catch
+    list and propagate immediately.
+    """
+    last_exc: BaseException | None = None
+    for attempt in range(1, attempts + 1):
+        try:
+            return func()
+        except _TRANSIENT_NETWORK_ERRORS as exc:
+            last_exc = exc
+            if attempt >= attempts:
+                logger.warning(
+                    "Salesforce Data Cloud: transient network error on '%s' after "
+                    "%d attempts; giving up",
+                    operation,
+                    attempt,
+                    extra={
+                        "sfdc_operation": operation,
+                        "sfdc_retry_attempt": attempt,
+                        "sfdc_retry_exhausted": True,
+                        "sfdc_error_type": type(exc).__name__,
+                        "sfdc_error": str(exc)[:500],
+                    },
+                )
+                raise
+            delay = min(max_delay, base_delay * (2 ** (attempt - 1)))
+            logger.warning(
+                "Salesforce Data Cloud: transient network error on '%s' "
+                "(attempt %d/%d); retrying after %.1fs",
+                operation,
+                attempt,
+                attempts,
+                delay,
+                extra={
+                    "sfdc_operation": operation,
+                    "sfdc_retry_attempt": attempt,
+                    "sfdc_retry_exhausted": False,
+                    "sfdc_error_type": type(exc).__name__,
+                    "sfdc_error": str(exc)[:500],
+                    "sfdc_retry_delay_secs": delay,
+                },
+            )
+            time.sleep(delay)
+    # Defensive — the loop above either returns or re-raises.
+    assert last_exc is not None
+    raise last_exc
 
 
 class _CapturingSession(requests.Session):
@@ -104,6 +192,39 @@ def _attach_capturing_session(
     return capturing
 
 
+class _RetryingSalesforceDataCloudCursor(SalesforceCDPCursor):
+    """SalesforceCDPCursor that retries the four HTTP-bound methods on transient
+    network errors. Inherits the rest (description/data state, ``close``,
+    ``rollback``, etc.) from the upstream class unchanged.
+    """
+
+    def execute(self, query: Any, params: Any = None) -> None:
+        return _retry_on_transient_network_errors(
+            lambda: super(_RetryingSalesforceDataCloudCursor, self).execute(
+                query, params
+            ),
+            operation="cursor.execute",
+        )
+
+    def fetchall(self) -> Any:
+        return _retry_on_transient_network_errors(
+            lambda: super(_RetryingSalesforceDataCloudCursor, self).fetchall(),
+            operation="cursor.fetchall",
+        )
+
+    def fetchone(self) -> Any:
+        return _retry_on_transient_network_errors(
+            lambda: super(_RetryingSalesforceDataCloudCursor, self).fetchone(),
+            operation="cursor.fetchone",
+        )
+
+    def fetchmany(self, size: Any = None) -> Any:
+        return _retry_on_transient_network_errors(
+            lambda: super(_RetryingSalesforceDataCloudCursor, self).fetchmany(size),
+            operation="cursor.fetchmany",
+        )
+
+
 class SalesforceDataCloudConnection(SalesforceCDPConnection):
     def __init__(
         self,
@@ -165,6 +286,19 @@ class SalesforceDataCloudConnection(SalesforceCDPConnection):
                 client_secret=client_secret,
                 dataspace=dataspace,
             )
+
+    def cursor(self) -> SalesforceCDPCursor:
+        """Override to return a cursor that retries on transient network errors.
+
+        ``SalesforceCDPConnection.cursor()`` would otherwise hand back a vanilla
+        ``SalesforceCDPCursor`` whose ``execute``/``fetch*`` methods bubble
+        ``urllib3`` ``ProtocolError`` straight up — we want the retry around the
+        HTTP-bound calls so a stale pooled connection from Salesforce's edge
+        doesn't fail an entire metric-monitor run.
+        """
+        if self.closed:
+            return super().cursor()  # let the upstream raise the same Error
+        return _RetryingSalesforceDataCloudCursor(self)
 
 
 @dataclass
@@ -229,7 +363,10 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
             )
             capturing = _attach_capturing_session(conn)
             try:
-                tables: list[GenieTable] = conn.list_tables()
+                tables: list[GenieTable] = _retry_on_transient_network_errors(
+                    conn.list_tables,
+                    operation="list_tables(scoped)",
+                )
             except SalesforceCDPError as e:
                 body = _redact_body(capturing.last_exchange_body if capturing else None)
                 status = capturing.last_exchange_status if capturing else None
@@ -307,7 +444,10 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
                 unscoped_conn = None
             conn_to_use = unscoped_conn or self._connection
             try:
-                tables = conn_to_use.list_tables()
+                tables = _retry_on_transient_network_errors(
+                    conn_to_use.list_tables,
+                    operation="list_tables(unscoped)",
+                )
             except SalesforceCDPError as e:
                 raise RuntimeError(
                     f"Token exchange failed: {e} — verify credentials are valid"
