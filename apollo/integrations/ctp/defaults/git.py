@@ -1,4 +1,4 @@
-from typing import NotRequired, Required, TypedDict
+from typing import Any, NotRequired, Required, TypedDict
 
 from apollo.integrations.ctp.models import CtpConfig, MapperConfig
 
@@ -10,6 +10,10 @@ class GitClientArgs(TypedDict):
     username: NotRequired[str]
     # SSH auth — base64-encoded PEM private key; decoded to bytes by the proxy client
     ssh_key: NotRequired[str]
+    # Optional SSL options for HTTPS clones against self-managed Git providers.
+    # GitCloneClient honors ca_data (inline PEM CA bundle) and skip_verification /
+    # skip_cert_verification. No-op for SSH.
+    ssl_options: NotRequired[dict[str, Any]]
 
 
 GIT_DEFAULT_CTP = CtpConfig(
@@ -23,6 +27,7 @@ GIT_DEFAULT_CTP = CtpConfig(
             "token": "{{ raw.token | default(none) }}",
             "username": "{{ raw.username | default(none) }}",
             "ssh_key": "{{ raw.ssh_key | default(none) }}",
+            "ssl_options": "{{ raw.ssl_options | default(none) }}",
         },
     ),
 )

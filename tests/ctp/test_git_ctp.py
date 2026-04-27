@@ -51,3 +51,46 @@ class TestGitCtp(TestCase):
         self.assertNotIn("token", result)
         self.assertNotIn("username", result)
         self.assertNotIn("ssh_key", result)
+        self.assertNotIn("ssl_options", result)
+
+    def test_resolve_ssl_options_ca_data(self):
+        """Regression: GitClientArgs mapper must include ssl_options or GitCloneClient
+        never sees the CA bundle when the CTP path is active."""
+        ca_pem = "-----BEGIN CERTIFICATE-----\nFAKECERT\n-----END CERTIFICATE-----\n"
+        result = _resolve(
+            {
+                "repo_url": "self-managed.example.com/grp/repo.git",
+                "token": "T",
+                "ssl_options": {"ca_data": ca_pem},
+            }
+        )
+        self.assertEqual({"ca_data": ca_pem}, result["ssl_options"])
+
+    def test_resolve_ssl_options_skip_verification(self):
+        result = _resolve(
+            {
+                "repo_url": "self-managed.example.com/grp/repo.git",
+                "token": "T",
+                "ssl_options": {"skip_verification": True},
+            }
+        )
+        self.assertEqual({"skip_verification": True}, result["ssl_options"])
+
+    def test_resolve_ssl_options_round_trips_extra_keys(self):
+        """The default mapper passes the ssl_options dict through untouched —
+        GitCloneClient is responsible for ignoring fields it does not consume."""
+        result = _resolve(
+            {
+                "repo_url": "self-managed.example.com/grp/repo.git",
+                "token": "T",
+                "ssl_options": {
+                    "ca_data": "PEM",
+                    "cert_data": "X",
+                    "mechanism": "url",
+                },
+            }
+        )
+        self.assertEqual(
+            {"ca_data": "PEM", "cert_data": "X", "mechanism": "url"},
+            result["ssl_options"],
+        )
