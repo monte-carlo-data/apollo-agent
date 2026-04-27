@@ -1,0 +1,39 @@
+{
+  "call_type": "initial",
+  "params": {
+    "job_configuration": {
+      "job_id": "Job_id_00000000-0000-0000-0000-000000000000",
+      "job_type": "metadata_job",
+      "connection": {
+        "type": "starburst-galaxy",
+        "credentials": {
+          "db_type": "starburst-galaxy",
+          "host": "example.trino.galaxy.starburst.io",
+          "port": "443",
+          "user": "service@example.galaxy.starburst.io",
+          "password": "secret",
+          "agent_details": {
+            "agent_id": "12345",
+            "endpoint": "http://localhost:8081/",
+            "platform": "AWS_GENERIC",
+            "agent_type": "REMOTE_AGENT",
+            "auth_type": "AWS_ASSUMABLE_ROLE",
+            "storage_type": "S3",
+            "image_version": 2100,
+            "image_build": "something",
+            "credentials": {}
+          }
+        }
+      },
+      "output_stream": {
+        "type": "console",
+        "stream_id": "data_collector_output_stream_local_dev"
+      },
+      "account_id": "temp_account_id",
+      "warehouse_id": "warehouse_id",
+      "execution_id": "dummy_execution_id",
+      "dc_schedule_uuid": "1234",
+      "job_execution_uuid": "5678"
+    }
+  }
+}

@@ -1,4 +1,7 @@
 import base64
+import json
+import logging
+import os
 from unittest import TestCase
 from unittest.mock import (
     Mock,
@@ -7,12 +10,14 @@ from unittest.mock import (
 )
 
 from apollo.agent.agent import Agent
+from apollo.agent.logging_utils import LoggingUtils
 from apollo.common.agent.constants import (
     ATTRIBUTE_NAME_ERROR,
     ATTRIBUTE_NAME_RESULT,
     ATTRIBUTE_NAME_ERROR_TYPE,
 )
-from apollo.agent.logging_utils import LoggingUtils
+from apollo.integrations.ctp.registry import CtpRegistry
+from apollo.interfaces.lambda_function.json_log_formatter import JsonLogFormatter
 
 _STARBURST_CREDENTIALS = {
     "host": "example.starburst.io",
@@ -208,3 +213,207 @@ class StarburstEnterpriseHttpTests(TestCase):
 
         self.assertIn("Not Found", response.result.get(ATTRIBUTE_NAME_ERROR))
         self.assertEqual("HTTPError", response.result.get(ATTRIBUTE_NAME_ERROR_TYPE))
+
+
+class StarburstEnterpriseCredentialShapeTests(TestCase):
+    """Verify the proxy client init accepts CTP-resolved credentials.
+
+    CTP pipeline resolves ssl_options into a verify value before the proxy client is
+    created. The proxy client receives clean connect_args with no ssl_options.
+    """
+
+    _HOST = "example.starburst.io"
+    _PORT_INT = 8443
+    _PORT_STR = "8443"
+    _USER = "admin"
+    _PASSWORD = "secret"
+    _CA_PEM = "-----BEGIN CERTIFICATE-----\nFAKE\n-----END CERTIFICATE-----"
+
+    def setUp(self) -> None:
+        pass  # connector registered by _discover() via _ensure_initialized()
+
+    def _ctp_creds(self, **flat_kwargs):
+        """Build CTP-resolved credentials from flat input via the registry."""
+        return CtpRegistry.resolve(
+            "starburst-enterprise",
+            {
+                "host": self._HOST,
+                "port": self._PORT_STR,
+                "user": self._USER,
+                "password": self._PASSWORD,
+                **flat_kwargs,
+            },
+        )
+
+    # ------------------------------------------------------------------
+    # No SSL
+    # ------------------------------------------------------------------
+
+    @patch("trino.dbapi.connect")
+    def test_ctp_no_ssl(self, mock_connect):
+        """CTP with no ssl_options — no verify passed to trino."""
+        from apollo.integrations.db.starburst_enterprise_proxy_client import (
+            StarburstEnterpriseProxyClient,
+        )
+
+        mock_connect.return_value = Mock()
+        StarburstEnterpriseProxyClient(credentials=self._ctp_creds(), platform="test")
+        self.assertNotIn("verify", mock_connect.call_args.kwargs)
+        self.assertNotIn("ssl_options", mock_connect.call_args.kwargs)
+
+    # ------------------------------------------------------------------
+    # CA data — cert written to file by CTP, verify=<path>
+    # ------------------------------------------------------------------
+
+    @patch("trino.dbapi.connect")
+    def test_ctp_ca_data(self, mock_connect):
+        """CTP resolves ssl_options ca_data to verify=<path> before proxy client is created."""
+        from apollo.integrations.db.starburst_enterprise_proxy_client import (
+            StarburstEnterpriseProxyClient,
+        )
+
+        mock_connect.return_value = Mock()
+        StarburstEnterpriseProxyClient(
+            credentials=self._ctp_creds(ssl_options={"ca_data": self._CA_PEM}),
+            platform="test",
+        )
+        verify = mock_connect.call_args.kwargs.get("verify")
+        self.assertIsInstance(verify, str)
+        self.assertTrue(os.path.exists(verify))
+        os.unlink(verify)
+
+    # ------------------------------------------------------------------
+    # SSL disabled — CTP resolves to verify=False
+    # ------------------------------------------------------------------
+
+    @patch("trino.dbapi.connect")
+    def test_ctp_ssl_disabled(self, mock_connect):
+        """CTP resolves ssl_options disabled to verify=False before proxy client is created."""
+        from apollo.integrations.db.starburst_enterprise_proxy_client import (
+            StarburstEnterpriseProxyClient,
+        )
+
+        mock_connect.return_value = Mock()
+        StarburstEnterpriseProxyClient(
+            credentials=self._ctp_creds(ssl_options={"disabled": True}),
+            platform="test",
+        )
+        self.assertIs(False, mock_connect.call_args.kwargs.get("verify"))
+
+
+class _ListHandler(logging.Handler):
+    def __init__(self, records):
+        super().__init__()
+        self._records = records
+
+    def emit(self, record):
+        self._records.append(record)
+
+
+class StarburstEnterpriseCtpCredentialSafetyTests(TestCase):
+    _HOST = "cluster.example.starburst.io"
+    _USER = "svc_account@example.com"
+    _PASSWORD = "s3cr3t_p@ssw0rd!"
+
+    _OPERATION = {
+        "trace_id": "ctp-safety-test",
+        "skip_cache": True,
+        "commands": [
+            {"method": "execute", "args": ["SELECT 1"]},
+        ],
+    }
+
+    def setUp(self):
+        self._agent = Agent(LoggingUtils())
+        # connector registered by _discover() via _ensure_initialized()
+        self._log_records = []
+        self._log_handler = _ListHandler(self._log_records)
+        logging.getLogger().addHandler(self._log_handler)
+
+    def tearDown(self):
+        logging.getLogger().removeHandler(self._log_handler)
+
+    def _assert_no_credential_leak(self, response) -> None:
+        serialized = json.dumps(response.result, default=str)
+        self.assertNotIn(self._PASSWORD, serialized, "password leaked in response")
+        self.assertNotIn(self._USER, serialized, "username leaked in response")
+
+    @patch("trino.dbapi.connect")
+    def test_missing_required_host_is_actionable_and_safe(self, mock_connect):
+        """CTP validation: missing host produces an actionable error without leaking creds."""
+        response = self._agent.execute_operation(
+            "starburst-enterprise",
+            "query",
+            self._OPERATION,
+            # host intentionally omitted — Required[str] in schema
+            {"port": "8443", "user": self._USER, "password": self._PASSWORD},
+        )
+        mock_connect.assert_not_called()
+        self.assertIn(ATTRIBUTE_NAME_ERROR, response.result)
+        error = response.result.get(ATTRIBUTE_NAME_ERROR, "")
+        self.assertIn("host", error)
+        self._assert_no_credential_leak(response)
+
+    @patch("trino.dbapi.connect")
+    def test_connect_failure_is_actionable_and_safe(self, mock_connect):
+        """Connection failure exposes the hostname but not the password."""
+        mock_connect.side_effect = Exception(
+            f"Failed to connect to Trino at {self._HOST}:8443"
+        )
+        response = self._agent.execute_operation(
+            "starburst-enterprise",
+            "query",
+            self._OPERATION,
+            {
+                "host": self._HOST,
+                "port": "8443",
+                "user": self._USER,
+                "password": self._PASSWORD,
+            },
+        )
+        self.assertIn(ATTRIBUTE_NAME_ERROR, response.result)
+        error = response.result.get(ATTRIBUTE_NAME_ERROR, "")
+        self.assertIn(self._HOST, error)
+        self._assert_no_credential_leak(response)
+
+    @patch("trino.dbapi.connect")
+    def test_auth_failure_is_actionable_and_safe(self, mock_connect):
+        """Auth failure from Trino surfaces a useful error without leaking credentials."""
+        mock_connect.side_effect = Exception(
+            "401 Unauthorized: invalid username or password"
+        )
+        response = self._agent.execute_operation(
+            "starburst-enterprise",
+            "query",
+            self._OPERATION,
+            {
+                "host": self._HOST,
+                "port": "8443",
+                "user": self._USER,
+                "password": self._PASSWORD,
+            },
+        )
+        self.assertIn(ATTRIBUTE_NAME_ERROR, response.result)
+        error = response.result.get(ATTRIBUTE_NAME_ERROR, "")
+        self.assertIn("401", error)
+        self._assert_no_credential_leak(response)
+
+    @patch("trino.dbapi.connect")
+    def test_log_output_does_not_leak_credentials(self, mock_connect):
+        """JsonLogFormatter (Datadog/Lambda path) never emits the password."""
+        mock_connect.side_effect = Exception(f"Failed to connect to {self._HOST}")
+        self._agent.execute_operation(
+            "starburst-enterprise",
+            "query",
+            self._OPERATION,
+            {
+                "host": self._HOST,
+                "port": "8443",
+                "user": self._USER,
+                "password": self._PASSWORD,
+            },
+        )
+        formatter = JsonLogFormatter()
+        for record in self._log_records:
+            output = formatter.format(record)
+            self.assertNotIn(self._PASSWORD, output)

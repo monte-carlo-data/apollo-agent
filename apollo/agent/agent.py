@@ -468,6 +468,7 @@ class Agent:
         operation_name: str,
         operation_dict: Optional[Dict],
         credentials: Optional[Dict],
+        ctp_config: Optional[Dict] = None,
     ) -> AgentResponse:
         """
         Executes an operation for the given connection type using the provided credentials.
@@ -498,6 +499,7 @@ class Agent:
             credentials,
             operation,
             lambda client: self._execute(client, operation_name, operation),
+            ctp_config=ctp_config,
         )
 
     def execute_script(
@@ -551,6 +553,7 @@ class Agent:
         credentials: Optional[Dict],
         operation: AgentOperation,
         func: Callable[[BaseProxyClient], Any],
+        ctp_config: Optional[Dict] = None,
     ):
         with self._inject_log_context(
             f"{connection_type}/{operation_name}", operation.trace_id
@@ -559,7 +562,11 @@ class Agent:
             client: Optional[BaseProxyClient] = None
             try:
                 client = ProxyClientFactory.get_proxy_client(
-                    connection_type, credentials, operation.skip_cache, self.platform
+                    connection_type,
+                    credentials,
+                    operation.skip_cache,
+                    self.platform,
+                    ctp_config=ctp_config,
                 )
                 response = self._execute_client_operation(
                     connection_type, client, operation_name, operation, func

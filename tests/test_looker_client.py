@@ -45,7 +45,14 @@ class LookerTests(TestCase):
                 "skip_cache": True,
                 "commands": [{"method": "all_dashboards", "kwargs": {"fields": "id"}}],
             },
-            credentials={"user": "test"},
+            credentials={
+                "connect_args": {
+                    "base_url": "https://mycompany.looker.com",
+                    "client_id": "id",
+                    "client_secret": "secret",
+                    "ini_file_path": "/fake/looker.ini",
+                }
+            },
         )
         self.assertIsNone(result.result.get(ATTRIBUTE_NAME_ERROR))
 
@@ -68,7 +75,14 @@ class LookerTests(TestCase):
                 "skip_cache": True,
                 "commands": [{"method": "all_looks", "kwargs": {"fields": "id"}}],
             },
-            credentials={"user": "test"},
+            credentials={
+                "connect_args": {
+                    "base_url": "https://mycompany.looker.com",
+                    "client_id": "id",
+                    "client_secret": "secret",
+                    "ini_file_path": "/fake/looker.ini",
+                }
+            },
         )
         self.assertIsNone(result.result.get(ATTRIBUTE_NAME_ERROR))
 
@@ -88,7 +102,14 @@ class LookerTests(TestCase):
                 "skip_cache": True,
                 "commands": [{"method": "dashboard", "args": [dashboard.id]}],
             },
-            credentials={"user": "test"},
+            credentials={
+                "connect_args": {
+                    "base_url": "https://mycompany.looker.com",
+                    "client_id": "id",
+                    "client_secret": "secret",
+                    "ini_file_path": "/fake/looker.ini",
+                }
+            },
         )
         self.assertIsNone(result.result.get(ATTRIBUTE_NAME_ERROR))
 
@@ -131,7 +152,14 @@ class LookerTests(TestCase):
                     }
                 ],
             },
-            credentials={"user": "test"},
+            credentials={
+                "connect_args": {
+                    "base_url": "https://mycompany.looker.com",
+                    "client_id": "id",
+                    "client_secret": "secret",
+                    "ini_file_path": "/fake/looker.ini",
+                }
+            },
         )
         self.assertIsNone(result.result.get(ATTRIBUTE_NAME_ERROR))
 
