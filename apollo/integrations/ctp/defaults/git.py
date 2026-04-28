@@ -1,6 +1,6 @@
-from typing import Any, NotRequired, Required, TypedDict
+from typing import NotRequired, Required, TypedDict
 
-from apollo.integrations.ctp.models import CtpConfig, MapperConfig
+from apollo.integrations.ctp.models import CtpConfig, MapperConfig, TransformStep
 
 
 class GitClientArgs(TypedDict):
@@ -10,15 +10,26 @@ class GitClientArgs(TypedDict):
     username: NotRequired[str]
     # SSH auth — base64-encoded PEM private key; decoded to bytes by the proxy client
     ssh_key: NotRequired[str]
-    # Optional SSL options for HTTPS clones against self-managed Git providers.
-    # GitCloneClient honors ca_data (inline PEM CA bundle) and skip_verification /
-    # skip_cert_verification. No-op for SSH.
-    ssl_options: NotRequired[dict[str, Any]]
+    # SSL — resolved from raw.ssl_options by the resolve_ssl_options transform.
+    # GitCloneClient adds -c http.sslCAInfo=<path> when ssl_ca_path is set, and
+    # -c http.sslVerify=false when ssl_skip_verification is True. No-op for SSH.
+    ssl_ca_path: NotRequired[str]
+    ssl_skip_verification: NotRequired[bool]
 
 
 GIT_DEFAULT_CTP = CtpConfig(
     name="git-default",
-    steps=[],
+    steps=[
+        TransformStep(
+            type="resolve_ssl_options",
+            when="raw.ssl_options is defined",
+            input={"ssl_options": "{{ raw.ssl_options }}"},
+            output={
+                "ssl_options": "ssl_options",  # derived.ssl_options for condition access
+                "ca_path": "ssl_ca_path",  # derived.ssl_ca_path if ca_data was written
+            },
+        ),
+    ],
     mapper=MapperConfig(
         name="git_client_args",
         schema=GitClientArgs,
@@ -27,7 +38,11 @@ GIT_DEFAULT_CTP = CtpConfig(
             "token": "{{ raw.token | default(none) }}",
             "username": "{{ raw.username | default(none) }}",
             "ssh_key": "{{ raw.ssh_key | default(none) }}",
-            "ssl_options": "{{ raw.ssl_options | default(none) }}",
+            "ssl_ca_path": "{{ derived.ssl_ca_path | default(none) }}",
+            "ssl_skip_verification": (
+                "{{ true if derived.ssl_options is defined "
+                "and derived.ssl_options.skip_cert_verification else none }}"
+            ),
         },
     ),
 )
