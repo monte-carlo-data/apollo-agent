@@ -360,6 +360,14 @@ def _get_proxy_client_db2(
     return Db2ProxyClient(credentials=credentials, platform=platform)
 
 
+def _get_proxy_client_custom(
+    credentials: Optional[Dict], connector_dir: str, **kwargs  # type: ignore
+) -> BaseProxyClient:
+    from apollo.integrations.custom.custom_proxy_client import CustomProxyClient
+
+    return CustomProxyClient(credentials=credentials, connector_dir=connector_dir)
+
+
 def _get_proxy_client_microsoft_fabric(
     credentials: Optional[Dict], platform: str, **kwargs  # type: ignore
 ) -> BaseProxyClient:
@@ -500,10 +508,23 @@ class ProxyClientFactory:
         factory_method = _CLIENT_FACTORY_MAPPING.get(connection_type)
         if factory_method:
             return factory_method(credentials, platform=platform)
-        else:
-            raise AgentError(
-                f"Connection type not supported by this agent: {connection_type}"
+
+        # Check custom connectors before raising an error (opt-in via env var)
+        if os.getenv("MCD_CUSTOM_CONNECTORS_ENABLED", "false").lower() == "true":
+            from apollo.integrations.custom.custom_connector_loader import (
+                get_custom_connector_registry,
             )
+
+            custom_registry = get_custom_connector_registry()
+            connector_dir = custom_registry.get(connection_type)
+            if connector_dir:
+                return _get_proxy_client_custom(
+                    credentials, connector_dir=connector_dir
+                )
+
+        raise AgentError(
+            f"Connection type not supported by this agent: {connection_type}"
+        )
 
     @staticmethod
     def _get_cache_key(connection_type: str, credentials: Optional[Dict]) -> str:
