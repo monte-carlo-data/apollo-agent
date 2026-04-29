@@ -59,6 +59,136 @@ class GitTests(TestCase):
         self.assertIsNotNone(result.get("key"))
 
     @patch("apollo.integrations.git.git_client.git")
+    def test_https_clone_without_ssl_args(self, git_mock):
+        """No SSL args => existing git clone command, no -c flags."""
+        client = GitCloneClient(
+            credentials={
+                "repo_url": "github.com/gh_account/repo.git",
+                "token": "TOKEN",
+            }
+        )
+        client._https_git_clone()
+        git_mock.exec_command.assert_called_once_with(
+            "clone",
+            "--depth",
+            "1",
+            "https://oauth2:TOKEN@github.com/gh_account/repo.git",
+            "/tmp/repo",
+        )
+
+    @patch("apollo.integrations.git.git_client.git")
+    def test_https_clone_with_ssl_ca_path(self, git_mock):
+        """ssl_ca_path (resolved by the resolve_ssl_options CTP transform) =>
+        passes -c http.sslCAInfo=<path>."""
+        client = GitCloneClient(
+            credentials={
+                "repo_url": "self-managed.example.com/grp/repo.git",
+                "token": "TOKEN",
+                "ssl_ca_path": "/tmp/abc123_ssl_ca.pem",
+            }
+        )
+        client._https_git_clone()
+        git_mock.exec_command.assert_called_once_with(
+            "-c",
+            "http.sslCAInfo=/tmp/abc123_ssl_ca.pem",
+            "clone",
+            "--depth",
+            "1",
+            "https://oauth2:TOKEN@self-managed.example.com/grp/repo.git",
+            "/tmp/repo",
+        )
+
+    @patch("apollo.integrations.git.git_client.git")
+    def test_https_clone_with_ssl_skip_verification(self, git_mock):
+        """ssl_skip_verification=True => -c http.sslVerify=false."""
+        client = GitCloneClient(
+            credentials={
+                "repo_url": "github.com/gh_account/repo.git",
+                "token": "TOKEN",
+                "ssl_skip_verification": True,
+            }
+        )
+        client._https_git_clone()
+        git_mock.exec_command.assert_called_once_with(
+            "-c",
+            "http.sslVerify=false",
+            "clone",
+            "--depth",
+            "1",
+            "https://oauth2:TOKEN@github.com/gh_account/repo.git",
+            "/tmp/repo",
+        )
+
+    @patch("apollo.integrations.git.git_client.git")
+    def test_https_clone_with_ssl_ca_path_and_skip_verification(self, git_mock):
+        client = GitCloneClient(
+            credentials={
+                "repo_url": "self-managed.example.com/grp/repo.git",
+                "token": "TOKEN",
+                "ssl_ca_path": "/tmp/abc123_ssl_ca.pem",
+                "ssl_skip_verification": True,
+            }
+        )
+        client._https_git_clone()
+        git_mock.exec_command.assert_called_once_with(
+            "-c",
+            "http.sslCAInfo=/tmp/abc123_ssl_ca.pem",
+            "-c",
+            "http.sslVerify=false",
+            "clone",
+            "--depth",
+            "1",
+            "https://oauth2:TOKEN@self-managed.example.com/grp/repo.git",
+            "/tmp/repo",
+        )
+
+    @patch("apollo.integrations.git.git_client.git")
+    def test_https_clone_via_connect_args_nesting(self, git_mock):
+        """The CTP path nests resolved fields under connect_args; client must read both shapes."""
+        client = GitCloneClient(
+            credentials={
+                "connect_args": {
+                    "repo_url": "self-managed.example.com/grp/repo.git",
+                    "token": "TOKEN",
+                    "ssl_ca_path": "/tmp/abc123_ssl_ca.pem",
+                }
+            }
+        )
+        client._https_git_clone()
+        git_mock.exec_command.assert_called_once_with(
+            "-c",
+            "http.sslCAInfo=/tmp/abc123_ssl_ca.pem",
+            "clone",
+            "--depth",
+            "1",
+            "https://oauth2:TOKEN@self-managed.example.com/grp/repo.git",
+            "/tmp/repo",
+        )
+
+    @patch("apollo.integrations.git.git_client.git")
+    def test_ssh_clone_ignores_ssl_args(self, git_mock):
+        """SSL args are irrelevant for SSH clones; never produce -c flags."""
+        client = GitCloneClient(
+            credentials={
+                "repo_url": "git@github.com:gh_account/repo.git",
+                "ssh_key": base64.b64encode(b"SSH TEST KEY"),
+                "ssl_ca_path": "/tmp/abc123_ssl_ca.pem",
+                "ssl_skip_verification": True,
+            }
+        )
+        with patch.object(client, "_KEY_FILE"):
+            client.write_key()
+            client._ssh_git_clone()
+        git_mock.exec_command.assert_called_with(
+            "clone",
+            "--depth",
+            "1",
+            "git@github.com:gh_account/repo.git",
+            "/tmp/repo",
+            env=ANY,
+        )
+
+    @patch("apollo.integrations.git.git_client.git")
     def test_git_version(self, git_mock):
         client = GitProxyClient(
             credentials={
