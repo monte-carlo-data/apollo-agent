@@ -1219,6 +1219,55 @@ def _get_infra_details() -> Tuple[Dict, int]:
     return response.result, response.status_code
 
 
+@app.route("/api/v1/agent/custom-connectors/types", methods=["POST"])
+def get_custom_connector_types() -> Tuple[Dict, int]:
+    """
+    Get Supported Custom Connector Types
+    Returns a lightweight list of custom connector types installed on this
+    agent (type ID and display name only).  Used during agent registration
+    to validate supported connectors without a full manifest extraction.
+    ---
+    tags:
+        - Agent Operations
+    produces:
+        - application/json
+    parameters:
+        - in: body
+          name: body
+          schema:
+            id: CustomConnectorTypesRequest
+            properties:
+                trace_id:
+                  type: string
+                  description: An optional trace_id
+                  example: 324986b4-b185-4187-b4af-b0c2cd60f7a0
+    responses:
+        200:
+            description: Returns the list of supported custom connector types.
+            schema:
+                properties:
+                    __mcd_result__:
+                        type: object
+                        properties:
+                            connector_types:
+                                type: array
+                                items:
+                                    type: object
+                                    properties:
+                                        type:
+                                            type: string
+                                        name:
+                                            type: string
+                                example:
+                                    - type: acme-crm
+                                      name: Acme CRM
+    """
+    request_dict: Dict = request.json or {}
+    trace_id: Optional[str] = request_dict.get("trace_id")
+    response = agent.get_custom_connector_types(trace_id=trace_id)
+    return response.result, response.status_code
+
+
 @app.route("/api/v1/agent/custom-connectors/manifests", methods=["POST"])
 def get_connection_manifests() -> Tuple[Dict, int]:
     """

@@ -631,3 +631,84 @@ class TestAgentGetConnectionManifests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn("__mcd_error__", response.result)
+
+
+class TestGetCustomConnectorTypes(TestCase):
+    def test_returns_all_types(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            _create_mock_connector_dir(tmp_dir, "Acme CRM", "acme-crm")
+            _create_mock_connector_dir(tmp_dir, "Internal API", "internal-api")
+
+            with patch(
+                "apollo.integrations.custom.custom_connector_loader._CUSTOM_CONNECTORS_BASE_PATH",
+                tmp_dir,
+            ), patch(
+                "apollo.integrations.custom.custom_connector_loader._custom_connector_registry",
+                None,
+            ):
+                result = CustomProxyClient.get_custom_connector_types()
+
+            self.assertEqual(len(result), 2)
+            types_by_id = {entry["type"]: entry["name"] for entry in result}
+            self.assertEqual(types_by_id["acme-crm"], "Acme CRM")
+            self.assertEqual(types_by_id["internal-api"], "Internal API")
+
+    def test_returns_empty_list_when_no_connectors(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with patch(
+                "apollo.integrations.custom.custom_connector_loader._CUSTOM_CONNECTORS_BASE_PATH",
+                tmp_dir,
+            ), patch(
+                "apollo.integrations.custom.custom_connector_loader._custom_connector_registry",
+                None,
+            ):
+                result = CustomProxyClient.get_custom_connector_types()
+
+            self.assertEqual(result, [])
+
+    def test_falls_back_to_type_when_no_connection_name(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            # Create a connector dir with a manifest that has no connection_name
+            connector_dir = os.path.join(tmp_dir, "noname")
+            os.makedirs(connector_dir)
+            with open(os.path.join(connector_dir, "manifest.json"), "w") as f:
+                json.dump({"connection_type": "no-name-connector"}, f)
+
+            with patch(
+                "apollo.integrations.custom.custom_connector_loader._CUSTOM_CONNECTORS_BASE_PATH",
+                tmp_dir,
+            ), patch(
+                "apollo.integrations.custom.custom_connector_loader._custom_connector_registry",
+                None,
+            ):
+                result = CustomProxyClient.get_custom_connector_types()
+
+            self.assertEqual(len(result), 1)
+            self.assertEqual(result[0]["type"], "no-name-connector")
+            self.assertEqual(result[0]["name"], "no-name-connector")
+
+
+class TestAgentGetCustomConnectorTypes(TestCase):
+    @patch(
+        "apollo.integrations.custom.custom_proxy_client.get_custom_connector_registry",
+        return_value={},
+    )
+    def test_returns_ok_response(self, _mock_registry):
+        agent = Agent(None)
+        response = agent.get_custom_connector_types(trace_id="test-trace")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("__mcd_result__", response.result)
+        self.assertEqual(response.result["__mcd_result__"], {"connector_types": []})
+        self.assertEqual(response.trace_id, "test-trace")
+
+    @patch(
+        "apollo.integrations.custom.custom_proxy_client.get_custom_connector_registry",
+        side_effect=RuntimeError("boom"),
+    )
+    def test_returns_error_on_failure(self, _mock_registry):
+        agent = Agent(None)
+        response = agent.get_custom_connector_types(trace_id="test-trace")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("__mcd_error__", response.result)
