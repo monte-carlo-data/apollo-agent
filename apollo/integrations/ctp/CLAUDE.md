@@ -20,8 +20,8 @@ the ODBC/driver-specific format each integration needs.
 ## Adding a new connector
 
 1. Create `apollo/integrations/ctp/defaults/<connector>.py` with a `TypedDict` for the
-   output shape and a `CtpConfig` instance (follow `fabric.py` as the simplest pattern,
-   or `starburst_galaxy.py` for a connector with transform steps).
+   output shape and a `CtpConfig` instance (follow `sql_server.py` as a pattern for simple
+   ODBC connectors, or `starburst_galaxy.py` for a connector with transform steps).
 2. At module level in that file, call `CtpRegistry.register(...)`:
    ```python
    CtpRegistry.register("my-connector", MY_CONNECTOR_DEFAULT_CTP)
@@ -35,11 +35,10 @@ the ODBC/driver-specific format each integration needs.
 
 ## Phase 2 migration status
 
-Phase 2 connectors (sql-server, azure-sql-database, azure-dedicated-sql-pool) are now fully
-migrated: their CTP configs in `defaults/sql_server.py` are registered in `_discover()`, and
-their proxy clients accept `connect_args` as either a dict (CTP path) or a pre-built string
-(legacy DC path). The string path is retained for backwards compatibility with older DC versions
-that pre-build the ODBC string before sending.
+Phase 2 connectors (sql-server, azure-sql-database, azure-dedicated-sql-pool, microsoft-fabric)
+are now fully migrated: their CTP configs in `defaults/sql_server.py` are registered in
+`_discover()`. SQL Server / Azure variants retain a legacy pre-built ODBC string path for
+backwards compatibility with older DC versions; Fabric requires a dict (CTP path only).
 
 ## Security note
 

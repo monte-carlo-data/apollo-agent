@@ -11,6 +11,7 @@ class SqlServerOdbcArgs(TypedDict):
     PWD: Required[str]
     # Optional connection fields
     DATABASE: NotRequired[str]  # required for Azure variants
+    Authentication: NotRequired[str]  # "ActiveDirectoryServicePrincipal"
     MARS_Connection: NotRequired[str]  # "Yes" — multiple active result sets
     Encrypt: NotRequired[str]  # "yes" / "no" / "strict"
     TrustServerCertificate: NotRequired[str]  # "yes" / "no"
@@ -22,7 +23,6 @@ _SQL_SERVER_BASE_FIELD_MAP = {
     "SERVER": "tcp:{{ raw.host }},{{ raw.port | default(1433) }}",
     "UID": "{{ raw.user | default(raw.username) }}",
     "PWD": "{{ raw.password }}",
-    "MARS_Connection": "Yes",
     # Timeout fields — not ODBC params; proxy clients pop these before building the connection string
     "login_timeout": "{{ raw.login_timeout | default(none) }}",
     "query_timeout_in_seconds": "{{ raw.query_timeout_in_seconds | default(none) }}",
@@ -34,7 +34,10 @@ SQL_SERVER_DEFAULT_CTP = CtpConfig(
     mapper=MapperConfig(
         name="sql_server_odbc_args",
         schema=SqlServerOdbcArgs,
-        field_map=_SQL_SERVER_BASE_FIELD_MAP,
+        field_map={
+            **_SQL_SERVER_BASE_FIELD_MAP,
+            "MARS_Connection": "Yes",
+        },
     ),
 )
 
@@ -46,6 +49,7 @@ AZURE_SQL_DATABASE_DEFAULT_CTP = CtpConfig(
         schema=SqlServerOdbcArgs,
         field_map={
             **_SQL_SERVER_BASE_FIELD_MAP,
+            "MARS_Connection": "Yes",
             "DATABASE": "{{ raw.db_name | default(raw.database) }}",
         },
     ),
@@ -59,7 +63,27 @@ AZURE_DEDICATED_SQL_POOL_DEFAULT_CTP = CtpConfig(
         schema=SqlServerOdbcArgs,
         field_map={
             **_SQL_SERVER_BASE_FIELD_MAP,
+            "MARS_Connection": "Yes",
             "DATABASE": "{{ raw.db_name | default(raw.database) }}",
+        },
+    ),
+)
+
+
+MS_FABRIC_DEFAULT_CTP = CtpConfig(
+    name="microsoft-fabric-default",
+    steps=[],
+    mapper=MapperConfig(
+        name="ms_fabric_odbc_args",
+        schema=SqlServerOdbcArgs,
+        field_map={
+            **_SQL_SERVER_BASE_FIELD_MAP,
+            "DATABASE": "{{ raw.database | default(raw.db_name) }}",
+            "Authentication": "ActiveDirectoryServicePrincipal",
+            "UID": "{{ raw.client_id }}@{{ raw.tenant_id }}",
+            "PWD": "{{ raw.client_secret }}",
+            "Encrypt": "yes",
+            "TrustServerCertificate": "no",
         },
     ),
 )
@@ -69,3 +93,4 @@ from apollo.integrations.ctp.registry import CtpRegistry  # noqa: E402
 CtpRegistry.register("sql-server", SQL_SERVER_DEFAULT_CTP)
 CtpRegistry.register("azure-sql-database", AZURE_SQL_DATABASE_DEFAULT_CTP)
 CtpRegistry.register("azure-dedicated-sql-pool", AZURE_DEDICATED_SQL_POOL_DEFAULT_CTP)
+CtpRegistry.register("microsoft-fabric", MS_FABRIC_DEFAULT_CTP)

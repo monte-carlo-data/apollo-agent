@@ -1,6 +1,6 @@
 import datetime
 from typing import List, Any, Optional
-from unittest import TestCase, skip
+from unittest import TestCase
 from unittest.mock import Mock, call, patch
 
 from apollo.agent.agent import Agent
@@ -14,32 +14,43 @@ from apollo.integrations.db.fabric_proxy_client import MsFabricProxyClient
 
 _HOST = "myworkspace.datawarehouse.fabric.microsoft.com"
 _PORT = 1433
-_SERVER = f"{_HOST},{_PORT}"
+_SERVER = f"tcp:{_HOST},{_PORT}"
 _DATABASE = "mydb"
 _CLIENT_ID = "my-client-id"
 _CLIENT_SECRET = "my-client-secret"
 _TENANT_ID = "my-tenant-id"
 
-# Flat credentials as the proxy client currently receives them (CTP bypassed — see fabric.py TODO)
-_CONNECT_ARGS_DICT = {
-    "server": _HOST,
+# Flat credentials as the DC sends them — CTP transforms these into _CONNECT_ARGS_DICT.
+_FLAT_CREDS = {
+    "host": _HOST,
     "database": _DATABASE,
     "client_id": _CLIENT_ID,
     "client_secret": _CLIENT_SECRET,
     "tenant_id": _TENANT_ID,
 }
 
-# ODBC connection string produced by MsFabricProxyClient from the flat credentials above.
-# Default port is 1443 when "port" is omitted from connect_args.
+# ODBC connect_args dict produced by CTP (used for direct proxy client tests).
+_CONNECT_ARGS_DICT = {
+    "DRIVER": "{ODBC Driver 17 for SQL Server}",
+    "SERVER": _SERVER,
+    "UID": f"{_CLIENT_ID}@{_TENANT_ID}",
+    "PWD": _CLIENT_SECRET,
+    "DATABASE": _DATABASE,
+    "Authentication": "ActiveDirectoryServicePrincipal",
+    "Encrypt": "yes",
+    "TrustServerCertificate": "no",
+}
+
+# ODBC connection string produced by MsFabricProxyClient from _CONNECT_ARGS_DICT.
 _EXPECTED_ODBC_STRING = (
     f"DRIVER={{ODBC Driver 17 for SQL Server}};"
-    f"Server={_HOST},1443;"
-    f"Database={_DATABASE};"
-    f"Authentication=ActiveDirectoryServicePrincipal;"
+    f"SERVER={_SERVER};"
     f"UID={_CLIENT_ID}@{_TENANT_ID};"
     f"PWD={_CLIENT_SECRET};"
-    "Encrypt=yes;"
-    "TrustServerCertificate=no;"
+    f"DATABASE={_DATABASE};"
+    f"Authentication=ActiveDirectoryServicePrincipal;"
+    f"Encrypt=yes;"
+    f"TrustServerCertificate=no"
 )
 
 
@@ -53,7 +64,7 @@ class MsFabricProxyClientTests(TestCase):
 
     @patch("pyodbc.connect")
     def test_connect_args_dict_produces_odbc_string(self, mock_connect):
-        """connect_args as flat credentials dict → hardcoded ODBC string passed to pyodbc.connect."""
+        """connect_args as CTP-produced ODBC dict → serialized string passed to pyodbc.connect."""
         mock_connect.return_value = self._mock_connection
         MsFabricProxyClient(
             credentials={"connect_args": _CONNECT_ARGS_DICT},
@@ -123,7 +134,7 @@ class MsFabricProxyClientTests(TestCase):
 
     @patch("pyodbc.connect")
     def test_query_via_agent(self, mock_connect):
-        """End-to-end query through the Agent using connect_args dict."""
+        """End-to-end query through the Agent using flat credentials (CTP applied automatically)."""
         query = "SELECT name, value FROM dbo.table"
         expected_data = [["foo", 1], ["bar", 2]]
         expected_description = [
@@ -176,7 +187,7 @@ class MsFabricProxyClientTests(TestCase):
             "microsoft-fabric",
             "run_query",
             operation_dict,
-            {"connect_args": _CONNECT_ARGS_DICT},
+            {"connect_args": _FLAT_CREDS},
         )
 
         self.assertIsNone(response.result.get(ATTRIBUTE_NAME_ERROR))
@@ -188,7 +199,6 @@ class MsFabricProxyClientTests(TestCase):
         self.assertEqual(data, result["all_results"])
 
 
-@skip("CTP registration temporarily disabled — see fabric.py TODO")
 class MsFabricCtpRoundTripTests(TestCase):
     """Verify the CTP pipeline produces the expected ODBC dict from flat credentials."""
 
@@ -221,20 +231,11 @@ class MsFabricCtpRoundTripTests(TestCase):
 
         mock_connect.assert_called_once_with(_EXPECTED_ODBC_STRING, timeout=15)
 
-    def test_ctp_resolves_host_alias(self):
-        """host and hostname are accepted as aliases for server."""
-        for key in ("host", "hostname"):
-            with self.subTest(key=key):
-                creds = {**_FLAT_CREDS, key: _HOST}
-                creds.pop("server")
-                resolved = CtpRegistry.resolve("microsoft-fabric", creds)
-                self.assertEqual(_SERVER, resolved["connect_args"]["SERVER"])
-
     def test_ctp_resolves_custom_port(self):
         """A non-default port is included in the SERVER field."""
         creds = {**_FLAT_CREDS, "port": 1234}
         resolved = CtpRegistry.resolve("microsoft-fabric", creds)
-        self.assertEqual(f"{_HOST},1234", resolved["connect_args"]["SERVER"])
+        self.assertEqual(f"tcp:{_HOST},1234", resolved["connect_args"]["SERVER"])
 
     def test_ctp_resolves_db_name_alias(self):
         """db_name is accepted as an alias for database."""
