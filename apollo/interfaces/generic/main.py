@@ -1219,7 +1219,7 @@ def _get_infra_details() -> Tuple[Dict, int]:
     return response.result, response.status_code
 
 
-@app.route("/api/v1/agent/custom-connectors/types", methods=["POST"])
+@app.route("/api/v1/agent/connectors/types", methods=["POST"])
 def get_supported_connector_types() -> Tuple[Dict, int]:
     """
     Get Supported Connector Types
