@@ -1219,6 +1219,65 @@ def _get_infra_details() -> Tuple[Dict, int]:
     return response.result, response.status_code
 
 
+@app.route("/api/v1/agent/connectors/types", methods=["POST"])
+def get_supported_connector_types() -> Tuple[Dict, int]:
+    """
+    Get Supported Connector Types
+    Returns all connector types this agent supports, split into native
+    (built-in) and custom categories.  Used during agent registration to
+    validate supported connectors without a full manifest extraction.
+    ---
+    tags:
+        - Agent Operations
+    produces:
+        - application/json
+    parameters:
+        - in: body
+          name: body
+          schema:
+            id: SupportedConnectorTypesRequest
+            properties:
+                trace_id:
+                  type: string
+                  description: An optional trace_id
+                  example: 324986b4-b185-4187-b4af-b0c2cd60f7a0
+    responses:
+        200:
+            description: Returns native and custom connector types supported by this agent.
+            schema:
+                properties:
+                    __mcd_result__:
+                        type: object
+                        properties:
+                            connector_types:
+                                type: object
+                                properties:
+                                    native:
+                                        type: array
+                                        items:
+                                            type: string
+                                        example:
+                                            - bigquery
+                                            - snowflake
+                                    custom:
+                                        type: array
+                                        items:
+                                            type: object
+                                            properties:
+                                                type:
+                                                    type: string
+                                                name:
+                                                    type: string
+                                        example:
+                                            - type: acme-crm
+                                              name: Acme CRM
+    """
+    request_dict: Dict = request.json or {}
+    trace_id: Optional[str] = request_dict.get("trace_id")
+    response = agent.get_supported_connector_types(trace_id=trace_id)
+    return response.result, response.status_code
+
+
 @app.route("/api/v1/agent/custom-connectors/manifests", methods=["POST"])
 def get_connection_manifests() -> Tuple[Dict, int]:
     """

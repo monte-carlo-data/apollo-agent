@@ -387,6 +387,35 @@ class Agent:
                     "get_infra_details failed:"
                 )
 
+    def get_supported_connector_types(self, trace_id: Optional[str]) -> AgentResponse:
+        """
+        Returns the connector types this agent supports, split into
+        native (built-in) and custom categories.
+        """
+        with self._inject_log_context("get_supported_connector_types", trace_id):
+            try:
+                logger.info("get_supported_connector_types requested")
+                from apollo.agent.proxy_client_factory import (
+                    get_native_connection_types,
+                )
+                from apollo.integrations.custom.custom_proxy_client import (
+                    CustomProxyClient,
+                )
+
+                return AgentUtils.agent_ok_response(
+                    {
+                        "connector_types": {
+                            "native": get_native_connection_types(),
+                            "custom": CustomProxyClient.get_custom_connector_types(),
+                        }
+                    },
+                    trace_id,
+                )
+            except Exception:  # noqa
+                return AgentUtils.agent_response_for_last_exception(
+                    "get_supported_connector_types failed:"
+                )
+
     def get_connection_manifests(self, trace_id: Optional[str]) -> AgentResponse:
         """
         Returns manifests, capabilities, and templates for all custom

@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from jinja2 import Template
 from jinja2.sandbox import ImmutableSandboxedEnvironment
@@ -144,6 +144,29 @@ class CustomProxyClient(BaseProxyClient):
     def get_capabilities(self) -> Dict:
         """Return the capabilities from the manifest."""
         return self._capabilities
+
+    @staticmethod
+    def get_custom_connector_types() -> List[Dict[str, str]]:
+        """
+        Return a lightweight list of supported custom connector types.
+
+        Each entry contains:
+          - type: the connection_type identifier from the manifest
+          - name: the human-readable connection_name (falls back to type)
+
+        Returns an empty list when no custom connectors are installed.
+        """
+        registry = get_custom_connector_registry()
+        result: List[Dict[str, str]] = []
+        for connection_type, connector_dir in registry.items():
+            manifest = load_manifest(connector_dir)
+            result.append(
+                {
+                    "type": connection_type,
+                    "name": manifest.get("connection_name", connection_type),
+                }
+            )
+        return result
 
     @staticmethod
     def get_connection_manifests() -> Dict[str, Dict[str, Any]]:
