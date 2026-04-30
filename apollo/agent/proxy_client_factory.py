@@ -422,6 +422,11 @@ _CLIENT_FACTORY_MAPPING = {
 }
 
 
+def get_native_connection_types() -> list[str]:
+    """Return a sorted list of all native (built-in) connection type identifiers."""
+    return sorted(_CLIENT_FACTORY_MAPPING.keys())
+
+
 class ProxyClientFactory:
     """
     Factory class used to create the proxy clients for a given connection type.
