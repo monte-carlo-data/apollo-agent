@@ -387,9 +387,7 @@ class Agent:
                     "get_infra_details failed:"
                 )
 
-    def get_supported_connector_types(
-        self, trace_id: Optional[str]
-    ) -> AgentResponse:
+    def get_supported_connector_types(self, trace_id: Optional[str]) -> AgentResponse:
         """
         Returns the connector types this agent supports, split into
         native (built-in) and custom categories.
