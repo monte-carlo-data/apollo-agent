@@ -1220,12 +1220,12 @@ def _get_infra_details() -> Tuple[Dict, int]:
 
 
 @app.route("/api/v1/agent/custom-connectors/types", methods=["POST"])
-def get_custom_connector_types() -> Tuple[Dict, int]:
+def get_supported_connector_types() -> Tuple[Dict, int]:
     """
-    Get Supported Custom Connector Types
-    Returns a lightweight list of custom connector types installed on this
-    agent (type ID and display name only).  Used during agent registration
-    to validate supported connectors without a full manifest extraction.
+    Get Supported Connector Types
+    Returns all connector types this agent supports, split into native
+    (built-in) and custom categories.  Used during agent registration to
+    validate supported connectors without a full manifest extraction.
     ---
     tags:
         - Agent Operations
@@ -1235,7 +1235,7 @@ def get_custom_connector_types() -> Tuple[Dict, int]:
         - in: body
           name: body
           schema:
-            id: CustomConnectorTypesRequest
+            id: SupportedConnectorTypesRequest
             properties:
                 trace_id:
                   type: string
@@ -1243,28 +1243,38 @@ def get_custom_connector_types() -> Tuple[Dict, int]:
                   example: 324986b4-b185-4187-b4af-b0c2cd60f7a0
     responses:
         200:
-            description: Returns the list of supported custom connector types.
+            description: Returns native and custom connector types supported by this agent.
             schema:
                 properties:
                     __mcd_result__:
                         type: object
                         properties:
                             connector_types:
-                                type: array
-                                items:
-                                    type: object
-                                    properties:
-                                        type:
+                                type: object
+                                properties:
+                                    native:
+                                        type: array
+                                        items:
                                             type: string
-                                        name:
-                                            type: string
-                                example:
-                                    - type: acme-crm
-                                      name: Acme CRM
+                                        example:
+                                            - bigquery
+                                            - snowflake
+                                    custom:
+                                        type: array
+                                        items:
+                                            type: object
+                                            properties:
+                                                type:
+                                                    type: string
+                                                name:
+                                                    type: string
+                                        example:
+                                            - type: acme-crm
+                                              name: Acme CRM
     """
     request_dict: Dict = request.json or {}
     trace_id: Optional[str] = request_dict.get("trace_id")
-    response = agent.get_custom_connector_types(trace_id=trace_id)
+    response = agent.get_supported_connector_types(trace_id=trace_id)
     return response.result, response.status_code
 
 

@@ -4,7 +4,7 @@ from unittest.mock import patch, call
 from apollo.agent.agent import Agent
 from apollo.agent.logging_utils import LoggingUtils
 from apollo.common.agent.models import AgentCommands
-from apollo.agent.proxy_client_factory import ProxyClientFactory
+from apollo.agent.proxy_client_factory import ProxyClientFactory, get_native_connection_types
 from apollo.common.interfaces.agent_response import AgentResponse
 from apollo.interfaces.azure.azure_platform import AzurePlatformProvider
 from apollo.interfaces.lambda_function.platform import AwsPlatformProvider
@@ -75,3 +75,18 @@ class ProxyClientFactoryTests(TestCase):
                 call("test_type", None, agent.platform, ctp_config=None),
             ]
         )
+
+
+class TestGetNativeConnectionTypes(TestCase):
+    def test_returns_sorted_list(self):
+        result = get_native_connection_types()
+        self.assertEqual(result, sorted(result))
+
+    def test_contains_known_types(self):
+        result = get_native_connection_types()
+        for expected in ["bigquery", "snowflake", "postgres", "redshift", "mysql"]:
+            self.assertIn(expected, result)
+
+    def test_returns_strings(self):
+        result = get_native_connection_types()
+        self.assertTrue(all(isinstance(t, str) for t in result))

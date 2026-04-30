@@ -688,18 +688,30 @@ class TestGetCustomConnectorTypes(TestCase):
             self.assertEqual(result[0]["name"], "no-name-connector")
 
 
-class TestAgentGetCustomConnectorTypes(TestCase):
+class TestAgentGetSupportedConnectorTypes(TestCase):
     @patch(
         "apollo.integrations.custom.custom_proxy_client.get_custom_connector_registry",
         return_value={},
     )
-    def test_returns_ok_response(self, _mock_registry):
+    def test_returns_native_and_custom(self, _mock_registry):
         agent = Agent(None)
-        response = agent.get_custom_connector_types(trace_id="test-trace")
+        response = agent.get_supported_connector_types(trace_id="test-trace")
 
         self.assertEqual(response.status_code, 200)
         self.assertIn("__mcd_result__", response.result)
-        self.assertEqual(response.result["__mcd_result__"], {"connector_types": []})
+        result = response.result["__mcd_result__"]
+        self.assertIn("connector_types", result)
+        self.assertIn("native", result["connector_types"])
+        self.assertIn("custom", result["connector_types"])
+        # native should contain known built-in types
+        native = result["connector_types"]["native"]
+        self.assertIn("bigquery", native)
+        self.assertIn("snowflake", native)
+        self.assertIn("postgres", native)
+        # native list should be sorted
+        self.assertEqual(native, sorted(native))
+        # custom is empty because registry is mocked empty
+        self.assertEqual(result["connector_types"]["custom"], [])
         self.assertEqual(response.trace_id, "test-trace")
 
     @patch(
@@ -708,7 +720,7 @@ class TestAgentGetCustomConnectorTypes(TestCase):
     )
     def test_returns_error_on_failure(self, _mock_registry):
         agent = Agent(None)
-        response = agent.get_custom_connector_types(trace_id="test-trace")
+        response = agent.get_supported_connector_types(trace_id="test-trace")
 
         self.assertEqual(response.status_code, 200)
         self.assertIn("__mcd_error__", response.result)
