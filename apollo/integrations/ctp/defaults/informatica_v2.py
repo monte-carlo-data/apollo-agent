@@ -10,36 +10,24 @@ class InformaticaV2ClientArgs(TypedDict):
     api_base_url: Required[str]
 
 
-# Informatica v2 authenticates via OAuth client_credentials → JWT → /loginOAuth.
-# v1 (username/password) keeps using INFORMATICA_DEFAULT_CTP; this pipeline is
-# separate so the two auth flows don't share validation surface area.
+# Informatica v2 authenticates via OAuth → JWT → /loginOAuth, using the same
+# `OAuthConfiguration` shape monolith stores for Snowflake. v1 (username/password)
+# keeps using INFORMATICA_DEFAULT_CTP.
 INFORMATICA_V2_DEFAULT_CTP = CtpConfig(
     name="informatica-v2-default",
     steps=[
-        # Step 1: OAuth client_credentials grant against the customer's IDP token
-        # endpoint. The shared `oauth` transform expects an `oauth` config dict;
-        # build it inline from the flat raw credential fields. Skipped when the
-        # session is already pre-resolved (DC pre-shaped path or custom CTP
-        # config that resolved upstream).
+        # Step 1: OAuth grant against the customer's IDP. Whatever grant_type
+        # `raw.oauth` declares (client_credentials, password, etc.) is what the
+        # shared `oauth` transform performs. Skipped when the session is already
+        # pre-resolved.
         TransformStep(
             type="oauth",
             when="raw.session_id is not defined",
-            input={
-                "oauth": (
-                    "{{ {"
-                    "'client_id': raw.client_id, "
-                    "'client_secret': raw.client_secret, "
-                    "'access_token_endpoint': raw.token_url, "
-                    "'grant_type': 'client_credentials'"
-                    "} }}"
-                ),
-            },
+            input={"oauth": "{{ raw.oauth }}"},
             output={"token": "informatica_jwt"},
         ),
-        # Step 2: Exchange the JWT at Informatica's /ma/api/v2/user/loginOAuth
-        # endpoint for an icSessionId + API base URL. Reuses the v1 transform's
-        # JWT mode (requires SAML federation configured org-wide). Skipped when
-        # the session is already pre-resolved.
+        # Step 2: Exchange the JWT at /ma/api/v2/user/loginOAuth for an
+        # icSessionId + API base URL. Skipped when pre-resolved.
         TransformStep(
             type="resolve_informatica_session",
             when="raw.session_id is not defined",
