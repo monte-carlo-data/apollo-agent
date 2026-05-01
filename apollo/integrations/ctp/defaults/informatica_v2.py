@@ -10,31 +10,35 @@ class InformaticaV2ClientArgs(TypedDict):
     api_base_url: Required[str]
 
 
-# Informatica v2 authenticates via OAuth → JWT → /loginOAuth, using the same
-# `OAuthConfiguration` shape monolith stores for Snowflake. v1 (username/password)
-# keeps using INFORMATICA_DEFAULT_CTP.
+# v2 supports two auth modes, discriminated by `raw.auth_mode`:
+#   - "oauth"    → OAuth grant against the customer's IDP → JWT → /loginOAuth
+#   - "password" → V2 or V3 password login (same as v1's INFORMATICA_DEFAULT_CTP)
+# `resolve_informatica_session` picks the right Informatica login path from
+# whichever fields are present. We only need a leading OAuth step in oauth mode.
 INFORMATICA_V2_DEFAULT_CTP = CtpConfig(
     name="informatica-v2-default",
     steps=[
-        # Step 1: OAuth grant against the customer's IDP. Whatever grant_type
-        # `raw.oauth` declares (client_credentials, password, etc.) is what the
-        # shared `oauth` transform performs. Skipped when the session is already
-        # pre-resolved.
+        # Step 1 (OAuth mode only): OAuth grant against the customer's IDP using
+        # the shared `oauth` transform. Whatever grant_type `raw.oauth` declares
+        # (client_credentials, password, etc.) is what the transform performs.
         TransformStep(
             type="oauth",
-            when="raw.session_id is not defined",
+            when="raw.session_id is not defined and raw.auth_mode == 'oauth'",
             input={"oauth": "{{ raw.oauth }}"},
             output={"token": "informatica_jwt"},
         ),
-        # Step 2: Exchange the JWT at /ma/api/v2/user/loginOAuth for an
-        # icSessionId + API base URL. Skipped when pre-resolved.
+        # Step 2: Resolve the Informatica session. In oauth mode, exchange the
+        # JWT from step 1 at /loginOAuth. In password mode, do a V2 or V3 login.
         TransformStep(
             type="resolve_informatica_session",
             when="raw.session_id is not defined",
             input={
-                "jwt_token": "{{ derived.informatica_jwt }}",
-                "org_id": "{{ raw.org_id }}",
+                "username": "{{ raw.username | default(none) }}",
+                "password": "{{ raw.password | default(none) }}",
+                "informatica_auth": "{{ raw.informatica_auth | default(none) }}",
                 "base_url": "{{ raw.base_url | default(none) }}",
+                "jwt_token": "{{ derived.informatica_jwt | default(none) }}",
+                "org_id": "{{ raw.org_id | default(none) }}",
             },
             output={
                 "session_id": "informatica_session_id",
