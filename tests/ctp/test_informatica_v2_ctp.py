@@ -18,10 +18,18 @@ _INFORMATICA_LOGIN_OAUTH_RESPONSE = {
     "icSessionId": "session-v2-abc",
 }
 
-_FLAT_CREDENTIALS = {
+# Mirrors monolith's `OAuthConfiguration` GraphQL input — the same shape stored
+# for Snowflake OAuth credentials.
+_OAUTH_CONFIG_CLIENT_CREDENTIALS = {
     "client_id": "idp-client-id",
     "client_secret": "idp-client-secret",
-    "token_url": "https://idp.example.com/oauth2/token",
+    "access_token_endpoint": "https://idp.example.com/oauth2/token",
+    "grant_type": "client_credentials",
+    "scope": "informatica",
+}
+
+_FLAT_CREDENTIALS = {
+    "oauth": _OAUTH_CONFIG_CLIENT_CREDENTIALS,
     "org_id": "ORG-12345",
     "base_url": "https://dm-us.informaticacloud.com",
 }
@@ -59,14 +67,12 @@ class TestInformaticaV2CtpPipeline(TestCase):
         self.assertEqual("session-v2-abc", result["session_id"])
         self.assertEqual("https://na1.informaticacloud.com", result["api_base_url"])
         # Raw credentials must not appear in connect_args
-        self.assertNotIn("client_id", result)
-        self.assertNotIn("client_secret", result)
-        self.assertNotIn("token_url", result)
+        self.assertNotIn("oauth", result)
         self.assertNotIn("org_id", result)
 
     @patch("requests.post")
     def test_first_call_is_idp_token_endpoint(self, mock_post):
-        """Step 1 hits the IDP token URL with client_credentials grant."""
+        """Step 1 hits the IDP token URL with the grant_type and scope from raw.oauth."""
         mock_post.side_effect = [
             _mock_post(_IDP_TOKEN_RESPONSE),
             _mock_post(_INFORMATICA_LOGIN_OAUTH_RESPONSE),
@@ -78,6 +84,34 @@ class TestInformaticaV2CtpPipeline(TestCase):
         first_call_data = mock_post.call_args_list[0][1]["data"]
         self.assertEqual("https://idp.example.com/oauth2/token", first_call_url)
         self.assertEqual("client_credentials", first_call_data["grant_type"])
+        # `scope` from the raw.oauth blob is forwarded to the IDP request body.
+        self.assertEqual("informatica", first_call_data["scope"])
+
+    @patch("requests.post")
+    def test_password_grant_carries_username_and_password(self, mock_post):
+        """raw.oauth with grant_type=password forwards username/password to the IDP."""
+        mock_post.side_effect = [
+            _mock_post(_IDP_TOKEN_RESPONSE),
+            _mock_post(_INFORMATICA_LOGIN_OAUTH_RESPONSE),
+        ]
+
+        creds = {
+            **_FLAT_CREDENTIALS,
+            "oauth": {
+                "client_id": "cid",
+                "client_secret": "csec",
+                "access_token_endpoint": "https://idp.example.com/oauth2/token",
+                "grant_type": "password",
+                "username": "svc-user",
+                "password": "svc-pass",
+            },
+        }
+        CtpPipeline().execute(INFORMATICA_V2_DEFAULT_CTP, creds)
+
+        first_call_data = mock_post.call_args_list[0][1]["data"]
+        self.assertEqual("password", first_call_data["grant_type"])
+        self.assertEqual("svc-user", first_call_data["username"])
+        self.assertEqual("svc-pass", first_call_data["password"])
 
     @patch("requests.post")
     def test_second_call_is_informatica_login_oauth_with_jwt(self, mock_post):
