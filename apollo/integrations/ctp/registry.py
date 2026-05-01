@@ -24,6 +24,7 @@ def _discover() -> None:
     import apollo.integrations.ctp.defaults.hive  # noqa: F401
     import apollo.integrations.ctp.defaults.http  # noqa: F401
     import apollo.integrations.ctp.defaults.informatica  # noqa: F401
+    import apollo.integrations.ctp.defaults.informatica_v2  # noqa: F401
     import apollo.integrations.ctp.defaults.motherduck  # noqa: F401
     import apollo.integrations.ctp.defaults.presto  # noqa: F401
     import apollo.integrations.ctp.defaults.snowflake  # noqa: F401

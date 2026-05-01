@@ -419,6 +419,7 @@ _CLIENT_FACTORY_MAPPING = {
     "starburst-galaxy": _get_proxy_client_starburst_galaxy,
     "starburst-enterprise": _get_proxy_client_starburst_enterprise,
     "informatica": _get_proxy_client_informatica,
+    "informatica-v2": _get_proxy_client_informatica,
 }
 
 
