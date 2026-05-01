@@ -28,11 +28,23 @@ _OAUTH_CONFIG_CLIENT_CREDENTIALS = {
     "scope": "informatica",
 }
 
-_FLAT_CREDENTIALS = {
+_OAUTH_MODE_CREDENTIALS = {
+    "auth_mode": "oauth",
     "oauth": _OAUTH_CONFIG_CLIENT_CREDENTIALS,
     "org_id": "ORG-12345",
     "base_url": "https://dm-us.informaticacloud.com",
 }
+
+_PASSWORD_MODE_CREDENTIALS = {
+    "auth_mode": "password",
+    "username": "svc-user",
+    "password": "svc-pass",
+    "informatica_auth": "v3",
+    "base_url": "https://dm-us.informaticacloud.com",
+}
+
+# Backwards-compat alias for tests written before the auth_mode discriminator.
+_FLAT_CREDENTIALS = _OAUTH_MODE_CREDENTIALS
 
 
 def _mock_post(body: dict) -> MagicMock:
@@ -143,6 +155,35 @@ class TestInformaticaV2CtpPipeline(TestCase):
         # Second call must still go to a default Informatica login URL
         second_call_url = mock_post.call_args_list[1][0][0]
         self.assertIn("informaticacloud.com/ma/api/v2/user/loginOAuth", second_call_url)
+
+
+class TestInformaticaV2CtpPasswordMode(TestCase):
+    """Verify password mode skips the OAuth step and goes straight to Informatica login."""
+
+    _V3_LOGIN_RESPONSE = {
+        "products": [
+            {
+                "name": "Integration Cloud",
+                "baseApiUrl": "https://eu1.informaticacloud.com",
+            },
+        ],
+        "userInfo": {"sessionId": "session-v3-xyz"},
+    }
+
+    @patch("requests.post")
+    def test_password_mode_skips_oauth_step_and_does_v3_login(self, mock_post):
+        mock_post.return_value = _mock_post(self._V3_LOGIN_RESPONSE)
+
+        result = CtpPipeline().execute(
+            INFORMATICA_V2_DEFAULT_CTP, _PASSWORD_MODE_CREDENTIALS
+        )
+
+        # Only one HTTP call — straight to Informatica's V3 login (no OAuth step).
+        self.assertEqual(1, mock_post.call_count)
+        login_url = mock_post.call_args_list[0][0][0]
+        self.assertIn("/saas/public/core/v3/login", login_url)
+        self.assertEqual("session-v3-xyz", result["session_id"])
+        self.assertEqual("https://eu1.informaticacloud.com", result["api_base_url"])
 
 
 class TestInformaticaV2CtpFailureSurfaces(TestCase):
