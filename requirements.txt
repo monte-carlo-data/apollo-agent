@@ -71,7 +71,7 @@ click==8.1.7
     #   presto-python-client
 clickhouse-connect==0.8.18
     # via -r requirements.in
-cryptography==44.0.1
+cryptography==46.0.5
     # via
     #   -r requirements.in
     #   azure-identity
@@ -288,7 +288,7 @@ pymysql==1.1.1
     # via -r requirements.in
 pyodbc==5.0.1
     # via -r requirements.in
-pyopenssl==24.3.0
+pyopenssl==25.3.0
     # via
     #   -r requirements.in
     #   snowflake-connector-python
