@@ -23,6 +23,15 @@ class GitCloneClient:
     """
     Git client used to clone a repo, both ssh and https protocols are supported.
     It exposes a method that returns an iterator for all files matching a list of extensions.
+
+    SSL options for HTTPS clones (no-op for SSH) are resolved upstream by the
+    ``resolve_ssl_options`` CTP transform and arrive on connect_args as:
+
+    - ``ssl_ca_path`` (str): path to a PEM CA bundle written by the transform.
+      Passed to git via ``-c http.sslCAInfo=<path>``. Use this for self-managed
+      Git providers whose root CA is not in the agent image's default trust store.
+    - ``ssl_skip_verification`` (bool): when truthy, sets ``-c http.sslVerify=false``
+      and logs a warning.
     """
 
     # Only /tmp is writable in lambda.
@@ -37,10 +46,12 @@ class GitCloneClient:
         self._token = creds.get("token")
         self._username = creds.get("username")
         self._ssh_key = base64.b64decode(creds.get("ssh_key", ""))
+        self._ssl_ca_path: str | None = creds.get("ssl_ca_path")
+        self._ssl_skip_verification = bool(creds.get("ssl_skip_verification"))
 
         if self._token:
-            # remove https if it was included for https calls
-            self._repo_url = self._repo_url.lstrip("https://")
+            # remove the scheme if it was included so the token can be inserted before the host
+            self._repo_url = self._repo_url.removeprefix("https://")
 
     def get_files(
         self, file_extensions: List[str]
@@ -69,7 +80,7 @@ class GitCloneClient:
         Executes `git --version` and returns the output in a dictionary with two keys: `stdout` and `stderr`.
         :return: the output for `git --version`.
         """
-        stdout, stderr = git.exec_command("--version")
+        stdout, stderr = git.exec_command("--version")  # type: ignore[attr-defined]
         return {
             "stdout": stdout.decode("utf-8") if stdout else "",
             "stderr": stderr.decode("utf-8") if stderr else "",
@@ -117,13 +128,29 @@ class GitCloneClient:
             # This allows for support of bitbucket as they handle access tokens slightly differently
             url = f"https://{self._username}:{self._token}@{self._repo_url}"
         # Use depth 1 to bring only the latest revision.
-        git_params = ["clone", "--depth", "1", url, str(self._REPO_DIR)]
+        ssl_config = self._build_ssl_config_args()
+        git_params = [*ssl_config, "clone", "--depth", "1", url, str(self._REPO_DIR)]
         try:
-            git.exec_command(*git_params)
-        except git.exceptions.GitExecutionError as e:
+            git.exec_command(*git_params)  # type: ignore[attr-defined]
+        except git.exceptions.GitExecutionError as e:  # type: ignore[attr-defined]
             password_removed_message = self._replace_passwords_in_urls(str(e))
 
-            raise git.exceptions.GitExecutionError(password_removed_message)
+            raise git.exceptions.GitExecutionError(password_removed_message)  # type: ignore[attr-defined]
+
+    def _build_ssl_config_args(self) -> List[str]:
+        """
+        Translate the resolved SSL connect args (from the ``resolve_ssl_options`` CTP
+        transform) into ``git -c <key>=<value>`` arguments for HTTPS clones.
+        """
+        args: List[str] = []
+        if self._ssl_ca_path:
+            args.extend(["-c", f"http.sslCAInfo={self._ssl_ca_path}"])
+        if self._ssl_skip_verification:
+            logger.warning(
+                "TLS verification disabled for git clone via ssl_options.skip_cert_verification"
+            )
+            args.extend(["-c", "http.sslVerify=false"])
+        return args
 
     @staticmethod
     def _replace_passwords_in_urls(text: str, placeholder: str = "********"):
@@ -162,7 +189,7 @@ class GitCloneClient:
         env = {**os.environ, **{"GIT_SSH_COMMAND": f"ssh {ssh_options}"}}
         # Use depth 1 to bring only the latest revision.
         git_params = ["clone", "--depth", "1", self._repo_url, str(self._REPO_DIR)]
-        git.exec_command(*git_params, env=env)
+        git.exec_command(*git_params, env=env)  # type: ignore[attr-defined]
 
     @property
     def repo_url(self):
