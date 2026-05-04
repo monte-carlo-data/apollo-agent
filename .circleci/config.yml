@@ -94,6 +94,15 @@ jobs:
       - checkout
       - docker/check:
           use-docker-credentials-store: true
+      # Publish the `base` stage as `<version>-generic-base` so downstream
+      # repos (e.g. hermes-agent) can pin to a specific apollo version that
+      # matches their pip-installed apollo dependency.
+      - docker/build:
+          step-name: Build generic base image
+          use-buildkit: true # to build only the required stages
+          extra_build_args: --target base --build-arg code_version=<< parameters.code_version >> --build-arg build_number=<< pipeline.number >>
+          image: montecarlodata/<< parameters.docker_hub_repository >>
+          tag: latest-generic-base,<< parameters.code_version >>-generic-base
       - docker/build:
           step-name: Build AWS generic image
           use-buildkit: true  # to build only the required stages
@@ -113,6 +122,9 @@ jobs:
           image: montecarlodata/<< parameters.docker_hub_repository >>
           tag: latest-azure,<< parameters.code_version >>-azure
       - verify-version-in-docker-image:
+          image: montecarlodata/<< parameters.docker_hub_repository >>:latest-generic-base
+          version: << parameters.code_version >>,<< pipeline.number >>
+      - verify-version-in-docker-image:
           image: montecarlodata/<< parameters.docker_hub_repository >>:latest-cloudrun
           version: << parameters.code_version >>,<< pipeline.number >>
       - verify-version-in-docker-image:
@@ -123,7 +135,7 @@ jobs:
           version: << parameters.code_version >>,<< pipeline.number >>
       - docker/push:
           image: montecarlodata/<< parameters.docker_hub_repository >>
-          tag: latest-cloudrun,<< parameters.code_version >>-cloudrun,latest-azure,<< parameters.code_version >>-azure,latest-aws-generic,<< parameters.code_version >>-aws-generic,latest-aws-proxied,<< parameters.code_version >>-aws-proxied
+          tag: latest-generic-base,<< parameters.code_version >>-generic-base,latest-cloudrun,<< parameters.code_version >>-cloudrun,latest-azure,<< parameters.code_version >>-azure,latest-aws-generic,<< parameters.code_version >>-aws-generic,latest-aws-proxied,<< parameters.code_version >>-aws-proxied
 
   build-and-push-lambda:
     machine:
