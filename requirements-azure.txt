@@ -184,7 +184,6 @@ orderedmultidict==1.0.2
 packaging==24.1
     # via
     #   -c requirements.txt
-    #   opentelemetry-instrumentation
     #   opentelemetry-instrumentation-flask
 propcache==0.4.1
     # via
