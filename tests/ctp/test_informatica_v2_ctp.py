@@ -6,6 +6,9 @@ from apollo.integrations.ctp.defaults.informatica_v2 import INFORMATICA_V2_DEFAU
 from apollo.integrations.ctp.errors import CtpPipelineError
 from apollo.integrations.ctp.pipeline import CtpPipeline
 from apollo.integrations.ctp.registry import CtpRegistry
+from apollo.integrations.ctp.transforms.resolve_informatica_session import (
+    _DEFAULT_BASE_URL as _INFORMATICA_DEFAULT_BASE_URL,
+)
 
 # Canned IDP token-endpoint and Informatica /loginOAuth responses
 _IDP_TOKEN_RESPONSE = {
@@ -149,9 +152,14 @@ class TestInformaticaV2CtpPipeline(TestCase):
         }
         CtpPipeline().execute(INFORMATICA_V2_DEFAULT_CTP, creds_without_base_url)
 
-        # Second call must still go to a default Informatica login URL
+        # Second call goes to the exact default URL — pin it so silent drift in
+        # `_DEFAULT_BASE_URL` (e.g., dm-us → dm-eu, or to a staging URL) breaks
+        # this test instead of slipping by a substring match.
         second_call_url = mock_post.call_args_list[1][0][0]
-        self.assertIn("informaticacloud.com/ma/api/v2/user/loginOAuth", second_call_url)
+        self.assertEqual(
+            f"{_INFORMATICA_DEFAULT_BASE_URL}/ma/api/v2/user/loginOAuth",
+            second_call_url,
+        )
 
 
 class TestInformaticaV2CtpPasswordMode(TestCase):
