@@ -99,7 +99,7 @@ protobuf==5.29.6
     #   grpc-google-iam-v1
     #   grpcio-status
     #   proto-plus
-pyasn1==0.6.0
+pyasn1==0.6.3
     # via
     #   -c requirements.txt
     #   pyasn1-modules

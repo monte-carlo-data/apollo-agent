@@ -7,7 +7,7 @@ azure-mgmt-storage==21.2.1
 azure-storage-blob==12.23.0
 brotli==1.2.0  # Upgrade transient dependency of flask-compress to address SEC-1143 (CVE-2025-6176)
 clickhouse-connect==0.8.18
-cryptography>=44.0.1
+cryptography>=46.0.5  # CVE-2026-26007
 databricks-sql-connector==4.0.0
 databricks-sdk==0.39.0
 duckdb==1.1.0
@@ -20,9 +20,10 @@ gunicorn==23.0.0
 hdbcli==2.18.27
 ibm-db==3.2.7
 jinja2>=3.1.6
+lxml>=6.1.0  # CVE-2026-41066 (XXE)
 lambda-git==0.1.1
 looker-sdk==24.2.0
-msal==1.31.0
+msal==1.36.0  # allow cryptography>=46.0.5 (CVE-2026-26007); 1.31.0 capped cryptography<46
 numpy<2.0.0  # prevent "numpy.dtype size changed" errors: https://github.com/numpy/numpy/issues/26710
 oracledb>=2.4.1
 orjson>=3.11.6  # CVE-2025-67221: recursion DoS in orjson.dumps thru 3.11.4
@@ -31,22 +32,23 @@ trino==0.336.0
 protobuf==5.29.6
 psycopg2-binary==2.9.9
 pyarrow==17.0.0  # CVE-2024-52338
+pyasn1>=0.6.3  # CVE-2026-30922 (uncontrolled recursion), CVE-2026-23490
 pycryptodome>=3.21.0
-pyjwt>=2.8.0
+pyjwt>=2.12.0  # CVE-2026-32597
 PyMySQL>=1.1.1
 pyodbc==5.0.1
-pyOpenSSL>=24.2.1
+pyOpenSSL>=26.0.0  # CVE-2026-27459 (buffer overflow)
 RestrictedPython==8.0
 retry2==0.9.5
 salesforce-cdp-connector==1.0.19  # For Salesforce Data Cloud integration (YET-615: dataspace= support)
 simple-salesforce==1.12.6
-snowflake-connector-python>=3.13.1
+snowflake-connector-python>=4.0.0  # 3.x capped cffi<2.0.0 which blocks cryptography>=46
 # python_version conditions below to resolve urllib3 compatibility issues with snowflake-connector-python
 tableauserverclient==0.25 ; python_version < "3.10"
 tableauserverclient==0.38 ; python_version >= "3.10"
 urllib3~=2.6
 
-teradatasql>=20.0.0.43
+teradatasql>=20.0.0.57  # earlier versions ship a vulnerable Go 1.25.5 stdlib (CVE-2025-68121 + 5 highs)
 oscrypto @ git+https://github.com/wbond/oscrypto@master
 
 impyla==0.22.0
