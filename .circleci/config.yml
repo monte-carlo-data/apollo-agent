@@ -94,15 +94,18 @@ jobs:
       - checkout
       - docker/check:
           use-docker-credentials-store: true
-      # Publish the `base` stage as `<version>-generic-base` so downstream
-      # repos (e.g. hermes-agent) can pin to a specific apollo version that
-      # matches their pip-installed apollo dependency.
+      # Publish the `system-base` stage (apt-only, no venv, no apollo source) as
+      # `<version>-system-base`. Downstream consumers (e.g. hermes-agent) build
+      # their own venv on top against the same native libs without inheriting
+      # apollo's pip-installed Python deps. Replaces the previous `generic-base`
+      # tag, which bundled the venv and caused image bloat for downstream repos
+      # whose pinned versions diverged from apollo's resolved set.
       - docker/build:
-          step-name: Build generic base image
+          step-name: Build system base image
           use-buildkit: true # to build only the required stages
-          extra_build_args: --target base --build-arg code_version=<< parameters.code_version >> --build-arg build_number=<< pipeline.number >>
+          extra_build_args: --target system-base --build-arg code_version=<< parameters.code_version >> --build-arg build_number=<< pipeline.number >>
           image: montecarlodata/<< parameters.docker_hub_repository >>
-          tag: latest-generic-base,<< parameters.code_version >>-generic-base
+          tag: latest-system-base,<< parameters.code_version >>-system-base
       - docker/build:
           step-name: Build AWS generic image
           use-buildkit: true  # to build only the required stages
@@ -121,9 +124,8 @@ jobs:
           extra_build_args: --target azure --build-arg code_version=<< parameters.code_version >> --build-arg build_number=<< pipeline.number >>
           image: montecarlodata/<< parameters.docker_hub_repository >>
           tag: latest-azure,<< parameters.code_version >>-azure
-      - verify-version-in-docker-image:
-          image: montecarlodata/<< parameters.docker_hub_repository >>:latest-generic-base
-          version: << parameters.code_version >>,<< pipeline.number >>
+      # system-base has no apollo source, so there is no /app/apollo/agent/version
+      # file to verify — skip the version check for it.
       - verify-version-in-docker-image:
           image: montecarlodata/<< parameters.docker_hub_repository >>:latest-cloudrun
           version: << parameters.code_version >>,<< pipeline.number >>
@@ -135,7 +137,7 @@ jobs:
           version: << parameters.code_version >>,<< pipeline.number >>
       - docker/push:
           image: montecarlodata/<< parameters.docker_hub_repository >>
-          tag: latest-generic-base,<< parameters.code_version >>-generic-base,latest-cloudrun,<< parameters.code_version >>-cloudrun,latest-azure,<< parameters.code_version >>-azure,latest-aws-generic,<< parameters.code_version >>-aws-generic,latest-aws-proxied,<< parameters.code_version >>-aws-proxied
+          tag: latest-system-base,<< parameters.code_version >>-system-base,latest-cloudrun,<< parameters.code_version >>-cloudrun,latest-azure,<< parameters.code_version >>-azure,latest-aws-generic,<< parameters.code_version >>-aws-generic,latest-aws-proxied,<< parameters.code_version >>-aws-proxied
 
   build-and-push-lambda:
     machine:
