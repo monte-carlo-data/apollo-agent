@@ -258,3 +258,25 @@ class TestInformaticaV2CtpFactoryResolution(TestCase):
         # Raw credentials must not reach the proxy client
         self.assertNotIn("client_id", connect_args)
         self.assertNotIn("client_secret", connect_args)
+
+
+class TestInformaticaV2CtpPreResolvedPath(TestCase):
+    """Verify the `when=raw.session_id is not defined` guards skip both steps when
+    the DC has already pre-resolved the session upstream. Mirrors v1's
+    TestInformaticaCtpPreResolvedPath so a future change to either guard surfaces
+    here in tests rather than at runtime.
+    """
+
+    @patch("requests.post")
+    def test_pre_resolved_session_skips_both_steps(self, mock_post):
+        result = CtpPipeline().execute(
+            INFORMATICA_V2_DEFAULT_CTP,
+            {
+                "session_id": "pre-existing-session",
+                "api_base_url": "https://na1.informaticacloud.com",
+            },
+        )
+
+        mock_post.assert_not_called()
+        self.assertEqual("pre-existing-session", result["session_id"])
+        self.assertEqual("https://na1.informaticacloud.com", result["api_base_url"])
