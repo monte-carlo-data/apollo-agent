@@ -6,6 +6,9 @@ from apollo.integrations.ctp.defaults.informatica_v2 import INFORMATICA_V2_DEFAU
 from apollo.integrations.ctp.errors import CtpPipelineError
 from apollo.integrations.ctp.pipeline import CtpPipeline
 from apollo.integrations.ctp.registry import CtpRegistry
+from apollo.integrations.ctp.transforms.resolve_informatica_session import (
+    _DEFAULT_BASE_URL as _INFORMATICA_DEFAULT_BASE_URL,
+)
 
 # Canned IDP token-endpoint and Informatica /loginOAuth responses
 _IDP_TOKEN_RESPONSE = {
@@ -43,9 +46,6 @@ _PASSWORD_MODE_CREDENTIALS = {
     "base_url": "https://dm-us.informaticacloud.com",
 }
 
-# Backwards-compat alias for tests written before the auth_mode discriminator.
-_FLAT_CREDENTIALS = _OAUTH_MODE_CREDENTIALS
-
 
 def _mock_post(body: dict) -> MagicMock:
     resp = MagicMock()
@@ -73,7 +73,7 @@ class TestInformaticaV2CtpPipeline(TestCase):
 
         result = CtpPipeline().execute(
             INFORMATICA_V2_DEFAULT_CTP,
-            _FLAT_CREDENTIALS,
+            _OAUTH_MODE_CREDENTIALS,
         )
 
         self.assertEqual("session-v2-abc", result["session_id"])
@@ -90,7 +90,7 @@ class TestInformaticaV2CtpPipeline(TestCase):
             _mock_post(_INFORMATICA_LOGIN_OAUTH_RESPONSE),
         ]
 
-        CtpPipeline().execute(INFORMATICA_V2_DEFAULT_CTP, _FLAT_CREDENTIALS)
+        CtpPipeline().execute(INFORMATICA_V2_DEFAULT_CTP, _OAUTH_MODE_CREDENTIALS)
 
         first_call_url = mock_post.call_args_list[0][0][0]
         first_call_data = mock_post.call_args_list[0][1]["data"]
@@ -108,7 +108,7 @@ class TestInformaticaV2CtpPipeline(TestCase):
         ]
 
         creds = {
-            **_FLAT_CREDENTIALS,
+            **_OAUTH_MODE_CREDENTIALS,
             "oauth": {
                 "client_id": "cid",
                 "client_secret": "csec",
@@ -133,7 +133,7 @@ class TestInformaticaV2CtpPipeline(TestCase):
             _mock_post(_INFORMATICA_LOGIN_OAUTH_RESPONSE),
         ]
 
-        CtpPipeline().execute(INFORMATICA_V2_DEFAULT_CTP, _FLAT_CREDENTIALS)
+        CtpPipeline().execute(INFORMATICA_V2_DEFAULT_CTP, _OAUTH_MODE_CREDENTIALS)
 
         second_call_url = mock_post.call_args_list[1][0][0]
         # /ma/api/v2/user/loginOAuth path is exercised when jwt_token is provided
@@ -148,13 +148,18 @@ class TestInformaticaV2CtpPipeline(TestCase):
         ]
 
         creds_without_base_url = {
-            k: v for k, v in _FLAT_CREDENTIALS.items() if k != "base_url"
+            k: v for k, v in _OAUTH_MODE_CREDENTIALS.items() if k != "base_url"
         }
         CtpPipeline().execute(INFORMATICA_V2_DEFAULT_CTP, creds_without_base_url)
 
-        # Second call must still go to a default Informatica login URL
+        # Second call goes to the exact default URL — pin it so silent drift in
+        # `_DEFAULT_BASE_URL` (e.g., dm-us → dm-eu, or to a staging URL) breaks
+        # this test instead of slipping by a substring match.
         second_call_url = mock_post.call_args_list[1][0][0]
-        self.assertIn("informaticacloud.com/ma/api/v2/user/loginOAuth", second_call_url)
+        self.assertEqual(
+            f"{_INFORMATICA_DEFAULT_BASE_URL}/ma/api/v2/user/loginOAuth",
+            second_call_url,
+        )
 
 
 class TestInformaticaV2CtpPasswordMode(TestCase):
@@ -199,7 +204,7 @@ class TestInformaticaV2CtpFailureSurfaces(TestCase):
         mock_post.return_value = idp_failure
 
         with self.assertRaises(CtpPipelineError):
-            CtpPipeline().execute(INFORMATICA_V2_DEFAULT_CTP, _FLAT_CREDENTIALS)
+            CtpPipeline().execute(INFORMATICA_V2_DEFAULT_CTP, _OAUTH_MODE_CREDENTIALS)
 
     @patch("requests.post")
     def test_informatica_login_oauth_failure_raises(self, mock_post):
@@ -214,7 +219,7 @@ class TestInformaticaV2CtpFailureSurfaces(TestCase):
         ]
 
         with self.assertRaises(CtpPipelineError):
-            CtpPipeline().execute(INFORMATICA_V2_DEFAULT_CTP, _FLAT_CREDENTIALS)
+            CtpPipeline().execute(INFORMATICA_V2_DEFAULT_CTP, _OAUTH_MODE_CREDENTIALS)
 
 
 class TestInformaticaV2CtpFactoryResolution(TestCase):
@@ -241,7 +246,7 @@ class TestInformaticaV2CtpFactoryResolution(TestCase):
         ):
             with self.assertRaises(StopIteration):
                 ProxyClientFactory._create_proxy_client(
-                    "informatica-v2", _FLAT_CREDENTIALS, "local"
+                    "informatica-v2", _OAUTH_MODE_CREDENTIALS, "local"
                 )
 
         self.assertIn("connect_args", captured["credentials"])
@@ -253,3 +258,52 @@ class TestInformaticaV2CtpFactoryResolution(TestCase):
         # Raw credentials must not reach the proxy client
         self.assertNotIn("client_id", connect_args)
         self.assertNotIn("client_secret", connect_args)
+
+
+class TestInformaticaV2CtpAuthModeDiscriminator(TestCase):
+    """Pin behavior of the `auth_mode` discriminator at the boundary cases.
+
+    The OAuth step's `when` evaluates `raw.auth_mode == 'oauth'` strictly, so any
+    value other than the exact literal `"oauth"` (case mismatch, missing, None,
+    arbitrary string) falls through to the password path. That's the intended
+    behavior — but it's worth pinning so a future refactor doesn't accidentally
+    make the discriminator case-insensitive (or coerce missing values).
+    """
+
+    @patch("requests.post")
+    def test_case_mismatch_auth_mode_falls_through_to_password_path(self, mock_post):
+        """`auth_mode: "OAuth"` (uppercase) falls through to password mode and
+        therefore fails when required password fields are missing — surfacing
+        clearly rather than silently routing through the OAuth step."""
+        creds = {
+            **_OAUTH_MODE_CREDENTIALS,
+            "auth_mode": "OAuth",  # case-mismatch — strict equality fails
+        }
+
+        with self.assertRaises(CtpPipelineError):
+            CtpPipeline().execute(INFORMATICA_V2_DEFAULT_CTP, creds)
+
+        # Step 1 (OAuth) was skipped — no IDP token call made
+        mock_post.assert_not_called()
+
+
+class TestInformaticaV2CtpPreResolvedPath(TestCase):
+    """Verify the `when=raw.session_id is not defined` guards skip both steps when
+    the DC has already pre-resolved the session upstream. Mirrors v1's
+    TestInformaticaCtpPreResolvedPath so a future change to either guard surfaces
+    here in tests rather than at runtime.
+    """
+
+    @patch("requests.post")
+    def test_pre_resolved_session_skips_both_steps(self, mock_post):
+        result = CtpPipeline().execute(
+            INFORMATICA_V2_DEFAULT_CTP,
+            {
+                "session_id": "pre-existing-session",
+                "api_base_url": "https://na1.informaticacloud.com",
+            },
+        )
+
+        mock_post.assert_not_called()
+        self.assertEqual("pre-existing-session", result["session_id"])
+        self.assertEqual("https://na1.informaticacloud.com", result["api_base_url"])
