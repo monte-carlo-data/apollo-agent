@@ -5,7 +5,6 @@
 FROM python:3.12-slim AS system-base
 
 ENV APP_HOME=/app
-ENV VENV_DIR=.venv
 WORKDIR $APP_HOME
 
 RUN apt-get update
@@ -43,6 +42,8 @@ ENV GUNICORN_TIMEOUT=0
 
 # Allow statements and log messages to immediately appear in the logs
 ENV PYTHONUNBUFFERED=True
+
+ENV VENV_DIR=.venv
 
 COPY requirements.txt ./
 

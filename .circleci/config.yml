@@ -124,8 +124,6 @@ jobs:
           extra_build_args: --target azure --build-arg code_version=<< parameters.code_version >> --build-arg build_number=<< pipeline.number >>
           image: montecarlodata/<< parameters.docker_hub_repository >>
           tag: latest-azure,<< parameters.code_version >>-azure
-      # system-base has no apollo source, so there is no /app/apollo/agent/version
-      # file to verify — skip the version check for it.
       - verify-version-in-docker-image:
           image: montecarlodata/<< parameters.docker_hub_repository >>:latest-cloudrun
           version: << parameters.code_version >>,<< pipeline.number >>
