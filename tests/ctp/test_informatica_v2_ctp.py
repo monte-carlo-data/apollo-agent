@@ -260,6 +260,33 @@ class TestInformaticaV2CtpFactoryResolution(TestCase):
         self.assertNotIn("client_secret", connect_args)
 
 
+class TestInformaticaV2CtpAuthModeDiscriminator(TestCase):
+    """Pin behavior of the `auth_mode` discriminator at the boundary cases.
+
+    The OAuth step's `when` evaluates `raw.auth_mode == 'oauth'` strictly, so any
+    value other than the exact literal `"oauth"` (case mismatch, missing, None,
+    arbitrary string) falls through to the password path. That's the intended
+    behavior — but it's worth pinning so a future refactor doesn't accidentally
+    make the discriminator case-insensitive (or coerce missing values).
+    """
+
+    @patch("requests.post")
+    def test_case_mismatch_auth_mode_falls_through_to_password_path(self, mock_post):
+        """`auth_mode: "OAuth"` (uppercase) falls through to password mode and
+        therefore fails when required password fields are missing — surfacing
+        clearly rather than silently routing through the OAuth step."""
+        creds = {
+            **_OAUTH_MODE_CREDENTIALS,
+            "auth_mode": "OAuth",  # case-mismatch — strict equality fails
+        }
+
+        with self.assertRaises(CtpPipelineError):
+            CtpPipeline().execute(INFORMATICA_V2_DEFAULT_CTP, creds)
+
+        # Step 1 (OAuth) was skipped — no IDP token call made
+        mock_post.assert_not_called()
+
+
 class TestInformaticaV2CtpPreResolvedPath(TestCase):
     """Verify the `when=raw.session_id is not defined` guards skip both steps when
     the DC has already pre-resolved the session upstream. Mirrors v1's
