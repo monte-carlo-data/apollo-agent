@@ -257,3 +257,40 @@ class InformaticaProxyClientSafetyTests(TestCase):
                 output,
                 f"session token leaked in log record: {output}",
             )
+
+
+# ---------------------------------------------------------------------------
+# v2 connection type — proxy client reuse
+# ---------------------------------------------------------------------------
+
+
+class InformaticaV2ProxyClientReuseTests(TestCase):
+    """Lock in that 'informatica-v2' resolves to the same proxy client as 'informatica'.
+
+    v2 differs from v1 in how its session is *obtained* (OAuth client_credentials
+    → JWT → /loginOAuth, vs v1's username/password). Once the session is resolved
+    by the CTP pipeline, the proxy client behavior is identical — so v2 routes
+    through the same _get_proxy_client_informatica factory function. This test
+    guards against accidental divergence (e.g., someone adding a separate v2
+    proxy client without need).
+    """
+
+    def setUp(self) -> None:
+        self._agent = Agent(LoggingUtils())
+
+    @patch("requests.request")
+    def test_v2_connection_type_uses_same_proxy_client(self, mock_request):
+        """v2 connection type drives the same do_http_request path as v1."""
+        mock_request.return_value = _make_api_mock({"items": []})
+
+        self._agent.execute_operation(
+            "informatica-v2",
+            "http_request",
+            _make_operation("/api/v2/mttask"),
+            {"connect_args": _RESOLVED_CONNECT_ARGS},
+        )
+
+        api_url = mock_request.call_args[0][1]
+        self.assertTrue(api_url.startswith(_API_BASE_URL))
+        headers = mock_request.call_args[1]["headers"]
+        self.assertEqual(headers["icSessionId"], _SESSION_ID)
