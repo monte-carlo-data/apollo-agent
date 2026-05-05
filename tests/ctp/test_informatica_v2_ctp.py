@@ -43,9 +43,6 @@ _PASSWORD_MODE_CREDENTIALS = {
     "base_url": "https://dm-us.informaticacloud.com",
 }
 
-# Backwards-compat alias for tests written before the auth_mode discriminator.
-_FLAT_CREDENTIALS = _OAUTH_MODE_CREDENTIALS
-
 
 def _mock_post(body: dict) -> MagicMock:
     resp = MagicMock()
@@ -73,7 +70,7 @@ class TestInformaticaV2CtpPipeline(TestCase):
 
         result = CtpPipeline().execute(
             INFORMATICA_V2_DEFAULT_CTP,
-            _FLAT_CREDENTIALS,
+            _OAUTH_MODE_CREDENTIALS,
         )
 
         self.assertEqual("session-v2-abc", result["session_id"])
@@ -90,7 +87,7 @@ class TestInformaticaV2CtpPipeline(TestCase):
             _mock_post(_INFORMATICA_LOGIN_OAUTH_RESPONSE),
         ]
 
-        CtpPipeline().execute(INFORMATICA_V2_DEFAULT_CTP, _FLAT_CREDENTIALS)
+        CtpPipeline().execute(INFORMATICA_V2_DEFAULT_CTP, _OAUTH_MODE_CREDENTIALS)
 
         first_call_url = mock_post.call_args_list[0][0][0]
         first_call_data = mock_post.call_args_list[0][1]["data"]
@@ -108,7 +105,7 @@ class TestInformaticaV2CtpPipeline(TestCase):
         ]
 
         creds = {
-            **_FLAT_CREDENTIALS,
+            **_OAUTH_MODE_CREDENTIALS,
             "oauth": {
                 "client_id": "cid",
                 "client_secret": "csec",
@@ -133,7 +130,7 @@ class TestInformaticaV2CtpPipeline(TestCase):
             _mock_post(_INFORMATICA_LOGIN_OAUTH_RESPONSE),
         ]
 
-        CtpPipeline().execute(INFORMATICA_V2_DEFAULT_CTP, _FLAT_CREDENTIALS)
+        CtpPipeline().execute(INFORMATICA_V2_DEFAULT_CTP, _OAUTH_MODE_CREDENTIALS)
 
         second_call_url = mock_post.call_args_list[1][0][0]
         # /ma/api/v2/user/loginOAuth path is exercised when jwt_token is provided
@@ -148,7 +145,7 @@ class TestInformaticaV2CtpPipeline(TestCase):
         ]
 
         creds_without_base_url = {
-            k: v for k, v in _FLAT_CREDENTIALS.items() if k != "base_url"
+            k: v for k, v in _OAUTH_MODE_CREDENTIALS.items() if k != "base_url"
         }
         CtpPipeline().execute(INFORMATICA_V2_DEFAULT_CTP, creds_without_base_url)
 
@@ -199,7 +196,7 @@ class TestInformaticaV2CtpFailureSurfaces(TestCase):
         mock_post.return_value = idp_failure
 
         with self.assertRaises(CtpPipelineError):
-            CtpPipeline().execute(INFORMATICA_V2_DEFAULT_CTP, _FLAT_CREDENTIALS)
+            CtpPipeline().execute(INFORMATICA_V2_DEFAULT_CTP, _OAUTH_MODE_CREDENTIALS)
 
     @patch("requests.post")
     def test_informatica_login_oauth_failure_raises(self, mock_post):
@@ -214,7 +211,7 @@ class TestInformaticaV2CtpFailureSurfaces(TestCase):
         ]
 
         with self.assertRaises(CtpPipelineError):
-            CtpPipeline().execute(INFORMATICA_V2_DEFAULT_CTP, _FLAT_CREDENTIALS)
+            CtpPipeline().execute(INFORMATICA_V2_DEFAULT_CTP, _OAUTH_MODE_CREDENTIALS)
 
 
 class TestInformaticaV2CtpFactoryResolution(TestCase):
@@ -241,7 +238,7 @@ class TestInformaticaV2CtpFactoryResolution(TestCase):
         ):
             with self.assertRaises(StopIteration):
                 ProxyClientFactory._create_proxy_client(
-                    "informatica-v2", _FLAT_CREDENTIALS, "local"
+                    "informatica-v2", _OAUTH_MODE_CREDENTIALS, "local"
                 )
 
         self.assertIn("connect_args", captured["credentials"])
