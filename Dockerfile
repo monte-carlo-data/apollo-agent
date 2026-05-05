@@ -1,17 +1,11 @@
-FROM python:3.12-slim AS base
-
-# Web server env var configuration
-ENV GUNICORN_WORKERS=5
-ENV GUNICORN_THREADS=8
-ENV GUNICORN_TIMEOUT=0
-
-# Allow statements and log messages to immediately appear in the logs
-ENV PYTHONUNBUFFERED=True
+# system-base — system-level dependencies only (apt packages, no venv).
+# Published as `<version>-system-base` so downstream consumers (e.g. hermes-agent)
+# can build their own venv against the same native libs without inheriting
+# apollo's pip-installed dependencies.
+FROM python:3.12-slim AS system-base
 
 ENV APP_HOME=/app
-ENV VENV_DIR=.venv
 WORKDIR $APP_HOME
-COPY requirements.txt ./
 
 RUN apt-get update
 # install git as we need it for the direct oscrypto dependency
@@ -23,15 +17,9 @@ RUN apt-get install -y --no-install-recommends libcrypt1
 # openssh-client required by git client
 RUN apt-get install -y openssh-client
 
-RUN python -m venv $VENV_DIR
-RUN . $VENV_DIR/bin/activate && pip install --no-cache-dir -r requirements.txt
-# VULN-423
-RUN . $VENV_DIR/bin/activate && pip install -U pip setuptools
-
 # Azure database clients uses pyodbc which requires unixODBC and 'ODBC Driver 17 for SQL Server'
 # ODBC Driver 17's latest release was April, 2024. To patch vulnerabilities raised since then,
 # we have to apt-get those specific versions:
-RUN apt-get update
 RUN apt-get install -y --no-install-recommends gnupg gnupg2 gnupg1 curl apt-transport-https
 RUN install -m 0755 -d /etc/apt/keyrings
 RUN curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor -o /etc/apt/keyrings/microsoft.gpg
@@ -42,6 +30,27 @@ RUN ACCEPT_EULA=Y apt-get install -y msodbcsql17 unixodbc unixodbc-dev
 
 # clean up all unused libraries
 RUN apt-get autoremove -y && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# base — apollo runtime: venv + apollo's Python deps + apollo source.
+# All apollo target stages (aws_proxied, cloudrun, generic, tests) extend this.
+FROM system-base AS base
+
+# Web server env var configuration
+ENV GUNICORN_WORKERS=5
+ENV GUNICORN_THREADS=8
+ENV GUNICORN_TIMEOUT=0
+
+# Allow statements and log messages to immediately appear in the logs
+ENV PYTHONUNBUFFERED=True
+
+ENV VENV_DIR=.venv
+
+COPY requirements.txt ./
+
+RUN python -m venv $VENV_DIR
+RUN . $VENV_DIR/bin/activate && pip install --no-cache-dir -r requirements.txt
+# VULN-423
+RUN . $VENV_DIR/bin/activate && pip install -U pip setuptools
 
 # copy sources in the last step so we don't install python libraries due to a change in source code
 COPY apollo/ ./apollo
