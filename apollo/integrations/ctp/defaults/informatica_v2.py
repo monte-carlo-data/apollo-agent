@@ -20,7 +20,8 @@ INFORMATICA_V2_DEFAULT_CTP = CtpConfig(
     steps=[
         # Step 1 (OAuth mode only): OAuth grant against the customer's IDP using
         # the shared `oauth` transform. Whatever grant_type `raw.oauth` declares
-        # (client_credentials, password, etc.) is what the transform performs.
+        # (client_credentials or password — the only types the shared transform
+        # supports) is what the transform performs.
         TransformStep(
             type="oauth",
             when="raw.session_id is not defined and raw.auth_mode == 'oauth'",
