@@ -801,3 +801,61 @@ class TestDownloadBytes(TestCase):
         client.download_bytes("https://s3.example/file.jar", no_auth=True)
 
         self.assertTrue(mock_get.call_args.kwargs["stream"])
+
+
+class TestMulesoftAgentEndToEnd(TestCase):
+    """End-to-end integration: Agent.execute_operation('mulesoft', ...) routes
+    raw flat credentials through CTP → HttpProxyClient → requests.request,
+    proving factory wiring + CTP + the new do_request_relative method work
+    together."""
+
+    def setUp(self) -> None:
+        self._agent = Agent(LoggingUtils())
+
+    @patch("requests.request")
+    @patch("apollo.integrations.ctp.transforms.oauth.requests")
+    def test_mulesoft_agent_execute_operation_routes_through_http_proxy(
+        self, mock_oauth_requests, mock_request
+    ):
+        # Stage 1 mock: OAuth POST returns a token.
+        oauth_resp = MagicMock()
+        oauth_resp.json.return_value = {"access_token": "ms-token"}
+        oauth_resp.raise_for_status.return_value = None
+        mock_oauth_requests.post.return_value = oauth_resp
+
+        # Stage 2 mock: downstream API GET returns JSON.
+        api_resp = create_autospec(Response)
+        api_resp.json.return_value = {"orgs": []}
+        mock_request.return_value = api_resp
+
+        operation = {
+            "trace_id": "ms-trace-1",
+            "commands": [
+                {
+                    "method": "do_request_relative",
+                    "kwargs": {
+                        "path": "/apimanager/api/v1/organizations",
+                        "http_method": "GET",
+                    },
+                }
+            ],
+        }
+        raw_creds = {"client_id": "cid", "client_secret": "csec"}
+
+        response = self._agent.execute_operation(
+            "mulesoft", "do_request_relative", operation, raw_creds
+        )
+
+        # OAuth was attempted at the US region endpoint.
+        self.assertEqual(
+            "https://anypoint.mulesoft.com/accounts/api/v2/oauth2/token",
+            mock_oauth_requests.post.call_args.args[0],
+        )
+        # Downstream call hit the right URL with the Bearer header from CTP.
+        mock_request.assert_called_with(
+            "GET",
+            "https://anypoint.mulesoft.com/apimanager/api/v1/organizations",
+            headers={"Authorization": "Bearer ms-token"},
+        )
+        # Response payload propagates through the agent.
+        self.assertEqual({"orgs": []}, response.result.get(ATTRIBUTE_NAME_RESULT))
