@@ -848,6 +848,115 @@ class TestDownloadBytes(TestCase):
         self.assertNotIn("Authorization", sent_headers)
 
 
+class TestDownloadBytesUrlSafety(TestCase):
+    """SSRF defense-in-depth: verify _assert_safe_download_url rejects every
+    non-public IP-literal class (not just RFC1918 / loopback / link-local) and
+    that download_bytes itself refuses to follow redirects."""
+
+    def _make_response(
+        self,
+        status_code: int = 200,
+        chunks: list[bytes] | None = None,
+        headers: dict | None = None,
+    ) -> MagicMock:
+        resp = MagicMock()
+        resp.status_code = status_code
+        resp.headers = headers or {}
+        resp.iter_content.return_value = iter(chunks if chunks is not None else [b""])
+        if status_code >= 400:
+            resp.raise_for_status.side_effect = HTTPError(
+                f"{status_code}", response=resp
+            )
+        else:
+            resp.raise_for_status.return_value = None
+        return resp
+
+    def test_rejects_unspecified_ipv4(self):
+        # 0.0.0.0 is not private/loopback/link-local but is_global is False.
+        client = HttpProxyClient(credentials={"connect_args": {}})
+        with self.assertRaises(HttpClientError) as ctx:
+            client.download_bytes("https://0.0.0.0/file")
+        self.assertIn("non-public", str(ctx.exception))
+
+    def test_rejects_unspecified_ipv6(self):
+        # IPv6 :: — not private/loopback/link-local, but not global either.
+        client = HttpProxyClient(credentials={"connect_args": {}})
+        with self.assertRaises(HttpClientError) as ctx:
+            client.download_bytes("https://[::]/file")
+        self.assertIn("non-public", str(ctx.exception))
+
+    def test_rejects_multicast_ipv4(self):
+        # 224.0.0.0/4 is multicast — is_global is False.
+        client = HttpProxyClient(credentials={"connect_args": {}})
+        with self.assertRaises(HttpClientError) as ctx:
+            client.download_bytes("https://224.0.0.1/file")
+        self.assertIn("non-public", str(ctx.exception))
+
+    def test_rejects_reserved_ipv4(self):
+        # 240.0.0.0/4 is reserved — is_global is False.
+        client = HttpProxyClient(credentials={"connect_args": {}})
+        with self.assertRaises(HttpClientError) as ctx:
+            client.download_bytes("https://240.0.0.1/file")
+        self.assertIn("non-public", str(ctx.exception))
+
+    def test_rejects_imds_link_local(self):
+        # 169.254.169.254 — AWS IMDS, the canonical SSRF target.
+        client = HttpProxyClient(credentials={"connect_args": {}})
+        with self.assertRaises(HttpClientError) as ctx:
+            client.download_bytes("https://169.254.169.254/latest/meta-data/")
+        self.assertIn("non-public", str(ctx.exception))
+
+    def test_rejects_rfc1918(self):
+        client = HttpProxyClient(credentials={"connect_args": {}})
+        with self.assertRaises(HttpClientError) as ctx:
+            client.download_bytes("https://10.0.0.1/file")
+        self.assertIn("non-public", str(ctx.exception))
+
+    @patch("requests.get")
+    def test_dns_hostname_passes_url_safety_check(self, mock_get):
+        # Sanity: legitimate DNS hostnames are not literal IPs; guard short-circuits.
+        mock_get.return_value = MagicMock(
+            status_code=200,
+            headers={},
+            iter_content=MagicMock(return_value=iter([b"data"])),
+            raise_for_status=MagicMock(return_value=None),
+        )
+        client = HttpProxyClient(credentials={"connect_args": {}})
+        client.download_bytes("https://s3.example.com/file")  # no exception
+
+    @patch("requests.get")
+    def test_does_not_follow_redirects(self, mock_get):
+        # download_bytes must pass allow_redirects=False so that a 30x cannot
+        # send the request to an internal/non-https target (SSRF) or forward
+        # credentials when no_auth=False.
+        mock_get.return_value = self._make_response(chunks=[b"data"])
+
+        client = HttpProxyClient(credentials={"connect_args": {}})
+        client.download_bytes("https://s3.example/file.jar", no_auth=True)
+
+        self.assertEqual(False, mock_get.call_args.kwargs["allow_redirects"])
+
+    @patch("requests.get")
+    def test_3xx_response_raises_http_client_error(self, mock_get):
+        # With allow_redirects=False, a 30x is returned as a normal response.
+        # raise_for_status does NOT flag 3xx, so download_bytes must reject it
+        # explicitly — otherwise the empty redirect body would be returned as
+        # the "downloaded" bytes.
+        mock_get.return_value = self._make_response(
+            status_code=302,
+            chunks=[b""],
+            headers={"Location": "https://attacker.example/exfil"},
+        )
+
+        client = HttpProxyClient(credentials={"connect_args": {}})
+        with self.assertRaises(HttpClientError) as ctx:
+            client.download_bytes("https://s3.example/file.jar", no_auth=True)
+        self.assertIn("302", str(ctx.exception))
+        # Error message must not echo the Location URL — it could itself point
+        # at an internal/sensitive host.
+        self.assertNotIn("attacker.example", str(ctx.exception))
+
+
 class TestMulesoftAgentEndToEnd(TestCase):
     """End-to-end integration: Agent.execute_operation('mulesoft', ...) routes
     raw flat credentials through CTP → HttpProxyClient → requests.request,

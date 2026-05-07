@@ -92,7 +92,12 @@ class HttpProxyClient(BaseProxyClient):
             ip = ipaddress.ip_address(host)
         except ValueError:
             return  # not a literal IP — DNS hostname is OK
-        if ip.is_private or ip.is_loopback or ip.is_link_local:
+        # Reject every IP-literal class that is not appropriate as a download
+        # target. `is_global` is False for private (RFC1918), loopback,
+        # link-local, reserved, and unspecified (0.0.0.0 / ::) — but Python's
+        # ipaddress module reports `is_global=True` for multicast (e.g.
+        # 224.0.0.0/4), so we add an explicit multicast check.
+        if not ip.is_global or ip.is_multicast:
             raise HttpClientError(f"download_bytes refuses non-public address: {ip}")
 
     def _attach_auth_header(self, headers: Dict) -> None:
@@ -223,6 +228,12 @@ class HttpProxyClient(BaseProxyClient):
         - 4xx → ``HttpClientError``; 5xx → ``HTTPError`` (matches do_request).
         - The URL is rejected if it is not https or resolves to a non-public
           IP literal — defense-in-depth against SSRF.
+        - Redirects are NOT followed: a 30x response is treated as an
+          ``HttpClientError``. Re-following a redirect would bypass the
+          URL safety guard (allowing SSRF to internal/non-https targets) and,
+          when ``no_auth=False``, could forward credentials to an unintended
+          host. Pre-signed URLs (the motivating use case) resolve directly
+          to bytes — an unexpected redirect indicates a misconfiguration.
         - SSL verification follows ``self._ssl_verify``.
         - Error messages do not include the URL — pre-signed URLs contain a
           signed secret; callers needing verbose error context should use
@@ -234,7 +245,12 @@ class HttpProxyClient(BaseProxyClient):
         if not no_auth:
             self._attach_auth_header(headers)
 
-        request_kwargs: Dict = {"timeout": timeout, "headers": headers, "stream": True}
+        request_kwargs: Dict = {
+            "timeout": timeout,
+            "headers": headers,
+            "stream": True,
+            "allow_redirects": False,
+        }
         if self._ssl_verify is not None:
             request_kwargs["verify"] = self._ssl_verify
 
@@ -246,10 +262,16 @@ class HttpProxyClient(BaseProxyClient):
             ) from None
 
         with response:
+            status = response.status_code
+            # 3xx is not raised by raise_for_status; explicitly reject it so
+            # callers don't silently receive an empty redirect body as "bytes".
+            if 300 <= status < 400:
+                raise HttpClientError(
+                    f"download_bytes refused redirect (HTTP {status})"
+                )
             try:
                 response.raise_for_status()
             except HTTPError:
-                status = response.status_code
                 if self.is_client_error_status_code(status):
                     raise HttpClientError(
                         f"download_bytes failed with HTTP {status}"
