@@ -1,42 +1,18 @@
-import os
 from datetime import timedelta
 from typing import (
-    Optional,
+    Any,
     BinaryIO,
     Dict,
+    Optional,
     Union,
-    cast,
-    Any,
 )
 
-from apollo.common.agent.constants import (
-    PLATFORM_AZURE,
-    PLATFORM_GCP,
-    PLATFORM_AWS,
-    PLATFORM_AWS_GENERIC,
-    STORAGE_TYPE_AZURE,
-    STORAGE_TYPE_GCS,
-    STORAGE_TYPE_S3,
-    STORAGE_TYPE_S3_COMPATIBLE,
-)
-from apollo.common.agent.env_vars import (
-    STORAGE_TYPE_ENV_VAR,
-    STORAGE_PREFIX_ENV_VAR,
-    STORAGE_PREFIX_DEFAULT_VALUE,
-)
-from apollo.common.agent.models import AgentConfigurationError, AgentOperation
-from apollo.common.agent.redact import AgentRedactUtilities
 from apollo.agent.utils import AgentUtils
-from apollo.integrations.azure_blob.azure_blob_reader_writer import (
-    AzureBlobReaderWriter,
-)
+from apollo.common.agent.models import AgentOperation
+from apollo.common.agent.redact import AgentRedactUtilities
 from apollo.integrations.base_proxy_client import BaseProxyClient
-from apollo.integrations.gcs.gcs_reader_writer import GcsReaderWriter
-from apollo.integrations.s3_compatible.s3_compatible_reader_writer import (
-    S3CompatibleReaderWriter,
-)
-from apollo.integrations.s3.s3_reader_writer import S3ReaderWriter
 from apollo.integrations.storage.base_storage_client import BaseStorageClient
+from apollo.integrations.storage.factory import get_storage_client
 
 _API_SERVICE_NAME = "storage"
 _API_VERSION = "v1"
@@ -46,20 +22,6 @@ _ERROR_TYPE_PERMISSIONS = "Permissions"
 
 _BUCKET_NAME_LOG_ATTRIBUTE = "bucket_name"
 _OBJ_TO_WRITE_ARG_NAME = "obj_to_write"
-
-_DEFAULT_PLATFORM_STORAGE = {
-    PLATFORM_AZURE: STORAGE_TYPE_AZURE,
-    PLATFORM_GCP: STORAGE_TYPE_GCS,
-    PLATFORM_AWS: STORAGE_TYPE_S3,
-    PLATFORM_AWS_GENERIC: STORAGE_TYPE_S3,
-}
-
-_STORAGE_CLIENTS = {
-    STORAGE_TYPE_AZURE: AzureBlobReaderWriter,
-    STORAGE_TYPE_GCS: GcsReaderWriter,
-    STORAGE_TYPE_S3: S3ReaderWriter,
-    STORAGE_TYPE_S3_COMPATIBLE: S3CompatibleReaderWriter,
-}
 
 
 class StorageProxyClient(BaseProxyClient):
@@ -76,22 +38,7 @@ class StorageProxyClient(BaseProxyClient):
     """
 
     def __init__(self, platform: str, **kwargs):  # type: ignore
-        storage: Optional[str] = os.getenv(STORAGE_TYPE_ENV_VAR)
-        if not storage:
-            storage = _DEFAULT_PLATFORM_STORAGE.get(platform)
-            if not storage:
-                raise ValueError(f"Missing {STORAGE_TYPE_ENV_VAR} env var")
-
-        prefix: Optional[str] = os.getenv(
-            STORAGE_PREFIX_ENV_VAR, STORAGE_PREFIX_DEFAULT_VALUE
-        )
-        if prefix == "" or prefix == "/":
-            prefix = None
-        storage_client = _STORAGE_CLIENTS.get(storage)
-        if not storage_client:
-            raise AgentConfigurationError(f"Invalid storage type: {storage}")
-
-        self._client = cast(BaseStorageClient, storage_client(prefix=prefix))
+        self._client = get_storage_client(platform=platform)
 
     @property
     def wrapped_client(self):
