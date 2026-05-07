@@ -12,6 +12,7 @@ from retry.api import retry_call
 from apollo.common.agent.models import AgentOperation
 from apollo.common.agent.redact import AgentRedactUtilities
 from apollo.integrations.base_proxy_client import BaseProxyClient
+from apollo.integrations.storage.factory import get_storage_client
 
 _logger = logging.getLogger(__name__)
 
@@ -212,6 +213,60 @@ class HttpProxyClient(BaseProxyClient):
 
         return response.json()
 
+    def _open_download_response(
+        self,
+        url: str,
+        timeout: int,
+        no_auth: bool,
+        additional_headers: Optional[Dict],
+        op_label: str,
+    ) -> requests.Response:
+        """Open a streaming GET response with the full SSRF + redirect + status guards.
+
+        Caller MUST use the returned response via `with response:` to ensure the
+        connection is released on every exit path. ``op_label`` is included in
+        error messages so the user-facing message names the calling method.
+        """
+        self._assert_safe_download_url(url)
+
+        headers = {**additional_headers} if additional_headers else {}
+        if not no_auth:
+            self._attach_auth_header(headers)
+
+        request_kwargs: Dict = {
+            "timeout": timeout,
+            "headers": headers,
+            "stream": True,
+            "allow_redirects": False,
+        }
+        if self._ssl_verify is not None:
+            request_kwargs["verify"] = self._ssl_verify
+
+        try:
+            response = requests.get(url, **request_kwargs)
+        except requests.RequestException as exc:
+            raise HttpClientError(
+                f"{op_label} transport error: {type(exc).__name__}"
+            ) from None
+
+        status = response.status_code
+        if 300 <= status < 400:
+            response.close()  # we're returning before the caller's `with` block
+            raise HttpClientError(f"{op_label} refused redirect (HTTP {status})")
+        try:
+            response.raise_for_status()
+        except HTTPError:
+            if self.is_client_error_status_code(status):
+                response.close()
+                raise HttpClientError(f"{op_label} failed with HTTP {status}") from None
+            new_err = HTTPError(f"{op_label} failed with HTTP {status}")
+            new_err.response = response
+            # close before raising — caller never enters the `with` block
+            response.close()
+            raise new_err from None
+
+        return response
+
     def download_bytes(
         self,
         url: str,
@@ -243,46 +298,13 @@ class HttpProxyClient(BaseProxyClient):
           signed secret; callers needing verbose error context should use
           ``do_request`` with full URLs instead.
         """
-        self._assert_safe_download_url(url)
-
-        headers = {**additional_headers} if additional_headers else {}
-        if not no_auth:
-            self._attach_auth_header(headers)
-
-        request_kwargs: Dict = {
-            "timeout": timeout,
-            "headers": headers,
-            "stream": True,
-            "allow_redirects": False,
-        }
-        if self._ssl_verify is not None:
-            request_kwargs["verify"] = self._ssl_verify
-
-        try:
-            response = requests.get(url, **request_kwargs)
-        except requests.RequestException as exc:
-            raise HttpClientError(
-                f"download_bytes transport error: {type(exc).__name__}"
-            ) from None
-
-        with response:
-            status = response.status_code
-            # 3xx is not raised by raise_for_status; explicitly reject it so
-            # callers don't silently receive an empty redirect body as "bytes".
-            if 300 <= status < 400:
-                raise HttpClientError(
-                    f"download_bytes refused redirect (HTTP {status})"
-                )
-            try:
-                response.raise_for_status()
-            except HTTPError:
-                if self.is_client_error_status_code(status):
-                    raise HttpClientError(
-                        f"download_bytes failed with HTTP {status}"
-                    ) from None
-                new_err = HTTPError(f"download_bytes failed with HTTP {status}")
-                new_err.response = response
-                raise new_err from None
+        with self._open_download_response(
+            url,
+            timeout=timeout,
+            no_auth=no_auth,
+            additional_headers=additional_headers,
+            op_label="download_bytes",
+        ) as response:
             chunks: List[bytes] = []
             size = 0
             for chunk in response.iter_content(chunk_size=8192):
@@ -321,50 +343,26 @@ class HttpProxyClient(BaseProxyClient):
         Use this instead of ``download_bytes`` for payloads that may be large
         enough to matter for memory (the motivating case is MuleSoft Mule
         application JARs which can exceed 100 MiB).
+
+        Configuration:
+            Requires either ``MCD_STORAGE`` env var, or a ``platform`` value passed
+            to ``HttpProxyClient(...)`` whose default backend is recognized
+            (`PLATFORM_AWS`, `PLATFORM_GCP`, `PLATFORM_AZURE`, `PLATFORM_AWS_GENERIC`).
+
+        Raises:
+            HttpClientError: SSRF guard rejection, transport error, 3xx/4xx response,
+                or ``max_bytes`` exceeded.
+            HTTPError: 5xx response.
+            AgentConfigurationError: storage backend is not configured (no
+                ``MCD_STORAGE`` env var and no recognized ``platform``).
         """
-        self._assert_safe_download_url(url)
-
-        headers = {**additional_headers} if additional_headers else {}
-        if not no_auth:
-            self._attach_auth_header(headers)
-
-        request_kwargs: Dict = {
-            "timeout": timeout,
-            "headers": headers,
-            "stream": True,
-            "allow_redirects": False,
-        }
-        if self._ssl_verify is not None:
-            request_kwargs["verify"] = self._ssl_verify
-
-        try:
-            response = requests.get(url, **request_kwargs)
-        except requests.RequestException as exc:
-            raise HttpClientError(
-                f"download_to_storage transport error: {type(exc).__name__}"
-            ) from None
-
-        # Late import: storage layer pulls in cloud SDKs that we don't want at
-        # HttpProxyClient construction time (this method is the only consumer).
-        from apollo.integrations.storage.factory import get_storage_client
-
-        with response:
-            status = response.status_code
-            if 300 <= status < 400:
-                raise HttpClientError(
-                    f"download_to_storage refused redirect (HTTP {status})"
-                )
-            try:
-                response.raise_for_status()
-            except HTTPError:
-                if self.is_client_error_status_code(status):
-                    raise HttpClientError(
-                        f"download_to_storage failed with HTTP {status}"
-                    ) from None
-                new_err = HTTPError(f"download_to_storage failed with HTTP {status}")
-                new_err.response = response
-                raise new_err from None
-
+        with self._open_download_response(
+            url,
+            timeout=timeout,
+            no_auth=no_auth,
+            additional_headers=additional_headers,
+            op_label="download_to_storage",
+        ) as response:
             tmp = tempfile.NamedTemporaryFile(
                 delete=False, suffix=".download_to_storage"
             )
@@ -378,8 +376,7 @@ class HttpProxyClient(BaseProxyClient):
                         size += len(chunk)
                         if max_bytes is not None and size > max_bytes:
                             raise HttpClientError(
-                                f"download_to_storage response exceeded "
-                                f"{max_bytes} bytes"
+                                f"download_to_storage response exceeded {max_bytes} bytes"
                             )
                 finally:
                     tmp.close()

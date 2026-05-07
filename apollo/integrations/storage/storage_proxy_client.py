@@ -26,15 +26,25 @@ _OBJ_TO_WRITE_ARG_NAME = "obj_to_write"
 
 class StorageProxyClient(BaseProxyClient):
     """
-    Proxy client for storage operations, it forwards calls to a `BaseStorageClient`, for example GCS, S3, or S3-compatible storage.
-    The storage client to use is automatically derived from the platform:
-    - AWS -> S3
-    - GCP -> GCS
-    - Generic -> S3/GCS/S3_COMPATIBLE as configured by MCD_STORAGE env var
-    Credentials to use by the storage client are derived from the environment, in the case of S3 from env vars as
-    supported by boto3, for GCS from ADC (Application Default Credentials) that are automatically set when
-    running in CloudRun and can be set with `gcloud` CLI or API in other cases. For S3-compatible storage (MinIO, Ceph, etc.),
-    credentials are provided via MCD_STORAGE_ENDPOINT_URL, MCD_STORAGE_ACCESS_KEY, and MCD_STORAGE_SECRET_KEY environment variables.
+    Proxy client for storage operations, forwarding calls to a `BaseStorageClient`
+    (S3, GCS, Azure Blob, or S3-compatible).
+
+    Storage backend resolution lives in
+    `apollo.integrations.storage.factory.get_storage_client`. See that module for
+    env-var precedence (`MCD_STORAGE` wins; falls back to per-platform default),
+    prefix handling (`MCD_STORAGE_PREFIX`), and the supported storage types.
+
+    Credentials for the underlying backend are derived from the environment:
+    boto3 conventions for S3, ADC for GCS, MCD_STORAGE_ENDPOINT_URL /
+    MCD_STORAGE_ACCESS_KEY / MCD_STORAGE_SECRET_KEY for S3-compatible.
+
+    Raises (on construction):
+        AgentConfigurationError: storage backend is not configured
+            (no `MCD_STORAGE` env var and no recognized `platform`),
+            or the resolved storage type is unknown.
+
+    Note: the missing-config path was previously a `ValueError`; this is now
+    unified under `AgentConfigurationError` from the factory.
     """
 
     def __init__(self, platform: str, **kwargs):  # type: ignore

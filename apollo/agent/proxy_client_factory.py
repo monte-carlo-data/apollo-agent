@@ -57,7 +57,7 @@ def _get_proxy_client_databricks_rest(
 
 
 def _get_proxy_client_http(
-    credentials: Optional[Dict], platform: str, **kwargs  # type: ignore
+    credentials: Optional[Dict], platform: Optional[str] = None, **kwargs  # type: ignore
 ) -> BaseProxyClient:
     from apollo.integrations.http.http_proxy_client import HttpProxyClient
 
