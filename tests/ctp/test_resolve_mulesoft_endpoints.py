@@ -202,6 +202,12 @@ class TestRequiredInputs(TestCase):
             _run(step, {"client_id": "", "client_secret": "sec"})
         self.assertIn("client_id", str(ctx.exception))
 
+    def test_empty_client_secret_raises(self):
+        step = _make_step(_DEFAULT_INPUT)
+        with self.assertRaises(CtpPipelineError) as ctx:
+            _run(step, {"client_id": "id", "client_secret": ""})
+        self.assertIn("client_secret", str(ctx.exception))
+
 
 # ---------------------------------------------------------------------------
 # Output shape
@@ -276,6 +282,16 @@ class TestCredentialSafety(TestCase):
         with self.assertRaises(CtpPipelineError) as ctx:
             _run(step, {"client_secret": self._SECRET})
         self.assertNotIn(self._SECRET, str(ctx.exception))
+
+    def test_http_scheme_override_with_query_secret_does_not_leak_url(self):
+        # If an operator misconfigures auth_url with a token in the query string,
+        # the scheme-rejection error must not echo it back into the CtpPipelineError.
+        secret_in_url = "http://anypoint.mulesoft.com/oauth?secret=DO-NOT-LEAK-IN-ERROR"
+        step = _make_step({**_DEFAULT_INPUT, "auth_url": secret_in_url})
+        with self.assertRaises(CtpPipelineError) as ctx:
+            _run(step, {"client_id": "id", "client_secret": "sec"})
+        self.assertNotIn("DO-NOT-LEAK-IN-ERROR", str(ctx.exception))
+        self.assertNotIn(secret_in_url, str(ctx.exception))
 
 
 # ---------------------------------------------------------------------------

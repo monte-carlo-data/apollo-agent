@@ -1,6 +1,7 @@
 from typing import NotRequired, Required, TypedDict
 
 from apollo.integrations.ctp.models import CtpConfig, MapperConfig, TransformStep
+from apollo.integrations.ctp.registry import CtpRegistry
 
 
 class MulesoftClientArgs(TypedDict):
@@ -59,7 +60,5 @@ MULESOFT_DEFAULT_CTP = CtpConfig(
     ),
 )
 
-
-from apollo.integrations.ctp.registry import CtpRegistry  # noqa: E402
 
 CtpRegistry.register("mulesoft", MULESOFT_DEFAULT_CTP)

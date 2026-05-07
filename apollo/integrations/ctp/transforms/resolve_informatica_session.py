@@ -143,22 +143,6 @@ class ResolveInformaticaSessionTransform(Transform):
         state.derived[step.output["api_base_url"]] = api_base_url
 
     @staticmethod
-    def _require(
-        step: TransformStep,
-        state: PipelineState,
-        key: str,
-        reason: str,
-    ) -> str:
-        value = TemplateEngine.render(step.input.get(key, "{{ none }}"), state)
-        if not value:
-            raise CtpPipelineError(
-                stage="transform_execute",
-                step_name=step.type,
-                message=f"'{key}' is {reason}",
-            )
-        return value
-
-    @staticmethod
     def _login_v2(
         base_url: str,
         username: str,

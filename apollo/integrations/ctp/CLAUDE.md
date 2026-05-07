@@ -21,7 +21,9 @@ the ODBC/driver-specific format each integration needs.
 
 1. Create `apollo/integrations/ctp/defaults/<connector>.py` with a `TypedDict` for the
    output shape and a `CtpConfig` instance (follow `sql_server.py` as a pattern for simple
-   ODBC connectors, or `starburst_galaxy.py` for a connector with transform steps).
+   ODBC connectors, or `starburst_galaxy.py` for a connector with transform steps). For
+   HTTP/OAuth connectors that need a custom resolve transform feeding the shared `oauth` step,
+   follow `mulesoft.py`.
 2. At module level in that file, call `CtpRegistry.register(...)`:
    ```python
    CtpRegistry.register("my-connector", MY_CONNECTOR_DEFAULT_CTP)
@@ -30,15 +32,27 @@ the ODBC/driver-specific format each integration needs.
    ```python
    import apollo.integrations.ctp.defaults.<connector>  # noqa: F401
    ```
+   If the connector introduces a new transform function (e.g. a custom resolve step), also
+   register it inside `_discover()` in `apollo/integrations/ctp/transforms/registry.py`.
 3. Update the proxy client (`__init__`) to accept `connect_args` as a dict and serialize
    it to the driver-specific format (see `MsFabricProxyClient` for the dict→ODBC pattern).
+   If the connector reuses the generic `HttpProxyClient` (via `_get_proxy_client_http`), no
+   proxy-client subclass is needed — the CTP just emits connect_args matching
+   `HttpProxyClient`'s contract (`token`, `auth_type`, `api_base_url`, `ssl_verify`). Add
+   `"my-connector": _get_proxy_client_http` to `_CLIENT_FACTORY_MAPPING` in
+   `apollo/agent/proxy_client_factory.py`. See `mulesoft.py` and `defaults/mulesoft.py` as
+   reference.
 
-## Phase 2 migration status
+## CTP-enrolled connectors
 
-Phase 2 connectors (sql-server, azure-sql-database, azure-dedicated-sql-pool, microsoft-fabric)
-are now fully migrated: their CTP configs in `defaults/sql_server.py` are registered in
+**ODBC connectors** (sql-server, azure-sql-database, azure-dedicated-sql-pool, microsoft-fabric)
+are fully migrated: their CTP configs in `defaults/sql_server.py` are registered in
 `_discover()`. SQL Server / Azure variants retain a legacy pre-built ODBC string path for
 backwards compatibility with older DC versions; Fabric requires a dict (CTP path only).
+
+**HTTP/OAuth connectors** — MuleSoft (`mulesoft` connection type) is CTP-enrolled and uses
+`HttpProxyClient` via `_get_proxy_client_http`. No ODBC string is involved; the pipeline
+emits `token`, `auth_type`, `api_base_url`, and `ssl_verify` directly.
 
 ## Security note
 
