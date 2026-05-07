@@ -81,6 +81,45 @@ class TestProxyClientFactoryCtp(TestCase):
             "Bearer abc123", captured["credentials"]["connect_args"]["token"]
         )
 
+    def test_mulesoft_credentials_resolved_into_http_proxy_client_shape(self):
+        # Mulesoft routes through HttpProxyClient — verify CTP transforms the
+        # raw client_id/secret into the connect_args shape HttpProxyClient
+        # consumes (token, auth_type, api_base_url) before the factory runs.
+        mulesoft_creds = {"client_id": "cid", "client_secret": "csec"}
+        captured = {}
+
+        def fake_factory(credentials, platform):
+            captured["credentials"] = credentials
+            raise StopIteration
+
+        # Mock the OAuth POST so the CTP pipeline produces a real token.
+        with patch("apollo.integrations.ctp.transforms.oauth.requests") as mock_req:
+            mock_resp = mock_req.post.return_value
+            mock_resp.json.return_value = {"access_token": "ms-token"}
+            mock_resp.raise_for_status.return_value = None
+
+            with patch(
+                "apollo.agent.proxy_client_factory._CLIENT_FACTORY_MAPPING",
+                {"mulesoft": fake_factory},
+            ):
+                with self.assertRaises(StopIteration):
+                    ProxyClientFactory._create_proxy_client(
+                        "mulesoft", mulesoft_creds, "local"
+                    )
+
+        ca = captured["credentials"]["connect_args"]
+        self.assertEqual("ms-token", ca["token"])
+        self.assertEqual("Bearer", ca["auth_type"])
+        self.assertEqual("https://anypoint.mulesoft.com", ca["api_base_url"])
+
+    def test_mulesoft_factory_entry_resolves_to_http_proxy_client_factory(self):
+        from apollo.agent.proxy_client_factory import (
+            _CLIENT_FACTORY_MAPPING,
+            _get_proxy_client_http,
+        )
+
+        self.assertIs(_CLIENT_FACTORY_MAPPING["mulesoft"], _get_proxy_client_http)
+
     def test_dc_shaped_credentials_run_through_ctp(self):
         # DC pre-shapes credentials into connect_args before calling the agent.
         # CTP unwraps the inner dict and runs it through the pipeline, so
