@@ -81,7 +81,9 @@ class TestMysqlCtp(TestCase):
         self.assertIsInstance(result["ssl"], ssl.SSLContext)
 
     @patch("ssl.SSLContext.load_verify_locations")
-    def test_resolve_mysql_dc_pre_shaped_credentials_with_outer_ssl_options(self, _mock_load):
+    def test_resolve_mysql_dc_pre_shaped_credentials_with_outer_ssl_options(
+        self, _mock_load
+    ):
         """SUP-373: this is the credentials shape the data-collector actually sends to apollo
         for the mysql agent path (see DC clients/plugins/plugin_mysql.py:48-51):
 
