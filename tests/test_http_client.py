@@ -1236,3 +1236,44 @@ class TestDownloadToStorage(TestCase):
             os.path.exists(captured_paths[0]),
             f"tempfile {captured_paths[0]} should have been deleted",
         )
+
+    @patch("requests.get")
+    def test_platform_forwarded_to_storage_factory(self, mock_get):
+        """The agent platform passed to HttpProxyClient must be forwarded to
+        get_storage_client so the platform→backend default (S3/GCS/Azure)
+        applies in production agents where MCD_STORAGE is not set.
+        """
+        from apollo.common.agent.constants import PLATFORM_AWS
+
+        mock_get.return_value = self._make_response(chunks=[b"data"])
+        storage_client = MagicMock()
+        storage_client.upload_file = MagicMock()
+
+        client = HttpProxyClient(
+            credentials={"connect_args": {}}, platform=PLATFORM_AWS
+        )
+        with patch(
+            "apollo.integrations.storage.factory.get_storage_client",
+            return_value=storage_client,
+        ) as mock_factory:
+            client.download_to_storage("https://s3.example/file.jar", "uploads/foo.jar")
+
+        mock_factory.assert_called_once_with(platform=PLATFORM_AWS)
+
+    @patch("requests.get")
+    def test_platform_defaults_to_none_when_not_supplied(self, mock_get):
+        """Direct constructions (DatabricksRest, tests) that omit platform must
+        still work — get_storage_client receives platform=None and falls back
+        to MCD_STORAGE (the local-development path)."""
+        mock_get.return_value = self._make_response(chunks=[b"data"])
+        storage_client = MagicMock()
+        storage_client.upload_file = MagicMock()
+
+        client = HttpProxyClient(credentials={"connect_args": {}})
+        with patch(
+            "apollo.integrations.storage.factory.get_storage_client",
+            return_value=storage_client,
+        ) as mock_factory:
+            client.download_to_storage("https://s3.example/file.jar", "uploads/foo.jar")
+
+        mock_factory.assert_called_once_with(platform=None)

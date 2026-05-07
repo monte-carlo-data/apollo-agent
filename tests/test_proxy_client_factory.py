@@ -93,3 +93,34 @@ class TestGetNativeConnectionTypes(TestCase):
     def test_returns_strings(self):
         result = get_native_connection_types()
         self.assertTrue(all(isinstance(t, str) for t in result))
+
+
+class TestHttpProxyClientFactoryWiring(TestCase):
+    """Lock in that `_get_proxy_client_http` forwards `platform` to
+    `HttpProxyClient`. Required for `download_to_storage` to use the
+    platform-default storage backend (S3/GCS/Azure) when MCD_STORAGE
+    is unset — which is the production deployment shape."""
+
+    def test_http_factory_forwards_platform_to_client(self):
+        from apollo.agent.proxy_client_factory import _get_proxy_client_http
+        from apollo.common.agent.constants import PLATFORM_AWS
+
+        client = _get_proxy_client_http(
+            credentials={"connect_args": {}}, platform=PLATFORM_AWS
+        )
+        self.assertEqual(PLATFORM_AWS, client._platform)
+
+    def test_http_factory_forwards_platform_for_mulesoft(self):
+        # mulesoft routes through the same _get_proxy_client_http; explicit
+        # coverage that the dispatch keeps the platform wired.
+        from apollo.agent.proxy_client_factory import (
+            _CLIENT_FACTORY_MAPPING,
+            _get_proxy_client_http,
+        )
+        from apollo.common.agent.constants import PLATFORM_AZURE
+
+        self.assertIs(_CLIENT_FACTORY_MAPPING["mulesoft"], _get_proxy_client_http)
+        client = _CLIENT_FACTORY_MAPPING["mulesoft"](
+            {"connect_args": {}}, platform=PLATFORM_AZURE
+        )
+        self.assertEqual(PLATFORM_AZURE, client._platform)
