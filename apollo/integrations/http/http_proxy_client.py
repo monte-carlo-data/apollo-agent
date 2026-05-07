@@ -50,8 +50,20 @@ class HttpProxyClient(BaseProxyClient):
     - `disabled`: Set to True to disable SSL verification
     """
 
-    def __init__(self, credentials: Optional[Dict], **kwargs):  # type: ignore
+    def __init__(
+        self,
+        credentials: Optional[Dict],
+        platform: Optional[str] = None,
+        **kwargs,  # type: ignore
+    ):
         self._ssl_verify: Union[bool, str, None] = None
+        # `platform` is forwarded to the storage factory by `download_to_storage`
+        # so the configured backend (S3/GCS/Azure) can be derived from the agent
+        # platform when `MCD_STORAGE` is unset (the production default — the env
+        # var is only set for local development). Defaults to None so direct
+        # callers (e.g. DatabricksRestProxyClient) that don't use
+        # download_to_storage keep working.
+        self._platform: Optional[str] = platform
 
         if credentials and "connect_args" in credentials:
             self._credentials = credentials["connect_args"]
@@ -82,14 +94,17 @@ class HttpProxyClient(BaseProxyClient):
 
     @staticmethod
     def _assert_safe_download_url(url: str) -> None:
+        # Phrasing is method-agnostic so the same helper can be reused by every
+        # streaming download entry point on this client (download_bytes,
+        # download_to_storage, future additions) without misnaming the caller.
         parts = urlsplit(url)
         if parts.scheme != "https":
             raise HttpClientError(
-                f"download_bytes requires https scheme; got '{parts.scheme}'"
+                f"download requires https scheme; got '{parts.scheme}'"
             )
         host = (parts.hostname or "").lower()
         if host in ("", "localhost"):
-            raise HttpClientError(f"download_bytes refuses '{host or '<empty>'}' host")
+            raise HttpClientError(f"download refuses '{host or '<empty>'}' host")
         try:
             ip = ipaddress.ip_address(host)
         except ValueError:
@@ -100,7 +115,7 @@ class HttpProxyClient(BaseProxyClient):
         # ipaddress module reports `is_global=True` for multicast (e.g.
         # 224.0.0.0/4), so we add an explicit multicast check.
         if not ip.is_global or ip.is_multicast:
-            raise HttpClientError(f"download_bytes refuses non-public address: {ip}")
+            raise HttpClientError(f"download refuses non-public address: {ip}")
 
     def _attach_auth_header(self, headers: Dict) -> None:
         if self._credentials and "token" in self._credentials:
@@ -368,7 +383,11 @@ class HttpProxyClient(BaseProxyClient):
                             )
                 finally:
                     tmp.close()
-                get_storage_client().upload_file(storage_key, tmp.name)
+                # Forward the agent platform so the storage factory can fall back
+                # to the platform default (S3/GCS/Azure) when MCD_STORAGE is unset.
+                get_storage_client(platform=self._platform).upload_file(
+                    storage_key, tmp.name
+                )
             finally:
                 # Best-effort cleanup; never let an unlink failure mask the
                 # original exception (or stomp on a successful return).
