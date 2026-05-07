@@ -1,5 +1,7 @@
 import ipaddress
 import logging
+import os
+import tempfile
 from typing import Dict, List, Optional, Tuple, Union
 from urllib.parse import urlsplit
 
@@ -278,6 +280,104 @@ class HttpProxyClient(BaseProxyClient):
                         f"download_bytes response exceeded {max_bytes} bytes"
                     )
             return b"".join(chunks)
+
+    def download_to_storage(
+        self,
+        url: str,
+        storage_key: str,
+        timeout: int = 300,
+        max_bytes: Optional[int] = None,
+        no_auth: bool = True,
+        additional_headers: Optional[Dict] = None,
+    ) -> str:
+        """Stream a binary download into the agent's configured storage backend
+        (S3 / GCS / Azure Blob / S3-compatible) without holding the payload in
+        memory — only one chunk (8 KiB) is in memory at any time.
+
+        Bytes are spooled to a tempfile as they arrive, then handed to the
+        storage backend's ``upload_file``; the tempfile is deleted in the
+        ``finally``. Returns the supplied ``storage_key``.
+
+        Same safety surface as ``download_bytes``: HTTPS-only, non-public IP
+        literals (incl. multicast) rejected, redirects refused, ``max_bytes``
+        cap fires mid-stream, error messages strip the URL, connection released
+        on every exit path.
+
+        Use this instead of ``download_bytes`` for payloads that may be large
+        enough to matter for memory (the motivating case is MuleSoft Mule
+        application JARs which can exceed 100 MiB).
+        """
+        self._assert_safe_download_url(url)
+
+        headers = {**additional_headers} if additional_headers else {}
+        if not no_auth:
+            self._attach_auth_header(headers)
+
+        request_kwargs: Dict = {
+            "timeout": timeout,
+            "headers": headers,
+            "stream": True,
+            "allow_redirects": False,
+        }
+        if self._ssl_verify is not None:
+            request_kwargs["verify"] = self._ssl_verify
+
+        try:
+            response = requests.get(url, **request_kwargs)
+        except requests.RequestException as exc:
+            raise HttpClientError(
+                f"download_to_storage transport error: {type(exc).__name__}"
+            ) from None
+
+        # Late import: storage layer pulls in cloud SDKs that we don't want at
+        # HttpProxyClient construction time (this method is the only consumer).
+        from apollo.integrations.storage.factory import get_storage_client
+
+        with response:
+            status = response.status_code
+            if 300 <= status < 400:
+                raise HttpClientError(
+                    f"download_to_storage refused redirect (HTTP {status})"
+                )
+            try:
+                response.raise_for_status()
+            except HTTPError:
+                if self.is_client_error_status_code(status):
+                    raise HttpClientError(
+                        f"download_to_storage failed with HTTP {status}"
+                    ) from None
+                new_err = HTTPError(f"download_to_storage failed with HTTP {status}")
+                new_err.response = response
+                raise new_err from None
+
+            tmp = tempfile.NamedTemporaryFile(
+                delete=False, suffix=".download_to_storage"
+            )
+            try:
+                size = 0
+                try:
+                    for chunk in response.iter_content(chunk_size=8192):
+                        if not chunk:
+                            continue
+                        tmp.write(chunk)
+                        size += len(chunk)
+                        if max_bytes is not None and size > max_bytes:
+                            raise HttpClientError(
+                                f"download_to_storage response exceeded "
+                                f"{max_bytes} bytes"
+                            )
+                finally:
+                    tmp.close()
+                get_storage_client().upload_file(storage_key, tmp.name)
+            finally:
+                # Best-effort cleanup; never let an unlink failure mask the
+                # original exception (or stomp on a successful return).
+                try:
+                    os.unlink(tmp.name)
+                except OSError:
+                    pass
+
+        return storage_key
 
     def do_request_with_retry(
         self,
