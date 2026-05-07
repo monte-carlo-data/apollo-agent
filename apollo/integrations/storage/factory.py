@@ -3,6 +3,11 @@
 Factored out of `StorageProxyClient` so other proxy clients (e.g.
 `HttpProxyClient.download_to_storage`) can grab the configured storage
 backend without constructing a full `StorageProxyClient`.
+
+Raises `AgentConfigurationError` if no storage type is resolved or if the
+resolved type is unknown.  Note: the missing-config path was previously raised
+as `ValueError` from `StorageProxyClient.__init__`; this factory unifies both
+error paths under `AgentConfigurationError`.
 """
 
 import os
@@ -24,14 +29,6 @@ from apollo.common.agent.env_vars import (
     STORAGE_TYPE_ENV_VAR,
 )
 from apollo.common.agent.models import AgentConfigurationError
-from apollo.integrations.azure_blob.azure_blob_reader_writer import (
-    AzureBlobReaderWriter,
-)
-from apollo.integrations.gcs.gcs_reader_writer import GcsReaderWriter
-from apollo.integrations.s3.s3_reader_writer import S3ReaderWriter
-from apollo.integrations.s3_compatible.s3_compatible_reader_writer import (
-    S3CompatibleReaderWriter,
-)
 from apollo.integrations.storage.base_storage_client import BaseStorageClient
 
 _DEFAULT_PLATFORM_STORAGE = {
@@ -39,13 +36,6 @@ _DEFAULT_PLATFORM_STORAGE = {
     PLATFORM_GCP: STORAGE_TYPE_GCS,
     PLATFORM_AWS: STORAGE_TYPE_S3,
     PLATFORM_AWS_GENERIC: STORAGE_TYPE_S3,
-}
-
-_STORAGE_CLIENTS = {
-    STORAGE_TYPE_AZURE: AzureBlobReaderWriter,
-    STORAGE_TYPE_GCS: GcsReaderWriter,
-    STORAGE_TYPE_S3: S3ReaderWriter,
-    STORAGE_TYPE_S3_COMPATIBLE: S3CompatibleReaderWriter,
 }
 
 
@@ -71,8 +61,29 @@ def get_storage_client(platform: Optional[str] = None) -> BaseStorageClient:
             f"Missing {STORAGE_TYPE_ENV_VAR} env var and no platform default available"
         )
 
-    storage_class = _STORAGE_CLIENTS.get(storage)
-    if not storage_class:
+    # Import driver modules only when needed so that importing this factory
+    # module does not pull all cloud SDKs into the process.
+    if storage == STORAGE_TYPE_S3:
+        from apollo.integrations.s3.s3_reader_writer import S3ReaderWriter
+
+        storage_class = S3ReaderWriter
+    elif storage == STORAGE_TYPE_GCS:
+        from apollo.integrations.gcs.gcs_reader_writer import GcsReaderWriter
+
+        storage_class = GcsReaderWriter
+    elif storage == STORAGE_TYPE_AZURE:
+        from apollo.integrations.azure_blob.azure_blob_reader_writer import (
+            AzureBlobReaderWriter,
+        )
+
+        storage_class = AzureBlobReaderWriter
+    elif storage == STORAGE_TYPE_S3_COMPATIBLE:
+        from apollo.integrations.s3_compatible.s3_compatible_reader_writer import (
+            S3CompatibleReaderWriter,
+        )
+
+        storage_class = S3CompatibleReaderWriter
+    else:
         raise AgentConfigurationError(f"Invalid storage type: {storage}")
 
     prefix: Optional[str] = os.getenv(

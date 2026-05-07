@@ -11,6 +11,7 @@ from unittest.mock import MagicMock, patch
 
 from apollo.common.agent.constants import (
     PLATFORM_AWS,
+    PLATFORM_AWS_GENERIC,
     PLATFORM_AZURE,
     PLATFORM_GCP,
     STORAGE_TYPE_AZURE,
@@ -19,23 +20,19 @@ from apollo.common.agent.constants import (
     STORAGE_TYPE_S3_COMPATIBLE,
 )
 from apollo.common.agent.env_vars import (
+    STORAGE_PREFIX_DEFAULT_VALUE,
     STORAGE_PREFIX_ENV_VAR,
     STORAGE_TYPE_ENV_VAR,
 )
 from apollo.common.agent.models import AgentConfigurationError
-from apollo.integrations.storage import factory as factory_module
 from apollo.integrations.storage.factory import get_storage_client
 
-
-def _patched_clients(stub: MagicMock) -> dict:
-    """Map every storage type to the same MagicMock — so tests can assert which
-    type was selected by inspecting the kwargs the mock was called with."""
-    return {
-        STORAGE_TYPE_AZURE: stub,
-        STORAGE_TYPE_GCS: stub,
-        STORAGE_TYPE_S3: stub,
-        STORAGE_TYPE_S3_COMPATIBLE: stub,
-    }
+_S3_PATH = "apollo.integrations.s3.s3_reader_writer.S3ReaderWriter"
+_GCS_PATH = "apollo.integrations.gcs.gcs_reader_writer.GcsReaderWriter"
+_AZURE_PATH = (
+    "apollo.integrations.azure_blob.azure_blob_reader_writer.AzureBlobReaderWriter"
+)
+_S3_COMPAT_PATH = "apollo.integrations.s3_compatible.s3_compatible_reader_writer.S3CompatibleReaderWriter"
 
 
 class TestGetStorageClient(TestCase):
@@ -53,61 +50,42 @@ class TestGetStorageClient(TestCase):
             else:
                 os.environ[k] = v
 
-    def _patch_clients_with_stub(self):
-        stub = MagicMock(name="storage_client_class")
-        return stub, patch.dict(
-            factory_module._STORAGE_CLIENTS, _patched_clients(stub), clear=True
-        )
-
     def test_env_var_wins_over_platform_default(self):
         os.environ[STORAGE_TYPE_ENV_VAR] = STORAGE_TYPE_S3_COMPATIBLE
-        stub, ctx = self._patch_clients_with_stub()
-        with ctx:
-            get_storage_client(platform=PLATFORM_AZURE)  # would default to azure
-        # The env var pin (S3_COMPATIBLE) wins over the platform default (Azure).
-        # All four classes are the same stub, so we assert it was called once,
-        # not which class.
-        self.assertEqual(1, stub.call_count)
+        s3_compat_stub = MagicMock(name="s3-compat")
+        azure_stub = MagicMock(name="azure")
+        with patch(
+            _S3_COMPAT_PATH,
+            new=s3_compat_stub,
+        ), patch(
+            _AZURE_PATH,
+            new=azure_stub,
+        ):
+            get_storage_client(platform=PLATFORM_AZURE)  # would default to Azure
+        self.assertEqual(1, s3_compat_stub.call_count)
+        self.assertEqual(0, azure_stub.call_count)
 
     def test_platform_default_aws(self):
-        stub, ctx = self._patch_clients_with_stub()
-        with patch.dict(
-            factory_module._STORAGE_CLIENTS,
-            {
-                STORAGE_TYPE_S3: stub,
-                STORAGE_TYPE_GCS: MagicMock(),
-                STORAGE_TYPE_AZURE: MagicMock(),
-            },
-            clear=True,
-        ):
+        s3_stub = MagicMock(name="s3")
+        with patch(_S3_PATH, new=s3_stub), patch(_GCS_PATH), patch(_AZURE_PATH):
             get_storage_client(platform=PLATFORM_AWS)
-        self.assertEqual(1, stub.call_count)
+        self.assertEqual(1, s3_stub.call_count)
+
+    def test_platform_default_aws_generic(self):
+        s3_stub = MagicMock(name="s3")
+        with patch(_S3_PATH, new=s3_stub):
+            get_storage_client(platform=PLATFORM_AWS_GENERIC)
+        self.assertEqual(1, s3_stub.call_count)
 
     def test_platform_default_gcp(self):
         gcs_stub = MagicMock(name="gcs")
-        with patch.dict(
-            factory_module._STORAGE_CLIENTS,
-            {
-                STORAGE_TYPE_GCS: gcs_stub,
-                STORAGE_TYPE_S3: MagicMock(),
-                STORAGE_TYPE_AZURE: MagicMock(),
-            },
-            clear=True,
-        ):
+        with patch(_GCS_PATH, new=gcs_stub), patch(_S3_PATH), patch(_AZURE_PATH):
             get_storage_client(platform=PLATFORM_GCP)
         self.assertEqual(1, gcs_stub.call_count)
 
     def test_platform_default_azure(self):
         az_stub = MagicMock(name="azure")
-        with patch.dict(
-            factory_module._STORAGE_CLIENTS,
-            {
-                STORAGE_TYPE_AZURE: az_stub,
-                STORAGE_TYPE_S3: MagicMock(),
-                STORAGE_TYPE_GCS: MagicMock(),
-            },
-            clear=True,
-        ):
+        with patch(_AZURE_PATH, new=az_stub), patch(_S3_PATH), patch(_GCS_PATH):
             get_storage_client(platform=PLATFORM_AZURE)
         self.assertEqual(1, az_stub.call_count)
 
@@ -125,23 +103,31 @@ class TestGetStorageClient(TestCase):
     def test_prefix_env_var_passed_through(self):
         os.environ[STORAGE_TYPE_ENV_VAR] = STORAGE_TYPE_S3
         os.environ[STORAGE_PREFIX_ENV_VAR] = "my-prefix"
-        stub, ctx = self._patch_clients_with_stub()
-        with ctx:
+        s3_stub = MagicMock(name="s3")
+        with patch(_S3_PATH, new=s3_stub):
             get_storage_client()
-        stub.assert_called_once_with(prefix="my-prefix")
+        s3_stub.assert_called_once_with(prefix="my-prefix")
 
     def test_empty_prefix_collapses_to_none(self):
         os.environ[STORAGE_TYPE_ENV_VAR] = STORAGE_TYPE_S3
         os.environ[STORAGE_PREFIX_ENV_VAR] = ""
-        stub, ctx = self._patch_clients_with_stub()
-        with ctx:
+        s3_stub = MagicMock(name="s3")
+        with patch(_S3_PATH, new=s3_stub):
             get_storage_client()
-        stub.assert_called_once_with(prefix=None)
+        s3_stub.assert_called_once_with(prefix=None)
 
     def test_slash_prefix_collapses_to_none(self):
         os.environ[STORAGE_TYPE_ENV_VAR] = STORAGE_TYPE_S3
         os.environ[STORAGE_PREFIX_ENV_VAR] = "/"
-        stub, ctx = self._patch_clients_with_stub()
-        with ctx:
+        s3_stub = MagicMock(name="s3")
+        with patch(_S3_PATH, new=s3_stub):
             get_storage_client()
-        stub.assert_called_once_with(prefix=None)
+        s3_stub.assert_called_once_with(prefix=None)
+
+    def test_default_prefix_used_when_env_var_unset(self):
+        os.environ[STORAGE_TYPE_ENV_VAR] = STORAGE_TYPE_S3
+        # STORAGE_PREFIX_ENV_VAR was stripped in setUp — should default to "mcd".
+        s3_stub = MagicMock(name="s3")
+        with patch(_S3_PATH, new=s3_stub):
+            get_storage_client()
+        s3_stub.assert_called_once_with(prefix=STORAGE_PREFIX_DEFAULT_VALUE)
