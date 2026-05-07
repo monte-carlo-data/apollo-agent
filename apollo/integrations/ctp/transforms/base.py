@@ -56,6 +56,30 @@ class Transform(ABC):
                 )
         self._execute(step, state)
 
+    @staticmethod
+    def _require(
+        step: TransformStep,
+        state: PipelineState,
+        key: str,
+        reason: str,
+    ) -> str:
+        """Render an input template and require a non-empty value.
+
+        The error message contains only the key name, never the rendered value —
+        safe to use for required-secret checks. Treats both missing keys and
+        empty/None values as missing.
+        """
+        from apollo.integrations.ctp.template import TemplateEngine
+
+        value = TemplateEngine.render(step.input.get(key, "{{ none }}"), state)
+        if not value:
+            raise CtpPipelineError(
+                stage="transform_execute",
+                step_name=step.type,
+                message=f"'{key}' is {reason}",
+            )
+        return value
+
     @abstractmethod
     def _execute(self, step: TransformStep, state: PipelineState) -> None:
         """Execute this transform. Writes output additively into state.derived.

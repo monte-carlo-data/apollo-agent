@@ -612,7 +612,6 @@ class TestDoRequestRelative(TestCase):
     def test_4xx_raises_http_client_error(self, mock_request):
         mock_response = create_autospec(Response)
         mock_response.status_code = 404
-        mock_response.text = "not found"
         mock_response.raise_for_status.side_effect = HTTPError(
             "failed", response=mock_response
         )
@@ -628,6 +627,27 @@ class TestDoRequestRelative(TestCase):
         )
         with self.assertRaises(HttpClientError):
             client.do_request_relative("/v1/foo", http_method="GET")
+
+    @patch("requests.request")
+    def test_5xx_raises_http_error_not_http_client_error(self, mock_request):
+        mock_response = create_autospec(Response)
+        mock_response.status_code = 500
+        mock_response.raise_for_status.side_effect = HTTPError(
+            "server error", response=mock_response
+        )
+        mock_request.return_value = mock_response
+
+        client = HttpProxyClient(
+            credentials={
+                "connect_args": {
+                    "token": "tok",
+                    "api_base_url": "https://anypoint.mulesoft.com",
+                }
+            }
+        )
+        with self.assertRaises(HTTPError) as ctx:
+            client.do_request_relative("/v1/foo", http_method="GET")
+        self.assertNotIsInstance(ctx.exception, HttpClientError)
 
 
 class TestDownloadBytes(TestCase):
@@ -702,7 +722,9 @@ class TestDownloadBytes(TestCase):
         client = HttpProxyClient(credentials={"connect_args": {}})
         with self.assertRaises(HTTPError) as ctx:
             client.download_bytes("https://s3.example/file.jar", no_auth=True)
+        self.assertIsInstance(ctx.exception, HTTPError)
         self.assertNotIsInstance(ctx.exception, HttpClientError)
+        self.assertIsNotNone(ctx.exception.response)
 
     @patch("requests.get")
     def test_connection_error_raises_http_client_error_without_url(self, mock_get):
@@ -786,6 +808,7 @@ class TestDownloadBytes(TestCase):
         client = HttpProxyClient(credentials={"connect_args": {"token": "tok"}})
         client.download_bytes(
             "https://api.example/file",
+            no_auth=False,
             additional_headers={"X-Trace": "abc"},
         )
 
@@ -801,6 +824,28 @@ class TestDownloadBytes(TestCase):
         client.download_bytes("https://s3.example/file.jar", no_auth=True)
 
         self.assertTrue(mock_get.call_args.kwargs["stream"])
+
+    @patch("requests.get")
+    def test_max_bytes_exactly_at_limit_does_not_raise(self, mock_get):
+        # Guard is strict-greater-than: a response of exactly max_bytes bytes must succeed.
+        mock_get.return_value = self._make_response(chunks=[b"x" * 200])
+
+        client = HttpProxyClient(credentials={"connect_args": {}})
+        result = client.download_bytes("https://s3.example/file.jar", max_bytes=200)
+        self.assertEqual(200, len(result))
+
+    @patch("requests.get")
+    def test_custom_auth_header_name_used_when_set(self, mock_get):
+        mock_get.return_value = self._make_response(chunks=[b"data"])
+
+        client = HttpProxyClient(
+            credentials={"connect_args": {"token": "tok", "auth_header": "X-API-Key"}}
+        )
+        client.download_bytes("https://api.example/file", no_auth=False)
+
+        sent_headers = mock_get.call_args.kwargs["headers"]
+        self.assertEqual("Bearer tok", sent_headers["X-API-Key"])
+        self.assertNotIn("Authorization", sent_headers)
 
 
 class TestMulesoftAgentEndToEnd(TestCase):
@@ -856,6 +901,54 @@ class TestMulesoftAgentEndToEnd(TestCase):
             "GET",
             "https://anypoint.mulesoft.com/apimanager/api/v1/organizations",
             headers={"Authorization": "Bearer ms-token"},
+        )
+        # Response payload propagates through the agent.
+        self.assertEqual({"orgs": []}, response.result.get(ATTRIBUTE_NAME_RESULT))
+
+    @patch("requests.request")
+    @patch("apollo.integrations.ctp.transforms.oauth.requests")
+    def test_mulesoft_eu_region_routes_through_eu_endpoint(
+        self, mock_oauth_requests, mock_request
+    ):
+        # Stage 1 mock: OAuth POST returns a token.
+        oauth_resp = MagicMock()
+        oauth_resp.json.return_value = {"access_token": "ms-eu-token"}
+        oauth_resp.raise_for_status.return_value = None
+        mock_oauth_requests.post.return_value = oauth_resp
+
+        # Stage 2 mock: downstream API GET returns JSON.
+        api_resp = create_autospec(Response)
+        api_resp.json.return_value = {"orgs": []}
+        mock_request.return_value = api_resp
+
+        operation = {
+            "trace_id": "ms-trace-eu",
+            "commands": [
+                {
+                    "method": "do_request_relative",
+                    "kwargs": {
+                        "path": "/apimanager/api/v1/organizations",
+                        "http_method": "GET",
+                    },
+                }
+            ],
+        }
+        raw_creds = {"client_id": "cid", "client_secret": "csec", "region": "EU"}
+
+        response = self._agent.execute_operation(
+            "mulesoft", "do_request_relative", operation, raw_creds
+        )
+
+        # OAuth was attempted at the EU region endpoint.
+        self.assertEqual(
+            "https://eu1.anypoint.mulesoft.com/accounts/api/v2/oauth2/token",
+            mock_oauth_requests.post.call_args.args[0],
+        )
+        # Downstream call hit the EU base URL.
+        mock_request.assert_called_with(
+            "GET",
+            "https://eu1.anypoint.mulesoft.com/apimanager/api/v1/organizations",
+            headers={"Authorization": "Bearer ms-eu-token"},
         )
         # Response payload propagates through the agent.
         self.assertEqual({"orgs": []}, response.result.get(ATTRIBUTE_NAME_RESULT))

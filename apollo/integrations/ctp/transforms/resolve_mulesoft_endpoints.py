@@ -109,22 +109,6 @@ class ResolveMulesoftEndpointsTransform(Transform):
         state.derived[step.output["api_base_url"]] = api_base_url
 
     @staticmethod
-    def _require(
-        step: TransformStep,
-        state: PipelineState,
-        key: str,
-        reason: str,
-    ) -> str:
-        value = TemplateEngine.render(step.input.get(key, "{{ none }}"), state)
-        if not value:
-            raise CtpPipelineError(
-                stage="transform_execute",
-                step_name=step.type,
-                message=f"'{key}' is {reason}",
-            )
-        return value
-
-    @staticmethod
     def _validate_override_url(url: str, step_name: str) -> str:
         # Without this check, an attacker who can inject auth_url could redirect
         # the OAuth POST (which sends client_id/client_secret in the body) to a
@@ -134,10 +118,7 @@ class ResolveMulesoftEndpointsTransform(Transform):
             raise CtpPipelineError(
                 stage="transform_execute",
                 step_name=step_name,
-                message=(
-                    f"Override URL must use https scheme; got '{parts.scheme}://' "
-                    f"in '{url}'."
-                ),
+                message=(f"Override URL must use https scheme; got '{parts.scheme}'."),
             )
         host = parts.hostname or ""
         if host not in _ALLOWED_HOSTS:
