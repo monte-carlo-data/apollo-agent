@@ -158,6 +158,110 @@ class HttpProxyClient(BaseProxyClient):
 
         return response.json()
 
+    def do_request_relative(
+        self,
+        path: str,
+        http_method: str = "POST",
+        payload: Optional[Dict] = None,
+        content_type: Optional[str] = None,
+        timeout: Optional[int] = None,
+        user_agent: Optional[str] = None,
+        additional_headers: Optional[Dict] = None,
+        params: Optional[Dict] = None,
+        verify_ssl: Optional[Union[bool, str]] = None,
+        retry_status_code_ranges: Optional[List[Tuple]] = None,
+        data: Optional[str] = None,
+    ) -> Dict:
+        """Like ``do_request`` but treats ``path`` as a path on a base URL stored
+        in ``self._credentials["api_base_url"]``. The CTP for the connection_type
+        populates api_base_url; the caller (DC) supplies arbitrary endpoint paths
+        without knowing the base URL — adding a new endpoint requires no agent
+        release.
+        """
+        if not self._credentials or "api_base_url" not in self._credentials:
+            raise HttpClientError(
+                "do_request_relative requires 'api_base_url' in connect_args"
+            )
+        base = self._credentials["api_base_url"].rstrip("/")
+        if not path.startswith("/"):
+            path = "/" + path
+        return self.do_request(
+            url=f"{base}{path}",
+            http_method=http_method,
+            payload=payload,
+            content_type=content_type,
+            timeout=timeout,
+            user_agent=user_agent,
+            additional_headers=additional_headers,
+            params=params,
+            verify_ssl=verify_ssl,
+            retry_status_code_ranges=retry_status_code_ranges,
+            data=data,
+        )
+
+    def download_bytes(
+        self,
+        url: str,
+        timeout: int = 120,
+        max_bytes: Optional[int] = None,
+        no_auth: bool = False,
+        additional_headers: Optional[Dict] = None,
+    ) -> bytes:
+        """Download raw bytes via streaming GET. Generic helper for binary
+        payloads (e.g. JAR/ZIP fetches from S3 pre-signed URLs).
+
+        - ``no_auth=True`` skips the Authorization header (required for S3
+          pre-signed URLs which carry the signature in the query string).
+        - ``max_bytes`` enforces a size limit during chunked read (defense
+          against memory exhaustion).
+        - 4xx → ``HttpClientError``; 5xx → ``HTTPError`` (matches do_request).
+        - SSL verification follows ``self._ssl_verify``.
+        - Error messages do not include the URL — pre-signed URLs contain a
+          signed secret; callers needing verbose error context should use
+          ``do_request`` with full URLs instead.
+        """
+        headers = {**additional_headers} if additional_headers else {}
+        if not no_auth and self._credentials and "token" in self._credentials:
+            auth_header = self._credentials.get("auth_header", "Authorization")
+            auth_value = self._credentials["token"]
+            if auth_type := self._credentials.get("auth_type", "Bearer"):
+                auth_value = f"{auth_type} {auth_value}"
+            headers[auth_header] = auth_value
+
+        request_kwargs: Dict = {"timeout": timeout, "headers": headers, "stream": True}
+        if self._ssl_verify is not None:
+            request_kwargs["verify"] = self._ssl_verify
+
+        try:
+            response = requests.get(url, **request_kwargs)
+        except requests.RequestException as exc:
+            raise HttpClientError(
+                f"download_bytes transport error: {type(exc).__name__}"
+            ) from None
+
+        try:
+            response.raise_for_status()
+        except HTTPError:
+            status = response.status_code
+            if self.is_client_error_status_code(status):
+                raise HttpClientError(
+                    f"download_bytes failed with HTTP {status}"
+                ) from None
+            raise HTTPError(f"download_bytes failed with HTTP {status}") from None
+
+        chunks: List[bytes] = []
+        size = 0
+        for chunk in response.iter_content(chunk_size=8192):
+            if not chunk:
+                continue
+            chunks.append(chunk)
+            size += len(chunk)
+            if max_bytes is not None and size > max_bytes:
+                raise HttpClientError(
+                    f"download_bytes response exceeded {max_bytes} bytes"
+                )
+        return b"".join(chunks)
+
     def do_request_with_retry(
         self,
         url: str,
