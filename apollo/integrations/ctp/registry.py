@@ -88,12 +88,12 @@ class CtpRegistry:
                 **registered.connect_args_defaults,
                 **config.connect_args_defaults,
             }
-        raw_or_connect_args = credentials.get(_ATTR_CONNECT_ARGS, credentials)
-        if not isinstance(raw_or_connect_args, dict):
+        pipeline_input = _build_pipeline_input(credentials)
+        if pipeline_input is None:
             return credentials
         return {
             _ATTR_CONNECT_ARGS: CtpPipeline().execute(
-                config, raw_or_connect_args, context=context or {}
+                config, pipeline_input, context=context or {}
             )
         }
 
@@ -119,15 +119,36 @@ class CtpRegistry:
                 stage="registry",
                 message=f"No CTP config registered for '{connection_type}'. Call CtpRegistry.get() before resolve().",
             )
-        # Unwrap pre-shaped connect_args so both flat and DC-pre-shaped credentials
-        # follow the same transform path through the pipeline.
-        # If connect_args is not a dict (e.g. a pre-built ODBC string), pass through
-        # unchanged — the pipeline cannot interpret non-dict credentials.
-        raw_or_connect_args = credentials.get(_ATTR_CONNECT_ARGS, credentials)
-        if not isinstance(raw_or_connect_args, dict):
+        pipeline_input = _build_pipeline_input(credentials)
+        if pipeline_input is None:
             return credentials
         return {
             _ATTR_CONNECT_ARGS: CtpPipeline().execute(
-                config, raw_or_connect_args, context=context or {}
+                config, pipeline_input, context=context or {}
             )
         }
+
+
+def _build_pipeline_input(credentials: dict[str, Any]) -> dict[str, Any] | None:
+    """Return the dict to feed the CTP pipeline, or None if credentials cannot
+    be processed (e.g. pre-built ODBC string).
+
+    For DC pre-shaped credentials (a ``connect_args`` dict alongside other
+    credential fields like ``ssl_options``), merge the outer fields with the
+    inner ``connect_args`` so the pipeline sees the full credential picture.
+    Inner ``connect_args`` keys take precedence — they're driver-direct and
+    have been explicitly named.
+
+    SUP-373: without this merge, the data-collector's mysql agent path
+    (clients/plugins/plugin_mysql.py:48-51) sends ``ssl_options`` as a
+    sibling of ``connect_args``; the previous unwrap discarded it, no SSL
+    context was built, and pymysql connected without TLS — MySQL with
+    ``require_secure_transport=ON`` rejected with error 3159.
+    """
+    inner = credentials.get(_ATTR_CONNECT_ARGS)
+    if inner is None:
+        return credentials
+    if not isinstance(inner, dict):
+        return None
+    outer_siblings = {k: v for k, v in credentials.items() if k != _ATTR_CONNECT_ARGS}
+    return {**outer_siblings, **inner}
