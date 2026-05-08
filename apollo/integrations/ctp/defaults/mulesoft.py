@@ -9,7 +9,9 @@ class MulesoftClientArgs(TypedDict):
     # `do_request` directly; the agent only attaches the Bearer token via `auth_type`.
     # `ssl_verify` flows to HttpProxyClient._ssl_verify.
     token: Required[str]
-    auth_type: Required[str]
+    auth_type: NotRequired[
+        str
+    ]  # always "Bearer" — synthesized by the mapper, never user-supplied
     ssl_verify: NotRequired[bool | str]
 
 

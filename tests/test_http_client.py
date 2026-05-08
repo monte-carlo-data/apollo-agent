@@ -876,3 +876,49 @@ class TestMulesoftAgentEndToEnd(TestCase):
         )
         # Response payload propagates through the agent.
         self.assertEqual({"orgs": []}, response.result.get(ATTRIBUTE_NAME_RESULT))
+
+    @patch("requests.request")
+    @patch("apollo.integrations.ctp.transforms.oauth.requests")
+    def test_mulesoft_do_request_accepts_arbitrary_url_from_caller(
+        self, mock_oauth_requests, mock_request
+    ):
+        """Documents the design decision: do_request does NOT validate the URL —
+        the agent trusts the DC for URL construction. The DC may supply any URL
+        the connected app's permissions cover; the agent attaches only the
+        Bearer token from CTP."""
+        oauth_resp = MagicMock()
+        oauth_resp.json.return_value = {"access_token": "tok"}
+        oauth_resp.raise_for_status.return_value = None
+        mock_oauth_requests.post.return_value = oauth_resp
+
+        api_resp = create_autospec(Response)
+        api_resp.json.return_value = {}
+        mock_request.return_value = api_resp
+
+        # An unusual URL — different host, different protocol structure — to
+        # explicitly demonstrate that do_request doesn't enforce a host allowlist
+        # for the mulesoft connection_type.
+        operation = {
+            "trace_id": "ms-trace-arbitrary",
+            "commands": [
+                {
+                    "method": "do_request",
+                    "kwargs": {
+                        "url": "https://some-other-anypoint-mirror.example.com/v3/foo",
+                        "http_method": "GET",
+                    },
+                }
+            ],
+        }
+        # Distinct credentials so the proxy-client cache (keyed by creds hash)
+        # doesn't return a stale client from earlier tests in this class.
+        raw_creds = {"client_id": "url-test-cid", "client_secret": "url-test-csec"}
+
+        self._agent.execute_operation("mulesoft", "do_request", operation, raw_creds)
+
+        # The agent forwarded the DC-supplied URL verbatim, attaching only the Bearer header.
+        mock_request.assert_called_with(
+            "GET",
+            "https://some-other-anypoint-mirror.example.com/v3/foo",
+            headers={"Authorization": "Bearer tok"},
+        )

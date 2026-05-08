@@ -110,6 +110,7 @@ class TestProxyClientFactoryCtp(TestCase):
         ca = captured["credentials"]["connect_args"]
         self.assertEqual("ms-token", ca["token"])
         self.assertEqual("Bearer", ca["auth_type"])
+        self.assertNotIn("api_base_url", ca)
 
     def test_mulesoft_factory_entry_resolves_to_http_proxy_client_factory(self):
         from apollo.agent.proxy_client_factory import (

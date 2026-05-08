@@ -96,6 +96,7 @@ class TestPreShapedPath(TestCase):
 
         self.assertEqual("pre-shaped", args["token"])
         self.assertEqual("Bearer", args["auth_type"])
+        self.assertNotIn("api_base_url", args)
         mock_requests.post.assert_not_called()
 
     @patch("apollo.integrations.ctp.transforms.oauth.requests")

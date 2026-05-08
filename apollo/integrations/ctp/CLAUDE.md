@@ -38,7 +38,8 @@ the ODBC/driver-specific format each integration needs.
    it to the driver-specific format (see `MsFabricProxyClient` for the dict→ODBC pattern).
    If the connector reuses the generic `HttpProxyClient` (via `_get_proxy_client_http`), no
    proxy-client subclass is needed — the CTP just emits connect_args matching
-   `HttpProxyClient`'s contract (`token`, `auth_type`, `api_base_url`, `ssl_verify`). Add
+   `HttpProxyClient`'s contract (`token`, `auth_type`, `ssl_verify`); the DC constructs full
+   request URLs and calls `do_request` directly. Add
    `"my-connector": _get_proxy_client_http` to `_CLIENT_FACTORY_MAPPING` in
    `apollo/agent/proxy_client_factory.py`. See `mulesoft.py` and `defaults/mulesoft.py` as
    reference.
@@ -52,7 +53,7 @@ backwards compatibility with older DC versions; Fabric requires a dict (CTP path
 
 **HTTP/OAuth connectors** — MuleSoft (`mulesoft` connection type) is CTP-enrolled and uses
 `HttpProxyClient` via `_get_proxy_client_http`. No ODBC string is involved; the pipeline
-emits `token`, `auth_type`, `api_base_url`, and `ssl_verify` directly.
+emits `token`, `auth_type`, and `ssl_verify` directly.
 
 ## Security note
 
