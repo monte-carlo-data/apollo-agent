@@ -48,7 +48,6 @@ class TestRegionFullPipeline(TestCase):
 
         self.assertEqual("us-tok", args["token"])
         self.assertEqual("Bearer", args["auth_type"])
-        self.assertEqual("https://anypoint.mulesoft.com", args["api_base_url"])
         self.assertNotIn("ssl_verify", args)
         # Verify OAuth POSTed to the US region endpoint.
         post_args = mock_requests.post.call_args
@@ -64,7 +63,6 @@ class TestRegionFullPipeline(TestCase):
         args = _resolve({**_FLAT_CREDS, "region": "EU"})
 
         self.assertEqual("eu-tok", args["token"])
-        self.assertEqual("https://eu1.anypoint.mulesoft.com", args["api_base_url"])
         self.assertEqual(
             "https://eu1.anypoint.mulesoft.com/accounts/api/v2/oauth2/token",
             mock_requests.post.call_args.args[0],
@@ -77,7 +75,6 @@ class TestRegionFullPipeline(TestCase):
         args = _resolve({**_FLAT_CREDS, "region": "Gov"})
 
         self.assertEqual("gov-tok", args["token"])
-        self.assertEqual("https://mpt.mulesoft.com", args["api_base_url"])
         self.assertEqual(
             "https://mpt.mulesoft.com/accounts/api/v2/oauth2/token",
             mock_requests.post.call_args.args[0],
@@ -94,19 +91,11 @@ class TestRegionFullPipeline(TestCase):
 
 class TestPreShapedPath(TestCase):
     @patch("apollo.integrations.ctp.transforms.oauth.requests")
-    def test_pre_shaped_token_only_skips_both_steps_with_api_base_url(
-        self, mock_requests
-    ):
-        args = _resolve(
-            {
-                "token": "pre-shaped",
-                "api_base_url": "https://anypoint.mulesoft.com",
-            }
-        )
+    def test_pre_shaped_token_skips_both_steps(self, mock_requests):
+        args = _resolve({"token": "pre-shaped"})
 
         self.assertEqual("pre-shaped", args["token"])
         self.assertEqual("Bearer", args["auth_type"])
-        self.assertEqual("https://anypoint.mulesoft.com", args["api_base_url"])
         mock_requests.post.assert_not_called()
 
     @patch("apollo.integrations.ctp.transforms.oauth.requests")
@@ -116,24 +105,13 @@ class TestPreShapedPath(TestCase):
         args = _resolve(
             {
                 "token": "pre-shaped",
-                "api_base_url": "https://eu1.anypoint.mulesoft.com",
                 "client_id": "cid",
                 "client_secret": "csec",
             }
         )
 
         self.assertEqual("pre-shaped", args["token"])
-        self.assertEqual("https://eu1.anypoint.mulesoft.com", args["api_base_url"])
         mock_requests.post.assert_not_called()
-
-    def test_pre_shaped_token_without_api_base_url_clean_error(self):
-        with self.assertRaises(CtpPipelineError) as ctx:
-            _resolve({"token": "pre-shaped"})
-
-        msg = str(ctx.exception)
-        self.assertIn("api_base_url", msg)
-        # Mapper-level missing-required-field error, not a raw Jinja UndefinedError.
-        self.assertIn("mapper_validation", msg)
 
 
 class TestFailurePaths(TestCase):
@@ -185,11 +163,10 @@ class TestHttpProxyClientContract(TestCase):
         args = _resolve(_FLAT_CREDS)
 
         # HttpProxyClient reads from connect_args: token, auth_type, auth_header
-        # (defaulted to "Authorization"), ssl_verify (optional). Our extension
-        # also reads api_base_url. The mapper must produce exactly the keys our
-        # contract calls for — no more (silent typo masking), no less (missing-
-        # field mapper failure).
-        expected_required = {"token", "auth_type", "api_base_url"}
+        # (defaulted to "Authorization"), ssl_verify (optional). The mapper must
+        # produce exactly the keys our contract calls for — no more (silent typo
+        # masking), no less (missing-field mapper failure).
+        expected_required = {"token", "auth_type"}
         self.assertTrue(
             expected_required.issubset(args.keys()),
             f"Missing required: {expected_required - args.keys()}",

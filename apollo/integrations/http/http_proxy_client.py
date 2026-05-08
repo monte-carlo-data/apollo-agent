@@ -1,6 +1,6 @@
 import ipaddress
 import logging
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 from urllib.parse import urlsplit
 
 import requests
@@ -184,29 +184,6 @@ class HttpProxyClient(BaseProxyClient):
             raise type(err)(text) from err
 
         return response.json()
-
-    def do_request_relative(
-        self,
-        path: str,
-        http_method: str = "GET",
-        **kwargs: Any,
-    ) -> Dict:
-        """Like ``do_request`` but treats ``path`` as a path on a base URL stored
-        in ``self._credentials["api_base_url"]`` (typically populated by the
-        connector's CTP). Adding a new endpoint requires no agent release —
-        the caller supplies an arbitrary path.
-
-        ``path`` may omit the leading slash; it is added automatically. The
-        trailing slash on the base URL is stripped before joining.
-        """
-        if not self._credentials or "api_base_url" not in self._credentials:
-            raise HttpClientError(
-                "do_request_relative requires 'api_base_url' in connect_args"
-            )
-        base = self._credentials["api_base_url"].rstrip("/")
-        if not path.startswith("/"):
-            path = "/" + path
-        return self.do_request(url=f"{base}{path}", http_method=http_method, **kwargs)
 
     def download_bytes(
         self,

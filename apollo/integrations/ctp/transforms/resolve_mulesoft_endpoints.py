@@ -11,11 +11,6 @@ _REGION_TO_AUTH_URL = {
     "EU": "https://eu1.anypoint.mulesoft.com/accounts/api/v2/oauth2/token",
     "Gov": "https://mpt.mulesoft.com/accounts/api/v2/oauth2/token",
 }
-_REGION_TO_API_BASE = {
-    "US": "https://anypoint.mulesoft.com",
-    "EU": "https://eu1.anypoint.mulesoft.com",
-    "Gov": "https://mpt.mulesoft.com",
-}
 _ALLOWED_HOSTS = frozenset(
     {
         "anypoint.mulesoft.com",
@@ -30,22 +25,20 @@ class ResolveMulesoftEndpointsTransform(Transform):
     """Resolve MuleSoft Anypoint endpoints from a region (or overrides) and build
     the OAuth config dict consumed by the shared ``oauth`` transform.
 
-    Performs no outbound HTTP. Maps the requested region to MuleSoft's documented
-    Anypoint URLs, and applies HTTPS-plus-allowlist validation to optional
-    ``auth_url`` / ``api_base_url`` overrides.
+    Performs no outbound HTTP. Maps the requested region to MuleSoft's OAuth token
+    endpoint, and applies HTTPS-plus-allowlist validation to an optional ``auth_url``
+    override.
 
     Step input keys (all optional — values rendered through the template engine):
         client_id      : Anypoint connected app client ID (required value)
         client_secret  : Connected app client secret (required value)
         region         : "US" | "EU" | "Gov" (default "US")
         auth_url       : Override for the OAuth token endpoint
-        api_base_url   : Override for the Anypoint API base URL
 
     Step output keys:
         oauth_config   : derived key for the dict consumed by the shared ``oauth``
                          transform (grant_type, client_id, client_secret,
                          access_token_endpoint)
-        api_base_url   : derived key for the Anypoint API base URL
     """
 
     optional_input_keys = (
@@ -53,9 +46,8 @@ class ResolveMulesoftEndpointsTransform(Transform):
         "client_secret",
         "region",
         "auth_url",
-        "api_base_url",
     )
-    required_output_keys = ("oauth_config", "api_base_url")
+    required_output_keys = ("oauth_config",)
     optional_output_keys = ()
 
     def _execute(self, step: TransformStep, state: PipelineState) -> None:
@@ -83,19 +75,11 @@ class ResolveMulesoftEndpointsTransform(Transform):
         auth_url_override = TemplateEngine.render(
             step.input.get("auth_url", "{{ none }}"), state
         )
-        api_base_url_override = TemplateEngine.render(
-            step.input.get("api_base_url", "{{ none }}"), state
-        )
 
         auth_url = (
             self._validate_override_url(auth_url_override, step.type)
             if auth_url_override
             else _REGION_TO_AUTH_URL[region]
-        )
-        api_base_url = (
-            self._validate_override_url(api_base_url_override, step.type)
-            if api_base_url_override
-            else _REGION_TO_API_BASE[region]
         )
 
         oauth_config = {
@@ -106,7 +90,6 @@ class ResolveMulesoftEndpointsTransform(Transform):
         }
 
         state.derived[step.output["oauth_config"]] = oauth_config
-        state.derived[step.output["api_base_url"]] = api_base_url
 
     @staticmethod
     def _validate_override_url(url: str, step_name: str) -> str:
