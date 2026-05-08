@@ -1,7 +1,8 @@
 from copy import deepcopy
 from unittest import TestCase
-from unittest.mock import create_autospec, patch, call, mock_open
+from unittest.mock import MagicMock, create_autospec, patch, call, mock_open
 
+import requests
 from requests import Response, HTTPError
 
 from apollo.agent.agent import Agent
@@ -13,7 +14,10 @@ from apollo.common.agent.constants import (
     ATTRIBUTE_VALUE_REDACTED,
 )
 from apollo.agent.logging_utils import LoggingUtils
-from apollo.integrations.http.http_proxy_client import HttpProxyClient
+from apollo.integrations.http.http_proxy_client import (
+    HttpClientError,
+    HttpProxyClient,
+)
 
 _HTTP_USER_AGENT = "TestUserAgent"
 
@@ -457,4 +461,464 @@ class TestHttpClient(TestCase):
                 "User-Agent": _HTTP_USER_AGENT,
             },
             verify=False,
+        )
+
+
+class TestDownloadBytes(TestCase):
+    """Tests for HttpProxyClient.download_bytes — streaming binary fetches with
+    optional auth-skip and size cap."""
+
+    def _make_response(
+        self,
+        status_code: int = 200,
+        chunks: list[bytes] | None = None,
+    ) -> MagicMock:
+        resp = MagicMock()
+        resp.status_code = status_code
+        resp.iter_content.return_value = iter(chunks if chunks is not None else [b""])
+        if status_code >= 400:
+            resp.raise_for_status.side_effect = HTTPError(
+                f"{status_code}", response=resp
+            )
+        else:
+            resp.raise_for_status.return_value = None
+        return resp
+
+    @patch("requests.get")
+    def test_returns_raw_bytes(self, mock_get):
+        mock_get.return_value = self._make_response(chunks=[b"chunk1", b"chunk2"])
+
+        client = HttpProxyClient(credentials={"connect_args": {"token": "tok"}})
+        result = client.download_bytes("https://s3.example/file.jar")
+
+        self.assertEqual(b"chunk1chunk2", result)
+
+    @patch("requests.get")
+    def test_no_auth_header_when_no_auth_true(self, mock_get):
+        mock_get.return_value = self._make_response(chunks=[b"data"])
+
+        client = HttpProxyClient(credentials={"connect_args": {"token": "tok"}})
+        client.download_bytes("https://s3.example/file.jar", no_auth=True)
+
+        sent_headers = mock_get.call_args.kwargs["headers"]
+        self.assertNotIn("Authorization", sent_headers)
+
+    @patch("requests.get")
+    def test_auth_header_present_when_no_auth_false(self, mock_get):
+        mock_get.return_value = self._make_response(chunks=[b"data"])
+
+        client = HttpProxyClient(credentials={"connect_args": {"token": "tok"}})
+        client.download_bytes("https://api.example/file", no_auth=False)
+
+        sent_headers = mock_get.call_args.kwargs["headers"]
+        self.assertEqual("Bearer tok", sent_headers["Authorization"])
+
+    @patch("requests.get")
+    def test_403_raises_http_client_error(self, mock_get):
+        mock_get.return_value = self._make_response(status_code=403)
+
+        client = HttpProxyClient(credentials={"connect_args": {}})
+        with self.assertRaises(HttpClientError):
+            client.download_bytes("https://s3.example/file.jar", no_auth=True)
+
+    @patch("requests.get")
+    def test_404_raises_http_client_error(self, mock_get):
+        mock_get.return_value = self._make_response(status_code=404)
+
+        client = HttpProxyClient(credentials={"connect_args": {}})
+        with self.assertRaises(HttpClientError):
+            client.download_bytes("https://s3.example/file.jar", no_auth=True)
+
+    @patch("requests.get")
+    def test_500_raises_http_error_not_http_client_error(self, mock_get):
+        mock_get.return_value = self._make_response(status_code=500)
+
+        client = HttpProxyClient(credentials={"connect_args": {}})
+        with self.assertRaises(HTTPError) as ctx:
+            client.download_bytes("https://s3.example/file.jar", no_auth=True)
+        self.assertIsInstance(ctx.exception, HTTPError)
+        self.assertNotIsInstance(ctx.exception, HttpClientError)
+        self.assertIsNotNone(ctx.exception.response)
+
+    @patch("requests.get")
+    def test_connection_error_raises_http_client_error_without_url(self, mock_get):
+        # Pre-signed URL with a sentinel "secret" we want to ensure never leaks.
+        secret_url = "https://s3.example/file.jar?Signature=DO-NOT-LEAK-XYZ"
+        mock_get.side_effect = requests.ConnectionError("conn refused at " + secret_url)
+
+        client = HttpProxyClient(credentials={"connect_args": {}})
+        with self.assertRaises(HttpClientError) as ctx:
+            client.download_bytes(secret_url, no_auth=True)
+        self.assertNotIn("DO-NOT-LEAK-XYZ", str(ctx.exception))
+        self.assertNotIn(secret_url, str(ctx.exception))
+
+    @patch("requests.get")
+    def test_max_bytes_cap_raises_when_exceeded(self, mock_get):
+        # Two 100-byte chunks; max_bytes=150 → second chunk pushes over the limit.
+        mock_get.return_value = self._make_response(chunks=[b"x" * 100, b"y" * 100])
+
+        client = HttpProxyClient(credentials={"connect_args": {}})
+        with self.assertRaises(HttpClientError) as ctx:
+            client.download_bytes(
+                "https://s3.example/file.jar", no_auth=True, max_bytes=150
+            )
+        self.assertIn("150", str(ctx.exception))
+
+    @patch("requests.get")
+    def test_max_bytes_none_is_unlimited(self, mock_get):
+        mock_get.return_value = self._make_response(chunks=[b"x" * 1024])
+
+        client = HttpProxyClient(credentials={"connect_args": {}})
+        result = client.download_bytes(
+            "https://s3.example/file.jar", no_auth=True, max_bytes=None
+        )
+        self.assertEqual(1024, len(result))
+
+    @patch("requests.get")
+    def test_timeout_passed_to_requests_get(self, mock_get):
+        mock_get.return_value = self._make_response(chunks=[b"data"])
+
+        client = HttpProxyClient(credentials={"connect_args": {}})
+        client.download_bytes("https://s3.example/file.jar", no_auth=True, timeout=42)
+
+        self.assertEqual(42, mock_get.call_args.kwargs["timeout"])
+
+    @patch("requests.get")
+    def test_default_timeout_is_120_seconds(self, mock_get):
+        mock_get.return_value = self._make_response(chunks=[b"data"])
+
+        client = HttpProxyClient(credentials={"connect_args": {}})
+        client.download_bytes("https://s3.example/file.jar", no_auth=True)
+
+        self.assertEqual(120, mock_get.call_args.kwargs["timeout"])
+
+    @patch("requests.get")
+    def test_ssl_verify_passed_through_when_set(self, mock_get):
+        mock_get.return_value = self._make_response(chunks=[b"data"])
+
+        client = HttpProxyClient(
+            credentials={"connect_args": {"ssl_verify": "/path/to/ca-bundle.crt"}}
+        )
+        client.download_bytes("https://s3.example/file.jar", no_auth=True)
+
+        self.assertEqual("/path/to/ca-bundle.crt", mock_get.call_args.kwargs["verify"])
+
+    @patch("requests.get")
+    def test_ssl_verify_default_omits_verify_kwarg(self, mock_get):
+        # When ssl_verify is unset on connect_args, requests.get is called WITHOUT
+        # the verify kwarg — so requests's own default (True) applies. Mirrors
+        # do_request behavior.
+        mock_get.return_value = self._make_response(chunks=[b"data"])
+
+        client = HttpProxyClient(credentials={"connect_args": {}})
+        client.download_bytes("https://s3.example/file.jar", no_auth=True)
+
+        self.assertNotIn("verify", mock_get.call_args.kwargs)
+
+    @patch("requests.get")
+    def test_additional_headers_merged(self, mock_get):
+        mock_get.return_value = self._make_response(chunks=[b"data"])
+
+        client = HttpProxyClient(credentials={"connect_args": {"token": "tok"}})
+        client.download_bytes(
+            "https://api.example/file",
+            no_auth=False,
+            additional_headers={"X-Trace": "abc"},
+        )
+
+        sent = mock_get.call_args.kwargs["headers"]
+        self.assertEqual("abc", sent["X-Trace"])
+        self.assertEqual("Bearer tok", sent["Authorization"])
+
+    @patch("requests.get")
+    def test_stream_true_for_chunked_read(self, mock_get):
+        mock_get.return_value = self._make_response(chunks=[b"data"])
+
+        client = HttpProxyClient(credentials={"connect_args": {}})
+        client.download_bytes("https://s3.example/file.jar", no_auth=True)
+
+        self.assertTrue(mock_get.call_args.kwargs["stream"])
+
+    @patch("requests.get")
+    def test_max_bytes_exactly_at_limit_does_not_raise(self, mock_get):
+        # Guard is strict-greater-than: a response of exactly max_bytes bytes must succeed.
+        mock_get.return_value = self._make_response(chunks=[b"x" * 200])
+
+        client = HttpProxyClient(credentials={"connect_args": {}})
+        result = client.download_bytes("https://s3.example/file.jar", max_bytes=200)
+        self.assertEqual(200, len(result))
+
+    @patch("requests.get")
+    def test_custom_auth_header_name_used_when_set(self, mock_get):
+        mock_get.return_value = self._make_response(chunks=[b"data"])
+
+        client = HttpProxyClient(
+            credentials={"connect_args": {"token": "tok", "auth_header": "X-API-Key"}}
+        )
+        client.download_bytes("https://api.example/file", no_auth=False)
+
+        sent_headers = mock_get.call_args.kwargs["headers"]
+        self.assertEqual("Bearer tok", sent_headers["X-API-Key"])
+        self.assertNotIn("Authorization", sent_headers)
+
+
+class TestDownloadBytesUrlSafety(TestCase):
+    """SSRF defense-in-depth: verify _assert_safe_download_url rejects every
+    non-public IP-literal class (not just RFC1918 / loopback / link-local) and
+    that download_bytes itself refuses to follow redirects."""
+
+    def _make_response(
+        self,
+        status_code: int = 200,
+        chunks: list[bytes] | None = None,
+        headers: dict | None = None,
+    ) -> MagicMock:
+        resp = MagicMock()
+        resp.status_code = status_code
+        resp.headers = headers or {}
+        resp.iter_content.return_value = iter(chunks if chunks is not None else [b""])
+        if status_code >= 400:
+            resp.raise_for_status.side_effect = HTTPError(
+                f"{status_code}", response=resp
+            )
+        else:
+            resp.raise_for_status.return_value = None
+        return resp
+
+    def test_rejects_unspecified_ipv4(self):
+        # 0.0.0.0 is not private/loopback/link-local but is_global is False.
+        client = HttpProxyClient(credentials={"connect_args": {}})
+        with self.assertRaises(HttpClientError) as ctx:
+            client.download_bytes("https://0.0.0.0/file")
+        self.assertIn("non-public", str(ctx.exception))
+
+    def test_rejects_unspecified_ipv6(self):
+        # IPv6 :: — not private/loopback/link-local, but not global either.
+        client = HttpProxyClient(credentials={"connect_args": {}})
+        with self.assertRaises(HttpClientError) as ctx:
+            client.download_bytes("https://[::]/file")
+        self.assertIn("non-public", str(ctx.exception))
+
+    def test_rejects_multicast_ipv4(self):
+        # 224.0.0.0/4 is multicast — is_global is False.
+        client = HttpProxyClient(credentials={"connect_args": {}})
+        with self.assertRaises(HttpClientError) as ctx:
+            client.download_bytes("https://224.0.0.1/file")
+        self.assertIn("non-public", str(ctx.exception))
+
+    def test_rejects_reserved_ipv4(self):
+        # 240.0.0.0/4 is reserved — is_global is False.
+        client = HttpProxyClient(credentials={"connect_args": {}})
+        with self.assertRaises(HttpClientError) as ctx:
+            client.download_bytes("https://240.0.0.1/file")
+        self.assertIn("non-public", str(ctx.exception))
+
+    def test_rejects_imds_link_local(self):
+        # 169.254.169.254 — AWS IMDS, the canonical SSRF target.
+        client = HttpProxyClient(credentials={"connect_args": {}})
+        with self.assertRaises(HttpClientError) as ctx:
+            client.download_bytes("https://169.254.169.254/latest/meta-data/")
+        self.assertIn("non-public", str(ctx.exception))
+
+    def test_rejects_rfc1918(self):
+        client = HttpProxyClient(credentials={"connect_args": {}})
+        with self.assertRaises(HttpClientError) as ctx:
+            client.download_bytes("https://10.0.0.1/file")
+        self.assertIn("non-public", str(ctx.exception))
+
+    @patch("requests.get")
+    def test_dns_hostname_passes_url_safety_check(self, mock_get):
+        # Sanity: legitimate DNS hostnames are not literal IPs; guard short-circuits.
+        mock_get.return_value = MagicMock(
+            status_code=200,
+            headers={},
+            iter_content=MagicMock(return_value=iter([b"data"])),
+            raise_for_status=MagicMock(return_value=None),
+        )
+        client = HttpProxyClient(credentials={"connect_args": {}})
+        client.download_bytes("https://s3.example.com/file")  # no exception
+
+    @patch("requests.get")
+    def test_does_not_follow_redirects(self, mock_get):
+        # download_bytes must pass allow_redirects=False so that a 30x cannot
+        # send the request to an internal/non-https target (SSRF) or forward
+        # credentials when no_auth=False.
+        mock_get.return_value = self._make_response(chunks=[b"data"])
+
+        client = HttpProxyClient(credentials={"connect_args": {}})
+        client.download_bytes("https://s3.example/file.jar", no_auth=True)
+
+        self.assertEqual(False, mock_get.call_args.kwargs["allow_redirects"])
+
+    @patch("requests.get")
+    def test_3xx_response_raises_http_client_error(self, mock_get):
+        # With allow_redirects=False, a 30x is returned as a normal response.
+        # raise_for_status does NOT flag 3xx, so download_bytes must reject it
+        # explicitly — otherwise the empty redirect body would be returned as
+        # the "downloaded" bytes.
+        mock_get.return_value = self._make_response(
+            status_code=302,
+            chunks=[b""],
+            headers={"Location": "https://attacker.example/exfil"},
+        )
+
+        client = HttpProxyClient(credentials={"connect_args": {}})
+        with self.assertRaises(HttpClientError) as ctx:
+            client.download_bytes("https://s3.example/file.jar", no_auth=True)
+        self.assertIn("302", str(ctx.exception))
+        # Error message must not echo the Location URL — it could itself point
+        # at an internal/sensitive host.
+        self.assertNotIn("attacker.example", str(ctx.exception))
+
+
+class TestMulesoftAgentEndToEnd(TestCase):
+    """End-to-end integration: Agent.execute_operation('mulesoft', ...) routes
+    raw flat credentials through CTP → HttpProxyClient → requests.request,
+    proving factory wiring + CTP + do_request work together. The DC supplies
+    the full MuleSoft URL; the agent only attaches the Bearer token from
+    OAuth."""
+
+    def setUp(self) -> None:
+        self._agent = Agent(LoggingUtils())
+
+    @patch("requests.request")
+    @patch("apollo.integrations.ctp.transforms.oauth.requests")
+    def test_mulesoft_agent_execute_operation_routes_through_http_proxy(
+        self, mock_oauth_requests, mock_request
+    ):
+        # Stage 1 mock: OAuth POST returns a token.
+        oauth_resp = MagicMock()
+        oauth_resp.json.return_value = {"access_token": "ms-token"}
+        oauth_resp.raise_for_status.return_value = None
+        mock_oauth_requests.post.return_value = oauth_resp
+
+        # Stage 2 mock: downstream API GET returns JSON.
+        api_resp = create_autospec(Response)
+        api_resp.json.return_value = {"orgs": []}
+        mock_request.return_value = api_resp
+
+        operation = {
+            "trace_id": "ms-trace-1",
+            "commands": [
+                {
+                    "method": "do_request",
+                    "kwargs": {
+                        "url": "https://anypoint.mulesoft.com/apimanager/api/v1/organizations",
+                        "http_method": "GET",
+                    },
+                }
+            ],
+        }
+        raw_creds = {"client_id": "cid", "client_secret": "csec"}
+
+        response = self._agent.execute_operation(
+            "mulesoft", "do_request", operation, raw_creds
+        )
+
+        # OAuth was attempted at the US region endpoint.
+        self.assertEqual(
+            "https://anypoint.mulesoft.com/accounts/api/v2/oauth2/token",
+            mock_oauth_requests.post.call_args.args[0],
+        )
+        # Downstream call hit the DC-supplied URL with the Bearer header from CTP.
+        mock_request.assert_called_with(
+            "GET",
+            "https://anypoint.mulesoft.com/apimanager/api/v1/organizations",
+            headers={"Authorization": "Bearer ms-token"},
+        )
+        # Response payload propagates through the agent.
+        self.assertEqual({"orgs": []}, response.result.get(ATTRIBUTE_NAME_RESULT))
+
+    @patch("requests.request")
+    @patch("apollo.integrations.ctp.transforms.oauth.requests")
+    def test_mulesoft_eu_region_routes_through_eu_endpoint(
+        self, mock_oauth_requests, mock_request
+    ):
+        # Stage 1 mock: OAuth POST returns a token.
+        oauth_resp = MagicMock()
+        oauth_resp.json.return_value = {"access_token": "ms-eu-token"}
+        oauth_resp.raise_for_status.return_value = None
+        mock_oauth_requests.post.return_value = oauth_resp
+
+        # Stage 2 mock: downstream API GET returns JSON.
+        api_resp = create_autospec(Response)
+        api_resp.json.return_value = {"orgs": []}
+        mock_request.return_value = api_resp
+
+        operation = {
+            "trace_id": "ms-trace-eu",
+            "commands": [
+                {
+                    "method": "do_request",
+                    "kwargs": {
+                        "url": "https://eu1.anypoint.mulesoft.com/apimanager/api/v1/organizations",
+                        "http_method": "GET",
+                    },
+                }
+            ],
+        }
+        raw_creds = {"client_id": "cid", "client_secret": "csec", "region": "EU"}
+
+        response = self._agent.execute_operation(
+            "mulesoft", "do_request", operation, raw_creds
+        )
+
+        # OAuth was attempted at the EU region endpoint.
+        self.assertEqual(
+            "https://eu1.anypoint.mulesoft.com/accounts/api/v2/oauth2/token",
+            mock_oauth_requests.post.call_args.args[0],
+        )
+        # Downstream call hit the EU base URL.
+        mock_request.assert_called_with(
+            "GET",
+            "https://eu1.anypoint.mulesoft.com/apimanager/api/v1/organizations",
+            headers={"Authorization": "Bearer ms-eu-token"},
+        )
+        # Response payload propagates through the agent.
+        self.assertEqual({"orgs": []}, response.result.get(ATTRIBUTE_NAME_RESULT))
+
+    @patch("requests.request")
+    @patch("apollo.integrations.ctp.transforms.oauth.requests")
+    def test_mulesoft_do_request_accepts_arbitrary_url_from_caller(
+        self, mock_oauth_requests, mock_request
+    ):
+        """Documents the design decision: do_request does NOT validate the URL —
+        the agent trusts the DC for URL construction. The DC may supply any URL
+        the connected app's permissions cover; the agent attaches only the
+        Bearer token from CTP."""
+        oauth_resp = MagicMock()
+        oauth_resp.json.return_value = {"access_token": "tok"}
+        oauth_resp.raise_for_status.return_value = None
+        mock_oauth_requests.post.return_value = oauth_resp
+
+        api_resp = create_autospec(Response)
+        api_resp.json.return_value = {}
+        mock_request.return_value = api_resp
+
+        # An unusual URL — different host, different protocol structure — to
+        # explicitly demonstrate that do_request doesn't enforce a host allowlist
+        # for the mulesoft connection_type.
+        operation = {
+            "trace_id": "ms-trace-arbitrary",
+            "commands": [
+                {
+                    "method": "do_request",
+                    "kwargs": {
+                        "url": "https://some-other-anypoint-mirror.example.com/v3/foo",
+                        "http_method": "GET",
+                    },
+                }
+            ],
+        }
+        # Distinct credentials so the proxy-client cache (keyed by creds hash)
+        # doesn't return a stale client from earlier tests in this class.
+        raw_creds = {"client_id": "url-test-cid", "client_secret": "url-test-csec"}
+
+        self._agent.execute_operation("mulesoft", "do_request", operation, raw_creds)
+
+        # The agent forwarded the DC-supplied URL verbatim, attaching only the Bearer header.
+        mock_request.assert_called_with(
+            "GET",
+            "https://some-other-anypoint-mirror.example.com/v3/foo",
+            headers={"Authorization": "Bearer tok"},
         )

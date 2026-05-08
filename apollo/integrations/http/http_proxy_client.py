@@ -1,5 +1,7 @@
+import ipaddress
 import logging
-from typing import Dict, Optional, List, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
+from urllib.parse import urlsplit
 
 import requests
 from requests import HTTPError
@@ -76,6 +78,36 @@ class HttpProxyClient(BaseProxyClient):
             payload, _HTTP_REDACTED_ATTRIBUTES
         )
 
+    @staticmethod
+    def _assert_safe_download_url(url: str) -> None:
+        parts = urlsplit(url)
+        if parts.scheme != "https":
+            raise HttpClientError(
+                f"download_bytes requires https scheme; got '{parts.scheme}'"
+            )
+        host = (parts.hostname or "").lower()
+        if host in ("", "localhost"):
+            raise HttpClientError(f"download_bytes refuses '{host or '<empty>'}' host")
+        try:
+            ip = ipaddress.ip_address(host)
+        except ValueError:
+            return  # not a literal IP — DNS hostname is OK
+        # Reject every IP-literal class that is not appropriate as a download
+        # target. `is_global` is False for private (RFC1918), loopback,
+        # link-local, reserved, and unspecified (0.0.0.0 / ::) — but Python's
+        # ipaddress module reports `is_global=True` for multicast (e.g.
+        # 224.0.0.0/4), so we add an explicit multicast check.
+        if not ip.is_global or ip.is_multicast:
+            raise HttpClientError(f"download_bytes refuses non-public address: {ip}")
+
+    def _attach_auth_header(self, headers: Dict) -> None:
+        if self._credentials and "token" in self._credentials:
+            auth_header = self._credentials.get("auth_header", "Authorization")
+            auth_value = self._credentials["token"]
+            if auth_type := self._credentials.get("auth_type", "Bearer"):
+                auth_value = f"{auth_type} {auth_value}"
+            headers[auth_header] = auth_value
+
     def do_request(
         self,
         url: str,
@@ -107,6 +139,16 @@ class HttpProxyClient(BaseProxyClient):
         :param retry_status_code_ranges: optional list of ranges specifying status code to raise `HttpRetryableError`.
             The ranges are expected to be specified in a list of tuples where each tuple includes two elements:
             inclusive from and exclusive to, for example: [(500, 600)] means: `500 <= status_code < 600`.
+
+        URL validation: ``do_request`` does NOT validate the destination URL — no
+        scheme check, no host allowlist, no IP-range guard. The agent trusts the
+        caller (typically the Monte Carlo DC) for URL construction. This is a
+        deliberate design choice for the MuleSoft and ``http`` connection types,
+        where the DC owns endpoint selection. Callers that need SSRF defenses
+        (e.g., for downloading from caller-supplied URLs that may originate further
+        upstream) should use ``download_bytes`` instead, which calls
+        ``_assert_safe_download_url``.
+
         :return: the JSON result of the request
         """
 
@@ -125,12 +167,7 @@ class HttpProxyClient(BaseProxyClient):
             request_args["verify"] = self._ssl_verify
 
         headers = {**additional_headers} if additional_headers else {}
-        if self._credentials and "token" in self._credentials:
-            auth_header = self._credentials.get("auth_header", "Authorization")
-            auth_header_value = self._credentials["token"]
-            if auth_type := self._credentials.get("auth_type", "Bearer"):
-                auth_header_value = f"{auth_type} {auth_header_value}"
-            headers[auth_header] = auth_header_value
+        self._attach_auth_header(headers)
         if content_type:
             headers["Content-Type"] = content_type
         if user_agent:
@@ -157,6 +194,90 @@ class HttpProxyClient(BaseProxyClient):
             raise type(err)(text) from err
 
         return response.json()
+
+    def download_bytes(
+        self,
+        url: str,
+        timeout: int = 120,
+        max_bytes: Optional[int] = None,
+        no_auth: bool = True,
+        additional_headers: Optional[Dict] = None,
+    ) -> bytes:
+        """Generic streaming GET for binary payloads. Use ``no_auth=True`` (the
+        default) for pre-signed or otherwise credential-free URLs.
+
+        - ``no_auth=False`` attaches the Bearer token from ``connect_args``;
+          defaults to True to avoid leaking auth to unintended hosts.
+        - ``max_bytes`` enforces a size limit during chunked read (defense
+          against memory exhaustion from a malicious or buggy URL).
+        - ``additional_headers`` are merged into the request headers (auth, if
+          enabled, is attached on top).
+        - 4xx → ``HttpClientError``; 5xx → ``HTTPError`` (matches do_request).
+        - The URL is rejected if it is not https or resolves to a non-public
+          IP literal — defense-in-depth against SSRF.
+        - Redirects are NOT followed: a 30x response is treated as an
+          ``HttpClientError``. Re-following a redirect would bypass the
+          URL safety guard (allowing SSRF to internal/non-https targets) and,
+          when ``no_auth=False``, could forward credentials to an unintended
+          host. Pre-signed URLs (the motivating use case) resolve directly
+          to bytes — an unexpected redirect indicates a misconfiguration.
+        - SSL verification follows ``self._ssl_verify``.
+        - Error messages do not include the URL — pre-signed URLs contain a
+          signed secret; callers needing verbose error context should use
+          ``do_request`` with full URLs instead.
+        """
+        self._assert_safe_download_url(url)
+
+        headers = {**additional_headers} if additional_headers else {}
+        if not no_auth:
+            self._attach_auth_header(headers)
+
+        request_kwargs: Dict = {
+            "timeout": timeout,
+            "headers": headers,
+            "stream": True,
+            "allow_redirects": False,
+        }
+        if self._ssl_verify is not None:
+            request_kwargs["verify"] = self._ssl_verify
+
+        try:
+            response = requests.get(url, **request_kwargs)
+        except requests.RequestException as exc:
+            raise HttpClientError(
+                f"download_bytes transport error: {type(exc).__name__}"
+            ) from None
+
+        with response:
+            status = response.status_code
+            # 3xx is not raised by raise_for_status; explicitly reject it so
+            # callers don't silently receive an empty redirect body as "bytes".
+            if 300 <= status < 400:
+                raise HttpClientError(
+                    f"download_bytes refused redirect (HTTP {status})"
+                )
+            try:
+                response.raise_for_status()
+            except HTTPError:
+                if self.is_client_error_status_code(status):
+                    raise HttpClientError(
+                        f"download_bytes failed with HTTP {status}"
+                    ) from None
+                new_err = HTTPError(f"download_bytes failed with HTTP {status}")
+                new_err.response = response
+                raise new_err from None
+            chunks: List[bytes] = []
+            size = 0
+            for chunk in response.iter_content(chunk_size=8192):
+                if not chunk:
+                    continue
+                chunks.append(chunk)
+                size += len(chunk)
+                if max_bytes is not None and size > max_bytes:
+                    raise HttpClientError(
+                        f"download_bytes response exceeded {max_bytes} bytes"
+                    )
+            return b"".join(chunks)
 
     def do_request_with_retry(
         self,
