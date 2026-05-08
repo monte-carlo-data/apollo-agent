@@ -5,13 +5,11 @@ from apollo.integrations.ctp.registry import CtpRegistry
 
 
 class MulesoftClientArgs(TypedDict):
-    # Shape consumed by HttpProxyClient (extended in Phase 3): `token` + `auth_type`
-    # build the bearer header in do_request / download_bytes; `api_base_url` is read
-    # by the new do_request_relative method to prepend to caller-supplied paths;
-    # `ssl_verify` flows to HttpProxyClient._ssl_verify for both methods.
+    # Shape consumed by HttpProxyClient. The DC supplies full MuleSoft URLs to
+    # `do_request` directly; the agent only attaches the Bearer token via `auth_type`.
+    # `ssl_verify` flows to HttpProxyClient._ssl_verify.
     token: Required[str]
     auth_type: Required[str]
-    api_base_url: Required[str]
     ssl_verify: NotRequired[bool | str]
 
 
@@ -29,11 +27,9 @@ MULESOFT_DEFAULT_CTP = CtpConfig(
                 "client_secret": "{{ raw.client_secret | default(none) }}",
                 "region": "{{ raw.region | default(none) }}",
                 "auth_url": "{{ raw.auth_url | default(none) }}",
-                "api_base_url": "{{ raw.api_base_url | default(none) }}",
             },
             output={
                 "oauth_config": "mulesoft_oauth_config",
-                "api_base_url": "mulesoft_api_base_url",
             },
         ),
         # Step 2 — OAuth client_credentials grant. Reuses the generic shared
@@ -54,7 +50,6 @@ MULESOFT_DEFAULT_CTP = CtpConfig(
         field_map={
             "token": "{{ derived.mulesoft_token | default(raw.token | default(none)) }}",
             "auth_type": "Bearer",
-            "api_base_url": "{{ derived.mulesoft_api_base_url | default(raw.api_base_url | default(none)) }}",
             "ssl_verify": "{{ raw.ssl_verify | default(none) }}",
         },
     ),

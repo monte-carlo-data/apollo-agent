@@ -422,37 +422,6 @@ class TestHttpClient(TestCase):
         self.assertEqual(expected_result, response.result.get(ATTRIBUTE_NAME_RESULT))
 
     @patch("requests.request")
-    def test_do_request_unchanged_when_api_base_url_present_in_credentials(
-        self, mock_request
-    ):
-        """BC regression: introducing api_base_url in connect_args (a new field added
-        for do_request_relative) must NOT change do_request's behavior."""
-        mock_response = create_autospec(Response)
-        mock_request.return_value = mock_response
-        mock_response.json.return_value = {"ok": True}
-
-        credentials = {
-            "connect_args": {
-                "token": "tok",
-                "api_base_url": "https://anypoint.mulesoft.com",
-            }
-        }
-        operation = deepcopy(_HTTP_OPERATION)
-        operation["commands"][0]["kwargs"]["url"] = "https://other.example/foo"
-
-        self._agent.execute_operation("http", "do_request", operation, credentials)
-
-        # The full URL passed to do_request wins — api_base_url is ignored.
-        mock_request.assert_called_with(
-            "GET",
-            "https://other.example/foo",
-            headers={
-                "Authorization": "Bearer tok",
-                "User-Agent": _HTTP_USER_AGENT,
-            },
-        )
-
-    @patch("requests.request")
     @patch("builtins.open", new_callable=mock_open)
     def test_http_request_verify_ssl_overrides_ssl_options(
         self, mock_file, mock_request
@@ -493,161 +462,6 @@ class TestHttpClient(TestCase):
             },
             verify=False,
         )
-
-
-class TestDoRequestRelative(TestCase):
-    """Tests for HttpProxyClient.do_request_relative — prepends api_base_url
-    from connect_args to a caller-supplied path."""
-
-    @patch("requests.request")
-    def test_prepends_api_base_url_to_path(self, mock_request):
-        mock_response = create_autospec(Response)
-        mock_response.json.return_value = {"ok": True}
-        mock_request.return_value = mock_response
-
-        client = HttpProxyClient(
-            credentials={
-                "connect_args": {
-                    "token": "tok",
-                    "api_base_url": "https://anypoint.mulesoft.com",
-                }
-            }
-        )
-        client.do_request_relative("/v1/foo", http_method="GET")
-
-        mock_request.assert_called_with(
-            "GET",
-            "https://anypoint.mulesoft.com/v1/foo",
-            headers={"Authorization": "Bearer tok"},
-        )
-
-    @patch("requests.request")
-    def test_normalizes_path_without_leading_slash(self, mock_request):
-        mock_response = create_autospec(Response)
-        mock_response.json.return_value = {"ok": True}
-        mock_request.return_value = mock_response
-
-        client = HttpProxyClient(
-            credentials={
-                "connect_args": {
-                    "token": "tok",
-                    "api_base_url": "https://anypoint.mulesoft.com",
-                }
-            }
-        )
-        client.do_request_relative("v1/foo", http_method="GET")
-
-        mock_request.assert_called_with(
-            "GET",
-            "https://anypoint.mulesoft.com/v1/foo",
-            headers={"Authorization": "Bearer tok"},
-        )
-
-    @patch("requests.request")
-    def test_strips_trailing_slash_from_api_base_url(self, mock_request):
-        mock_response = create_autospec(Response)
-        mock_response.json.return_value = {"ok": True}
-        mock_request.return_value = mock_response
-
-        client = HttpProxyClient(
-            credentials={
-                "connect_args": {
-                    "token": "tok",
-                    "api_base_url": "https://anypoint.mulesoft.com/",
-                }
-            }
-        )
-        client.do_request_relative("/v1/foo", http_method="GET")
-
-        mock_request.assert_called_with(
-            "GET",
-            "https://anypoint.mulesoft.com/v1/foo",
-            headers={"Authorization": "Bearer tok"},
-        )
-
-    @patch("requests.request")
-    def test_kwargs_propagate_to_do_request(self, mock_request):
-        mock_response = create_autospec(Response)
-        mock_response.json.return_value = {"ok": True}
-        mock_request.return_value = mock_response
-
-        client = HttpProxyClient(
-            credentials={
-                "connect_args": {
-                    "token": "tok",
-                    "api_base_url": "https://anypoint.mulesoft.com",
-                }
-            }
-        )
-        client.do_request_relative(
-            "/v1/foo",
-            http_method="POST",
-            payload={"k": "v"},
-            params={"q": "1"},
-            additional_headers={"X-Custom": "yes"},
-            timeout=30,
-        )
-
-        mock_request.assert_called_with(
-            "POST",
-            "https://anypoint.mulesoft.com/v1/foo",
-            json={"k": "v"},
-            timeout=30,
-            params={"q": "1"},
-            headers={"X-Custom": "yes", "Authorization": "Bearer tok"},
-        )
-
-    def test_missing_api_base_url_raises_http_client_error(self):
-        client = HttpProxyClient(credentials={"connect_args": {"token": "tok"}})
-        with self.assertRaises(HttpClientError) as ctx:
-            client.do_request_relative("/v1/foo")
-        self.assertIn("api_base_url", str(ctx.exception))
-
-    def test_no_credentials_at_all_raises_http_client_error(self):
-        client = HttpProxyClient(credentials=None)
-        with self.assertRaises(HttpClientError):
-            client.do_request_relative("/v1/foo")
-
-    @patch("requests.request")
-    def test_4xx_raises_http_client_error(self, mock_request):
-        mock_response = create_autospec(Response)
-        mock_response.status_code = 404
-        mock_response.raise_for_status.side_effect = HTTPError(
-            "failed", response=mock_response
-        )
-        mock_request.return_value = mock_response
-
-        client = HttpProxyClient(
-            credentials={
-                "connect_args": {
-                    "token": "tok",
-                    "api_base_url": "https://anypoint.mulesoft.com",
-                }
-            }
-        )
-        with self.assertRaises(HttpClientError):
-            client.do_request_relative("/v1/foo", http_method="GET")
-
-    @patch("requests.request")
-    def test_5xx_raises_http_error_not_http_client_error(self, mock_request):
-        mock_response = create_autospec(Response)
-        mock_response.status_code = 500
-        mock_response.raise_for_status.side_effect = HTTPError(
-            "server error", response=mock_response
-        )
-        mock_request.return_value = mock_response
-
-        client = HttpProxyClient(
-            credentials={
-                "connect_args": {
-                    "token": "tok",
-                    "api_base_url": "https://anypoint.mulesoft.com",
-                }
-            }
-        )
-        with self.assertRaises(HTTPError) as ctx:
-            client.do_request_relative("/v1/foo", http_method="GET")
-        self.assertNotIsInstance(ctx.exception, HttpClientError)
 
 
 class TestDownloadBytes(TestCase):
@@ -960,8 +774,9 @@ class TestDownloadBytesUrlSafety(TestCase):
 class TestMulesoftAgentEndToEnd(TestCase):
     """End-to-end integration: Agent.execute_operation('mulesoft', ...) routes
     raw flat credentials through CTP → HttpProxyClient → requests.request,
-    proving factory wiring + CTP + the new do_request_relative method work
-    together."""
+    proving factory wiring + CTP + do_request work together. The DC supplies
+    the full MuleSoft URL; the agent only attaches the Bearer token from
+    OAuth."""
 
     def setUp(self) -> None:
         self._agent = Agent(LoggingUtils())
@@ -986,9 +801,9 @@ class TestMulesoftAgentEndToEnd(TestCase):
             "trace_id": "ms-trace-1",
             "commands": [
                 {
-                    "method": "do_request_relative",
+                    "method": "do_request",
                     "kwargs": {
-                        "path": "/apimanager/api/v1/organizations",
+                        "url": "https://anypoint.mulesoft.com/apimanager/api/v1/organizations",
                         "http_method": "GET",
                     },
                 }
@@ -997,7 +812,7 @@ class TestMulesoftAgentEndToEnd(TestCase):
         raw_creds = {"client_id": "cid", "client_secret": "csec"}
 
         response = self._agent.execute_operation(
-            "mulesoft", "do_request_relative", operation, raw_creds
+            "mulesoft", "do_request", operation, raw_creds
         )
 
         # OAuth was attempted at the US region endpoint.
@@ -1005,7 +820,7 @@ class TestMulesoftAgentEndToEnd(TestCase):
             "https://anypoint.mulesoft.com/accounts/api/v2/oauth2/token",
             mock_oauth_requests.post.call_args.args[0],
         )
-        # Downstream call hit the right URL with the Bearer header from CTP.
+        # Downstream call hit the DC-supplied URL with the Bearer header from CTP.
         mock_request.assert_called_with(
             "GET",
             "https://anypoint.mulesoft.com/apimanager/api/v1/organizations",
@@ -1034,9 +849,9 @@ class TestMulesoftAgentEndToEnd(TestCase):
             "trace_id": "ms-trace-eu",
             "commands": [
                 {
-                    "method": "do_request_relative",
+                    "method": "do_request",
                     "kwargs": {
-                        "path": "/apimanager/api/v1/organizations",
+                        "url": "https://eu1.anypoint.mulesoft.com/apimanager/api/v1/organizations",
                         "http_method": "GET",
                     },
                 }
@@ -1045,7 +860,7 @@ class TestMulesoftAgentEndToEnd(TestCase):
         raw_creds = {"client_id": "cid", "client_secret": "csec", "region": "EU"}
 
         response = self._agent.execute_operation(
-            "mulesoft", "do_request_relative", operation, raw_creds
+            "mulesoft", "do_request", operation, raw_creds
         )
 
         # OAuth was attempted at the EU region endpoint.

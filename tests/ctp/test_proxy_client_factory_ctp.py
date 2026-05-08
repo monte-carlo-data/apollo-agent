@@ -84,7 +84,7 @@ class TestProxyClientFactoryCtp(TestCase):
     def test_mulesoft_credentials_resolved_into_http_proxy_client_shape(self):
         # Mulesoft routes through HttpProxyClient — verify CTP transforms the
         # raw client_id/secret into the connect_args shape HttpProxyClient
-        # consumes (token, auth_type, api_base_url) before the factory runs.
+        # consumes (token, auth_type) before the factory runs.
         mulesoft_creds = {"client_id": "cid", "client_secret": "csec"}
         captured = {}
 
@@ -110,7 +110,6 @@ class TestProxyClientFactoryCtp(TestCase):
         ca = captured["credentials"]["connect_args"]
         self.assertEqual("ms-token", ca["token"])
         self.assertEqual("Bearer", ca["auth_type"])
-        self.assertEqual("https://anypoint.mulesoft.com", ca["api_base_url"])
 
     def test_mulesoft_factory_entry_resolves_to_http_proxy_client_factory(self):
         from apollo.agent.proxy_client_factory import (
