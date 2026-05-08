@@ -11,6 +11,9 @@ _REGION_TO_AUTH_URL = {
     "EU": "https://eu1.anypoint.mulesoft.com/accounts/api/v2/oauth2/token",
     "Gov": "https://mpt.mulesoft.com/accounts/api/v2/oauth2/token",
 }
+# Allowed hosts for `auth_url` override validation (SSRF guard for the OAuth
+# POST). The api_base_url override path is gone — the DC supplies full URLs
+# directly to do_request.
 _ALLOWED_HOSTS = frozenset(
     {
         "anypoint.mulesoft.com",

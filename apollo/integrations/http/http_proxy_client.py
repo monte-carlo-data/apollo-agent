@@ -139,6 +139,16 @@ class HttpProxyClient(BaseProxyClient):
         :param retry_status_code_ranges: optional list of ranges specifying status code to raise `HttpRetryableError`.
             The ranges are expected to be specified in a list of tuples where each tuple includes two elements:
             inclusive from and exclusive to, for example: [(500, 600)] means: `500 <= status_code < 600`.
+
+        URL validation: ``do_request`` does NOT validate the destination URL — no
+        scheme check, no host allowlist, no IP-range guard. The agent trusts the
+        caller (typically the Monte Carlo DC) for URL construction. This is a
+        deliberate design choice for the MuleSoft and ``http`` connection types,
+        where the DC owns endpoint selection. Callers that need SSRF defenses
+        (e.g., for downloading from caller-supplied URLs that may originate further
+        upstream) should use ``download_bytes`` instead, which calls
+        ``_assert_safe_download_url``.
+
         :return: the JSON result of the request
         """
 

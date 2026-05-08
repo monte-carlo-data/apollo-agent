@@ -136,6 +136,15 @@ class TestOverrideValidation(TestCase):
             _run(step, {"client_id": "id", "client_secret": "sec"})
         self.assertIn("attacker.example", str(ctx.exception))
 
+    def test_auth_url_override_with_no_region_uses_override(self):
+        custom_auth = "https://eu1.anypoint.mulesoft.com/custom/oauth"
+        step = _make_step({**_DEFAULT_INPUT, "auth_url": custom_auth})
+        state = _run(step, {"client_id": "id", "client_secret": "sec"})
+        self.assertEqual(
+            custom_auth,
+            state.derived["mulesoft_oauth_config"]["access_token_endpoint"],
+        )
+
     def test_auth_url_override_takes_precedence_over_conflicting_region(self):
         custom_auth = "https://anypoint.mulesoft.com/custom/auth"
         step = _make_step(

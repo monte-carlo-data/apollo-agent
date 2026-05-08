@@ -421,8 +421,9 @@ _CLIENT_FACTORY_MAPPING = {
     "informatica": _get_proxy_client_informatica,
     "informatica-v2": _get_proxy_client_informatica,
     # mulesoft uses the generic HttpProxyClient — CTP shapes connect_args
-    # (token, auth_type, api_base_url, ssl_verify) into what HttpProxyClient
-    # consumes, so no per-connector class is needed in the agent.
+    # (token, auth_type, ssl_verify) into what HttpProxyClient consumes; the
+    # DC constructs full MuleSoft URLs and calls do_request directly. No
+    # per-connector class is needed in the agent.
     "mulesoft": _get_proxy_client_http,
 }
 
