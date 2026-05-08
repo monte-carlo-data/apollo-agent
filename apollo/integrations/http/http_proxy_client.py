@@ -2,7 +2,8 @@ import ipaddress
 import logging
 import os
 import tempfile
-from typing import Dict, List, Optional, Tuple, Union
+from contextlib import contextmanager
+from typing import Dict, Iterator, List, Optional, Tuple, Union
 from urllib.parse import urlsplit
 
 import requests
@@ -12,6 +13,10 @@ from retry.api import retry_call
 from apollo.common.agent.models import AgentOperation
 from apollo.common.agent.redact import AgentRedactUtilities
 from apollo.integrations.base_proxy_client import BaseProxyClient
+
+# Hoisted to module scope: a late import inside `download_to_storage` would
+# leak the streaming response if the import raised (e.g., missing cloud SDK).
+# Safe at module scope because `factory.py`'s SDK imports are themselves lazy.
 from apollo.integrations.storage.factory import get_storage_client
 
 _logger = logging.getLogger(__name__)
@@ -213,6 +218,7 @@ class HttpProxyClient(BaseProxyClient):
 
         return response.json()
 
+    @contextmanager
     def _open_download_response(
         self,
         url: str,
@@ -220,12 +226,19 @@ class HttpProxyClient(BaseProxyClient):
         no_auth: bool,
         additional_headers: Optional[Dict],
         op_label: str,
-    ) -> requests.Response:
+    ) -> Iterator[requests.Response]:
         """Open a streaming GET response with the full SSRF + redirect + status guards.
 
-        Caller MUST use the returned response via `with response:` to ensure the
-        connection is released on every exit path. ``op_label`` is included in
-        error messages so the user-facing message names the calling method.
+        Use as a context manager: ``with self._open_download_response(...) as response:``.
+        On every error-exit path the response is closed internally before the
+        exception propagates; on success, the context manager closes it on exit.
+        ``op_label`` is included in error messages so the user-facing message
+        names the calling method.
+
+        Raises:
+            HttpClientError: SSRF guard rejection, transport error, 3xx redirect,
+                or 4xx response.
+            HTTPError: 5xx response.
         """
         self._assert_safe_download_url(url)
 
@@ -251,7 +264,7 @@ class HttpProxyClient(BaseProxyClient):
 
         status = response.status_code
         if 300 <= status < 400:
-            response.close()  # we're returning before the caller's `with` block
+            response.close()
             raise HttpClientError(f"{op_label} refused redirect (HTTP {status})")
         try:
             response.raise_for_status()
@@ -261,11 +274,13 @@ class HttpProxyClient(BaseProxyClient):
                 raise HttpClientError(f"{op_label} failed with HTTP {status}") from None
             new_err = HTTPError(f"{op_label} failed with HTTP {status}")
             new_err.response = response
-            # close before raising — caller never enters the `with` block
             response.close()
             raise new_err from None
 
-        return response
+        try:
+            yield response
+        finally:
+            response.close()
 
     def download_bytes(
         self,
@@ -344,7 +359,7 @@ class HttpProxyClient(BaseProxyClient):
         enough to matter for memory (the motivating case is MuleSoft Mule
         application JARs which can exceed 100 MiB).
 
-        Configuration:
+        Notes:
             Requires either ``MCD_STORAGE`` env var, or a ``platform`` value passed
             to ``HttpProxyClient(...)`` whose default backend is recognized
             (`PLATFORM_AWS`, `PLATFORM_GCP`, `PLATFORM_AZURE`, `PLATFORM_AWS_GENERIC`).
