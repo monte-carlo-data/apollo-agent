@@ -1406,3 +1406,29 @@ class TestDownloadToStorage(TestCase):
             client.download_to_storage("https://s3.example/file.jar", "uploads/foo.jar")
 
         mock_factory.assert_called_once_with(platform=None)
+
+    @patch("requests.get")
+    def test_storage_client_cached_across_multiple_downloads(self, mock_get):
+        """get_storage_client is invoked once per HttpProxyClient instance.
+        Repeated download_to_storage calls reuse the same SDK client — boto3 /
+        google-cloud-storage / azure-storage-blob construction is non-trivial
+        (credential resolution, connection-pool setup), and a DC fetching
+        multiple JARs in a loop should not pay it per file.
+        """
+        mock_get.return_value = self._make_response(chunks=[b"data"])
+        storage_client = MagicMock()
+        storage_client.upload_file = MagicMock()
+
+        client = HttpProxyClient(credentials={"connect_args": {}})
+        with patch(
+            "apollo.integrations.http.http_proxy_client.get_storage_client",
+            return_value=storage_client,
+        ) as mock_factory:
+            client.download_to_storage("https://s3.example/a.jar", "uploads/a.jar")
+            mock_get.return_value = self._make_response(chunks=[b"data"])
+            client.download_to_storage("https://s3.example/b.jar", "uploads/b.jar")
+            mock_get.return_value = self._make_response(chunks=[b"data"])
+            client.download_to_storage("https://s3.example/c.jar", "uploads/c.jar")
+
+        self.assertEqual(1, mock_factory.call_count)
+        self.assertEqual(3, storage_client.upload_file.call_count)

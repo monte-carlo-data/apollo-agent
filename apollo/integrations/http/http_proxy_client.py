@@ -13,6 +13,7 @@ from retry.api import retry_call
 from apollo.common.agent.models import AgentOperation
 from apollo.common.agent.redact import AgentRedactUtilities
 from apollo.integrations.base_proxy_client import BaseProxyClient
+from apollo.integrations.storage.base_storage_client import BaseStorageClient
 
 # Hoisted to module scope: a late import inside `download_to_storage` would
 # leak the streaming response if the import raised (e.g., missing cloud SDK).
@@ -70,6 +71,11 @@ class HttpProxyClient(BaseProxyClient):
         # callers (e.g. DatabricksRestProxyClient) that don't use
         # download_to_storage keep working.
         self._platform: Optional[str] = platform
+        # Lazy-initialized on first download_to_storage call; reused across
+        # subsequent calls so the underlying SDK client (boto3 / google-cloud-
+        # storage / azure-storage-blob) is constructed once per HttpProxyClient
+        # instance instead of per request.
+        self._storage_client: Optional[BaseStorageClient] = None
 
         if credentials and "connect_args" in credentials:
             self._credentials = credentials["connect_args"]
@@ -122,6 +128,18 @@ class HttpProxyClient(BaseProxyClient):
         # 224.0.0.0/4), so we add an explicit multicast check.
         if not ip.is_global or ip.is_multicast:
             raise HttpClientError(f"download refuses non-public address: {ip}")
+
+    def _get_storage_client(self) -> BaseStorageClient:
+        """Lazy + cached storage client for ``download_to_storage``.
+
+        Constructed once per ``HttpProxyClient`` instance — reusing the
+        underlying SDK client (boto3 / google-cloud-storage / azure-storage-
+        blob) across multiple ``download_to_storage`` calls avoids the per-call
+        cost of credential resolution and connection-pool setup.
+        """
+        if self._storage_client is None:
+            self._storage_client = get_storage_client(platform=self._platform)
+        return self._storage_client
 
     def _attach_auth_header(self, headers: Dict) -> None:
         if self._credentials and "token" in self._credentials:
@@ -395,11 +413,9 @@ class HttpProxyClient(BaseProxyClient):
                             )
                 finally:
                     tmp.close()
-                # Forward the agent platform so the storage factory can fall back
-                # to the platform default (S3/GCS/Azure) when MCD_STORAGE is unset.
-                get_storage_client(platform=self._platform).upload_file(
-                    storage_key, tmp.name
-                )
+                # Cached on self after first call — avoids reconstructing the
+                # SDK client (boto3 / GCS / Azure) per request.
+                self._get_storage_client().upload_file(storage_key, tmp.name)
             finally:
                 # Best-effort cleanup; never let an unlink failure mask the
                 # original exception (or stomp on a successful return).
