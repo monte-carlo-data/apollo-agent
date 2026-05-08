@@ -131,3 +131,11 @@ class TestMysqlCtp(TestCase):
             ssl_module.SSLContext,
             f"ssl is set but not an SSLContext: {connect_args['ssl']!r}",
         )
+
+        # F8 follow-up: explicitly verify inner connect_args fields survive the merge.
+        # Without these assertions a regression that drops the inner dict would still
+        # pass the SSL check above (ssl_options would still merge in from outer).
+        self.assertEqual("db.example.com", connect_args["host"])
+        self.assertEqual(3306, connect_args["port"])
+        self.assertEqual("admin", connect_args["user"])
+        self.assertEqual("secret", connect_args["password"])
