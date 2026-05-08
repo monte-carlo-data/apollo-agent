@@ -683,6 +683,10 @@ class TestDownloadBytesUrlSafety(TestCase):
         resp.status_code = status_code
         resp.headers = headers or {}
         resp.iter_content.return_value = iter(chunks if chunks is not None else [b""])
+        # Match real requests.Response context-manager behavior so callers using
+        # `with response:` see the same object inside the block.
+        resp.__enter__.return_value = resp
+        resp.__exit__.return_value = None
         if status_code >= 400:
             resp.raise_for_status.side_effect = HTTPError(
                 f"{status_code}", response=resp
@@ -775,6 +779,131 @@ class TestDownloadBytesUrlSafety(TestCase):
         # Error message must not echo the Location URL — it could itself point
         # at an internal/sensitive host.
         self.assertNotIn("attacker.example", str(ctx.exception))
+
+
+class TestOpenDownloadResponse(TestCase):
+    """Direct contract tests for HttpProxyClient._open_download_response.
+
+    The helper is the single source of truth for SSRF / redirect / status
+    guards used by both download_bytes and download_to_storage. The consumer
+    tests cover the happy path; this class pins (a) op_label plumbing into
+    error messages and (b) the connection is closed on every error-exit path.
+    """
+
+    def _make_response(self, status_code: int) -> MagicMock:
+        resp = MagicMock()
+        resp.status_code = status_code
+        resp.headers = {}
+        resp.__enter__.return_value = resp
+        resp.__exit__.return_value = None
+        if 400 <= status_code < 600:
+            resp.raise_for_status.side_effect = HTTPError(
+                f"{status_code}", response=resp
+            )
+        else:
+            resp.raise_for_status.return_value = None
+        return resp
+
+    def _client(self) -> HttpProxyClient:
+        return HttpProxyClient(credentials={"connect_args": {}})
+
+    @patch("requests.get")
+    def test_3xx_closes_response_and_raises_with_op_label(self, mock_get):
+        resp = self._make_response(302)
+        mock_get.return_value = resp
+
+        with self.assertRaises(HttpClientError) as ctx:
+            with self._client()._open_download_response(
+                "https://s3.example/file",
+                timeout=30,
+                no_auth=True,
+                additional_headers=None,
+                op_label="custom_op",
+            ):
+                self.fail("body must not run on 3xx")
+
+        self.assertIn("custom_op", str(ctx.exception))
+        self.assertIn("302", str(ctx.exception))
+        resp.close.assert_called_once()
+
+    @patch("requests.get")
+    def test_4xx_closes_response_and_raises_http_client_error(self, mock_get):
+        resp = self._make_response(404)
+        mock_get.return_value = resp
+
+        with self.assertRaises(HttpClientError) as ctx:
+            with self._client()._open_download_response(
+                "https://s3.example/file",
+                timeout=30,
+                no_auth=True,
+                additional_headers=None,
+                op_label="custom_op",
+            ):
+                self.fail("body must not run on 4xx")
+
+        self.assertIn("custom_op", str(ctx.exception))
+        self.assertIn("404", str(ctx.exception))
+        resp.close.assert_called_once()
+
+    @patch("requests.get")
+    def test_5xx_closes_response_and_raises_http_error(self, mock_get):
+        resp = self._make_response(503)
+        mock_get.return_value = resp
+
+        with self.assertRaises(HTTPError) as ctx:
+            with self._client()._open_download_response(
+                "https://s3.example/file",
+                timeout=30,
+                no_auth=True,
+                additional_headers=None,
+                op_label="custom_op",
+            ):
+                self.fail("body must not run on 5xx")
+
+        self.assertIn("custom_op", str(ctx.exception))
+        self.assertIn("503", str(ctx.exception))
+        resp.close.assert_called_once()
+
+    @patch("requests.get")
+    def test_transport_error_raises_with_op_label_no_url(self, mock_get):
+        mock_get.side_effect = requests.ConnectionError(
+            "dns lookup failed for secret-host"
+        )
+
+        with self.assertRaises(HttpClientError) as ctx:
+            with self._client()._open_download_response(
+                "https://presigned.example/SECRET-TOKEN",
+                timeout=30,
+                no_auth=True,
+                additional_headers=None,
+                op_label="custom_op",
+            ):
+                self.fail("body must not run on transport error")
+
+        msg = str(ctx.exception)
+        self.assertIn("custom_op", msg)
+        self.assertIn("ConnectionError", msg)
+        # URL (and any pre-signed secret it carries) must not leak into the message.
+        self.assertNotIn("SECRET-TOKEN", msg)
+        self.assertNotIn("presigned.example", msg)
+
+    @patch("requests.get")
+    def test_success_closes_response_on_context_exit(self, mock_get):
+        resp = self._make_response(200)
+        mock_get.return_value = resp
+
+        with self._client()._open_download_response(
+            "https://s3.example/file",
+            timeout=30,
+            no_auth=True,
+            additional_headers=None,
+            op_label="custom_op",
+        ) as got:
+            self.assertIs(got, resp)
+            resp.close.assert_not_called()
+
+        # Generator's `finally` runs response.close() on context exit.
+        resp.close.assert_called_once()
 
 
 class TestMulesoftAgentEndToEnd(TestCase):

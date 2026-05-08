@@ -44,8 +44,9 @@ def get_storage_client(platform: Optional[str] = None) -> BaseStorageClient:
 
     Resolution order for the storage backend:
       1. `MCD_STORAGE` env var (highest priority — explicit override)
-      2. Platform default (`PLATFORM_AWS` → S3, `PLATFORM_GCP` → GCS,
-         `PLATFORM_AZURE` → Azure). Used only when `platform` is provided.
+      2. Platform default (`PLATFORM_AWS` / `PLATFORM_AWS_GENERIC` → S3,
+         `PLATFORM_GCP` → GCS, `PLATFORM_AZURE` → Azure). Used only when
+         `platform` is provided.
 
     Prefix is read from `MCD_STORAGE_PREFIX`; an empty / `/` value collapses
     to no prefix.

@@ -1,6 +1,6 @@
 # Storage — Backend Abstraction and Factory
 
-Three files; one public entry point.
+Three source modules plus an `__init__.py`; one public entry point.
 
 ## File responsibilities
 
