@@ -1,3 +1,6 @@
+import os
+import tempfile as tempfile_mod
+from contextlib import contextmanager
 from copy import deepcopy
 from unittest import TestCase
 from unittest.mock import MagicMock, create_autospec, patch, call, mock_open
@@ -476,6 +479,9 @@ class TestDownloadBytes(TestCase):
         resp = MagicMock()
         resp.status_code = status_code
         resp.iter_content.return_value = iter(chunks if chunks is not None else [b""])
+        # Configure context manager: real requests.Response.__enter__ returns self.
+        resp.__enter__.return_value = resp
+        resp.__exit__.return_value = None
         if status_code >= 400:
             resp.raise_for_status.side_effect = HTTPError(
                 f"{status_code}", response=resp
@@ -677,6 +683,10 @@ class TestDownloadBytesUrlSafety(TestCase):
         resp.status_code = status_code
         resp.headers = headers or {}
         resp.iter_content.return_value = iter(chunks if chunks is not None else [b""])
+        # Match real requests.Response context-manager behavior so callers using
+        # `with response:` see the same object inside the block.
+        resp.__enter__.return_value = resp
+        resp.__exit__.return_value = None
         if status_code >= 400:
             resp.raise_for_status.side_effect = HTTPError(
                 f"{status_code}", response=resp
@@ -769,6 +779,131 @@ class TestDownloadBytesUrlSafety(TestCase):
         # Error message must not echo the Location URL — it could itself point
         # at an internal/sensitive host.
         self.assertNotIn("attacker.example", str(ctx.exception))
+
+
+class TestOpenDownloadResponse(TestCase):
+    """Direct contract tests for HttpProxyClient._open_download_response.
+
+    The helper is the single source of truth for SSRF / redirect / status
+    guards used by both download_bytes and download_to_storage. The consumer
+    tests cover the happy path; this class pins (a) op_label plumbing into
+    error messages and (b) the connection is closed on every error-exit path.
+    """
+
+    def _make_response(self, status_code: int) -> MagicMock:
+        resp = MagicMock()
+        resp.status_code = status_code
+        resp.headers = {}
+        resp.__enter__.return_value = resp
+        resp.__exit__.return_value = None
+        if 400 <= status_code < 600:
+            resp.raise_for_status.side_effect = HTTPError(
+                f"{status_code}", response=resp
+            )
+        else:
+            resp.raise_for_status.return_value = None
+        return resp
+
+    def _client(self) -> HttpProxyClient:
+        return HttpProxyClient(credentials={"connect_args": {}})
+
+    @patch("requests.get")
+    def test_3xx_closes_response_and_raises_with_op_label(self, mock_get):
+        resp = self._make_response(302)
+        mock_get.return_value = resp
+
+        with self.assertRaises(HttpClientError) as ctx:
+            with self._client()._open_download_response(
+                "https://s3.example/file",
+                timeout=30,
+                no_auth=True,
+                additional_headers=None,
+                op_label="custom_op",
+            ):
+                self.fail("body must not run on 3xx")
+
+        self.assertIn("custom_op", str(ctx.exception))
+        self.assertIn("302", str(ctx.exception))
+        resp.close.assert_called_once()
+
+    @patch("requests.get")
+    def test_4xx_closes_response_and_raises_http_client_error(self, mock_get):
+        resp = self._make_response(404)
+        mock_get.return_value = resp
+
+        with self.assertRaises(HttpClientError) as ctx:
+            with self._client()._open_download_response(
+                "https://s3.example/file",
+                timeout=30,
+                no_auth=True,
+                additional_headers=None,
+                op_label="custom_op",
+            ):
+                self.fail("body must not run on 4xx")
+
+        self.assertIn("custom_op", str(ctx.exception))
+        self.assertIn("404", str(ctx.exception))
+        resp.close.assert_called_once()
+
+    @patch("requests.get")
+    def test_5xx_closes_response_and_raises_http_error(self, mock_get):
+        resp = self._make_response(503)
+        mock_get.return_value = resp
+
+        with self.assertRaises(HTTPError) as ctx:
+            with self._client()._open_download_response(
+                "https://s3.example/file",
+                timeout=30,
+                no_auth=True,
+                additional_headers=None,
+                op_label="custom_op",
+            ):
+                self.fail("body must not run on 5xx")
+
+        self.assertIn("custom_op", str(ctx.exception))
+        self.assertIn("503", str(ctx.exception))
+        resp.close.assert_called_once()
+
+    @patch("requests.get")
+    def test_transport_error_raises_with_op_label_no_url(self, mock_get):
+        mock_get.side_effect = requests.ConnectionError(
+            "dns lookup failed for secret-host"
+        )
+
+        with self.assertRaises(HttpClientError) as ctx:
+            with self._client()._open_download_response(
+                "https://presigned.example/SECRET-TOKEN",
+                timeout=30,
+                no_auth=True,
+                additional_headers=None,
+                op_label="custom_op",
+            ):
+                self.fail("body must not run on transport error")
+
+        msg = str(ctx.exception)
+        self.assertIn("custom_op", msg)
+        self.assertIn("ConnectionError", msg)
+        # URL (and any pre-signed secret it carries) must not leak into the message.
+        self.assertNotIn("SECRET-TOKEN", msg)
+        self.assertNotIn("presigned.example", msg)
+
+    @patch("requests.get")
+    def test_success_closes_response_on_context_exit(self, mock_get):
+        resp = self._make_response(200)
+        mock_get.return_value = resp
+
+        with self._client()._open_download_response(
+            "https://s3.example/file",
+            timeout=30,
+            no_auth=True,
+            additional_headers=None,
+            op_label="custom_op",
+        ) as got:
+            self.assertIs(got, resp)
+            resp.close.assert_not_called()
+
+        # Generator's `finally` runs response.close() on context exit.
+        resp.close.assert_called_once()
 
 
 class TestMulesoftAgentEndToEnd(TestCase):
@@ -922,3 +1057,378 @@ class TestMulesoftAgentEndToEnd(TestCase):
             "https://some-other-anypoint-mirror.example.com/v3/foo",
             headers={"Authorization": "Bearer tok"},
         )
+
+
+class TestDownloadToStorage(TestCase):
+    """Tests for HttpProxyClient.download_to_storage — streams a binary download
+    directly into the configured storage backend without holding the payload
+    in memory. Bytes are spooled to a tempfile; tempfile is uploaded then
+    deleted.
+    """
+
+    def _make_response(
+        self,
+        status_code: int = 200,
+        chunks: list[bytes] | None = None,
+    ) -> MagicMock:
+        resp = MagicMock()
+        resp.status_code = status_code
+        resp.iter_content.return_value = iter(chunks if chunks is not None else [b""])
+        # Configure context manager: real requests.Response.__enter__ returns self.
+        resp.__enter__.return_value = resp
+        resp.__exit__.return_value = None
+        if 400 <= status_code < 600:
+            resp.raise_for_status.side_effect = HTTPError(
+                f"{status_code}", response=resp
+            )
+        else:
+            resp.raise_for_status.return_value = None
+        return resp
+
+    @contextmanager
+    def _patched_storage(self):
+        """Patch the consumer-side binding of get_storage_client and yield the mock client."""
+        storage_client = MagicMock(name="storage_client")
+        storage_client.upload_file = MagicMock()
+        with patch(
+            "apollo.integrations.http.http_proxy_client.get_storage_client",
+            return_value=storage_client,
+        ):
+            yield storage_client
+
+    @patch("requests.get")
+    def test_streams_to_storage_and_returns_key(self, mock_get):
+        mock_get.return_value = self._make_response(chunks=[b"part1", b"part2"])
+        client = HttpProxyClient(credentials={"connect_args": {}})
+
+        with self._patched_storage() as storage_client:
+            returned = client.download_to_storage(
+                "https://s3.example/file.jar", "uploads/foo.jar"
+            )
+
+        self.assertEqual("uploads/foo.jar", returned)
+        storage_client.upload_file.assert_called_once()
+        called_key = storage_client.upload_file.call_args.args[0]
+        self.assertEqual("uploads/foo.jar", called_key)
+
+    @patch("requests.get")
+    def test_tempfile_contents_match_stream(self, mock_get):
+        """Capture the tempfile's bytes at upload_file call time, then assert
+        they equal the streamed concatenation."""
+        mock_get.return_value = self._make_response(
+            chunks=[b"alpha", b"beta", b"gamma"]
+        )
+        captured = {}
+
+        def capture_upload(key, path):
+            with open(path, "rb") as f:
+                captured["bytes"] = f.read()
+            captured["key"] = key
+
+        storage_client = MagicMock()
+        storage_client.upload_file.side_effect = capture_upload
+
+        client = HttpProxyClient(credentials={"connect_args": {}})
+        with patch(
+            "apollo.integrations.http.http_proxy_client.get_storage_client",
+            return_value=storage_client,
+        ):
+            client.download_to_storage("https://s3.example/file.jar", "uploads/foo.jar")
+
+        self.assertEqual(b"alphabetagamma", captured["bytes"])
+        self.assertEqual("uploads/foo.jar", captured["key"])
+
+    @patch("requests.get")
+    def test_tempfile_cleaned_up_on_success(self, mock_get):
+        mock_get.return_value = self._make_response(chunks=[b"data"])
+        captured_paths = []
+
+        def capture_path(key, path):
+            captured_paths.append(path)
+
+        storage_client = MagicMock()
+        storage_client.upload_file.side_effect = capture_path
+
+        client = HttpProxyClient(credentials={"connect_args": {}})
+        with patch(
+            "apollo.integrations.http.http_proxy_client.get_storage_client",
+            return_value=storage_client,
+        ):
+            client.download_to_storage("https://s3.example/file.jar", "uploads/foo.jar")
+
+        self.assertEqual(1, len(captured_paths))
+        self.assertFalse(
+            os.path.exists(captured_paths[0]),
+            f"tempfile {captured_paths[0]} should have been deleted",
+        )
+
+    @patch("requests.get")
+    def test_max_bytes_cap_aborts_and_cleans_up_tempfile(self, mock_get):
+        mock_get.return_value = self._make_response(chunks=[b"x" * 100, b"y" * 100])
+        real_named_tempfile = tempfile_mod.NamedTemporaryFile
+        captured_paths: list = []
+
+        def capture(*args, **kwargs):
+            f = real_named_tempfile(*args, **kwargs)
+            captured_paths.append(f.name)
+            return f
+
+        client = HttpProxyClient(credentials={"connect_args": {}})
+        with patch(
+            "apollo.integrations.http.http_proxy_client.tempfile.NamedTemporaryFile",
+            side_effect=capture,
+        ):
+            with self._patched_storage() as storage_client:
+                with self.assertRaises(HttpClientError) as ec:
+                    client.download_to_storage(
+                        "https://s3.example/file.jar",
+                        "uploads/foo.jar",
+                        max_bytes=150,
+                    )
+
+        self.assertIn("150", str(ec.exception))
+        self.assertEqual(1, len(captured_paths))
+        self.assertFalse(os.path.exists(captured_paths[0]))
+        storage_client.upload_file.assert_not_called()
+
+    @patch("requests.get")
+    def test_4xx_raises_http_client_error_and_no_upload(self, mock_get):
+        mock_get.return_value = self._make_response(status_code=404)
+
+        client = HttpProxyClient(credentials={"connect_args": {}})
+        with self._patched_storage() as storage_client:
+            with self.assertRaises(HttpClientError):
+                client.download_to_storage(
+                    "https://s3.example/file.jar", "uploads/foo.jar"
+                )
+
+        storage_client.upload_file.assert_not_called()
+
+    @patch("requests.get")
+    def test_5xx_raises_http_error_and_no_upload(self, mock_get):
+        mock_get.return_value = self._make_response(status_code=500)
+
+        client = HttpProxyClient(credentials={"connect_args": {}})
+        with self._patched_storage() as storage_client:
+            with self.assertRaises(HTTPError) as ec:
+                client.download_to_storage(
+                    "https://s3.example/file.jar", "uploads/foo.jar"
+                )
+
+        self.assertNotIsInstance(ec.exception, HttpClientError)
+        self.assertIsNotNone(ec.exception.response)
+        storage_client.upload_file.assert_not_called()
+
+    @patch("requests.get")
+    def test_3xx_redirect_refused_no_upload(self, mock_get):
+        mock_get.return_value = self._make_response(status_code=302)
+        # Headers might contain Location; we don't echo it but make sure.
+        mock_get.return_value.headers = {"Location": "https://attacker.example/leak"}
+
+        client = HttpProxyClient(credentials={"connect_args": {}})
+        with self._patched_storage() as storage_client:
+            with self.assertRaises(HttpClientError) as ec:
+                client.download_to_storage(
+                    "https://s3.example/file.jar", "uploads/foo.jar"
+                )
+
+        self.assertNotIn("attacker.example", str(ec.exception))
+        self.assertIn("302", str(ec.exception))
+        storage_client.upload_file.assert_not_called()
+
+    @patch("requests.get")
+    def test_connection_error_no_upload_no_url_in_message(self, mock_get):
+        secret_url = "https://s3.example/file.jar?Signature=DO-NOT-LEAK-XYZ"
+        mock_get.side_effect = requests.ConnectionError(
+            "connection refused at " + secret_url
+        )
+
+        client = HttpProxyClient(credentials={"connect_args": {}})
+        with self._patched_storage() as storage_client:
+            with self.assertRaises(HttpClientError) as ec:
+                client.download_to_storage(secret_url, "uploads/foo.jar")
+
+        self.assertNotIn("DO-NOT-LEAK-XYZ", str(ec.exception))
+        self.assertNotIn(secret_url, str(ec.exception))
+        storage_client.upload_file.assert_not_called()
+
+    def test_ssrf_guard_rejects_non_https(self):
+        client = HttpProxyClient(credentials={"connect_args": {}})
+        with self.assertRaises(HttpClientError):
+            client.download_to_storage("http://example.com/file", "uploads/foo.jar")
+
+    def test_ssrf_guard_rejects_imds(self):
+        client = HttpProxyClient(credentials={"connect_args": {}})
+        with self.assertRaises(HttpClientError):
+            client.download_to_storage(
+                "https://169.254.169.254/latest/meta-data/", "uploads/foo.jar"
+            )
+
+    @patch("requests.get")
+    def test_no_auth_default_omits_authorization_header(self, mock_get):
+        mock_get.return_value = self._make_response(chunks=[b"data"])
+
+        client = HttpProxyClient(credentials={"connect_args": {"token": "tok"}})
+        with self._patched_storage():
+            client.download_to_storage("https://s3.example/file.jar", "uploads/foo.jar")
+
+        sent_headers = mock_get.call_args.kwargs["headers"]
+        self.assertNotIn("Authorization", sent_headers)
+
+    @patch("requests.get")
+    def test_no_auth_false_attaches_authorization_header(self, mock_get):
+        mock_get.return_value = self._make_response(chunks=[b"data"])
+
+        client = HttpProxyClient(credentials={"connect_args": {"token": "tok"}})
+        with self._patched_storage():
+            client.download_to_storage(
+                "https://api.example/file",
+                "uploads/foo.jar",
+                no_auth=False,
+            )
+
+        sent_headers = mock_get.call_args.kwargs["headers"]
+        self.assertEqual("Bearer tok", sent_headers["Authorization"])
+
+    @patch("requests.get")
+    def test_allow_redirects_false_passed_to_requests(self, mock_get):
+        mock_get.return_value = self._make_response(chunks=[b"data"])
+
+        client = HttpProxyClient(credentials={"connect_args": {}})
+        with self._patched_storage():
+            client.download_to_storage("https://s3.example/file.jar", "uploads/foo.jar")
+
+        self.assertFalse(mock_get.call_args.kwargs["allow_redirects"])
+        self.assertTrue(mock_get.call_args.kwargs["stream"])
+
+    @patch("requests.get")
+    def test_additional_headers_merged(self, mock_get):
+        mock_get.return_value = self._make_response(chunks=[b"data"])
+
+        client = HttpProxyClient(credentials={"connect_args": {}})
+        with self._patched_storage():
+            client.download_to_storage(
+                "https://s3.example/file.jar",
+                "uploads/foo.jar",
+                additional_headers={"X-Trace": "abc"},
+            )
+
+        self.assertEqual("abc", mock_get.call_args.kwargs["headers"]["X-Trace"])
+
+    @patch("requests.get")
+    def test_default_timeout_is_300_seconds(self, mock_get):
+        mock_get.return_value = self._make_response(chunks=[b"data"])
+
+        client = HttpProxyClient(credentials={"connect_args": {}})
+        with self._patched_storage():
+            client.download_to_storage("https://s3.example/file.jar", "uploads/foo.jar")
+
+        self.assertEqual(300, mock_get.call_args.kwargs["timeout"])
+
+    @patch("requests.get")
+    def test_ssl_verify_passed_through(self, mock_get):
+        mock_get.return_value = self._make_response(chunks=[b"data"])
+
+        client = HttpProxyClient(
+            credentials={"connect_args": {"ssl_verify": "/path/to/ca.pem"}}
+        )
+        with self._patched_storage():
+            client.download_to_storage("https://s3.example/file.jar", "uploads/foo.jar")
+
+        self.assertEqual("/path/to/ca.pem", mock_get.call_args.kwargs["verify"])
+
+    @patch("requests.get")
+    def test_tempfile_cleaned_up_when_upload_raises(self, mock_get):
+        mock_get.return_value = self._make_response(chunks=[b"data"])
+        captured_paths: list = []
+
+        def fail_after_capture(key, path):
+            captured_paths.append(path)
+            raise RuntimeError("storage backend exploded")
+
+        storage_client = MagicMock()
+        storage_client.upload_file.side_effect = fail_after_capture
+
+        client = HttpProxyClient(credentials={"connect_args": {}})
+        with patch(
+            "apollo.integrations.http.http_proxy_client.get_storage_client",
+            return_value=storage_client,
+        ):
+            with self.assertRaises(RuntimeError):
+                client.download_to_storage(
+                    "https://s3.example/file.jar", "uploads/foo.jar"
+                )
+
+        self.assertEqual(1, len(captured_paths))
+        # The tempfile must be cleaned up even when upload_file raises.
+        self.assertFalse(
+            os.path.exists(captured_paths[0]),
+            f"tempfile {captured_paths[0]} should have been deleted",
+        )
+
+    @patch("requests.get")
+    def test_platform_forwarded_to_storage_factory(self, mock_get):
+        """The agent platform passed to HttpProxyClient must be forwarded to
+        get_storage_client so the platform→backend default (S3/GCS/Azure)
+        applies in production agents where MCD_STORAGE is not set.
+        """
+        from apollo.common.agent.constants import PLATFORM_AWS
+
+        mock_get.return_value = self._make_response(chunks=[b"data"])
+        storage_client = MagicMock()
+        storage_client.upload_file = MagicMock()
+
+        client = HttpProxyClient(
+            credentials={"connect_args": {}}, platform=PLATFORM_AWS
+        )
+        with patch(
+            "apollo.integrations.http.http_proxy_client.get_storage_client",
+            return_value=storage_client,
+        ) as mock_factory:
+            client.download_to_storage("https://s3.example/file.jar", "uploads/foo.jar")
+
+        mock_factory.assert_called_once_with(platform=PLATFORM_AWS)
+
+    @patch("requests.get")
+    def test_platform_defaults_to_none_when_not_supplied(self, mock_get):
+        """Direct constructions (DatabricksRest, tests) that omit platform must
+        still work — get_storage_client receives platform=None and falls back
+        to MCD_STORAGE (the local-development path)."""
+        mock_get.return_value = self._make_response(chunks=[b"data"])
+        storage_client = MagicMock()
+        storage_client.upload_file = MagicMock()
+
+        client = HttpProxyClient(credentials={"connect_args": {}})
+        with patch(
+            "apollo.integrations.http.http_proxy_client.get_storage_client",
+            return_value=storage_client,
+        ) as mock_factory:
+            client.download_to_storage("https://s3.example/file.jar", "uploads/foo.jar")
+
+        mock_factory.assert_called_once_with(platform=None)
+
+    @patch("requests.get")
+    def test_storage_client_cached_across_multiple_downloads(self, mock_get):
+        """get_storage_client is invoked once per HttpProxyClient instance.
+        Repeated download_to_storage calls reuse the same SDK client — boto3 /
+        google-cloud-storage / azure-storage-blob construction is non-trivial
+        (credential resolution, connection-pool setup), and a DC fetching
+        multiple JARs in a loop should not pay it per file.
+        """
+        mock_get.return_value = self._make_response(chunks=[b"data"])
+        storage_client = MagicMock()
+        storage_client.upload_file = MagicMock()
+
+        client = HttpProxyClient(credentials={"connect_args": {}})
+        with patch(
+            "apollo.integrations.http.http_proxy_client.get_storage_client",
+            return_value=storage_client,
+        ) as mock_factory:
+            client.download_to_storage("https://s3.example/a.jar", "uploads/a.jar")
+            mock_get.return_value = self._make_response(chunks=[b"data"])
+            client.download_to_storage("https://s3.example/b.jar", "uploads/b.jar")
+            mock_get.return_value = self._make_response(chunks=[b"data"])
+            client.download_to_storage("https://s3.example/c.jar", "uploads/c.jar")
+
+        self.assertEqual(1, mock_factory.call_count)
+        self.assertEqual(3, storage_client.upload_file.call_count)

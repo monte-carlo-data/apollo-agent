@@ -1,6 +1,9 @@
 import ipaddress
 import logging
-from typing import Dict, List, Optional, Tuple, Union
+import os
+import tempfile
+from contextlib import contextmanager
+from typing import Dict, Iterator, List, Optional, Tuple, Union
 from urllib.parse import urlsplit
 
 import requests
@@ -10,6 +13,12 @@ from retry.api import retry_call
 from apollo.common.agent.models import AgentOperation
 from apollo.common.agent.redact import AgentRedactUtilities
 from apollo.integrations.base_proxy_client import BaseProxyClient
+from apollo.integrations.storage.base_storage_client import BaseStorageClient
+
+# Hoisted to module scope: a late import inside `download_to_storage` would
+# leak the streaming response if the import raised (e.g., missing cloud SDK).
+# Safe at module scope because `factory.py`'s SDK imports are themselves lazy.
+from apollo.integrations.storage.factory import get_storage_client
 
 _logger = logging.getLogger(__name__)
 
@@ -48,8 +57,25 @@ class HttpProxyClient(BaseProxyClient):
     - `disabled`: Set to True to disable SSL verification
     """
 
-    def __init__(self, credentials: Optional[Dict], **kwargs):  # type: ignore
+    def __init__(
+        self,
+        credentials: Optional[Dict],
+        platform: Optional[str] = None,
+        **kwargs,  # type: ignore
+    ):
         self._ssl_verify: Union[bool, str, None] = None
+        # `platform` is forwarded to the storage factory by `download_to_storage`
+        # so the configured backend (S3/GCS/Azure) can be derived from the agent
+        # platform when `MCD_STORAGE` is unset (the production default — the env
+        # var is only set for local development). Defaults to None so direct
+        # callers (e.g. DatabricksRestProxyClient) that don't use
+        # download_to_storage keep working.
+        self._platform: Optional[str] = platform
+        # Lazy-initialized on first download_to_storage call; reused across
+        # subsequent calls so the underlying SDK client (boto3 / google-cloud-
+        # storage / azure-storage-blob) is constructed once per HttpProxyClient
+        # instance instead of per request.
+        self._storage_client: Optional[BaseStorageClient] = None
 
         if credentials and "connect_args" in credentials:
             self._credentials = credentials["connect_args"]
@@ -80,14 +106,17 @@ class HttpProxyClient(BaseProxyClient):
 
     @staticmethod
     def _assert_safe_download_url(url: str) -> None:
+        # Phrasing is method-agnostic so the same helper can be reused by every
+        # streaming download entry point on this client (download_bytes,
+        # download_to_storage, future additions) without misnaming the caller.
         parts = urlsplit(url)
         if parts.scheme != "https":
             raise HttpClientError(
-                f"download_bytes requires https scheme; got '{parts.scheme}'"
+                f"download requires https scheme; got '{parts.scheme}'"
             )
         host = (parts.hostname or "").lower()
         if host in ("", "localhost"):
-            raise HttpClientError(f"download_bytes refuses '{host or '<empty>'}' host")
+            raise HttpClientError(f"download refuses '{host or '<empty>'}' host")
         try:
             ip = ipaddress.ip_address(host)
         except ValueError:
@@ -98,7 +127,19 @@ class HttpProxyClient(BaseProxyClient):
         # ipaddress module reports `is_global=True` for multicast (e.g.
         # 224.0.0.0/4), so we add an explicit multicast check.
         if not ip.is_global or ip.is_multicast:
-            raise HttpClientError(f"download_bytes refuses non-public address: {ip}")
+            raise HttpClientError(f"download refuses non-public address: {ip}")
+
+    def _get_storage_client(self) -> BaseStorageClient:
+        """Lazy + cached storage client for ``download_to_storage``.
+
+        Constructed once per ``HttpProxyClient`` instance — reusing the
+        underlying SDK client (boto3 / google-cloud-storage / azure-storage-
+        blob) across multiple ``download_to_storage`` calls avoids the per-call
+        cost of credential resolution and connection-pool setup.
+        """
+        if self._storage_client is None:
+            self._storage_client = get_storage_client(platform=self._platform)
+        return self._storage_client
 
     def _attach_auth_header(self, headers: Dict) -> None:
         if self._credentials and "token" in self._credentials:
@@ -195,6 +236,70 @@ class HttpProxyClient(BaseProxyClient):
 
         return response.json()
 
+    @contextmanager
+    def _open_download_response(
+        self,
+        url: str,
+        timeout: int,
+        no_auth: bool,
+        additional_headers: Optional[Dict],
+        op_label: str,
+    ) -> Iterator[requests.Response]:
+        """Open a streaming GET response with the full SSRF + redirect + status guards.
+
+        Use as a context manager: ``with self._open_download_response(...) as response:``.
+        On every error-exit path the response is closed internally before the
+        exception propagates; on success, the context manager closes it on exit.
+        ``op_label`` is included in error messages so the user-facing message
+        names the calling method.
+
+        Raises:
+            HttpClientError: SSRF guard rejection, transport error, 3xx redirect,
+                or 4xx response.
+            HTTPError: 5xx response.
+        """
+        self._assert_safe_download_url(url)
+
+        headers = {**additional_headers} if additional_headers else {}
+        if not no_auth:
+            self._attach_auth_header(headers)
+
+        request_kwargs: Dict = {
+            "timeout": timeout,
+            "headers": headers,
+            "stream": True,
+            "allow_redirects": False,
+        }
+        if self._ssl_verify is not None:
+            request_kwargs["verify"] = self._ssl_verify
+
+        try:
+            response = requests.get(url, **request_kwargs)
+        except requests.RequestException as exc:
+            raise HttpClientError(
+                f"{op_label} transport error: {type(exc).__name__}"
+            ) from None
+
+        status = response.status_code
+        if 300 <= status < 400:
+            response.close()
+            raise HttpClientError(f"{op_label} refused redirect (HTTP {status})")
+        try:
+            response.raise_for_status()
+        except HTTPError:
+            if self.is_client_error_status_code(status):
+                response.close()
+                raise HttpClientError(f"{op_label} failed with HTTP {status}") from None
+            new_err = HTTPError(f"{op_label} failed with HTTP {status}")
+            new_err.response = response
+            response.close()
+            raise new_err from None
+
+        try:
+            yield response
+        finally:
+            response.close()
+
     def download_bytes(
         self,
         url: str,
@@ -226,46 +331,13 @@ class HttpProxyClient(BaseProxyClient):
           signed secret; callers needing verbose error context should use
           ``do_request`` with full URLs instead.
         """
-        self._assert_safe_download_url(url)
-
-        headers = {**additional_headers} if additional_headers else {}
-        if not no_auth:
-            self._attach_auth_header(headers)
-
-        request_kwargs: Dict = {
-            "timeout": timeout,
-            "headers": headers,
-            "stream": True,
-            "allow_redirects": False,
-        }
-        if self._ssl_verify is not None:
-            request_kwargs["verify"] = self._ssl_verify
-
-        try:
-            response = requests.get(url, **request_kwargs)
-        except requests.RequestException as exc:
-            raise HttpClientError(
-                f"download_bytes transport error: {type(exc).__name__}"
-            ) from None
-
-        with response:
-            status = response.status_code
-            # 3xx is not raised by raise_for_status; explicitly reject it so
-            # callers don't silently receive an empty redirect body as "bytes".
-            if 300 <= status < 400:
-                raise HttpClientError(
-                    f"download_bytes refused redirect (HTTP {status})"
-                )
-            try:
-                response.raise_for_status()
-            except HTTPError:
-                if self.is_client_error_status_code(status):
-                    raise HttpClientError(
-                        f"download_bytes failed with HTTP {status}"
-                    ) from None
-                new_err = HTTPError(f"download_bytes failed with HTTP {status}")
-                new_err.response = response
-                raise new_err from None
+        with self._open_download_response(
+            url,
+            timeout=timeout,
+            no_auth=no_auth,
+            additional_headers=additional_headers,
+            op_label="download_bytes",
+        ) as response:
             chunks: List[bytes] = []
             size = 0
             for chunk in response.iter_content(chunk_size=8192):
@@ -278,6 +350,81 @@ class HttpProxyClient(BaseProxyClient):
                         f"download_bytes response exceeded {max_bytes} bytes"
                     )
             return b"".join(chunks)
+
+    def download_to_storage(
+        self,
+        url: str,
+        storage_key: str,
+        timeout: int = 300,
+        max_bytes: Optional[int] = None,
+        no_auth: bool = True,
+        additional_headers: Optional[Dict] = None,
+    ) -> str:
+        """Stream a binary download into the agent's configured storage backend
+        (S3 / GCS / Azure Blob / S3-compatible) without holding the payload in
+        memory — only one chunk (8 KiB) is in memory at any time.
+
+        Bytes are spooled to a tempfile as they arrive, then handed to the
+        storage backend's ``upload_file``; the tempfile is deleted in the
+        ``finally``. Returns the supplied ``storage_key``.
+
+        Same safety surface as ``download_bytes``: HTTPS-only, non-public IP
+        literals (incl. multicast) rejected, redirects refused, ``max_bytes``
+        cap fires mid-stream, error messages strip the URL, connection released
+        on every exit path.
+
+        Use this instead of ``download_bytes`` for payloads that may be large
+        enough to matter for memory (the motivating case is MuleSoft Mule
+        application JARs which can exceed 100 MiB).
+
+        Notes:
+            Requires either ``MCD_STORAGE`` env var, or a ``platform`` value passed
+            to ``HttpProxyClient(...)`` whose default backend is recognized
+            (`PLATFORM_AWS`, `PLATFORM_GCP`, `PLATFORM_AZURE`, `PLATFORM_AWS_GENERIC`).
+
+        Raises:
+            HttpClientError: SSRF guard rejection, transport error, 3xx/4xx response,
+                or ``max_bytes`` exceeded.
+            HTTPError: 5xx response.
+            AgentConfigurationError: storage backend is not configured (no
+                ``MCD_STORAGE`` env var and no recognized ``platform``).
+        """
+        with self._open_download_response(
+            url,
+            timeout=timeout,
+            no_auth=no_auth,
+            additional_headers=additional_headers,
+            op_label="download_to_storage",
+        ) as response:
+            tmp = tempfile.NamedTemporaryFile(
+                delete=False, suffix=".download_to_storage"
+            )
+            try:
+                size = 0
+                try:
+                    for chunk in response.iter_content(chunk_size=8192):
+                        if not chunk:
+                            continue
+                        tmp.write(chunk)
+                        size += len(chunk)
+                        if max_bytes is not None and size > max_bytes:
+                            raise HttpClientError(
+                                f"download_to_storage response exceeded {max_bytes} bytes"
+                            )
+                finally:
+                    tmp.close()
+                # Cached on self after first call — avoids reconstructing the
+                # SDK client (boto3 / GCS / Azure) per request.
+                self._get_storage_client().upload_file(storage_key, tmp.name)
+            finally:
+                # Best-effort cleanup; never let an unlink failure mask the
+                # original exception (or stomp on a successful return).
+                try:
+                    os.unlink(tmp.name)
+                except OSError:
+                    pass
+
+        return storage_key
 
     def do_request_with_retry(
         self,
