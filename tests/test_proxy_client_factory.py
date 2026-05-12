@@ -110,17 +110,36 @@ class TestHttpProxyClientFactoryWiring(TestCase):
         )
         self.assertEqual(PLATFORM_AWS, client._platform)
 
-    def test_http_factory_forwards_platform_for_mulesoft(self):
-        # mulesoft routes through the same _get_proxy_client_http; explicit
-        # coverage that the dispatch keeps the platform wired.
+    def test_mulesoft_factory_returns_mulesoft_subclass_with_platform_wired(self):
+        # YET-1229: mulesoft routes through ``_get_proxy_client_mulesoft``
+        # (not the generic ``_get_proxy_client_http`` it used pre-pivot)
+        # and returns a ``MulesoftHttpProxyClient`` — the
+        # ``HttpProxyClient`` subclass that adds
+        # ``extract_mulesoft_sources``. The inherited HTTP surface stays
+        # intact; the platform value still flows through to the
+        # storage-factory default that ``download_to_storage`` uses for
+        # other connectors.
         from apollo.agent.proxy_client_factory import (
             _CLIENT_FACTORY_MAPPING,
-            _get_proxy_client_http,
+            _get_proxy_client_mulesoft,
         )
         from apollo.common.agent.constants import PLATFORM_AZURE
+        from apollo.integrations.http.http_proxy_client import HttpProxyClient
+        from apollo.integrations.http.mulesoft_proxy_client import (
+            MulesoftHttpProxyClient,
+        )
 
-        self.assertIs(_CLIENT_FACTORY_MAPPING["mulesoft"], _get_proxy_client_http)
+        self.assertIs(_CLIENT_FACTORY_MAPPING["mulesoft"], _get_proxy_client_mulesoft)
         client = _CLIENT_FACTORY_MAPPING["mulesoft"](
             {"connect_args": {}}, platform=PLATFORM_AZURE
         )
+        self.assertIsInstance(client, MulesoftHttpProxyClient)
+        self.assertIsInstance(client, HttpProxyClient)
         self.assertEqual(PLATFORM_AZURE, client._platform)
+        # The MuleSoft-specific op is exposed + the inherited HTTP surface
+        # is still callable. Together these guarantee the agent dispatch
+        # can route both YET-1229's new op and YET-1130's existing REST
+        # calls through the same client instance.
+        self.assertTrue(hasattr(client, "extract_mulesoft_sources"))
+        self.assertTrue(hasattr(client, "do_request"))
+        self.assertTrue(hasattr(client, "download_bytes"))
