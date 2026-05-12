@@ -64,6 +64,14 @@ def _get_proxy_client_http(
     return HttpProxyClient(credentials=credentials, platform=platform)
 
 
+def _get_proxy_client_mulesoft(
+    credentials: Optional[Dict], platform: Optional[str] = None, **kwargs  # type: ignore
+) -> BaseProxyClient:
+    from apollo.integrations.http.mulesoft_proxy_client import MulesoftHttpProxyClient
+
+    return MulesoftHttpProxyClient(credentials=credentials, platform=platform)
+
+
 def _get_proxy_client_s3(
     credentials: Optional[Dict], platform: str, **kwargs  # type: ignore
 ) -> BaseProxyClient:
@@ -422,11 +430,12 @@ _CLIENT_FACTORY_MAPPING = {
     "starburst-enterprise": _get_proxy_client_starburst_enterprise,
     "informatica": _get_proxy_client_informatica,
     "informatica-v2": _get_proxy_client_informatica,
-    # mulesoft uses the generic HttpProxyClient — CTP shapes connect_args
-    # (token, auth_type, ssl_verify) into what HttpProxyClient consumes; the
-    # DC constructs full MuleSoft URLs and calls do_request directly. No
-    # per-connector class is needed in the agent.
-    "mulesoft": _get_proxy_client_http,
+    # mulesoft uses a subclass of HttpProxyClient that adds the
+    # ``extract_mulesoft_sources`` op (YET-1229). The base HTTP surface
+    # (``do_request`` / ``download_bytes`` / etc.) is inherited unchanged
+    # — DC's MuleSoft REST client invokes both the inherited ops and the
+    # MuleSoft-specific op through the same client instance.
+    "mulesoft": _get_proxy_client_mulesoft,
 }
 
 
