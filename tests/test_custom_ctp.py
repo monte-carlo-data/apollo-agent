@@ -4,6 +4,7 @@
 Uses the databricks-rest connection type as the test vehicle because it has a
 simple CTP (PAT → token) and a well-defined TypedDict output contract.
 """
+
 from unittest import TestCase
 from unittest.mock import create_autospec, patch
 
@@ -198,6 +199,31 @@ class TestCustomCtpSchemaInjection(TestCase):
             _CUSTOM_CTP,
         )
         self.assertIs(credentials, result)
+
+    def test_outer_siblings_merged_with_inner_connect_args(self):
+        """SUP-373 follow-up: resolve_custom mirrors resolve's sibling-merge behavior.
+
+        Outer credential fields are merged with the inner connect_args dict before
+        the custom pipeline runs — so a custom CTP whose mapper references an outer
+        field can read it from DC pre-shaped credentials. Without this symmetry,
+        resolve and resolve_custom would diverge for DC payloads with sibling fields.
+        """
+        credentials = {
+            "connect_args": {"custom_token": _CUSTOM_TOKEN},  # inner
+            "databricks_workspace_url": _WORKSPACE_URL,  # outer sibling
+        }
+
+        result = CtpRegistry.resolve_custom(
+            "databricks-rest",
+            credentials,
+            _CUSTOM_CTP,
+        )
+
+        self.assertIn("connect_args", result)
+        self.assertEqual(_CUSTOM_TOKEN, result["connect_args"]["token"])
+        self.assertEqual(
+            _WORKSPACE_URL, result["connect_args"]["databricks_workspace_url"]
+        )
 
 
 class TestValidateCtp(TestCase):

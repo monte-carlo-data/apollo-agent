@@ -57,6 +57,75 @@ class TestNonDictConnectArgsPassthrough(TestCase):
         self.assertIs(credentials, result)
 
 
+class TestSiblingMergePrecedence(TestCase):
+    """SUP-373 follow-up: lock in the inner-wins precedence rule of _build_pipeline_input.
+
+    On collision between an outer-sibling field and an inner connect_args field, the
+    inner value MUST win — driver-direct values are most specific. A refactor flipping
+    the merge order (e.g. ``{**inner, **outer}``) would silently change pipeline-visible
+    values for any DC payload that includes overlap, with no other test catching it.
+    """
+
+    def test_inner_connect_args_wins_on_collision(self):
+        credentials = {
+            "connect_args": {
+                "host": "INNER_HOST",
+                "port": 3306,
+                "user": "inner_user",
+                "password": "inner_password",
+            },
+            # Sibling outer fields with the same names — must be shadowed by inner.
+            "host": "OUTER_HOST",
+            "port": 9999,
+            "user": "outer_user",
+            "password": "outer_password",
+        }
+
+        resolved = CtpRegistry.resolve("mysql", credentials)
+        connect_args = resolved["connect_args"]
+
+        self.assertEqual("INNER_HOST", connect_args["host"])
+        self.assertEqual(3306, connect_args["port"])
+        self.assertEqual("inner_user", connect_args["user"])
+        self.assertEqual("inner_password", connect_args["password"])
+
+
+class TestEmptyAndNoneConnectArgs(TestCase):
+    """SUP-373 follow-up: pin the behavior of degenerate ``connect_args`` shapes.
+
+    Pre-PR, ``connect_args=None`` was returned unchanged (pipeline skipped) — which
+    crashed downstream proxy clients that expected a dict. ``connect_args={}`` ran
+    the pipeline against an empty dict, producing empty output. Post-PR, both shapes
+    are treated as 'no usable inner connect_args' and the pipeline runs against the
+    outer/flat fields, which is more useful and matches the flat-credentials path.
+    """
+
+    _FLAT_FIELDS = {
+        "host": "db.example.com",
+        "port": 3306,
+        "user": "admin",
+        "password": "secret",
+    }
+
+    def test_connect_args_none_falls_back_to_outer_fields(self):
+        credentials = {"connect_args": None, **self._FLAT_FIELDS}
+        resolved = CtpRegistry.resolve("mysql", credentials)
+        connect_args = resolved["connect_args"]
+        self.assertEqual("db.example.com", connect_args["host"])
+        self.assertEqual(3306, connect_args["port"])
+        self.assertEqual("admin", connect_args["user"])
+        self.assertEqual("secret", connect_args["password"])
+
+    def test_connect_args_empty_dict_falls_back_to_outer_fields(self):
+        credentials = {"connect_args": {}, **self._FLAT_FIELDS}
+        resolved = CtpRegistry.resolve("mysql", credentials)
+        connect_args = resolved["connect_args"]
+        self.assertEqual("db.example.com", connect_args["host"])
+        self.assertEqual(3306, connect_args["port"])
+        self.assertEqual("admin", connect_args["user"])
+        self.assertEqual("secret", connect_args["password"])
+
+
 class TestStarburstGalaxyCtp(TestCase):
     def test_starburst_galaxy_registered(self):
         config = CtpRegistry.get("starburst-galaxy")
