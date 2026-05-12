@@ -2,7 +2,7 @@ import os
 from datetime import datetime
 from typing import Optional, cast
 
-from azure.identity import DefaultAzureCredential
+from azure.identity import ClientSecretCredential, DefaultAzureCredential
 from azure.mgmt.storage import StorageManagementClient
 from azure.storage.blob import (
     BlobClient,
@@ -15,6 +15,12 @@ from apollo.common.agent.env_vars import (
     STORAGE_BUCKET_NAME_ENV_VAR,
     STORAGE_ACCOUNT_NAME_ENV_VAR,
     AGENT_WRAPPER_TYPE_ENV_VAR,
+    AUTH_TYPE_AZURE_SERVICE_PRINCIPAL,
+    AZURE_STORAGE_AUTH_TYPE_ENV_VAR,
+    AZURE_SP_TENANT_ID_ENV_VAR,
+    AZURE_SP_CLIENT_ID_ENV_VAR,
+    AZURE_SP_CLIENT_SECRET_ENV_VAR,
+    AZURE_STORAGE_ACCOUNT_URL_ENV_VAR,
 )
 from apollo.common.agent.models import AgentConfigurationError
 from apollo.integrations.azure_blob.azure_blob_base_reader_writer import (
@@ -30,14 +36,17 @@ class AzureBlobReaderWriter(AzureBlobBaseReaderWriter):
     Azure Storage client implementation used in the agent, it initializes the client using the
     account and container names specified through `MCD_STORAGE_ACCOUNT_NAME` and `MCD_STORAGE_BUCKET_NAME`
     environment variables.
-    For authentication a `DefaultAzureCredential` object is used which requires the Azure Function to be running
-    with a managed identity. If the identity is user-managed (instead of system-managed) the env variable
-    AZURE_CLIENT_ID needs to be set with the client-id from the identity.
-    Additionally, the identity needs to have access to the storage account, for example by having the
+
+    Supports two authentication modes:
+    - **Managed identity (default):** Uses `DefaultAzureCredential`, requires the Azure Function to run
+      with a managed identity. If the identity is user-managed, set `AZURE_CLIENT_ID`.
+    - **Service principal:** When `MCD_AZURE_STORAGE_AUTH_TYPE` is set to `"service_principal"`,
+      uses `ClientSecretCredential` with tenant_id, client_id, and client_secret from env vars.
+
+    The identity needs access to the storage account, for example by having the
     `Storage Blob Data Contributor` role assigned at the storage account level.
-    For checking if public access is disabled to the container, we need to authenticate with a shared key
-    and thus the identity needs to have the `Storage Account Key Operator Service Role` role assigned, also at the
-    storage account level.
+    For managed identity, the `Storage Account Key Operator Service Role` is also needed for the
+    bucket privacy check. For service principal auth the privacy check is skipped.
     """
 
     def __init__(self, prefix: Optional[str] = None, **kwargs):  # type: ignore
@@ -52,19 +61,58 @@ class AzureBlobReaderWriter(AzureBlobBaseReaderWriter):
                 f"Storage account not configured, {STORAGE_ACCOUNT_NAME_ENV_VAR} env var expected"
             )
 
-        self._account_url = f"https://{self._account_name}.blob.core.windows.net"
+        self._auth_type = os.getenv(AZURE_STORAGE_AUTH_TYPE_ENV_VAR, "")
+
+        if self._auth_type == AUTH_TYPE_AZURE_SERVICE_PRINCIPAL:
+            credential = self._build_service_principal_credential()
+            self._account_url = self._resolve_account_url()
+        else:
+            credential = AzureUtils.get_default_credential()
+            self._account_url = f"https://{self._account_name}.blob.core.windows.net"
+
         super().__init__(
             bucket_name=bucket_name,
             prefix=prefix,
             account_url=self._account_url,
-            credential=AzureUtils.get_default_credential(),
+            credential=credential,
             **kwargs,
         )
 
+    def _build_service_principal_credential(self) -> ClientSecretCredential:
+        required_vars = {
+            AZURE_SP_TENANT_ID_ENV_VAR: os.getenv(AZURE_SP_TENANT_ID_ENV_VAR, ""),
+            AZURE_SP_CLIENT_ID_ENV_VAR: os.getenv(AZURE_SP_CLIENT_ID_ENV_VAR, ""),
+            AZURE_SP_CLIENT_SECRET_ENV_VAR: os.getenv(
+                AZURE_SP_CLIENT_SECRET_ENV_VAR, ""
+            ),
+        }
+        for env_var, value in required_vars.items():
+            if not value:
+                raise AgentConfigurationError(
+                    f"Service principal auth requires {env_var} env var"
+                )
+        return ClientSecretCredential(
+            tenant_id=required_vars[AZURE_SP_TENANT_ID_ENV_VAR],
+            client_id=required_vars[AZURE_SP_CLIENT_ID_ENV_VAR],
+            client_secret=required_vars[AZURE_SP_CLIENT_SECRET_ENV_VAR],
+        )
+
+    def _resolve_account_url(self) -> str:
+        account_url = os.getenv(AZURE_STORAGE_ACCOUNT_URL_ENV_VAR, "")
+        if account_url:
+            if not account_url.startswith("https://"):
+                raise AgentConfigurationError(
+                    f"{AZURE_STORAGE_ACCOUNT_URL_ENV_VAR} must use https:// scheme"
+                )
+            return account_url
+        return f"https://{self._account_name}.blob.core.windows.net"
+
     def is_bucket_private(self) -> bool:
-        # for Kubernetes deployments we don't have access to the storage account key, so we
-        # skip the check and assume the container is private
+        # For Kubernetes deployments and service principal auth we don't have access to
+        # the storage management API, so we skip the check and assume the container is private.
         if os.getenv(AGENT_WRAPPER_TYPE_ENV_VAR) == _WRAPPER_TYPE_KUBERNETES:
+            return True
+        if self._auth_type == AUTH_TYPE_AZURE_SERVICE_PRINCIPAL:
             return True
         return super().is_bucket_private()
 
