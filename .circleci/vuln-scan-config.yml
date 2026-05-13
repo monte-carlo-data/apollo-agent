@@ -1,0 +1,81 @@
+version: 2.1
+
+# Nightly vulnerability scan for published montecarlodata/agent images.
+# Lives as a separate CircleCI pipeline (configured in CircleCI project settings)
+# so it can be triggered on a daily schedule independently of the main build.
+#
+# The scan logic lives in scripts/vuln_scan/scan.py. State (which CVEs have been
+# notified, when, and for which digest) is persisted in S3 so each run only
+# alerts on deltas.
+
+orbs:
+  aws-cli: circleci/aws-cli@4.1.3
+  docker: circleci/docker@2.2.0
+
+jobs:
+  scan-images:
+    machine:
+      image: ubuntu-2204:current
+    steps:
+      - checkout
+
+      - docker/check:
+          use-docker-credentials-store: true
+
+      - aws-cli/setup:
+          role_arn: arn:aws:iam::637423407294:role/mc-circleci
+          region: us-east-1
+          profile_name: default
+
+      - run:
+          name: Install Docker Scout CLI
+          command: |
+            mkdir -p ~/.docker/cli-plugins
+            # Pin to a known-good release rather than ":latest" so a Scout
+            # release that changes SARIF output can't silently break us.
+            SCOUT_VERSION="1.18.2"
+            ARCH="$(uname -m | sed 's/x86_64/amd64/; s/aarch64/arm64/')"
+            curl -fsSL \
+              "https://github.com/docker/scout-cli/releases/download/v${SCOUT_VERSION}/docker-scout_${SCOUT_VERSION}_linux_${ARCH}.tar.gz" \
+              -o /tmp/scout.tar.gz
+            tar -xzf /tmp/scout.tar.gz -C /tmp
+            install -m 0755 /tmp/docker-scout ~/.docker/cli-plugins/docker-scout
+            docker scout version
+
+      - run:
+          name: Install Python dependencies
+          command: |
+            python3 -m venv .venv
+            . .venv/bin/activate
+            pip install --no-cache-dir --upgrade pip
+            pip install --no-cache-dir -r scripts/vuln_scan/requirements.txt
+
+      - run:
+          name: Run vulnerability scan
+          no_output_timeout: 30m
+          # All operational inputs are passed as CLI flags so the repo, tags,
+          # channel, and bucket can change without a code edit. The tag list
+          # below intentionally excludes:
+          #   - latest-aws-generic   (mirrors latest-aws-proxied's digest)
+          #   - latest-generic-base  (intermediate build artifact)
+          #   - latest-system-base   (published base layer; vulns surface in
+          #                           downstream images anyway)
+          command: |
+            . .venv/bin/activate
+            python scripts/vuln_scan/scan.py \
+              --repo montecarlodata/agent \
+              --bucket dev-mc-caas-infrastructure-templates \
+              --slack-channel '#aaa-dev-error-alerts' \
+              --tag latest-aws-proxied \
+              --tag latest-azure \
+              --tag latest-cloudrun \
+              --tag latest-generic \
+              --tag latest-lambda
+
+workflows:
+  nightly-vuln-scan:
+    jobs:
+      - scan-images:
+          context:
+            - docker
+            - slack-secrets
