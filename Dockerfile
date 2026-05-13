@@ -64,13 +64,16 @@ FROM base AS tests
 COPY requirements-dev.txt ./
 COPY requirements-cloudrun.txt ./
 COPY requirements-azure.txt ./
+COPY scripts/vuln_scan/requirements.txt ./scripts/vuln_scan/requirements.txt
 RUN . $VENV_DIR/bin/activate \
     && pip install --no-cache-dir \
     -r requirements-dev.txt \
     -r requirements-cloudrun.txt \
-    -r requirements-azure.txt
+    -r requirements-azure.txt \
+    -r scripts/vuln_scan/requirements.txt
 
 COPY tests ./tests
+COPY scripts ./scripts
 ARG CACHEBUST=1
 RUN . $VENV_DIR/bin/activate && \
     PYTHONPATH=. pytest tests
