@@ -129,7 +129,9 @@ def main() -> int:
     # - get_storage_client → MagicMock that we assert is never called (YET-1229's
     #   "no agent-storage write" invariant)
     fictional_url = "https://exchange.mulesoft.example/worker-sf-integ-1.3.0.jar"
-    with patch("requests.get", return_value=_make_streaming_response(jar_bytes)), patch.object(
+    with patch(
+        "requests.get", return_value=_make_streaming_response(jar_bytes)
+    ), patch.object(
         MulesoftHttpProxyClient, "_assert_safe_download_url", return_value=None
     ), patch(
         "apollo.integrations.http.http_proxy_client.get_storage_client"
@@ -149,7 +151,10 @@ def main() -> int:
     _bullet("sources_size_bytes", f"{result['sources_size_bytes']:,}")
     b64_len = len(result["sources_zip_b64"]) if result["sources_zip_b64"] else 0
     _bullet("base64 wire size", f"{b64_len:,} bytes")
-    _bullet("compression ratio vs JAR", f"{result['sources_size_bytes'] / len(jar_bytes):.4%}")
+    _bullet(
+        "compression ratio vs JAR",
+        f"{result['sources_size_bytes'] / len(jar_bytes):.4%}",
+    )
 
     if result["sources_extraction_status"] != "ok":
         print(

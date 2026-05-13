@@ -51,7 +51,9 @@ def _build_mule_jar(
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as jar:
         if include_manifest:
             if manifest_override is not None:
-                jar.writestr("META-INF/mule-artifact/mule-artifact.json", manifest_override)
+                jar.writestr(
+                    "META-INF/mule-artifact/mule-artifact.json", manifest_override
+                )
             else:
                 jar.writestr(
                     "META-INF/mule-artifact/mule-artifact.json",
