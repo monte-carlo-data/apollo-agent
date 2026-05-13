@@ -405,6 +405,70 @@ class HttpProxyClient(BaseProxyClient):
         ) as response:
             return dict(response.headers)
 
+    def probe_response_headers(
+        self,
+        url: str,
+        *,
+        range_spec: str = "bytes=0-0",
+        timeout: int = 60,
+        no_auth: bool = True,
+        additional_headers: Optional[Dict] = None,
+    ) -> Dict[str, str]:
+        """Issue a GET with a ``Range`` header and return only the response
+        headers as a plain dict. The body is discarded on response close.
+
+        Designed as a sibling to ``head_bytes`` for endpoints where HEAD is
+        forbidden. The motivating case is AWS pre-signed URLs, whose
+        signatures are method-bound — a URL signed for GET returns 403 on
+        HEAD. A Range-GET sidesteps that: the signature matches (still a
+        GET) and the response carries the headers the caller cares about
+        (``ETag`` / ``Last-Modified`` / ``Content-Length``) plus a tiny
+        bounded body that the connection-close throws away.
+
+        ``range_spec`` defaults to ``bytes=0-0`` (1 byte). Hosts that
+        honour Range respond ``206 Partial Content``; hosts that don't
+        respond ``200 OK`` with the full body — the connection close
+        still discards it without ever reading more than the headers.
+        Callers can override ``range_spec`` for use cases like format
+        sniffing (``bytes=0-4095``).
+
+        ``additional_headers`` win on key collision with the implicit
+        ``Range`` header, so a caller passing their own ``Range`` overrides
+        ``range_spec``. This matters because the caller may want a
+        different byte range than the default for the same probe.
+
+        Same safety surface as ``head_bytes`` / ``download_bytes``:
+        HTTPS-only, non-public IP literals rejected, redirects refused,
+        error messages strip the URL, connection released on every exit
+        path. ``no_auth`` defaults to True for parity — the motivating
+        use case is pre-signed URLs that already carry their auth.
+
+        Returns:
+            A plain ``dict`` of header name → value. Header names follow
+            the case the upstream server sent; callers should match
+            case-insensitively. JSON-serializable so the value survives
+            the ``@agent_operation`` round-trip back to data-collector.
+
+        Raises:
+            HttpClientError: SSRF guard rejection, transport error,
+                or 3xx/4xx response.
+            HTTPError: 5xx response.
+        """
+        # Implicit Range goes first so a caller-supplied Range in
+        # additional_headers wins via dict-merge order.
+        merged_headers: Dict = {"Range": range_spec}
+        if additional_headers:
+            merged_headers.update(additional_headers)
+        with self._open_download_response(
+            url,
+            timeout=timeout,
+            no_auth=no_auth,
+            additional_headers=merged_headers,
+            op_label="probe_response_headers",
+            method="GET",
+        ) as response:
+            return dict(response.headers)
+
     def download_to_storage(
         self,
         url: str,
