@@ -138,7 +138,9 @@ class MulesoftHttpProxyClient(HttpProxyClient):
 
         return {
             "sources_zip_b64": (
-                base64.b64encode(zip_bytes).decode("ascii") if zip_bytes is not None else None
+                base64.b64encode(zip_bytes).decode("ascii")
+                if zip_bytes is not None
+                else None
             ),
             "sources_size_bytes": len(zip_bytes) if zip_bytes is not None else None,
             "sources_extraction_status": status,
