@@ -244,14 +244,20 @@ class HttpProxyClient(BaseProxyClient):
         no_auth: bool,
         additional_headers: Optional[Dict],
         op_label: str,
+        method: str = "GET",
     ) -> Iterator[requests.Response]:
-        """Open a streaming GET response with the full SSRF + redirect + status guards.
+        """Open a streaming response with the full SSRF + redirect + status guards.
 
         Use as a context manager: ``with self._open_download_response(...) as response:``.
         On every error-exit path the response is closed internally before the
         exception propagates; on success, the context manager closes it on exit.
         ``op_label`` is included in error messages so the user-facing message
         names the calling method.
+
+        Defaults to ``method="GET"`` for backwards compatibility; pass
+        ``method="HEAD"`` to issue a HEAD request instead (used by
+        ``head_bytes`` to do ETag / Last-Modified change-detection against
+        pre-signed URLs without downloading the payload).
 
         Raises:
             HttpClientError: SSRF guard rejection, transport error, 3xx redirect,
@@ -273,8 +279,16 @@ class HttpProxyClient(BaseProxyClient):
         if self._ssl_verify is not None:
             request_kwargs["verify"] = self._ssl_verify
 
+        # Dispatch on method name rather than `requests.request(method, ...)`
+        # so existing tests that patch ``requests.get`` continue to intercept
+        # GETs unchanged. ``requests.head`` and ``requests.get`` have the same
+        # kwargs surface.
+        if method == "HEAD":
+            request_func = requests.head
+        else:
+            request_func = requests.get
         try:
-            response = requests.get(url, **request_kwargs)
+            response = request_func(url, **request_kwargs)
         except requests.RequestException as exc:
             raise HttpClientError(
                 f"{op_label} transport error: {type(exc).__name__}"
@@ -350,6 +364,46 @@ class HttpProxyClient(BaseProxyClient):
                         f"download_bytes response exceeded {max_bytes} bytes"
                     )
             return b"".join(chunks)
+
+    def head_bytes(
+        self,
+        url: str,
+        timeout: int = 60,
+        no_auth: bool = True,
+        additional_headers: Optional[Dict] = None,
+    ) -> Dict[str, str]:
+        """Issue a HEAD request and return the response headers as a plain dict.
+
+        The motivating use case is cheap change-detection against pre-signed
+        URLs: callers compare an upstream ``ETag`` / ``Last-Modified`` header
+        against a cached value and skip a multi-MB download when unchanged.
+
+        Same safety surface as ``download_bytes``: HTTPS-only, non-public IP
+        literals (incl. multicast) rejected, redirects refused, error messages
+        strip the URL, connection released on every exit path. ``no_auth``
+        defaults to True for parity with ``download_bytes`` — the motivating
+        use case is pre-signed URLs that already carry their auth.
+
+        Returns:
+            A plain ``dict`` of header name → value. Header names follow the
+            case the upstream server sent; callers should match
+            case-insensitively. JSON-serializable so the value survives the
+            ``@agent_operation`` round-trip back to data-collector.
+
+        Raises:
+            HttpClientError: SSRF guard rejection, transport error,
+                or 3xx/4xx response.
+            HTTPError: 5xx response.
+        """
+        with self._open_download_response(
+            url,
+            timeout=timeout,
+            no_auth=no_auth,
+            additional_headers=additional_headers,
+            op_label="head_bytes",
+            method="HEAD",
+        ) as response:
+            return dict(response.headers)
 
     def download_to_storage(
         self,
