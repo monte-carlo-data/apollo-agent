@@ -32,10 +32,10 @@ Usage
     source .venv/bin/activate
 
     # Default: ~/Montecarlo/data-collector/worker-sf-integ-1.3.0.jar
-    python scripts/smoke_test_yet_1229.py
+    python scripts/smoke_test_mulesoft_extract_sources.py
 
     # Or point at a different JAR:
-    python scripts/smoke_test_yet_1229.py /path/to/other.jar
+    python scripts/smoke_test_mulesoft_extract_sources.py /path/to/other.jar
 """
 
 from __future__ import annotations
