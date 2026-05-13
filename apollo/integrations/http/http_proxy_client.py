@@ -389,16 +389,59 @@ class HttpProxyClient(BaseProxyClient):
             AgentConfigurationError: storage backend is not configured (no
                 ``MCD_STORAGE`` env var and no recognized ``platform``).
         """
+        with self._stream_to_tempfile(
+            url,
+            timeout=timeout,
+            max_bytes=max_bytes,
+            no_auth=no_auth,
+            additional_headers=additional_headers,
+            op_label="download_to_storage",
+        ) as tmp_path:
+            # Cached on self after first call — avoids reconstructing the
+            # SDK client (boto3 / GCS / Azure) per request.
+            self._get_storage_client().upload_file(storage_key, tmp_path)
+
+        return storage_key
+
+    @contextmanager
+    def _stream_to_tempfile(
+        self,
+        url: str,
+        *,
+        op_label: str,
+        timeout: int,
+        max_bytes: Optional[int],
+        no_auth: bool,
+        additional_headers: Optional[Dict],
+    ) -> Iterator[str]:
+        """Stream a download via ``_open_download_response`` into a transient
+        tempfile, yield the tempfile path to the caller, and delete the
+        tempfile on every exit path (success and every failure).
+
+        Shared between ``download_to_storage`` and the MuleSoft subclass's
+        ``extract_mulesoft_sources`` so the streaming-download semantics
+        (8 KiB chunked read, ``max_bytes`` cap mid-stream, ``finally:
+        os.unlink``) live in exactly one place. New per-op variations of
+        the pattern should also use this helper rather than re-implement
+        it inline.
+
+        ``op_label`` is woven through to ``_open_download_response`` (for
+        the error-message prefix) and into the tempfile suffix (for
+        ``ls /tmp`` triage).
+
+        Raises:
+            HttpClientError: SSRF guard rejection, transport error, 3xx/4xx
+                response, or ``max_bytes`` exceeded.
+            HTTPError: 5xx response.
+        """
         with self._open_download_response(
             url,
             timeout=timeout,
             no_auth=no_auth,
             additional_headers=additional_headers,
-            op_label="download_to_storage",
+            op_label=op_label,
         ) as response:
-            tmp = tempfile.NamedTemporaryFile(
-                delete=False, suffix=".download_to_storage"
-            )
+            tmp = tempfile.NamedTemporaryFile(delete=False, suffix=f".{op_label}")
             try:
                 size = 0
                 try:
@@ -409,13 +452,11 @@ class HttpProxyClient(BaseProxyClient):
                         size += len(chunk)
                         if max_bytes is not None and size > max_bytes:
                             raise HttpClientError(
-                                f"download_to_storage response exceeded {max_bytes} bytes"
+                                f"{op_label} response exceeded {max_bytes} bytes"
                             )
                 finally:
                     tmp.close()
-                # Cached on self after first call — avoids reconstructing the
-                # SDK client (boto3 / GCS / Azure) per request.
-                self._get_storage_client().upload_file(storage_key, tmp.name)
+                yield tmp.name
             finally:
                 # Best-effort cleanup; never let an unlink failure mask the
                 # original exception (or stomp on a successful return).
@@ -423,8 +464,6 @@ class HttpProxyClient(BaseProxyClient):
                     os.unlink(tmp.name)
                 except OSError:
                     pass
-
-        return storage_key
 
     def do_request_with_retry(
         self,

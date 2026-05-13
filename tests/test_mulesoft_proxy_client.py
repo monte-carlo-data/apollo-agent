@@ -264,7 +264,7 @@ class TestExtractMulesoftSources(TestCase):
 
         client = MulesoftHttpProxyClient(credentials={"connect_args": {}})
         with patch(
-            "apollo.integrations.http.mulesoft_proxy_client.tempfile.NamedTemporaryFile",
+            "apollo.integrations.http.http_proxy_client.tempfile.NamedTemporaryFile",
             side_effect=capture,
         ):
             with self._no_storage_should_be_called():
@@ -305,7 +305,7 @@ class TestExtractMulesoftSources(TestCase):
 
         client = MulesoftHttpProxyClient(credentials={"connect_args": {}})
         with patch(
-            "apollo.integrations.http.mulesoft_proxy_client.tempfile.NamedTemporaryFile",
+            "apollo.integrations.http.http_proxy_client.tempfile.NamedTemporaryFile",
             side_effect=capture,
         ):
             with self._no_storage_should_be_called():

@@ -25,12 +25,10 @@ import base64
 import io
 import json
 import logging
-import os
-import tempfile
 import zipfile
 from typing import Any, Dict, List, Optional, Tuple
 
-from apollo.integrations.http.http_proxy_client import HttpClientError, HttpProxyClient
+from apollo.integrations.http.http_proxy_client import HttpProxyClient
 
 _logger = logging.getLogger(__name__)
 
@@ -103,38 +101,15 @@ class MulesoftHttpProxyClient(HttpProxyClient):
                 response, or ``max_bytes`` exceeded.
             HTTPError: 5xx response.
         """
-        with self._open_download_response(
+        with self._stream_to_tempfile(
             url,
             timeout=timeout,
+            max_bytes=max_bytes,
             no_auth=no_auth,
             additional_headers=additional_headers,
             op_label="extract_mulesoft_sources",
-        ) as response:
-            tmp = tempfile.NamedTemporaryFile(
-                delete=False, suffix=".extract_mulesoft_sources"
-            )
-            try:
-                size = 0
-                try:
-                    for chunk in response.iter_content(chunk_size=8192):
-                        if not chunk:
-                            continue
-                        tmp.write(chunk)
-                        size += len(chunk)
-                        if max_bytes is not None and size > max_bytes:
-                            raise HttpClientError(
-                                f"extract_mulesoft_sources response exceeded {max_bytes} bytes"
-                            )
-                finally:
-                    tmp.close()
-                zip_bytes, status = _extract_mulesoft_sources_from_jar(tmp.name)
-            finally:
-                # Best-effort cleanup; never let an unlink failure mask the
-                # original exception (or stomp on a successful return).
-                try:
-                    os.unlink(tmp.name)
-                except OSError:
-                    pass
+        ) as tmp_path:
+            zip_bytes, status = _extract_mulesoft_sources_from_jar(tmp_path)
 
         return {
             "sources_zip_b64": (
