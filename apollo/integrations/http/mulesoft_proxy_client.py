@@ -39,6 +39,14 @@ _logger = logging.getLogger(__name__)
 _MULESOFT_ARTIFACT_MANIFEST = "META-INF/mule-artifact/mule-artifact.json"
 _MULESOFT_PROPERTIES_PREFIX = "properties/"
 
+# Defense-in-depth cap on total uncompressed bytes the helper will extract
+# from a single JAR. Real Mule applications produce well under 100 KiB of
+# flow sources + properties combined (the smoke-test fixture's 93 MiB JAR
+# yields 19.5 KiB); 10 MiB is generous headroom. A crafted or buggy JAR
+# that exceeds this terminates extraction with ``"extraction_failed"``
+# rather than risk OOM from a zip-bomb expansion.
+_MULESOFT_SOURCES_MAX_UNCOMPRESSED_BYTES = 10 * 1024 * 1024  # 10 MiB
+
 
 class MulesoftHttpProxyClient(HttpProxyClient):
     """HTTP proxy client for the ``mulesoft`` connection type.
@@ -122,6 +130,43 @@ class MulesoftHttpProxyClient(HttpProxyClient):
         }
 
 
+def _is_safe_zip_entry_name(name: str) -> bool:
+    """Reject zip entry names that could escape an intended directory on
+    downstream unzip (defense-in-depth against ZipSlip / path traversal).
+
+    Returns ``True`` if ``name`` is a relative POSIX path with no
+    parent-traversal segments, no leading slash, no backslashes, and no
+    drive-letter prefix. Zip names should be forward-slash-separated per
+    the spec (APPNOTE.TXT §4.4.17); anything else is a hand-crafted
+    adversarial entry name.
+
+    Notes:
+        ``extract_mulesoft_sources`` doesn't write extracted entries to
+        the filesystem (it repackages them into an in-memory zip),
+        so ZipSlip here is *primarily* a downstream-consumer concern —
+        the data-collector reads our zip back into memory only, but a
+        future consumer that calls ``ZipFile.extract`` on the result
+        would be vulnerable. Sanitising at the source closes that
+        avenue regardless of what the consumer does.
+    """
+    if not name:
+        return False
+    if name.startswith("/"):
+        return False
+    if "\\" in name:
+        # Backslash is never a directory separator in the zip spec.
+        # Reject any name containing one — both the literal-backslash
+        # case and the Windows-style path case.
+        return False
+    if ":" in name:
+        # Drive-letter prefix (``C:`` etc.) — POSIX zip paths shouldn't
+        # contain colons in any position.
+        return False
+    if any(part == ".." for part in name.split("/")):
+        return False
+    return True
+
+
 def _extract_mulesoft_sources_from_jar(tmp_path: str) -> Tuple[Optional[bytes], str]:
     """Open a downloaded Mule application JAR + repackage its flow sources.
 
@@ -131,14 +176,34 @@ def _extract_mulesoft_sources_from_jar(tmp_path: str) -> Tuple[Optional[bytes], 
       deflate zip containing the listed config XMLs + every entry under
       ``properties/``.
     * ``"extraction_failed"`` — JAR was unreadable, the manifest was missing
-      or corrupt, or some other unrecoverable error. ``zip_bytes`` is
-      ``None`` in this case; the caller emits ``sources_zip_b64=None``.
+      or corrupt, the manifest had an unexpected shape, or the cumulative
+      uncompressed extraction would exceed
+      ``_MULESOFT_SOURCES_MAX_UNCOMPRESSED_BYTES`` (zip-bomb defense).
+      ``zip_bytes`` is ``None`` in this case; the caller emits
+      ``sources_zip_b64=None``.
 
-    Individual ``configs[]`` entries that are listed in the manifest but
-    missing from the JAR are logged as warnings and skipped — the op still
-    returns ``"ok"`` with whatever entries it could read. The downstream
-    parser is tolerant of partial config sets; failing the whole op for
-    one stale manifest reference would lose more lineage than it preserves.
+    Individual ``configs[]`` entries that are skipped (missing from the
+    JAR, unsafe path, non-string manifest value) are logged as warnings;
+    the op still returns ``"ok"`` with whatever entries it could read.
+    The downstream parser is tolerant of partial config sets; failing the
+    whole op for one stale manifest reference would lose more lineage
+    than it preserves.
+
+    Hardening (YET-1229 review feedback):
+
+    * **Manifest shape** — the JSON root must be a dict, ``configs``
+      must be a list, and each ``configs[]`` entry must be a string.
+      Non-conforming manifests return ``"extraction_failed"``.
+    * **ZipSlip / path traversal** — every entry name is validated by
+      ``_is_safe_zip_entry_name`` before it's read from the JAR or
+      written into the output zip. Unsafe names are skipped with a
+      warning; the op continues.
+    * **Zip bomb** — extraction tracks total uncompressed bytes via
+      ``ZipInfo.file_size`` and aborts with ``"extraction_failed"`` if
+      the cumulative size would exceed
+      ``_MULESOFT_SOURCES_MAX_UNCOMPRESSED_BYTES`` (10 MiB). Generous
+      headroom over real-world Mule apps but bounded against runaway
+      expansion from a crafted JAR.
     """
     try:
         with zipfile.ZipFile(tmp_path) as jar:
@@ -159,23 +224,94 @@ def _extract_mulesoft_sources_from_jar(tmp_path: str) -> Tuple[Optional[bytes], 
                 )
                 return None, "extraction_failed"
 
-            extracted: List[Tuple[str, bytes]] = []
+            if not isinstance(manifest, dict):
+                _logger.warning(
+                    "mulesoft_sources_malformed_manifest: expected dict at JSON root, got %s",
+                    type(manifest).__name__,
+                )
+                return None, "extraction_failed"
 
-            for name in manifest.get("configs") or []:
-                try:
-                    extracted.append((name, jar.read(name)))
-                except KeyError:
+            configs = manifest.get("configs", [])
+            if not isinstance(configs, list):
+                _logger.warning(
+                    "mulesoft_sources_malformed_manifest: 'configs' must be a list, got %s",
+                    type(configs).__name__,
+                )
+                return None, "extraction_failed"
+
+            extracted: List[Tuple[str, bytes]] = []
+            total_uncompressed_bytes = 0
+            # Build a name → ZipInfo lookup once so the per-entry size
+            # check is O(1) and so we can validate ``configs[]`` entries
+            # against the actual archive contents.
+            entries_by_name: Dict[str, zipfile.ZipInfo] = {
+                info.filename: info for info in jar.infolist()
+            }
+
+            def _try_extract(name: str, source: str) -> bool:
+                """Read ``name`` from the JAR if it's safe + fits the cap.
+
+                Returns ``True`` on success (entry was appended to
+                ``extracted`` and ``total_uncompressed_bytes`` advanced),
+                ``False`` if the entry was skipped (with a warning
+                already logged). Raises nothing — the caller continues
+                regardless. ``source`` is "manifest" or "properties" for
+                log-key disambiguation.
+                """
+                nonlocal total_uncompressed_bytes
+                if not _is_safe_zip_entry_name(name):
+                    # f-string the log-key portion so the per-source key
+                    # (``mulesoft_sources_unsafe_manifest_entry`` vs
+                    # ``mulesoft_sources_unsafe_properties_entry``) shows up
+                    # verbatim in the format string — makes log-search +
+                    # test-assertion straightforward.
                     _logger.warning(
-                        "mulesoft_sources_missing_config_entry: configs[] referenced %s "
-                        "but the entry is not in the JAR; skipping",
+                        f"mulesoft_sources_unsafe_{source}_entry: %r is not a safe relative path; skipping",
                         name,
                     )
+                    return False
+                info = entries_by_name.get(name)
+                if info is None:
+                    _logger.warning(
+                        f"mulesoft_sources_missing_{source}_entry: %r referenced by the manifest but not present in the JAR; skipping",
+                        name,
+                    )
+                    return False
+                if (
+                    total_uncompressed_bytes + info.file_size
+                    > _MULESOFT_SOURCES_MAX_UNCOMPRESSED_BYTES
+                ):
+                    _logger.warning(
+                        "mulesoft_sources_uncompressed_cap_exceeded: extracting %s (%d bytes) "
+                        "would push the cumulative uncompressed total past the "
+                        "%d-byte cap; aborting",
+                        name,
+                        info.file_size,
+                        _MULESOFT_SOURCES_MAX_UNCOMPRESSED_BYTES,
+                    )
+                    raise _UncompressedCapExceeded
+                extracted.append((name, jar.read(name)))
+                total_uncompressed_bytes += info.file_size
+                return True
 
-            for info in jar.infolist():
-                if info.is_dir():
-                    continue
-                if info.filename.startswith(_MULESOFT_PROPERTIES_PREFIX):
-                    extracted.append((info.filename, jar.read(info.filename)))
+            try:
+                for raw_name in configs:
+                    if not isinstance(raw_name, str):
+                        _logger.warning(
+                            "mulesoft_sources_malformed_manifest: configs[] entry must be a string, got %s",
+                            type(raw_name).__name__,
+                        )
+                        continue
+                    _try_extract(raw_name, source="manifest")
+
+                for info in jar.infolist():
+                    if info.is_dir():
+                        continue
+                    if not info.filename.startswith(_MULESOFT_PROPERTIES_PREFIX):
+                        continue
+                    _try_extract(info.filename, source="properties")
+            except _UncompressedCapExceeded:
+                return None, "extraction_failed"
     except zipfile.BadZipFile:
         _logger.exception(
             "mulesoft_sources_bad_zip: extract_mulesoft_sources received a non-ZIP body",
@@ -187,3 +323,12 @@ def _extract_mulesoft_sources_from_jar(tmp_path: str) -> Tuple[Optional[bytes], 
         for name, content in extracted:
             repack.writestr(name, content)
     return out.getvalue(), "ok"
+
+
+class _UncompressedCapExceeded(Exception):
+    """Internal control-flow exception raised by ``_try_extract`` when the
+    cumulative uncompressed extraction would exceed
+    ``_MULESOFT_SOURCES_MAX_UNCOMPRESSED_BYTES``. Caught at the helper's
+    outer scope to convert into the public ``"extraction_failed"``
+    status; never propagates beyond ``_extract_mulesoft_sources_from_jar``.
+    """

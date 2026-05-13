@@ -173,7 +173,7 @@ class TestExtractMulesoftSources(TestCase):
         warn_calls = [
             args
             for args, _ in mock_logger.warning.call_args_list
-            if "mulesoft_sources_missing_config_entry" in args[0]
+            if "mulesoft_sources_missing_manifest_entry" in args[0]
         ]
         self.assertEqual(1, len(warn_calls))
 
@@ -336,4 +336,210 @@ class TestExtractMulesoftSources(TestCase):
             self.assertTrue(
                 hasattr(client, method),
                 f"MulesoftHttpProxyClient must expose {method}() — inherited or own",
+            )
+
+    # ------------------------------------------------------------------
+    # Hardening — YET-1229 review feedback (C1-C4): malformed manifest
+    # shapes, ZipSlip / path-traversal entry names, and zip-bomb
+    # uncompressed-size cap. The op must defend against all three
+    # without crashing or propagating arbitrary exceptions to the
+    # caller; the catalog walk continues regardless.
+    # ------------------------------------------------------------------
+
+    @patch("requests.get")
+    def test_manifest_root_not_dict_returns_extraction_failed(self, mock_get):
+        # Manifest parses as valid JSON but the root is a list. The op
+        # shouldn't attempt to call ``.get("configs")`` on a non-dict
+        # (which would raise AttributeError); instead it must return
+        # ``extraction_failed`` cleanly.
+        jar = _build_mule_jar(
+            configs_in_manifest=[],
+            config_xmls={"a.xml": b"<mule/>"},
+            manifest_override=b"[1, 2, 3]",
+        )
+        mock_get.return_value = self._make_response(body=jar)
+
+        client = MulesoftHttpProxyClient(credentials={"connect_args": {}})
+        with self._no_storage_should_be_called():
+            result = client.extract_mulesoft_sources("https://s3.example/app.jar")
+
+        self.assertEqual("extraction_failed", result["sources_extraction_status"])
+        self.assertIsNone(result["sources_zip_b64"])
+        self.assertIsNone(result["sources_size_bytes"])
+
+    @patch("requests.get")
+    def test_manifest_configs_not_list_returns_extraction_failed(self, mock_get):
+        # Manifest is a dict but ``configs`` is a scalar — defensively
+        # return ``extraction_failed`` rather than trying to iterate it.
+        jar = _build_mule_jar(
+            configs_in_manifest=[],
+            config_xmls={"a.xml": b"<mule/>"},
+            manifest_override=json.dumps({"configs": "not-a-list.xml"}).encode("ascii"),
+        )
+        mock_get.return_value = self._make_response(body=jar)
+
+        client = MulesoftHttpProxyClient(credentials={"connect_args": {}})
+        with self._no_storage_should_be_called():
+            result = client.extract_mulesoft_sources("https://s3.example/app.jar")
+
+        self.assertEqual("extraction_failed", result["sources_extraction_status"])
+
+    @patch("requests.get")
+    def test_manifest_configs_entry_not_string_skipped_op_still_returns_ok(
+        self, mock_get
+    ):
+        # ``configs[]`` contains a non-string element (e.g. someone wrote
+        # ``{"configs": [42, "real.xml"]}``). The non-string entry is
+        # skipped with a warning, the string entry is still extracted,
+        # and the op returns ``ok``.
+        config_xmls = {"real.xml": b"<mule/>"}
+        # The bad entry needs to live in the manifest only, not the JAR
+        # itself (writestr would coerce the int to a string anyway).
+        jar = _build_mule_jar(
+            configs_in_manifest=[],
+            config_xmls=config_xmls,
+            manifest_override=json.dumps({"configs": [42, "real.xml"]}).encode("ascii"),
+        )
+        mock_get.return_value = self._make_response(body=jar)
+
+        client = MulesoftHttpProxyClient(credentials={"connect_args": {}})
+        with self._no_storage_should_be_called():
+            result = client.extract_mulesoft_sources("https://s3.example/app.jar")
+
+        self.assertEqual("ok", result["sources_extraction_status"])
+        decoded = base64.b64decode(result["sources_zip_b64"])
+        with zipfile.ZipFile(io.BytesIO(decoded)) as out:
+            names = set(out.namelist())
+        self.assertEqual({"real.xml"}, names)
+
+    @patch("requests.get")
+    def test_unsafe_config_entry_name_is_skipped_with_warning(self, mock_get):
+        # Manifest references a ZipSlip-style entry name plus a real one.
+        # The unsafe entry is skipped with a warning; the safe one is
+        # extracted; the op returns ``ok``. Covers both manifest-side
+        # name sanitisation (the JAR shouldn't be probed for an unsafe
+        # name) and the contract that the op survives malicious input.
+        configs = ["../../etc/passwd.xml", "real.xml"]
+        config_xmls = {
+            "../../etc/passwd.xml": b"<malicious/>",  # exists in the JAR
+            "real.xml": b"<mule/>",
+        }
+        jar = _build_mule_jar(configs, config_xmls)
+        mock_get.return_value = self._make_response(body=jar)
+
+        client = MulesoftHttpProxyClient(credentials={"connect_args": {}})
+        with patch(
+            "apollo.integrations.http.mulesoft_proxy_client._logger"
+        ) as mock_logger:
+            with self._no_storage_should_be_called():
+                result = client.extract_mulesoft_sources("https://s3.example/app.jar")
+
+        self.assertEqual("ok", result["sources_extraction_status"])
+        decoded = base64.b64decode(result["sources_zip_b64"])
+        with zipfile.ZipFile(io.BytesIO(decoded)) as out:
+            names = set(out.namelist())
+        self.assertEqual({"real.xml"}, names)
+        # A warning fired specifically for the unsafe entry.
+        unsafe_warnings = [
+            args
+            for args, _ in mock_logger.warning.call_args_list
+            if "mulesoft_sources_unsafe_manifest_entry" in args[0]
+        ]
+        self.assertEqual(1, len(unsafe_warnings))
+
+    @patch("requests.get")
+    def test_unsafe_properties_entry_name_is_skipped_with_warning(self, mock_get):
+        # A crafted ``properties/../evil.yaml`` would still match the
+        # ``properties/`` prefix scan; the path-traversal segment must
+        # be caught by the entry-name sanitisation and skipped.
+        configs = ["real.xml"]
+        config_xmls = {"real.xml": b"<mule/>"}
+        properties = {
+            "properties/dev.yaml": b"db: dev\n",
+            "properties/../evil.yaml": b"malicious: payload\n",
+        }
+        jar = _build_mule_jar(configs, config_xmls, properties=properties)
+        mock_get.return_value = self._make_response(body=jar)
+
+        client = MulesoftHttpProxyClient(credentials={"connect_args": {}})
+        with patch(
+            "apollo.integrations.http.mulesoft_proxy_client._logger"
+        ) as mock_logger:
+            with self._no_storage_should_be_called():
+                result = client.extract_mulesoft_sources("https://s3.example/app.jar")
+
+        self.assertEqual("ok", result["sources_extraction_status"])
+        decoded = base64.b64decode(result["sources_zip_b64"])
+        with zipfile.ZipFile(io.BytesIO(decoded)) as out:
+            names = set(out.namelist())
+        self.assertEqual({"real.xml", "properties/dev.yaml"}, names)
+        unsafe_warnings = [
+            args
+            for args, _ in mock_logger.warning.call_args_list
+            if "mulesoft_sources_unsafe_properties_entry" in args[0]
+        ]
+        self.assertEqual(1, len(unsafe_warnings))
+
+    @patch("requests.get")
+    def test_zip_bomb_uncompressed_cap_returns_extraction_failed(self, mock_get):
+        # If the cumulative uncompressed size of the entries to be
+        # extracted would exceed the cap, the op aborts with
+        # ``extraction_failed``. We patch the cap to a tiny value so
+        # the test doesn't need to construct a multi-megabyte JAR.
+        configs = ["a.xml", "b.xml"]
+        config_xmls = {
+            # Each entry is 200 bytes uncompressed — together they exceed
+            # the patched cap of 256 bytes.
+            "a.xml": b"<mule>" + b"x" * 188 + b"</mule>",
+            "b.xml": b"<mule>" + b"x" * 188 + b"</mule>",
+        }
+        jar = _build_mule_jar(configs, config_xmls)
+        mock_get.return_value = self._make_response(body=jar)
+
+        client = MulesoftHttpProxyClient(credentials={"connect_args": {}})
+        with patch(
+            "apollo.integrations.http.mulesoft_proxy_client._MULESOFT_SOURCES_MAX_UNCOMPRESSED_BYTES",
+            256,
+        ):
+            with self._no_storage_should_be_called():
+                result = client.extract_mulesoft_sources("https://s3.example/app.jar")
+
+        self.assertEqual("extraction_failed", result["sources_extraction_status"])
+        self.assertIsNone(result["sources_zip_b64"])
+        self.assertIsNone(result["sources_size_bytes"])
+
+    def test_is_safe_zip_entry_name_classification(self):
+        # Unit-test the entry-name sanitiser directly. Table-driven so
+        # adding a new rejection case is a one-line append.
+        from apollo.integrations.http.mulesoft_proxy_client import (
+            _is_safe_zip_entry_name,
+        )
+
+        safe = [
+            "a.xml",
+            "properties/dev.yaml",
+            "deep/nested/path/file.xml",
+            "weird-name_v2.xml",
+        ]
+        unsafe = [
+            "",  # empty
+            "/abs/path.xml",  # absolute POSIX
+            "..",  # bare parent traversal
+            "../sneaky.xml",  # leading parent traversal
+            "properties/../evil.yaml",  # interior parent traversal
+            "a/../../b.xml",  # multi-segment traversal
+            "C:\\evil.xml",  # Windows drive + backslash
+            "C:/evil.xml",  # Windows drive only
+            "weird\\windows-style.xml",  # bare backslash
+            "name:with:colons.xml",  # any colon (could be a drive)
+        ]
+        for name in safe:
+            self.assertTrue(
+                _is_safe_zip_entry_name(name),
+                f"{name!r} should be classified as safe",
+            )
+        for name in unsafe:
+            self.assertFalse(
+                _is_safe_zip_entry_name(name),
+                f"{name!r} should be classified as unsafe",
             )
