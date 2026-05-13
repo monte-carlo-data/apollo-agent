@@ -46,6 +46,7 @@ import json
 import sys
 import zipfile
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 # Run from the apollo-agent repo root (the parent of scripts/) so
@@ -60,7 +61,7 @@ def _heading(text: str) -> None:
     print(f"\n{'=' * 72}\n {text}\n{'=' * 72}")
 
 
-def _bullet(label: str, value) -> None:
+def _bullet(label: str, value: Any) -> None:
     print(f"  • {label}: {value}")
 
 
@@ -148,20 +149,25 @@ def main() -> int:
 
     _heading("Step 3 — Inspect the agent response")
     _bullet("sources_extraction_status", result["sources_extraction_status"])
-    _bullet("sources_size_bytes", f"{result['sources_size_bytes']:,}")
-    b64_len = len(result["sources_zip_b64"]) if result["sources_zip_b64"] else 0
-    _bullet("base64 wire size", f"{b64_len:,} bytes")
-    _bullet(
-        "compression ratio vs JAR",
-        f"{result['sources_size_bytes'] / len(jar_bytes):.4%}",
-    )
 
     if result["sources_extraction_status"] != "ok":
+        # ``sources_zip_b64`` and ``sources_size_bytes`` are both ``None`` on
+        # the extraction-failed path; computing the size-derived metrics
+        # below would crash with ``TypeError`` and obscure the real failure
+        # reason. Bail with the status before touching them.
         print(
             f"\n❌ Expected status='ok'; got '{result['sources_extraction_status']}'",
             file=sys.stderr,
         )
         return 1
+
+    _bullet("sources_size_bytes", f"{result['sources_size_bytes']:,}")
+    b64_len = len(result["sources_zip_b64"])
+    _bullet("base64 wire size", f"{b64_len:,} bytes")
+    _bullet(
+        "compression ratio vs JAR",
+        f"{result['sources_size_bytes'] / len(jar_bytes):.4%}",
+    )
 
     _heading("Step 4 — Verify the extracted zip's contents")
     extracted_zip = base64.b64decode(result["sources_zip_b64"])
