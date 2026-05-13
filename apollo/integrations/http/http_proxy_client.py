@@ -244,14 +244,20 @@ class HttpProxyClient(BaseProxyClient):
         no_auth: bool,
         additional_headers: Optional[Dict],
         op_label: str,
+        method: str = "GET",
     ) -> Iterator[requests.Response]:
-        """Open a streaming GET response with the full SSRF + redirect + status guards.
+        """Open a streaming response with the full SSRF + redirect + status guards.
 
         Use as a context manager: ``with self._open_download_response(...) as response:``.
         On every error-exit path the response is closed internally before the
         exception propagates; on success, the context manager closes it on exit.
         ``op_label`` is included in error messages so the user-facing message
         names the calling method.
+
+        Defaults to ``method="GET"`` for backwards compatibility; pass
+        ``method="HEAD"`` to issue a HEAD request instead (used by
+        ``head_bytes`` to do ETag / Last-Modified change-detection against
+        pre-signed URLs without downloading the payload).
 
         Raises:
             HttpClientError: SSRF guard rejection, transport error, 3xx redirect,
@@ -273,8 +279,16 @@ class HttpProxyClient(BaseProxyClient):
         if self._ssl_verify is not None:
             request_kwargs["verify"] = self._ssl_verify
 
+        # Dispatch on method name rather than `requests.request(method, ...)`
+        # so existing tests that patch ``requests.get`` continue to intercept
+        # GETs unchanged. ``requests.head`` and ``requests.get`` have the same
+        # kwargs surface.
+        if method == "HEAD":
+            request_func = requests.head
+        else:
+            request_func = requests.get
         try:
-            response = requests.get(url, **request_kwargs)
+            response = request_func(url, **request_kwargs)
         except requests.RequestException as exc:
             raise HttpClientError(
                 f"{op_label} transport error: {type(exc).__name__}"
@@ -351,6 +365,110 @@ class HttpProxyClient(BaseProxyClient):
                     )
             return b"".join(chunks)
 
+    def head_bytes(
+        self,
+        url: str,
+        timeout: int = 60,
+        no_auth: bool = True,
+        additional_headers: Optional[Dict] = None,
+    ) -> Dict[str, str]:
+        """Issue a HEAD request and return the response headers as a plain dict.
+
+        The motivating use case is cheap change-detection against pre-signed
+        URLs: callers compare an upstream ``ETag`` / ``Last-Modified`` header
+        against a cached value and skip a multi-MB download when unchanged.
+
+        Same safety surface as ``download_bytes``: HTTPS-only, non-public IP
+        literals (incl. multicast) rejected, redirects refused, error messages
+        strip the URL, connection released on every exit path. ``no_auth``
+        defaults to True for parity with ``download_bytes`` — the motivating
+        use case is pre-signed URLs that already carry their auth.
+
+        Returns:
+            A plain ``dict`` of header name → value. Header names follow the
+            case the upstream server sent; callers should match
+            case-insensitively. JSON-serializable so the value survives the
+            ``@agent_operation`` round-trip back to data-collector.
+
+        Raises:
+            HttpClientError: SSRF guard rejection, transport error,
+                or 3xx/4xx response.
+            HTTPError: 5xx response.
+        """
+        with self._open_download_response(
+            url,
+            timeout=timeout,
+            no_auth=no_auth,
+            additional_headers=additional_headers,
+            op_label="head_bytes",
+            method="HEAD",
+        ) as response:
+            return dict(response.headers)
+
+    def probe_response_headers(
+        self,
+        url: str,
+        *,
+        range_spec: str = "bytes=0-0",
+        timeout: int = 60,
+        no_auth: bool = True,
+        additional_headers: Optional[Dict] = None,
+    ) -> Dict[str, str]:
+        """Issue a GET with a ``Range`` header and return only the response
+        headers as a plain dict. The body is discarded on response close.
+
+        Designed as a sibling to ``head_bytes`` for endpoints where HEAD is
+        forbidden. The motivating case is AWS pre-signed URLs, whose
+        signatures are method-bound — a URL signed for GET returns 403 on
+        HEAD. A Range-GET sidesteps that: the signature matches (still a
+        GET) and the response carries the headers the caller cares about
+        (``ETag`` / ``Last-Modified`` / ``Content-Length``) plus a tiny
+        bounded body that the connection-close throws away.
+
+        ``range_spec`` defaults to ``bytes=0-0`` (1 byte). Hosts that
+        honour Range respond ``206 Partial Content``; hosts that don't
+        respond ``200 OK`` with the full body — the connection close
+        still discards it without ever reading more than the headers.
+        Callers can override ``range_spec`` for use cases like format
+        sniffing (``bytes=0-4095``).
+
+        ``additional_headers`` win on key collision with the implicit
+        ``Range`` header, so a caller passing their own ``Range`` overrides
+        ``range_spec``. This matters because the caller may want a
+        different byte range than the default for the same probe.
+
+        Same safety surface as ``head_bytes`` / ``download_bytes``:
+        HTTPS-only, non-public IP literals rejected, redirects refused,
+        error messages strip the URL, connection released on every exit
+        path. ``no_auth`` defaults to True for parity — the motivating
+        use case is pre-signed URLs that already carry their auth.
+
+        Returns:
+            A plain ``dict`` of header name → value. Header names follow
+            the case the upstream server sent; callers should match
+            case-insensitively. JSON-serializable so the value survives
+            the ``@agent_operation`` round-trip back to data-collector.
+
+        Raises:
+            HttpClientError: SSRF guard rejection, transport error,
+                or 3xx/4xx response.
+            HTTPError: 5xx response.
+        """
+        # Implicit Range goes first so a caller-supplied Range in
+        # additional_headers wins via dict-merge order.
+        merged_headers: Dict = {"Range": range_spec}
+        if additional_headers:
+            merged_headers.update(additional_headers)
+        with self._open_download_response(
+            url,
+            timeout=timeout,
+            no_auth=no_auth,
+            additional_headers=merged_headers,
+            op_label="probe_response_headers",
+            method="GET",
+        ) as response:
+            return dict(response.headers)
+
     def download_to_storage(
         self,
         url: str,
@@ -389,16 +507,59 @@ class HttpProxyClient(BaseProxyClient):
             AgentConfigurationError: storage backend is not configured (no
                 ``MCD_STORAGE`` env var and no recognized ``platform``).
         """
+        with self._stream_to_tempfile(
+            url,
+            timeout=timeout,
+            max_bytes=max_bytes,
+            no_auth=no_auth,
+            additional_headers=additional_headers,
+            op_label="download_to_storage",
+        ) as tmp_path:
+            # Cached on self after first call — avoids reconstructing the
+            # SDK client (boto3 / GCS / Azure) per request.
+            self._get_storage_client().upload_file(storage_key, tmp_path)
+
+        return storage_key
+
+    @contextmanager
+    def _stream_to_tempfile(
+        self,
+        url: str,
+        *,
+        op_label: str,
+        timeout: int,
+        max_bytes: Optional[int],
+        no_auth: bool,
+        additional_headers: Optional[Dict],
+    ) -> Iterator[str]:
+        """Stream a download via ``_open_download_response`` into a transient
+        tempfile, yield the tempfile path to the caller, and delete the
+        tempfile on every exit path (success and every failure).
+
+        Shared between ``download_to_storage`` and the MuleSoft subclass's
+        ``extract_mulesoft_sources`` so the streaming-download semantics
+        (8 KiB chunked read, ``max_bytes`` cap mid-stream, ``finally:
+        os.unlink``) live in exactly one place. New per-op variations of
+        the pattern should also use this helper rather than re-implement
+        it inline.
+
+        ``op_label`` is woven through to ``_open_download_response`` (for
+        the error-message prefix) and into the tempfile suffix (for
+        ``ls /tmp`` triage).
+
+        Raises:
+            HttpClientError: SSRF guard rejection, transport error, 3xx/4xx
+                response, or ``max_bytes`` exceeded.
+            HTTPError: 5xx response.
+        """
         with self._open_download_response(
             url,
             timeout=timeout,
             no_auth=no_auth,
             additional_headers=additional_headers,
-            op_label="download_to_storage",
+            op_label=op_label,
         ) as response:
-            tmp = tempfile.NamedTemporaryFile(
-                delete=False, suffix=".download_to_storage"
-            )
+            tmp = tempfile.NamedTemporaryFile(delete=False, suffix=f".{op_label}")
             try:
                 size = 0
                 try:
@@ -409,13 +570,11 @@ class HttpProxyClient(BaseProxyClient):
                         size += len(chunk)
                         if max_bytes is not None and size > max_bytes:
                             raise HttpClientError(
-                                f"download_to_storage response exceeded {max_bytes} bytes"
+                                f"{op_label} response exceeded {max_bytes} bytes"
                             )
                 finally:
                     tmp.close()
-                # Cached on self after first call — avoids reconstructing the
-                # SDK client (boto3 / GCS / Azure) per request.
-                self._get_storage_client().upload_file(storage_key, tmp.name)
+                yield tmp.name
             finally:
                 # Best-effort cleanup; never let an unlink failure mask the
                 # original exception (or stomp on a successful return).
@@ -423,8 +582,6 @@ class HttpProxyClient(BaseProxyClient):
                     os.unlink(tmp.name)
                 except OSError:
                     pass
-
-        return storage_key
 
     def do_request_with_retry(
         self,

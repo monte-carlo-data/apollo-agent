@@ -112,13 +112,19 @@ class TestProxyClientFactoryCtp(TestCase):
         self.assertEqual("Bearer", ca["auth_type"])
         self.assertNotIn("api_base_url", ca)
 
-    def test_mulesoft_factory_entry_resolves_to_http_proxy_client_factory(self):
+    def test_mulesoft_factory_entry_resolves_to_mulesoft_proxy_client_factory(self):
+        # YET-1229: the ``mulesoft`` connection type now dispatches to a
+        # ``MulesoftHttpProxyClient`` subclass (which adds
+        # ``extract_mulesoft_sources``), not the generic ``HttpProxyClient``
+        # it used pre-pivot. CTP still shapes ``connect_args`` into what
+        # the inherited HTTP surface consumes — the subclass adds the new
+        # op without changing the existing REST-call wiring.
         from apollo.agent.proxy_client_factory import (
             _CLIENT_FACTORY_MAPPING,
-            _get_proxy_client_http,
+            _get_proxy_client_mulesoft,
         )
 
-        self.assertIs(_CLIENT_FACTORY_MAPPING["mulesoft"], _get_proxy_client_http)
+        self.assertIs(_CLIENT_FACTORY_MAPPING["mulesoft"], _get_proxy_client_mulesoft)
 
     def test_dc_shaped_credentials_run_through_ctp(self):
         # DC pre-shapes credentials into connect_args before calling the agent.

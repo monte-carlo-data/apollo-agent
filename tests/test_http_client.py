@@ -781,6 +781,384 @@ class TestDownloadBytesUrlSafety(TestCase):
         self.assertNotIn("attacker.example", str(ctx.exception))
 
 
+class TestHeadBytes(TestCase):
+    """Tests for HttpProxyClient.head_bytes — HEAD-only response-headers fetch
+    used for cheap change-detection (ETag / Last-Modified) against pre-signed
+    URLs without downloading the payload.
+
+    Same safety surface as download_bytes — SSRF guard, redirects refused,
+    URL-stripped errors. The shared ``_open_download_response`` helper enforces
+    those guards uniformly; this class focuses on contract-level behavior
+    specific to head_bytes itself.
+    """
+
+    def _make_response(
+        self,
+        status_code: int = 200,
+        headers: dict | None = None,
+    ) -> MagicMock:
+        resp = MagicMock()
+        resp.status_code = status_code
+        resp.headers = headers or {}
+        # Mirror real requests.Response context-manager behavior.
+        resp.__enter__.return_value = resp
+        resp.__exit__.return_value = None
+        if status_code >= 400:
+            resp.raise_for_status.side_effect = HTTPError(
+                f"{status_code}", response=resp
+            )
+        else:
+            resp.raise_for_status.return_value = None
+        return resp
+
+    @patch("requests.head")
+    def test_returns_response_headers_as_dict(self, mock_head):
+        mock_head.return_value = self._make_response(
+            headers={
+                "ETag": '"abc123"',
+                "Last-Modified": "Wed, 12 May 2026 18:00:00 GMT",
+                "Content-Length": "12345",
+            }
+        )
+
+        client = HttpProxyClient(credentials={"connect_args": {"token": "tok"}})
+        result = client.head_bytes("https://s3.example/file.jar")
+
+        self.assertIsInstance(result, dict)
+        self.assertEqual('"abc123"', result["ETag"])
+        self.assertEqual("Wed, 12 May 2026 18:00:00 GMT", result["Last-Modified"])
+
+    @patch("requests.head")
+    def test_uses_http_head_not_get(self, mock_head):
+        # head_bytes must dispatch via requests.head — patching requests.get
+        # would not intercept the call.
+        mock_head.return_value = self._make_response()
+
+        client = HttpProxyClient(credentials={"connect_args": {}})
+        client.head_bytes("https://s3.example/file.jar")
+
+        self.assertEqual(1, mock_head.call_count)
+
+    @patch("requests.head")
+    def test_no_auth_default_strips_authorization_header(self, mock_head):
+        # Parity with download_bytes: no_auth defaults to True so the bearer
+        # token is NOT leaked to the pre-signed URL host.
+        mock_head.return_value = self._make_response()
+
+        client = HttpProxyClient(credentials={"connect_args": {"token": "tok"}})
+        client.head_bytes("https://s3.example/file.jar")
+
+        sent_headers = mock_head.call_args.kwargs["headers"]
+        self.assertNotIn("Authorization", sent_headers)
+
+    @patch("requests.head")
+    def test_auth_header_present_when_no_auth_false(self, mock_head):
+        mock_head.return_value = self._make_response()
+
+        client = HttpProxyClient(credentials={"connect_args": {"token": "tok"}})
+        client.head_bytes("https://api.example/file", no_auth=False)
+
+        sent_headers = mock_head.call_args.kwargs["headers"]
+        self.assertEqual("Bearer tok", sent_headers["Authorization"])
+
+    @patch("requests.head")
+    def test_404_raises_http_client_error(self, mock_head):
+        mock_head.return_value = self._make_response(status_code=404)
+
+        client = HttpProxyClient(credentials={"connect_args": {}})
+        with self.assertRaises(HttpClientError):
+            client.head_bytes("https://s3.example/file.jar")
+
+    @patch("requests.head")
+    def test_500_raises_http_error_not_http_client_error(self, mock_head):
+        mock_head.return_value = self._make_response(status_code=500)
+
+        client = HttpProxyClient(credentials={"connect_args": {}})
+        with self.assertRaises(HTTPError) as ctx:
+            client.head_bytes("https://s3.example/file.jar")
+        self.assertIsInstance(ctx.exception, HTTPError)
+        self.assertNotIsInstance(ctx.exception, HttpClientError)
+
+    @patch("requests.head")
+    def test_3xx_refuses_redirect(self, mock_head):
+        # Same redirect-refusal guarantee as download_bytes — defense against
+        # SSRF via redirect.
+        mock_head.return_value = self._make_response(
+            status_code=302,
+            headers={"Location": "https://attacker.example/exfil"},
+        )
+
+        client = HttpProxyClient(credentials={"connect_args": {}})
+        with self.assertRaises(HttpClientError) as ctx:
+            client.head_bytes("https://s3.example/file.jar")
+        self.assertIn("302", str(ctx.exception))
+        self.assertNotIn("attacker.example", str(ctx.exception))
+
+    @patch("requests.head")
+    def test_connection_error_does_not_leak_url(self, mock_head):
+        secret_url = "https://s3.example/file.jar?Signature=DO-NOT-LEAK-XYZ"
+        mock_head.side_effect = requests.ConnectionError(
+            "conn refused at " + secret_url
+        )
+
+        client = HttpProxyClient(credentials={"connect_args": {}})
+        with self.assertRaises(HttpClientError) as ctx:
+            client.head_bytes(secret_url)
+        self.assertNotIn("DO-NOT-LEAK-XYZ", str(ctx.exception))
+        self.assertNotIn(secret_url, str(ctx.exception))
+
+    @patch("requests.head")
+    def test_default_timeout_is_60_seconds(self, mock_head):
+        # HEAD requests should be much faster than full downloads — a shorter
+        # default keeps a stuck change-detection probe from holding up the
+        # whole fan-out.
+        mock_head.return_value = self._make_response()
+
+        client = HttpProxyClient(credentials={"connect_args": {}})
+        client.head_bytes("https://s3.example/file.jar")
+
+        self.assertEqual(60, mock_head.call_args.kwargs["timeout"])
+
+    @patch("requests.head")
+    def test_allow_redirects_false_passed_through(self, mock_head):
+        mock_head.return_value = self._make_response()
+
+        client = HttpProxyClient(credentials={"connect_args": {}})
+        client.head_bytes("https://s3.example/file.jar")
+
+        self.assertEqual(False, mock_head.call_args.kwargs["allow_redirects"])
+
+    @patch("requests.head")
+    def test_additional_headers_merged(self, mock_head):
+        mock_head.return_value = self._make_response()
+
+        client = HttpProxyClient(credentials={"connect_args": {"token": "tok"}})
+        client.head_bytes(
+            "https://api.example/file",
+            no_auth=False,
+            additional_headers={"X-Trace": "abc"},
+        )
+
+        sent = mock_head.call_args.kwargs["headers"]
+        self.assertEqual("abc", sent["X-Trace"])
+        self.assertEqual("Bearer tok", sent["Authorization"])
+
+    def test_rejects_non_https_url(self):
+        # SSRF guard runs before any request — no need to patch requests.head.
+        client = HttpProxyClient(credentials={"connect_args": {}})
+        with self.assertRaises(HttpClientError):
+            client.head_bytes("http://s3.example/file.jar")
+
+
+class TestProbeResponseHeaders(TestCase):
+    """Tests for HttpProxyClient.probe_response_headers — Range-GET probe used
+    for change-detection (ETag / Last-Modified) against endpoints where HEAD
+    is forbidden (motivating case: AWS pre-signed URLs, whose method-bound
+    signatures cause HEAD to return 403 even though the URL is reachable).
+
+    Same safety surface as head_bytes / download_bytes — SSRF guard, redirects
+    refused, URL-stripped errors. This class pins (a) GET-not-HEAD dispatch,
+    (b) implicit ``Range`` header injection + caller-override semantics, and
+    (c) 206 Partial Content acceptance.
+    """
+
+    def _make_response(
+        self,
+        status_code: int = 206,
+        headers: dict | None = None,
+    ) -> MagicMock:
+        # Default to 206 Partial Content — that's the realistic success status
+        # for a Range request honoured by S3 / any RFC 7233-compliant origin.
+        resp = MagicMock()
+        resp.status_code = status_code
+        resp.headers = headers or {}
+        # Mirror real requests.Response context-manager behavior.
+        resp.__enter__.return_value = resp
+        resp.__exit__.return_value = None
+        if status_code >= 400:
+            resp.raise_for_status.side_effect = HTTPError(
+                f"{status_code}", response=resp
+            )
+        else:
+            resp.raise_for_status.return_value = None
+        return resp
+
+    @patch("requests.get")
+    def test_returns_response_headers_as_dict(self, mock_get):
+        mock_get.return_value = self._make_response(
+            headers={
+                "ETag": '"abc123"',
+                "Last-Modified": "Wed, 12 May 2026 18:00:00 GMT",
+                "Content-Length": "1",
+                "Content-Range": "bytes 0-0/12345",
+            }
+        )
+
+        client = HttpProxyClient(credentials={"connect_args": {"token": "tok"}})
+        result = client.probe_response_headers("https://s3.example/file.jar")
+
+        self.assertIsInstance(result, dict)
+        self.assertEqual('"abc123"', result["ETag"])
+        self.assertEqual("Wed, 12 May 2026 18:00:00 GMT", result["Last-Modified"])
+        self.assertEqual("bytes 0-0/12345", result["Content-Range"])
+
+    @patch("requests.get")
+    def test_uses_http_get_not_head(self, mock_get):
+        # probe_response_headers must dispatch via requests.get — patching
+        # requests.head would not intercept the call (the whole point of this
+        # method is that the target rejects HEAD).
+        mock_get.return_value = self._make_response()
+
+        client = HttpProxyClient(credentials={"connect_args": {}})
+        client.probe_response_headers("https://s3.example/file.jar")
+
+        self.assertEqual(1, mock_get.call_count)
+
+    @patch("requests.get")
+    def test_default_range_header_is_bytes_0_0(self, mock_get):
+        # Default range_spec="bytes=0-0" produces a 1-byte probe — the minimum
+        # the response carries the headers we want.
+        mock_get.return_value = self._make_response()
+
+        client = HttpProxyClient(credentials={"connect_args": {}})
+        client.probe_response_headers("https://s3.example/file.jar")
+
+        sent_headers = mock_get.call_args.kwargs["headers"]
+        self.assertEqual("bytes=0-0", sent_headers["Range"])
+
+    @patch("requests.get")
+    def test_custom_range_spec_passed_through(self, mock_get):
+        # Callers can override range_spec for use cases like format sniffing
+        # (bytes=0-4095 to read the first 4 KB).
+        mock_get.return_value = self._make_response()
+
+        client = HttpProxyClient(credentials={"connect_args": {}})
+        client.probe_response_headers(
+            "https://s3.example/file.jar", range_spec="bytes=0-4095"
+        )
+
+        sent_headers = mock_get.call_args.kwargs["headers"]
+        self.assertEqual("bytes=0-4095", sent_headers["Range"])
+
+    @patch("requests.get")
+    def test_caller_range_in_additional_headers_wins(self, mock_get):
+        # When both range_spec and additional_headers={"Range": ...} are
+        # supplied, the caller's explicit Range header wins. This is the
+        # documented contract — lets callers pass their own without having to
+        # know about the range_spec kwarg.
+        mock_get.return_value = self._make_response()
+
+        client = HttpProxyClient(credentials={"connect_args": {}})
+        client.probe_response_headers(
+            "https://s3.example/file.jar",
+            range_spec="bytes=0-0",
+            additional_headers={"Range": "bytes=100-199"},
+        )
+
+        sent_headers = mock_get.call_args.kwargs["headers"]
+        self.assertEqual("bytes=100-199", sent_headers["Range"])
+
+    @patch("requests.get")
+    def test_no_auth_default_strips_authorization_header(self, mock_get):
+        # Parity with head_bytes / download_bytes: no_auth defaults to True so
+        # the bearer token is NOT leaked to the pre-signed URL host.
+        mock_get.return_value = self._make_response()
+
+        client = HttpProxyClient(credentials={"connect_args": {"token": "tok"}})
+        client.probe_response_headers("https://s3.example/file.jar")
+
+        sent_headers = mock_get.call_args.kwargs["headers"]
+        self.assertNotIn("Authorization", sent_headers)
+
+    @patch("requests.get")
+    def test_auth_header_present_when_no_auth_false(self, mock_get):
+        mock_get.return_value = self._make_response()
+
+        client = HttpProxyClient(credentials={"connect_args": {"token": "tok"}})
+        client.probe_response_headers("https://api.example/file", no_auth=False)
+
+        sent_headers = mock_get.call_args.kwargs["headers"]
+        self.assertEqual("Bearer tok", sent_headers["Authorization"])
+
+    @patch("requests.get")
+    def test_206_partial_content_treated_as_success(self, mock_get):
+        # The canonical Range-honouring response. raise_for_status() does not
+        # flag 206 (RFC 7233 §4.1); the probe must surface the headers.
+        mock_get.return_value = self._make_response(
+            status_code=206, headers={"ETag": '"v1"'}
+        )
+
+        client = HttpProxyClient(credentials={"connect_args": {}})
+        result = client.probe_response_headers("https://s3.example/file.jar")
+
+        self.assertEqual('"v1"', result["ETag"])
+
+    @patch("requests.get")
+    def test_200_ok_still_returns_headers(self, mock_get):
+        # Hosts that don't honour Range respond 200 OK with the full body.
+        # The connection close still discards the body without reading; we
+        # just need the headers.
+        mock_get.return_value = self._make_response(
+            status_code=200, headers={"ETag": '"v1"'}
+        )
+
+        client = HttpProxyClient(credentials={"connect_args": {}})
+        result = client.probe_response_headers("https://s3.example/file.jar")
+
+        self.assertEqual('"v1"', result["ETag"])
+
+    @patch("requests.get")
+    def test_404_raises_http_client_error(self, mock_get):
+        mock_get.return_value = self._make_response(status_code=404)
+
+        client = HttpProxyClient(credentials={"connect_args": {}})
+        with self.assertRaises(HttpClientError):
+            client.probe_response_headers("https://s3.example/file.jar")
+
+    @patch("requests.get")
+    def test_500_raises_http_error_not_http_client_error(self, mock_get):
+        mock_get.return_value = self._make_response(status_code=500)
+
+        client = HttpProxyClient(credentials={"connect_args": {}})
+        with self.assertRaises(HTTPError) as ctx:
+            client.probe_response_headers("https://s3.example/file.jar")
+        self.assertIsInstance(ctx.exception, HTTPError)
+        self.assertNotIsInstance(ctx.exception, HttpClientError)
+
+    @patch("requests.get")
+    def test_3xx_refuses_redirect(self, mock_get):
+        # SSRF defense — a 30x must not be re-fetched. allow_redirects=False
+        # ensures requests doesn't follow; the explicit guard catches the
+        # response.
+        mock_get.return_value = self._make_response(
+            status_code=302,
+            headers={"Location": "https://attacker.example/exfil"},
+        )
+
+        client = HttpProxyClient(credentials={"connect_args": {}})
+        with self.assertRaises(HttpClientError) as ctx:
+            client.probe_response_headers("https://s3.example/file.jar")
+        self.assertIn("302", str(ctx.exception))
+        self.assertNotIn("attacker.example", str(ctx.exception))
+
+    @patch("requests.get")
+    def test_connection_error_does_not_leak_url(self, mock_get):
+        secret_url = "https://s3.example/file.jar?Signature=DO-NOT-LEAK-XYZ"
+        mock_get.side_effect = requests.ConnectionError("conn refused at " + secret_url)
+
+        client = HttpProxyClient(credentials={"connect_args": {}})
+        with self.assertRaises(HttpClientError) as ctx:
+            client.probe_response_headers(secret_url)
+        self.assertNotIn("DO-NOT-LEAK-XYZ", str(ctx.exception))
+        self.assertNotIn(secret_url, str(ctx.exception))
+
+    def test_rejects_non_https_url(self):
+        # SSRF guard runs before any request — no need to patch requests.get.
+        client = HttpProxyClient(credentials={"connect_args": {}})
+        with self.assertRaises(HttpClientError):
+            client.probe_response_headers("http://s3.example/file.jar")
+
+
 class TestOpenDownloadResponse(TestCase):
     """Direct contract tests for HttpProxyClient._open_download_response.
 
