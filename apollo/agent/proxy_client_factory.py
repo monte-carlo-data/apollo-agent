@@ -436,6 +436,7 @@ _CLIENT_FACTORY_MAPPING = {
     # — DC's MuleSoft REST client invokes both the inherited ops and the
     # MuleSoft-specific op through the same client instance.
     "mulesoft": _get_proxy_client_mulesoft,
+    "fivetran": _get_proxy_client_http,
 }
 
 
