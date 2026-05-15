@@ -45,19 +45,38 @@ _RETRY_KWARGS: dict[str, Any] = {
     "logger": logger,
 }
 
+# Salesforce core REST API version used by the SOQL dataspace discovery call
+# (see ``SalesforceDataCloudProxyClient.list_dataspaces``). Validated against
+# customer orgs returning DataSpaceApiName from the Dataspace SObject (YET-1256).
+_SOQL_API_VERSION = "v62.0"
+_LIST_DATASPACES_SOQL = "SELECT DataSpaceApiName FROM Dataspace"
+_DISCOVERY_REQUEST_TIMEOUT_SECONDS = 30
+
 
 class _CapturingSession(requests.Session):
     """
-    Wraps the library's requests.Session to capture the Salesforce a360/token response
-    body regardless of status code.
+    Wraps requests.Session to capture the body and status of every HTTP call
+    made through this session, regardless of method, URL, or status code.
 
-    The salesforcecdpconnector library raises Error('CDP token retrieval failed with
-    code N') on non-200 and discards the body. On 200 responses with unexpected payloads
-    (e.g. Salesforce returning 200 with an error body for unknown dataspaces) the library
-    raises KeyError. In both cases the body is discarded before we can see it.
+    Two use patterns:
 
-    Capturing on all a360/token responses means we always have it available to include
-    in the RuntimeError that propagates back to the data-collector and into Datadog logs.
+    1. **Library-internal capture.** Caller swaps this session into the
+       salesforcecdpconnector library's authentication_helper via
+       `_attach_capturing_session` so the library's internal HTTP traffic is
+       captured. The library raises ``Error('CDP token retrieval failed with
+       code N')`` on non-200 a360/token responses and discards the body; on
+       200 responses with unexpected payloads it raises ``KeyError`` after
+       discarding the body. ``last_exchange_*`` reflects whichever request the
+       library last issued before raising, which is the call that caused the
+       error.
+    2. **Direct capture.** Caller instantiates and uses the session directly
+       (e.g. ``list_dataspaces`` makes raw OAuth + SOQL calls). After each call,
+       the caller can inspect ``last_exchange_*`` for response detail when
+       enriching errors or log records.
+
+    Bodies are pre-serialized to ``str(response.json())`` for ergonomic inclusion
+    in log fields; ``_redact_body`` masks ``access_token`` values before the
+    body is surfaced.
     """
 
     def __init__(self) -> None:
@@ -65,14 +84,21 @@ class _CapturingSession(requests.Session):
         self.last_exchange_body: str | None = None
         self.last_exchange_status: int | None = None
 
+    def _capture(self, response: requests.Response) -> None:
+        self.last_exchange_status = response.status_code
+        try:
+            self.last_exchange_body = str(response.json())
+        except Exception:
+            self.last_exchange_body = response.text[:500]
+
     def post(self, url: str, **kwargs: Any):  # type: ignore[override]
         response = super().post(url, **kwargs)
-        if "a360/token" in url:
-            self.last_exchange_status = response.status_code
-            try:
-                self.last_exchange_body = str(response.json())
-            except Exception:
-                self.last_exchange_body = response.text[:500]
+        self._capture(response)
+        return response
+
+    def get(self, url: str, **kwargs: Any):  # type: ignore[override]
+        response = super().get(url, **kwargs)
+        self._capture(response)
         return response
 
 
@@ -395,6 +421,142 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
                 extra={"table_count": len(tables)},
             )
         return [self._serialize_table(table) for table in tables]
+
+    def list_dataspaces(self) -> list[str]:
+        """
+        Discover Data Cloud dataspaces accessible to the run-as user via SOQL.
+
+        Mints a core OAuth token via the client-credentials grant against the
+        Salesforce core REST API (the ``salesforcecdpconnector`` library does
+        not expose its token-minting flow for arbitrary SOQL), then issues::
+
+            GET /services/data/{version}/query?q=SELECT DataSpaceApiName FROM Dataspace
+
+        with the core token as a Bearer credential. Pagination via
+        ``nextRecordsUrl`` is handled defensively even though the Dataspace
+        SObject typically returns a small result set.
+
+        The result is scoped to the integration user's Data Cloud permissions
+        in Salesforce. An empty list means the run-as user has no dataspace
+        access, not that the org has no dataspaces — surface the warning in
+        the caller (the data-collector) when this matters.
+
+        Raises ``RuntimeError`` with the HTTP status in the ``code NNN`` format
+        on any non-200 response. Both HTTP calls flow through a single
+        ``_CapturingSession`` so the redacted response body is surfaced in the
+        exception message and structured log record on failure.
+        """
+        domain = self._credentials.domain
+        session = _CapturingSession()
+
+        logger.info(
+            "Salesforce Data Cloud: discovering dataspaces via SOQL "
+            f"(domain={domain}, client_id={self._credentials.client_id[:8]}...)",
+        )
+
+        # 1. Mint a core OAuth token via the client-credentials grant.
+        token_url = f"https://{domain}/services/oauth2/token"
+        token_response = session.post(
+            token_url,
+            data={
+                "grant_type": "client_credentials",
+                "client_id": self._credentials.client_id,
+                "client_secret": self._credentials.client_secret,
+            },
+            timeout=_DISCOVERY_REQUEST_TIMEOUT_SECONDS,
+        )
+        if token_response.status_code != 200:
+            body = _redact_body(session.last_exchange_body)
+            status = session.last_exchange_status
+            logger.warning(
+                "Salesforce Data Cloud: OAuth token mint failed during dataspace discovery",
+                extra={
+                    "exchange_status_code": status,
+                    "exchange_error_type": _classify_exchange_status(status),
+                    "exchange_response_body": body,
+                },
+            )
+            detail = f" (Salesforce response: {body})" if body else ""
+            raise RuntimeError(
+                f"Salesforce Data Cloud dataspace discovery: OAuth token mint "
+                f"failed with code {token_response.status_code}{detail}"
+            )
+
+        try:
+            access_token = token_response.json()["access_token"]
+        except (ValueError, KeyError) as e:
+            body = _redact_body(session.last_exchange_body)
+            raise RuntimeError(
+                f"Salesforce Data Cloud dataspace discovery: OAuth response missing "
+                f"access_token (HTTP {token_response.status_code}, "
+                f"Salesforce response: {body})"
+            ) from e
+
+        # 2. Issue SOQL query for the Dataspace SObject; follow nextRecordsUrl pagination.
+        dataspaces: list[str] = []
+        url: str | None = f"https://{domain}/services/data/{_SOQL_API_VERSION}/query"
+        params: dict[str, str] | None = {"q": _LIST_DATASPACES_SOQL}
+
+        while url is not None:
+            response = session.get(
+                url,
+                headers={"Authorization": f"Bearer {access_token}"},
+                params=params,
+                timeout=_DISCOVERY_REQUEST_TIMEOUT_SECONDS,
+            )
+            if response.status_code != 200:
+                body = _redact_body(session.last_exchange_body)
+                status = session.last_exchange_status
+                logger.warning(
+                    "Salesforce Data Cloud: SOQL dataspace discovery failed",
+                    extra={
+                        "exchange_status_code": status,
+                        "exchange_error_type": _classify_exchange_status(status),
+                        "exchange_response_body": body,
+                    },
+                )
+                detail = f" (Salesforce response: {body})" if body else ""
+                raise RuntimeError(
+                    f"Salesforce Data Cloud dataspace discovery: SOQL query failed "
+                    f"with code {response.status_code}{detail}"
+                )
+
+            try:
+                payload = response.json()
+            except ValueError as e:
+                body = _redact_body(session.last_exchange_body)
+                raise RuntimeError(
+                    f"Salesforce Data Cloud dataspace discovery: non-JSON response "
+                    f"(HTTP {response.status_code}, Salesforce response: {body})"
+                ) from e
+
+            for record in payload.get("records", []):
+                name = record.get("DataSpaceApiName")
+                if name:
+                    dataspaces.append(name)
+
+            if payload.get("done", True):
+                url = None
+            else:
+                next_records_url = payload.get("nextRecordsUrl")
+                if not next_records_url:
+                    raise RuntimeError(
+                        "Salesforce Data Cloud dataspace discovery: done=False but "
+                        "no nextRecordsUrl in response"
+                    )
+                # nextRecordsUrl already encodes the cursor in the path.
+                url = f"https://{domain}{next_records_url}"
+                params = None
+
+        logger.info(
+            "Salesforce Data Cloud: discovered dataspaces via SOQL",
+            extra={
+                "discovered_dataspace_count": len(dataspaces),
+                # Lists/dicts may be redacted in the log pipeline; keep as a string.
+                "discovered_dataspaces_csv": ", ".join(dataspaces),
+            },
+        )
+        return dataspaces
 
     def _serialize_table(self, table: GenieTable) -> dict:
         fields: list[Field] = table.fields

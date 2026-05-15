@@ -963,6 +963,220 @@ class SalesforceDataCloudProxyClientTests(TestCase):
                 "list_tables(None) on a scoped client must not include dataspace in a360/token POST",
             )
 
+    # -- Dataspace auto-discovery via SOQL (YET-1256) ---------------------------------
+
+    _PROXY_CLIENT_LOGGER = "apollo.integrations.db.salesforce_data_cloud_proxy_client"
+    _SOQL_QUERY_URL = "https://test.salesforce.com/services/data/v62.0/query"
+
+    def _add_soql_callback(self, callback):
+        """Register a callback for the SOQL dataspace discovery endpoint."""
+        self.mock_responses.add_callback(
+            method=responses.GET,
+            url=self._SOQL_QUERY_URL,
+            callback=callback,
+        )
+
+    def _list_dataspaces_operation(self) -> dict:
+        return {
+            "trace_id": "test-trace-id",
+            "skip_cache": True,
+            "commands": [{"method": "list_dataspaces"}],
+        }
+
+    def test_list_dataspaces(self):
+        """Success: SOQL returns N dataspaces and `list_dataspaces` returns the API names."""
+        discovered = ["default", "CSG", "Unified_Knowledge", "Professional_Services"]
+        self._add_soql_callback(
+            Mock(
+                return_value=(
+                    200,
+                    {},
+                    json.dumps(
+                        {
+                            "records": [{"DataSpaceApiName": ds} for ds in discovered],
+                            "done": True,
+                        }
+                    ),
+                )
+            )
+        )
+
+        response = self.agent.execute_operation(
+            connection_type="salesforce-data-cloud",
+            operation_name="test_list_dataspaces",
+            operation_dict=self._list_dataspaces_operation(),
+            credentials=self.credentials,
+        )
+
+        self.assertFalse(response.is_error, msg=str(response.result))
+        self.assertEqual(response.result[ATTRIBUTE_NAME_RESULT], discovered)
+
+    def test_list_dataspaces_empty(self):
+        """An empty `records` array returns an empty result. The caller (data-collector)
+        decides whether that's a permission gap worth surfacing — the agent just reports it.
+
+        The agent's RPC layer serializes Python `[]` to `{}` over the wire, so this test
+        asserts the result is falsy rather than pinning a specific representation."""
+        self._add_soql_callback(
+            Mock(return_value=(200, {}, json.dumps({"records": [], "done": True})))
+        )
+
+        response = self.agent.execute_operation(
+            connection_type="salesforce-data-cloud",
+            operation_name="test_list_dataspaces_empty",
+            operation_dict=self._list_dataspaces_operation(),
+            credentials=self.credentials,
+        )
+
+        self.assertFalse(response.is_error, msg=str(response.result))
+        self.assertFalse(
+            response.result[ATTRIBUTE_NAME_RESULT],
+            msg=f"expected empty result, got {response.result[ATTRIBUTE_NAME_RESULT]!r}",
+        )
+
+    def test_list_dataspaces_paginates_via_next_records_url(self):
+        """`done=False` with `nextRecordsUrl` triggers a follow-up GET; results accumulate."""
+        page_1 = {
+            "records": [
+                {"DataSpaceApiName": "page1_ds1"},
+                {"DataSpaceApiName": "page1_ds2"},
+            ],
+            "done": False,
+            "nextRecordsUrl": "/services/data/v62.0/query/01gXX-page2",
+        }
+        page_2 = {
+            "records": [{"DataSpaceApiName": "page2_ds1"}],
+            "done": True,
+        }
+
+        first_page_url = self._SOQL_QUERY_URL
+        next_page_url = (
+            "https://test.salesforce.com/services/data/v62.0/query/01gXX-page2"
+        )
+
+        self.mock_responses.add_callback(
+            method=responses.GET,
+            url=first_page_url,
+            callback=Mock(return_value=(200, {}, json.dumps(page_1))),
+        )
+        self.mock_responses.add_callback(
+            method=responses.GET,
+            url=next_page_url,
+            callback=Mock(return_value=(200, {}, json.dumps(page_2))),
+        )
+
+        response = self.agent.execute_operation(
+            connection_type="salesforce-data-cloud",
+            operation_name="test_list_dataspaces_paginates",
+            operation_dict=self._list_dataspaces_operation(),
+            credentials=self.credentials,
+        )
+
+        self.assertFalse(response.is_error, msg=str(response.result))
+        self.assertEqual(
+            response.result[ATTRIBUTE_NAME_RESULT],
+            ["page1_ds1", "page1_ds2", "page2_ds1"],
+        )
+
+    def test_list_dataspaces_soql_http_error_surfaces_status(self):
+        """A non-200 from the SOQL endpoint propagates as a RuntimeError with `code NNN`
+        in the message so the data-collector's `_extract_exchange_http_status` can pick it up.
+        """
+        self._add_soql_callback(
+            Mock(
+                return_value=(
+                    401,
+                    {},
+                    json.dumps(
+                        [
+                            {
+                                "errorCode": "INVALID_SESSION_ID",
+                                "message": "Session expired",
+                            }
+                        ]
+                    ),
+                )
+            )
+        )
+
+        response = self.agent.execute_operation(
+            connection_type="salesforce-data-cloud",
+            operation_name="test_list_dataspaces_soql_http_error",
+            operation_dict=self._list_dataspaces_operation(),
+            credentials=self.credentials,
+        )
+
+        self.assertTrue(response.is_error)
+        message = str(response.result)
+        self.assertIn("code 401", message)
+        self.assertIn("INVALID_SESSION_ID", message)
+
+    def test_list_dataspaces_oauth_http_error_redacts_body(self):
+        """A non-200 from the OAuth token mint propagates as a RuntimeError with
+        the response body redacted — no raw `access_token` string in the exception."""
+        leaked_token = "secret-token-should-be-redacted"
+        leaked_body = json.dumps(
+            {"error": "invalid_client", "access_token": leaked_token}
+        )
+
+        self.mock_responses.remove(
+            responses.POST, "https://test.salesforce.com/services/oauth2/token"
+        )
+        self.mock_responses.add_callback(
+            method=responses.POST,
+            url="https://test.salesforce.com/services/oauth2/token",
+            callback=Mock(return_value=(401, {}, leaked_body)),
+        )
+
+        response = self.agent.execute_operation(
+            connection_type="salesforce-data-cloud",
+            operation_name="test_list_dataspaces_oauth_http_error",
+            operation_dict=self._list_dataspaces_operation(),
+            credentials=self.credentials,
+        )
+
+        self.assertTrue(response.is_error)
+        message = str(response.result)
+        self.assertIn("code 401", message)
+        self.assertIn("[REDACTED]", message)
+        self.assertNotIn(leaked_token, message)
+
+    def test_list_dataspaces_rate_limit_logs_classification(self):
+        """A 429 surfaces as a RuntimeError AND the structured log record carries
+        `exchange_error_type=rate_limited` so Datadog queries (e.g.
+        `@exchange_error_type:rate_limited`) catch it."""
+        self._add_soql_callback(
+            Mock(
+                return_value=(
+                    429,
+                    {},
+                    json.dumps(
+                        [{"errorCode": "REQUEST_LIMIT_EXCEEDED", "message": "Too many"}]
+                    ),
+                )
+            )
+        )
+
+        with self.assertLogs(self._PROXY_CLIENT_LOGGER, level="WARNING") as logs:
+            response = self.agent.execute_operation(
+                connection_type="salesforce-data-cloud",
+                operation_name="test_list_dataspaces_rate_limit",
+                operation_dict=self._list_dataspaces_operation(),
+                credentials=self.credentials,
+            )
+
+        self.assertTrue(response.is_error)
+        self.assertIn("code 429", str(response.result))
+        rate_limited_records = [
+            r
+            for r in logs.records
+            if getattr(r, "exchange_error_type", None) == "rate_limited"
+        ]
+        self.assertTrue(
+            rate_limited_records,
+            f"expected a rate_limited classification in logs; got {logs.output}",
+        )
+
 
 class SalesforceDataCloudRetryTests(TestCase):
     """Cover the transient-network-error retry that wraps cursor and list_tables.
