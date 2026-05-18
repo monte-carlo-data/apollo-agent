@@ -449,7 +449,7 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
         domain = self._credentials.domain
         session = _CapturingSession()
 
-        logger.info(
+        logger.debug(
             "Salesforce Data Cloud: discovering dataspaces via SOQL "
             f"(domain={domain}, client_id={self._credentials.client_id[:8]}...)",
         )
