@@ -216,7 +216,7 @@ gcloud run deploy CLOUD_RUN_SERVICE_NAME_HERE --image montecarlodata/pre-release
 
 ### Azure deployment
 You can check the README file for Azure [here](apollo/interfaces/azure/README.md).
-For authentication, you need to get the app-key for the Azure App and pass it in the `x-functions-key` header.
+For authentication, you can either use a function key (pass it in the `x-functions-key` header) or configure Service Principal authentication via Azure Easy Auth (set `MCD_AUTH_TYPE=AZURE_FUNCTION_SERVICE_PRINCIPAL`). See the [Azure README](apollo/interfaces/azure/README.md#authentication-modes) for details.
 
 ### Lambda deployment
 You can build the Docker image for the Lambda agent using:

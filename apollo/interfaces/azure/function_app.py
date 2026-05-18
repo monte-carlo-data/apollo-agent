@@ -74,43 +74,16 @@ wsgi_middleware = WsgiMiddleware(main.app.wsgi_app)
 # disabled — the DC only sends a Bearer token, not a function key.
 #
 # Safety: before going ANONYMOUS, validate that Easy Auth is actually enabled.
-# WEBSITE_AUTH_ENABLED is read-only and platform-injected by Azure when Easy
-# Auth is configured.  WEBSITE_AUTH_CLIENT_ID and WEBSITE_AUTH_OPENID_ISSUER
-# are set by the platform during Easy Auth setup — if either is missing, Easy
+# WEBSITE_AUTH_ENABLED is platform-injected when Easy Auth is configured —
+# this check is defense-in-depth against misconfiguration, not a tamper-proof
+# guarantee (a privileged Azure principal can still modify app settings via
+# the ARM API).  WEBSITE_AUTH_CLIENT_ID and WEBSITE_AUTH_OPENID_ISSUER are
+# set by the platform during Easy Auth setup — if either is missing, Easy
 # Auth is definitely not configured and we must refuse to drop function-key
 # auth, otherwise the function would be completely unauthenticated.
-_EASY_AUTH_REQUIRED_VARS = (
-    "WEBSITE_AUTH_ENABLED",
-    "WEBSITE_AUTH_CLIENT_ID",
-    "WEBSITE_AUTH_OPENID_ISSUER",
-)
+from apollo.interfaces.azure.auth import resolve_auth_level
 
-
-def _resolve_auth_level() -> func.AuthLevel:
-    if os.getenv("MCD_AUTH_TYPE") != "AZURE_FUNCTION_SERVICE_PRINCIPAL":
-        return func.AuthLevel.FUNCTION
-
-    # WEBSITE_AUTH_ENABLED must be explicitly "True" (platform sets this
-    # value); the others just need to be present.
-    missing = [v for v in _EASY_AUTH_REQUIRED_VARS if not os.getenv(v)]
-    if os.getenv("WEBSITE_AUTH_ENABLED", "").lower() != "true":
-        missing.append("WEBSITE_AUTH_ENABLED")
-    # dedupe while preserving order (WEBSITE_AUTH_ENABLED may appear twice)
-    missing = list(dict.fromkeys(missing))
-    if missing:
-        raise RuntimeError(
-            "MCD_AUTH_TYPE is set to AZURE_FUNCTION_SERVICE_PRINCIPAL but Easy "
-            "Auth does not appear to be enabled — the following platform "
-            f"environment variables are missing or invalid: {', '.join(missing)}. "
-            "Refusing to start with AuthLevel.ANONYMOUS because the function "
-            "would be unauthenticated. Enable Easy Auth on the Function App "
-            "or switch to Function Key authentication."
-        )
-
-    return func.AuthLevel.ANONYMOUS
-
-
-app = df.DFApp(http_auth_level=_resolve_auth_level())
+app = df.DFApp(http_auth_level=resolve_auth_level())
 
 
 @app.route(route="async/api/v1/agent/execute/{connection_type}/{operation_name}")
