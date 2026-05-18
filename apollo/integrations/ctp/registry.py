@@ -42,6 +42,7 @@ def _discover() -> None:
     import apollo.integrations.ctp.defaults.mysql  # noqa: F401
     import apollo.integrations.ctp.defaults.oracle  # noqa: F401
     import apollo.integrations.ctp.defaults.mulesoft  # noqa: F401
+    import apollo.integrations.ctp.defaults.fivetran  # noqa: F401
 
 
 def _ensure_initialized() -> None:
