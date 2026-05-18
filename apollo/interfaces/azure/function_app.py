@@ -69,7 +69,15 @@ main.agent.platform_provider = AzurePlatformProvider()
 main.agent.log_context = log_context
 wsgi_middleware = WsgiMiddleware(main.app.wsgi_app)
 
-app = df.DFApp(http_auth_level=func.AuthLevel.FUNCTION)
+# When Easy Auth (Azure App Service Authentication) handles authentication via
+# a service principal, function-level auth keys are redundant and must be
+# disabled — the DC only sends a Bearer token, not a function key.
+auth_level = (
+    func.AuthLevel.ANONYMOUS
+    if os.getenv("MCD_AUTH_TYPE") == "AZURE_FUNCTION_SERVICE_PRINCIPAL"
+    else func.AuthLevel.FUNCTION
+)
+app = df.DFApp(http_auth_level=auth_level)
 
 
 @app.route(route="async/api/v1/agent/execute/{connection_type}/{operation_name}")
