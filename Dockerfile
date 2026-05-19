@@ -7,7 +7,10 @@ FROM python:3.12-slim AS system-base
 ENV APP_HOME=/app
 WORKDIR $APP_HOME
 
-RUN apt-get update
+# Refresh apt index and upgrade base-image packages so OS-level security fixes
+# (glibc, openssh, nghttp2, etc.) land on every rebuild rather than waiting for
+# the upstream python:3.12-slim tag to be republished.
+RUN apt-get update && apt-get upgrade -y
 # install git as we need it for the direct oscrypto dependency
 # this is a temporary workaround and it should be removed once we update oscrypto to 1.3.1+
 # see: https://community.snowflake.com/s/article/Python-Connector-fails-to-connect-with-LibraryNotFoundError-Error-detecting-the-version-of-libcrypto
@@ -142,7 +145,7 @@ FROM mcr.microsoft.com/azure-functions/python:4-python3.12 AS azure
 ENV AzureWebJobsScriptRoot=/home/site/wwwroot \
     AzureFunctionsJobHost__Logging__Console__IsEnabled=true
 
-RUN apt-get update && apt-get upgrade -y
+RUN apt-get update
 RUN apt-get install -y --no-install-recommends git
 # install libcrypt1 for IBM DB2 ibm-db package compatibility (provides libcrypt.so.1)
 RUN apt-get install -y --no-install-recommends libcrypt1
@@ -155,6 +158,13 @@ RUN apt-get update
 RUN apt-get install -y --no-install-recommends gnupg gnupg2 gnupg1 curl apt-transport-https
 RUN ACCEPT_EULA=Y apt-get install -y --no-install-recommends msodbcsql17 odbcinst=2.3.11-2+deb12u1 odbcinst1debian2=2.3.11-2+deb12u1 unixodbc-dev=2.3.11-2+deb12u1 unixodbc=2.3.11-2+deb12u1
 
+# Hold the ODBC stack at the pinned versions above (those pins force downgrades
+# so msodbcsql17 — rather than the msodbcsql18 expected by the MS base image —
+# stays installable), then upgrade everything else to pick up Debian security
+# fixes (glibc, dpkg, xorg-server, etc.).
+RUN apt-mark hold msodbcsql17 odbcinst odbcinst1debian2 unixodbc unixodbc-dev \
+    && apt-get upgrade -y
+
 # openssh-client required by git client
 RUN apt-get install -y openssh-client
 
@@ -166,7 +176,7 @@ RUN rm -rf /opt/startupcmdgen/
 
 COPY requirements.txt /
 COPY requirements-azure.txt /
-RUN pip install --no-cache-dir -r /requirements.txt -r /requirements-azure.txt && rm -rf /opt/python/3.12.12/_manifest
+RUN pip install --no-cache-dir -r /requirements.txt -r /requirements-azure.txt && rm -rf /opt/python/3/_manifest
 RUN pip install --no-cache-dir -U setuptools==80.10.2  # INC-265 - opentelemetry requires pkg_resources that was removed in setuptools 81
 
 COPY apollo /home/site/wwwroot/apollo
