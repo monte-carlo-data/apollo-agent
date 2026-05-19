@@ -11,6 +11,7 @@ from apollo.common.agent.constants import (
     ATTRIBUTE_NAME_ERROR_TYPE,
     ATTRIBUTE_NAME_RESULT,
 )
+from apollo.integrations.ctp.transforms import _oauth_cache as _oauth_cache_mod
 
 _WORKSPACE_URL = "https://adb-123.azuredatabricks.net"
 _PAT = "dapi-test-token"
@@ -56,6 +57,9 @@ class TestDatabricksRestProxyClientRequests(TestCase):
     """Integration-style tests that exercise the full agent → proxy client path."""
 
     def setUp(self) -> None:
+        # Clear the OAuth HeaderFactory cache so each test exercises a fresh
+        # cache miss against its own mocks (the cache is module-scoped).
+        _oauth_cache_mod._reset_for_tests()
         self._agent = Agent(LoggingUtils())
 
     def _mock_http_success(self, mock_request, result: dict):
@@ -106,10 +110,8 @@ class TestDatabricksRestProxyClientRequests(TestCase):
     # ------------------------------------------------------------------
 
     @patch("requests.request")
-    @patch(
-        "apollo.integrations.ctp.transforms.resolve_databricks_token.oauth_service_principal"
-    )
-    @patch("apollo.integrations.ctp.transforms.resolve_databricks_token.Config")
+    @patch("apollo.integrations.ctp.transforms._oauth_cache.oauth_service_principal")
+    @patch("apollo.integrations.ctp.transforms._oauth_cache.Config")
     def test_do_request_with_databricks_oauth(
         self, mock_config_cls, mock_oauth_provider, mock_request
     ):
@@ -141,10 +143,8 @@ class TestDatabricksRestProxyClientRequests(TestCase):
     # ------------------------------------------------------------------
 
     @patch("requests.request")
-    @patch(
-        "apollo.integrations.ctp.transforms.resolve_databricks_token.azure_service_principal"
-    )
-    @patch("apollo.integrations.ctp.transforms.resolve_databricks_token.Config")
+    @patch("apollo.integrations.ctp.transforms._oauth_cache.azure_service_principal")
+    @patch("apollo.integrations.ctp.transforms._oauth_cache.Config")
     def test_do_request_with_azure_oauth(
         self, mock_config_cls, mock_azure_provider, mock_request
     ):

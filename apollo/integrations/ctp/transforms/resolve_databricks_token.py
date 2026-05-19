@@ -1,12 +1,18 @@
+import logging
+import time
 from typing import Optional
-
-from databricks.sdk.core import Config, azure_service_principal, oauth_service_principal
 
 from apollo.integrations.ctp.errors import CtpPipelineError
 from apollo.integrations.ctp.models import PipelineState, TransformStep
 from apollo.integrations.ctp.template import TemplateEngine
+from apollo.integrations.ctp.transforms._oauth_cache import (
+    cache_stats,
+    cached_header_factory,
+)
 from apollo.integrations.ctp.transforms.base import Transform
 from apollo.integrations.ctp.transforms.registry import TransformRegistry
+
+logger = logging.getLogger(__name__)
 
 
 class ResolveDatabricksTokenTransform(Transform):
@@ -99,27 +105,24 @@ class ResolveDatabricksTokenTransform(Transform):
     ) -> str:
         # OAuth takes priority over PAT — customers who migrated may have stale PAT present.
         if client_id and client_secret:
-            is_azure = bool(azure_tenant_id and azure_workspace_resource_id)
-            if is_azure:
-                config = Config(
-                    host=workspace_url,
-                    azure_client_id=client_id,
-                    azure_client_secret=client_secret,
-                    azure_tenant_id=azure_tenant_id,
-                    azure_workspace_resource_id=azure_workspace_resource_id,
-                )
-                provider = azure_service_principal
-            else:
-                config = Config(
-                    host=workspace_url,
-                    client_id=client_id,
-                    client_secret=client_secret,
-                )
-                provider = oauth_service_principal
-
-            header_factory = provider(config)
+            header_factory = cached_header_factory(
+                workspace_url,
+                client_id,
+                client_secret,
+                azure_tenant_id,
+                azure_workspace_resource_id,
+            )
+            t0 = time.monotonic()
             auth_header = header_factory().get("Authorization", "")
             token = auth_header.removeprefix("Bearer ").strip()
+            stats = cache_stats()
+            logger.info(
+                f"Resolved Databricks OAuth token, "
+                f"duration_s={time.monotonic() - t0:.3f}, "
+                f"cache_hits={stats['hits']}, "
+                f"cache_misses={stats['misses']}, "
+                f"cache_size={stats['size']}"
+            )
             if not token:
                 raise CtpPipelineError(
                     stage="transform_execute",

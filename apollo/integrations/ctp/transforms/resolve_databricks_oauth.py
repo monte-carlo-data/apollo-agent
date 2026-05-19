@@ -1,12 +1,17 @@
+import logging
 from typing import Callable
-
-from databricks.sdk.core import Config, azure_service_principal, oauth_service_principal
 
 from apollo.integrations.ctp.errors import CtpPipelineError
 from apollo.integrations.ctp.models import PipelineState, TransformStep
 from apollo.integrations.ctp.template import TemplateEngine
+from apollo.integrations.ctp.transforms._oauth_cache import (
+    cache_stats,
+    cached_header_factory,
+)
 from apollo.integrations.ctp.transforms.base import Transform
 from apollo.integrations.ctp.transforms.registry import TransformRegistry
+
+logger = logging.getLogger(__name__)
 
 
 class ResolveDatabricksOauthTransform(Transform):
@@ -30,8 +35,10 @@ class ResolveDatabricksOauthTransform(Transform):
     Output keys:
       - ``credentials_provider``: key in ``state.derived`` where the callable is stored
 
-    The stored value is ``lambda: provider(config)`` — a zero-argument callable that
-    ``databricks-sql-connector`` invokes when it needs fresh credentials.
+    The stored value is ``lambda: header_factory`` — a zero-argument callable that
+    ``databricks-sql-connector`` invokes when it needs fresh credentials. The
+    HeaderFactory itself is cached across operations by ``_oauth_cache`` so the
+    Databricks SDK's per-Config TokenSource cache survives across calls.
     """
 
     required_input_keys = ("server_hostname", "client_id", "client_secret")
@@ -69,31 +76,35 @@ class ResolveDatabricksOauthTransform(Transform):
                 step.input["azure_workspace_resource_id"], state
             )
 
-        is_azure = bool(azure_tenant_id and azure_workspace_resource_id)
-
-        if is_azure:
-            config = Config(
-                host=host,
-                azure_client_id=client_id,
-                azure_client_secret=client_secret,
-                azure_tenant_id=azure_tenant_id,
-                azure_workspace_resource_id=azure_workspace_resource_id,
-            )
-            provider = azure_service_principal
-        else:
-            config = Config(
-                host=host,
-                client_id=client_id,
-                client_secret=client_secret,
-            )
-            provider = oauth_service_principal
-
-        state.derived[output_key] = _make_provider(provider, config)
+        header_factory = cached_header_factory(
+            host,
+            client_id,
+            client_secret,
+            azure_tenant_id or None,
+            azure_workspace_resource_id or None,
+        )
+        stats = cache_stats()
+        logger.info(
+            f"Resolved Databricks OAuth credentials_provider, "
+            f"cache_hits={stats['hits']}, "
+            f"cache_misses={stats['misses']}, "
+            f"cache_size={stats['size']}"
+        )
+        state.derived[output_key] = _wrap_factory(header_factory)
 
 
-def _make_provider(provider: Callable, config: Config) -> Callable:
-    """Return a zero-argument callable that invokes ``provider(config)``."""
-    return lambda: provider(config)
+def _wrap_factory(
+    header_factory: Callable[[], dict]
+) -> Callable[[], Callable[[], dict]]:
+    """Return a zero-argument callable that yields the (cached) HeaderFactory.
+
+    The ``databricks-sql-connector`` invokes the stored credentials_provider
+    once per ``sql.connect()`` to obtain a HeaderFactory it then uses to fetch
+    auth headers. By returning the *same* cached HeaderFactory each time
+    (rather than rebuilding one via ``provider(config)``), the Databricks SDK's
+    internal TokenSource cache survives across operations.
+    """
+    return lambda: header_factory
 
 
 TransformRegistry.register("resolve_databricks_oauth", ResolveDatabricksOauthTransform)
