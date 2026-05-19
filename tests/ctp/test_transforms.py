@@ -722,10 +722,20 @@ def _make_databricks_step(raw_keys, output_key="databricks_provider"):
 
 
 class TestResolveDatabricksOauthTransform(TestCase):
-    @patch(
-        "apollo.integrations.ctp.transforms.resolve_databricks_oauth.oauth_service_principal"
-    )
-    @patch("apollo.integrations.ctp.transforms.resolve_databricks_oauth.Config")
+    def setUp(self):
+        # Clear the shared OAuth HeaderFactory cache between tests so each test
+        # exercises a fresh cache miss against its own mocks. The cache is
+        # module-scoped, so without this, the second test in this class would
+        # hit a cached factory from the first test and the mocks wouldn't be
+        # invoked.
+        from apollo.integrations.ctp.transforms import (
+            _oauth_cache as _oauth_cache_mod,
+        )
+
+        _oauth_cache_mod._reset_for_tests()
+
+    @patch("apollo.integrations.ctp.transforms._oauth_cache.oauth_service_principal")
+    @patch("apollo.integrations.ctp.transforms._oauth_cache.Config")
     def test_databricks_managed_oauth_produces_callable(
         self, mock_config, mock_provider
     ):
@@ -736,10 +746,8 @@ class TestResolveDatabricksOauthTransform(TestCase):
         provider = state.derived["databricks_provider"]
         self.assertTrue(callable(provider))
 
-    @patch(
-        "apollo.integrations.ctp.transforms.resolve_databricks_oauth.azure_service_principal"
-    )
-    @patch("apollo.integrations.ctp.transforms.resolve_databricks_oauth.Config")
+    @patch("apollo.integrations.ctp.transforms._oauth_cache.azure_service_principal")
+    @patch("apollo.integrations.ctp.transforms._oauth_cache.Config")
     def test_azure_managed_oauth_uses_azure_service_principal(
         self, mock_config, mock_azure_provider
     ):
@@ -751,10 +759,8 @@ class TestResolveDatabricksOauthTransform(TestCase):
         call_kwargs = mock_config.call_args.kwargs
         self.assertEqual("tid", call_kwargs["azure_tenant_id"])
 
-    @patch(
-        "apollo.integrations.ctp.transforms.resolve_databricks_oauth.oauth_service_principal"
-    )
-    @patch("apollo.integrations.ctp.transforms.resolve_databricks_oauth.Config")
+    @patch("apollo.integrations.ctp.transforms._oauth_cache.oauth_service_principal")
+    @patch("apollo.integrations.ctp.transforms._oauth_cache.Config")
     def test_databricks_managed_config_uses_client_id_client_secret(
         self, mock_config, mock_provider
     ):
