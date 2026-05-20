@@ -1,3 +1,5 @@
+import logging
+import time
 from typing import Optional
 
 from databricks.sdk.core import Config, azure_service_principal, oauth_service_principal
@@ -7,6 +9,8 @@ from apollo.integrations.ctp.models import PipelineState, TransformStep
 from apollo.integrations.ctp.template import TemplateEngine
 from apollo.integrations.ctp.transforms.base import Transform
 from apollo.integrations.ctp.transforms.registry import TransformRegistry
+
+logger = logging.getLogger(__name__)
 
 
 class ResolveDatabricksTokenTransform(Transform):
@@ -117,9 +121,19 @@ class ResolveDatabricksTokenTransform(Transform):
                 )
                 provider = oauth_service_principal
 
+            t_build = time.monotonic()
             header_factory = provider(config)
+            build_s = time.monotonic() - t_build
+
+            t_fetch = time.monotonic()
             auth_header = header_factory().get("Authorization", "")
+            fetch_s = time.monotonic() - t_fetch
+
             token = auth_header.removeprefix("Bearer ").strip()
+            logger.info(
+                f"Resolved Databricks OAuth token (REST), "
+                f"build_s={build_s:.3f}, fetch_s={fetch_s:.3f}, is_azure={is_azure}"
+            )
             if not token:
                 raise CtpPipelineError(
                     stage="transform_execute",

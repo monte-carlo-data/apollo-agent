@@ -1,4 +1,5 @@
 import logging
+import time
 from typing import Any, Callable, Optional, Dict, List, cast
 
 from apollo.agent.annotate_logger import annotate_logger
@@ -150,14 +151,25 @@ class AgentEvaluationUtils:
             target = cls._resolve_context_variable(context, target_name)
         method = cls._resolve_method(target, command.method)
         if isinstance(method, Callable):
+            t0 = time.monotonic()
             try:
                 result = method(
                     *cls._resolve_args(command.args, context),
                     **cls._resolve_kwargs(command.kwargs, context),
                 )
             except Exception as ex:
-                logger.info(f"Error calling method {command.method}: {ex}")
+                duration_s = time.monotonic() - t0
+                logger.info(
+                    f"Command failed, method={command.method}, "
+                    f"target={type(target).__name__}, duration_s={duration_s:.3f}, "
+                    f"error={ex}"
+                )
                 raise
+            duration_s = time.monotonic() - t0
+            logger.info(
+                f"Command executed, method={command.method}, "
+                f"target={type(target).__name__}, duration_s={duration_s:.3f}"
+            )
         else:
             result = method  # assume it is a property
         if store := command.store:
