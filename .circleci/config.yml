@@ -151,23 +151,33 @@ jobs:
       - checkout
       - docker/check:
           use-docker-credentials-store: true
+      # Docker Hub copy: keep BuildKit's default provenance attestation
+      # (improves Docker Scout health scores; Docker Hub handles the OCI
+      # image index correctly).
       - docker/build:
-          step-name: Build lambda image
+          step-name: Build lambda image (Docker Hub)
           use-buildkit: true # to build only the required stages
           extra_build_args: --target lambda --build-arg code_version=<< parameters.code_version >> --build-arg build_number=<< pipeline.number >>
           image: montecarlodata/<< parameters.docker_hub_repository >>
           tag: latest-lambda,<< parameters.code_version >>-lambda
-      - run:
-          name: Tag lambda image
-          command: |
-            docker tag montecarlodata/<< parameters.docker_hub_repository >>:<< parameters.code_version >>-lambda ${AWS_ECR_ACCOUNT_URL}/<< parameters.aws_ecr_repository >>:<< parameters.code_version >>
-            docker tag montecarlodata/<< parameters.docker_hub_repository >>:latest-lambda ${AWS_ECR_ACCOUNT_URL}/<< parameters.aws_ecr_repository >>:latest
-      - verify-version-in-docker-image:
-          image: ${AWS_ECR_ACCOUNT_URL}/<< parameters.aws_ecr_repository >>:<< parameters.code_version >>
-          version: << parameters.code_version >>,<< pipeline.number >>
       - docker/push:
           image: montecarlodata/<< parameters.docker_hub_repository >>
           tag: latest-lambda,<< parameters.code_version >>-lambda
+      # ECR copy: rebuild with --provenance=false. AWS Lambda / CloudFormation
+      # reject the OCI image index that BuildKit emits when attestations are
+      # attached ("image manifest, config or layer media type ... is not
+      # supported"), so the ECR image must be a plain single-arch manifest.
+      # BuildKit cache means the second build is nearly free.
+      - docker/build:
+          step-name: Build lambda image (ECR, no attestations)
+          use-buildkit: true
+          extra_build_args: --target lambda --build-arg code_version=<< parameters.code_version >> --build-arg build_number=<< pipeline.number >> --provenance=false
+          registry: ${AWS_ECR_ACCOUNT_URL}
+          image: << parameters.aws_ecr_repository >>
+          tag: latest,<< parameters.code_version >>
+      - verify-version-in-docker-image:
+          image: ${AWS_ECR_ACCOUNT_URL}/<< parameters.aws_ecr_repository >>:<< parameters.code_version >>
+          version: << parameters.code_version >>,<< pipeline.number >>
       - aws-cli/setup:
           role_arn: "${AWS_ROLE_ARN}"
       - aws-ecr/ecr_login
@@ -186,13 +196,18 @@ jobs:
         type: string
     steps:
       - checkout
-      - docker/pull:
-          images: montecarlodata/<< parameters.docker_hub_repository >>:latest-lambda,montecarlodata/<< parameters.docker_hub_repository >>:<< parameters.code_version >>-lambda
-      - run:
-          name: Tag lambda image
-          command: |
-            docker tag montecarlodata/<< parameters.docker_hub_repository >>:<< parameters.code_version >>-lambda ${AWS_ECR_ACCOUNT_URL}/<< parameters.aws_ecr_repository >>:<< parameters.code_version >>
-            docker tag montecarlodata/<< parameters.docker_hub_repository >>:latest-lambda ${AWS_ECR_ACCOUNT_URL}/<< parameters.aws_ecr_repository >>:latest
+      # Build a fresh lambda image with --provenance=false for the legacy ECR.
+      # Previously this job pulled the Docker Hub image and re-pushed, but
+      # that image now ships as an OCI index with a provenance attestation
+      # manifest that AWS Lambda / CloudFormation reject. Rebuilding here
+      # keeps the ECR copy as a plain single-arch manifest.
+      - docker/build:
+          step-name: Build lambda image (legacy ECR, no attestations)
+          use-buildkit: true
+          extra_build_args: --target lambda --build-arg code_version=<< parameters.code_version >> --build-arg build_number=<< pipeline.number >> --provenance=false
+          registry: ${AWS_ECR_ACCOUNT_URL}
+          image: << parameters.aws_ecr_repository >>
+          tag: latest,<< parameters.code_version >>
       - aws-ecr/ecr_login
       - aws-ecr/push_image:
           repo: << parameters.aws_ecr_repository >>
