@@ -40,4 +40,4 @@ class CredentialsFactory:
             raise ValueError(
                 f"Invalid self hosted credentials type: {self_hosted_credentials_type}. Supported types: {SELF_HOSTED_CREDENTIALS_TYPES.keys()}"
             )
-        return BaseCredentialsService()
+        return BaseCredentialsService(provider_name="passthrough")

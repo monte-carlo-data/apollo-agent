@@ -12,6 +12,9 @@ class EnvVarCredentialsService(BaseCredentialsService):
     and decrypts them if necessary.
     """
 
+    def __init__(self):
+        super().__init__(provider_name="env_var")
+
     def _load_external_credentials(self, credentials: dict) -> dict:
         env_var_name = credentials.get(ENV_VAR_NAME)
         if not env_var_name:

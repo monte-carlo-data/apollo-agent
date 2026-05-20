@@ -11,6 +11,9 @@ class GoogleSecretManagerCredentialsService(BaseCredentialsService):
     Credentials service that fetches credentials from GCP Secret Manager.
     """
 
+    def __init__(self):
+        super().__init__(provider_name="gcp_secret_manager")
+
     def _load_external_credentials(self, credentials: dict) -> dict:
         secret_name = credentials.get(SECRET_NAME)
         if not secret_name:
