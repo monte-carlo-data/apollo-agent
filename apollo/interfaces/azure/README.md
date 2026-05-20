@@ -83,3 +83,24 @@ Updating the image using Azure Resource Manager
   ```shell
   curl -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -X PATCH "https://management.azure.com/subscriptions/<subscription_id>/resourceGroups/<resource_group_name>/providers/Microsoft.Web/sites/<function_name>/config/appsettings?api-version=2022-03-01" -d '{"properties": {"test_env_var": "1234"}}'
   ```
+
+### Authentication Modes
+
+The Azure Function supports two authentication modes, controlled by the `MCD_AUTH_TYPE` environment variable:
+
+**Function Key (default)**
+
+When `MCD_AUTH_TYPE` is unset or set to `AZURE_FUNCTION_APP_KEY`, the function requires a valid function key passed in the `x-functions-key` header. This is the default behavior.
+
+**Service Principal (Easy Auth)**
+
+When `MCD_AUTH_TYPE=AZURE_FUNCTION_SERVICE_PRINCIPAL`, the function sets `AuthLevel.ANONYMOUS` and relies on Azure Easy Auth (App Service Authentication) to validate Bearer tokens. The DC sends a Bearer token instead of a function key.
+
+Before starting, the function validates that Easy Auth is actually configured by checking these platform-injected environment variables:
+- `WEBSITE_AUTH_ENABLED` — must be `True` (read-only, set by Azure when Easy Auth is enabled)
+- `WEBSITE_AUTH_CLIENT_ID` — must be present (set by Azure during Easy Auth setup)
+- `WEBSITE_AUTH_OPENID_ISSUER` — must be present (set by Azure during Easy Auth setup)
+
+If any of these are missing or invalid, the function **refuses to start** with a `RuntimeError` — this fail-closed design prevents the function from running unauthenticated if Easy Auth was not properly configured.
+
+To enable Easy Auth on a Function App, configure Authentication in the Azure portal or via ARM/Bicep with a Microsoft Entra ID provider.
