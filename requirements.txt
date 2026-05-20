@@ -52,7 +52,9 @@ brotli==1.2.0
     #   -r requirements.in
     #   flask-compress
 cachetools==5.3.3
-    # via google-auth
+    # via
+    #   -r requirements.in
+    #   google-auth
 cattrs==23.2.3
     # via looker-sdk
 certifi==2024.8.30
