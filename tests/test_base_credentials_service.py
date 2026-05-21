@@ -8,7 +8,7 @@ from apollo.integrations.ctp.registry import CtpRegistry
 
 class TestMergeConnectArgs(TestCase):
     def setUp(self):
-        self.svc = BaseCredentialsService()
+        self.svc = BaseCredentialsService(provider_name="passthrough")
 
     def test_plain_credentials_returned_unchanged(self):
         creds = {"connect_args": {"host": "h", "port": 5432}}

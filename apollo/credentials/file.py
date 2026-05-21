@@ -11,6 +11,9 @@ class FileCredentialsService(BaseCredentialsService):
     Credentials service that fetches credentials from a file.
     """
 
+    def __init__(self):
+        super().__init__(provider_name="file")
+
     def _load_external_credentials(self, credentials: dict) -> dict:
         file_path = credentials.get("file_path")
         if not file_path:

@@ -14,6 +14,9 @@ class AzureKeyVaultCredentialsService(BaseCredentialsService):
     Credentials service that fetches credentials from a secret in Azure Key Vault.
     """
 
+    def __init__(self):
+        super().__init__(provider_name="azure_key_vault")
+
     def _load_external_credentials(self, credentials: dict) -> dict:
         secret_name = credentials.get(SECRET_NAME)
         if not secret_name:
