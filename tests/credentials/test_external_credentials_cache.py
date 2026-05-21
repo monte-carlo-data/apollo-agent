@@ -156,6 +156,29 @@ class TestCacheBehavior(TestCase):
         self.assertEqual(True, second["resolved"])  # cached value unchanged
         self.assertEqual(1, svc.calls)
 
+    def test_nested_mutation_does_not_corrupt_cached_value(self):
+        """A shallow copy would also pass the top-level mutation test above.
+        This one specifically pins the deep-copy semantics: mutating a
+        nested dict in the returned value must not propagate to subsequent
+        cache reads."""
+
+        class _NestedReturningService(BaseCredentialsService):
+            def __init__(self):
+                super().__init__(provider_name="nested")
+                self.calls = 0
+
+            def _load_external_credentials(self, credentials: dict) -> dict:
+                self.calls += 1
+                return {"outer": {"inner": {"value": "original"}}}
+
+        svc = _NestedReturningService()
+        creds = {"aws_secret": "s1"}
+        first = svc.get_credentials(creds)
+        first["outer"]["inner"]["value"] = "MUTATED"
+        second = svc.get_credentials(creds)
+        self.assertEqual("original", second["outer"]["inner"]["value"])
+        self.assertEqual(1, svc.calls)
+
     def test_disabling_via_ttl_zero_calls_loader_every_time(self):
         with patch.object(cache_module, "_CACHE_TTL_SECONDS", 0):
             svc = _RecordingCredentialsService()
@@ -235,3 +258,26 @@ class TestLoadCachedLogging(TestCase):
         self.assertEqual(1, len(failed_logs), cm.output)
         self.assertIn("provider=failing", failed_logs[0])
         self.assertRegex(failed_logs[0], r"duration_s=\d+\.\d{3}")
+
+    def test_cache_error_log_emitted_when_machinery_raises_before_loader(self):
+        """Exceptions raised before the loader is invoked — e.g. inside the
+        cache key hash, the lock acquisition, or the @cached decorator
+        itself — must still produce a log line so a silent failure can't
+        sneak past the diagnostics."""
+        svc = _RecordingCredentialsService()
+        # Force the cached wrapper to raise before the inner timed_loader
+        # has a chance to run.
+        with patch.object(
+            cache_module, "_load_and_cache", side_effect=RuntimeError("machinery boom")
+        ):
+            with self.assertLogs(
+                "apollo.credentials.external_credentials_cache", level="INFO"
+            ) as cm:
+                with self.assertRaises(RuntimeError):
+                    svc.get_credentials({"aws_secret": "s1"})
+        error_logs = [m for m in cm.output if "cache=error" in m]
+        self.assertEqual(1, len(error_logs), cm.output)
+        self.assertIn("provider=recording", error_logs[0])
+        self.assertRegex(error_logs[0], r"duration_s=\d+\.\d{3}")
+        # Loader was never called
+        self.assertEqual(0, svc.calls)

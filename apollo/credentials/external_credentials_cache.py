@@ -12,7 +12,18 @@ everything else (provider type, secret name, region, vault url, assumable
 role, …) is what identifies the secret source.
 
 TTL is configurable via ``MCD_EXTERNAL_CREDENTIALS_CACHE_TTL_SECONDS``.
-Set to ``0`` to disable the cache entirely.
+Set to ``0`` to disable the cache entirely. The value is read once at module
+import — changing the env var on a running process has no effect; restart the
+process for the new TTL to take effect.
+
+Caveat on concurrency: ``cachetools.cached`` releases the lock between the
+cache lookup and the loader call, so N threads that miss the cache for the
+same key simultaneously will all invoke the loader (the last write wins).
+In practice the egress agent's traffic pattern is "one first call, then
+concurrent calls hit the warm cache", so the herd is small and the
+correctness cost is zero (all loaders return the same value). The fix would
+be per-key locking, but the added complexity is not justified by observed
+load.
 
 Each call to :func:`load_cached` emits an INFO-level log line with the
 provider class name, whether the call was a cache hit or miss, and the
@@ -36,6 +47,10 @@ logger = logging.getLogger(__name__)
 
 _CACHE_TTL_ENV_VAR = "MCD_EXTERNAL_CREDENTIALS_CACHE_TTL_SECONDS"
 _DEFAULT_CACHE_TTL_SECONDS = 300
+# Sized for the number of distinct credential identifiers a single agent
+# process might hold — one entry per (provider type, secret name, region,
+# assumable role) tuple. A typical customer has a handful of integrations;
+# 128 leaves plenty of headroom and the per-entry memory cost is negligible.
 _CACHE_MAX_SIZE = 128
 _CONNECT_ARGS_KEY = "connect_args"
 
@@ -87,7 +102,9 @@ def _cache_key(credentials: Dict[str, Any], _loader: Loader) -> str:
 @cached(_CACHE, key=_cache_key, lock=_CACHE_LOCK)
 def _load_and_cache(credentials: Dict[str, Any], loader: Loader) -> Dict[str, Any]:
     """Cached load. The ``@cached`` decorator stores the loader's return value
-    keyed by ``_cache_key(credentials, loader)``."""
+    keyed by ``_cache_key(credentials, loader)`` — which by design ignores the
+    ``loader`` argument, so the same credentials always map to the same cache
+    entry regardless of which (potentially wrapped) loader was supplied."""
     return loader(credentials)
 
 
@@ -106,9 +123,14 @@ def load_cached(
 
     Emits one INFO log per call describing ``provider_name``, hit/miss, and
     duration. ``provider_name`` is supplied by the caller (typically the
-    ``BaseCredentialsService.provider_name`` class attribute) rather than
+    ``BaseCredentialsService._provider_name`` instance attribute) rather than
     inferred from the loader, so the log label stays stable regardless of
     how the loader is plumbed.
+
+    Five log states are possible: ``cache=hit``, ``cache=miss``,
+    ``cache=disabled``, ``cache=miss-failed`` (loader was invoked and
+    raised), ``cache=error`` (the cache machinery itself — key hash, lock,
+    deepcopy — raised before/after the loader ran).
     """
     if _CACHE_TTL_SECONDS == 0:
         t0 = time.monotonic()
@@ -129,31 +151,24 @@ def load_cached(
         return loader(c)
 
     t_total = time.monotonic()
+    state = "error"
     try:
         cached_value = _load_and_cache(credentials, timed_loader)
+        result = copy.deepcopy(cached_value)
+        state = "miss" if miss_started_at else "hit"
+        return result
     except Exception:
-        if miss_started_at:
-            logger.info(
-                f"Loaded external credentials, provider={provider_name}, "
-                f"cache=miss-failed, "
-                f"duration_s={time.monotonic() - miss_started_at[0]:.3f}"
-            )
+        state = "miss-failed" if miss_started_at else "error"
         raise
-
-    if miss_started_at:
-        duration_s = time.monotonic() - miss_started_at[0]
+    finally:
+        if miss_started_at:
+            duration_s = time.monotonic() - miss_started_at[0]
+        else:
+            duration_s = time.monotonic() - t_total
         logger.info(
             f"Loaded external credentials, provider={provider_name}, "
-            f"cache=miss, duration_s={duration_s:.3f}"
+            f"cache={state}, duration_s={duration_s:.3f}"
         )
-    else:
-        duration_s = time.monotonic() - t_total
-        logger.info(
-            f"Loaded external credentials, provider={provider_name}, "
-            f"cache=hit, duration_s={duration_s:.3f}"
-        )
-
-    return copy.deepcopy(cached_value)
 
 
 def clear_external_credentials_cache() -> None:

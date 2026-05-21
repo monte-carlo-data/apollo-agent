@@ -12,11 +12,13 @@ class BaseCredentialsService:
     observability — it doesn't affect routing. Making it a required
     constructor argument means a new subclass that forgets to supply it
     fails loudly at instantiation rather than silently logging a generic
-    label.
+    label. The attribute is stored as ``_provider_name`` because it is an
+    implementation detail of the cache logging path, not part of the
+    service's public contract.
     """
 
     def __init__(self, provider_name: str):
-        self.provider_name = provider_name
+        self._provider_name = provider_name
 
     def get_credentials(self, credentials: dict) -> dict:
         external_credentials = self._load_external_credentials_cached(credentials)
@@ -32,11 +34,20 @@ class BaseCredentialsService:
         that does no network I/O — caching it adds no value and would pin
         request-specific dicts in memory, so we short-circuit it. Subclasses
         that talk to ASM / AKV / GSM benefit from the cache.
+
+        ``type(self) is BaseCredentialsService`` (not ``isinstance``) is
+        deliberate: it bypasses the cache only for *direct* uses of the
+        passthrough base class. Every existing subclass overrides
+        ``_load_external_credentials`` to actually fetch a secret, so they
+        all benefit from caching. A future subclass that forgets to override
+        ``_load_external_credentials`` would inherit the passthrough and
+        cache request-specific dicts; that is a subclass authoring bug, not
+        a defect in this gate.
         """
         if type(self) is BaseCredentialsService:
             return self._load_external_credentials(credentials)
         return load_cached(
-            credentials, self._load_external_credentials, self.provider_name
+            credentials, self._load_external_credentials, self._provider_name
         )
 
     def _load_external_credentials(self, credentials: dict) -> dict:
