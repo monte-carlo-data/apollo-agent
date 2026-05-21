@@ -12,7 +12,18 @@ everything else (provider type, secret name, region, vault url, assumable
 role, …) is what identifies the secret source.
 
 TTL is configurable via ``MCD_EXTERNAL_CREDENTIALS_CACHE_TTL_SECONDS``.
-Set to ``0`` to disable the cache entirely.
+Set to ``0`` to disable the cache entirely. The value is read once at module
+import — changing the env var on a running process has no effect; restart the
+process for the new TTL to take effect.
+
+Caveat on concurrency: ``cachetools.cached`` releases the lock between the
+cache lookup and the loader call, so N threads that miss the cache for the
+same key simultaneously will all invoke the loader (the last write wins).
+In practice the egress agent's traffic pattern is "one first call, then
+concurrent calls hit the warm cache", so the herd is small and the
+correctness cost is zero (all loaders return the same value). The fix would
+be per-key locking, but the added complexity is not justified by observed
+load.
 
 Each call to :func:`load_cached` emits an INFO-level log line with the
 provider class name, whether the call was a cache hit or miss, and the
@@ -36,6 +47,10 @@ logger = logging.getLogger(__name__)
 
 _CACHE_TTL_ENV_VAR = "MCD_EXTERNAL_CREDENTIALS_CACHE_TTL_SECONDS"
 _DEFAULT_CACHE_TTL_SECONDS = 300
+# Sized for the number of distinct credential identifiers a single agent
+# process might hold — one entry per (provider type, secret name, region,
+# assumable role) tuple. A typical customer has a handful of integrations;
+# 128 leaves plenty of headroom and the per-entry memory cost is negligible.
 _CACHE_MAX_SIZE = 128
 _CONNECT_ARGS_KEY = "connect_args"
 

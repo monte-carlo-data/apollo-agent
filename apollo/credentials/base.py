@@ -32,6 +32,15 @@ class BaseCredentialsService:
         that does no network I/O — caching it adds no value and would pin
         request-specific dicts in memory, so we short-circuit it. Subclasses
         that talk to ASM / AKV / GSM benefit from the cache.
+
+        ``type(self) is BaseCredentialsService`` (not ``isinstance``) is
+        deliberate: it bypasses the cache only for *direct* uses of the
+        passthrough base class. Every existing subclass overrides
+        ``_load_external_credentials`` to actually fetch a secret, so they
+        all benefit from caching. A future subclass that forgets to override
+        ``_load_external_credentials`` would inherit the passthrough and
+        cache request-specific dicts; that is a subclass authoring bug, not
+        a defect in this gate.
         """
         if type(self) is BaseCredentialsService:
             return self._load_external_credentials(credentials)
