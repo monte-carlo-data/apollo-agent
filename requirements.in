@@ -17,7 +17,7 @@ flask-compress==1.14
 google-api-python-client==2.176.0  # Upgraded in VULN-620
 google-cloud-secret-manager==2.25.0
 google-cloud-storage==2.10.0
-gunicorn==23.0.0
+gunicorn==26.0.0  # CWE-444 HTTP request smuggling / CWE-113 in 23.0.0 (Aikido group 28678334, SEC-1746)
 hdbcli==2.18.27
 ibm-db==3.2.7
 jinja2>=3.1.6
