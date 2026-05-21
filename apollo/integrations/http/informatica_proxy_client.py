@@ -60,6 +60,13 @@ class InformaticaProxyClient(BaseProxyClient):
     def wrapped_client(self):
         return None
 
+    def get_connection_metadata(self) -> Dict[str, Any]:
+        """Expose the CTP-resolved API base URL so the Data Collector can
+        construct customer-facing run-detail links — the DC has no other way
+        to discover the resolved POD URL when running through an agent.
+        """
+        return {"api_base_url": self._api_base_url}
+
     def do_http_request(
         self,
         path: str,
