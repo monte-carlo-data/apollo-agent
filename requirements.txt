@@ -218,7 +218,6 @@ numpy==1.26.4
     #   -r requirements.in
     #   databricks-sql-connector
     #   pandas
-    #   pyarrow
 oauthlib==3.2.2
     # via databricks-sql-connector
 openpyxl==3.1.5
@@ -266,7 +265,7 @@ psycopg2-binary==2.9.9
     # via -r requirements.in
 pure-sasl==0.6.2
     # via thrift-sasl
-pyarrow==17.0.0
+pyarrow==23.0.1
     # via
     #   -r requirements.in
     #   salesforce-cdp-connector
@@ -362,7 +361,7 @@ sortedcontainers==2.4.0
     # via snowflake-connector-python
 tableauserverclient==0.38 ; python_version >= "3.10"
     # via -r requirements.in
-teradatasql==20.0.0.57
+teradatasql==20.0.0.59
     # via -r requirements.in
 thrift==0.16.0
     # via
