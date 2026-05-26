@@ -15,8 +15,24 @@ class DremioClientArgs(TypedDict):
     token: NotRequired[str]
 
 
+DREMIO_CREDENTIALS_SCHEMA = {
+    "connect_args": {
+        "type": "dict",
+        "required": True,
+        "schema": {
+            # Pre-built Flight location string ("grpc[+tls]://host:port").
+            # Docs only show this form; CTP also accepts host/port/use_tls
+            # but that path is not customer-facing.
+            "location": {"type": "string", "required": True, "empty": False},
+        },
+    },
+    # Token is top-level per docs (NOT inside connect_args).
+    "token": {"type": "string", "required": True, "empty": False},
+}
+
 DREMIO_DEFAULT_CTP = CtpConfig(
     name="dremio-default",
+    raw_credentials_schema=DREMIO_CREDENTIALS_SCHEMA,
     steps=[],
     mapper=MapperConfig(
         name="dremio_client_args",

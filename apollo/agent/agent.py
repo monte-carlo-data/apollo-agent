@@ -39,6 +39,10 @@ from apollo.agent.proxy_client_factory import ProxyClientFactory
 from apollo.agent.settings import VERSION, BUILD_NUMBER
 from apollo.agent.updater import AgentUpdater
 from apollo.agent.utils import AgentUtils
+from apollo.credentials.schema import (
+    get_credentials_schema as get_credentials_schema_for_connection_type,
+    validate as validate_credentials_against_schema,
+)
 from apollo.integrations.aws.asm_proxy_client import SecretsManagerProxyClient
 from apollo.integrations.base_proxy_client import BaseProxyClient
 from apollo.integrations.storage.storage_proxy_client import StorageProxyClient
@@ -490,6 +494,61 @@ class Agent:
             }
         )
         return env
+
+    def validate_self_hosted_credentials(
+        self,
+        connection_type: str,
+        decoded_credentials: Dict,
+        trace_id: Optional[str] = None,
+    ) -> AgentResponse:
+        """Validate already-fetched self-hosted credentials against a schema.
+
+        The fetch phase (talking to the customer's secret store, JSON-parsing,
+        KMS decryption, etc.) runs at the route layer using the same
+        ``CredentialsFactory`` path as ``execute_agent_operation`` — any
+        failure there raises the same exception customers see today and the
+        route turns it into a 400 with ``__mcd_error__``.
+
+        Once the route has the decoded credentials dict in hand it calls
+        this method, which runs cerberus + variant checks against the
+        per-connector schema and returns the cerberus-style errors dict at
+        HTTP 200. An empty errors dict means valid.
+
+        Returns:
+            ``AgentResponse`` with body
+            ``{"valid": bool, "connection_type": str, "errors": dict}``.
+        """
+        with self._inject_log_context(
+            f"{connection_type}/validate_self_hosted_credentials", trace_id
+        ):
+            logger.info(
+                "Validate self-hosted credentials request received",
+                extra=self._logging_utils.build_extra(
+                    trace_id=trace_id,
+                    operation_name="validate_self_hosted_credentials",
+                    extra={"connection_type": connection_type},
+                ),
+            )
+            cerberus_schema = get_credentials_schema_for_connection_type(
+                connection_type
+            )
+            if cerberus_schema is None:
+                return AgentUtils.agent_response_for_error(
+                    f"Connection type not supported for self-hosted credentials validation: {connection_type}",
+                    status_code=400,
+                    trace_id=trace_id,
+                )
+            errors = validate_credentials_against_schema(
+                cerberus_schema, decoded_credentials
+            )
+            return AgentUtils.agent_ok_response(
+                {
+                    "valid": not errors,
+                    "connection_type": connection_type,
+                    "errors": errors,
+                },
+                trace_id,
+            )
 
     def execute_operation(
         self,

@@ -18,8 +18,24 @@ class TableauClientArgs(TypedDict):
     token_expiration_seconds: NotRequired[int]
 
 
+# Tableau self-hosted credentials are flat (no `connect_args` wrapper) per the
+# docs accordion. The connected-app fields (client_id/secret_id/secret_value)
+# are the customer-facing surface — the proxy client regenerates JWTs on each
+# sign-in. site_name/verify_ssl/token_expiration_seconds are optional.
+TABLEAU_CREDENTIALS_SCHEMA = {
+    "server_name": {"type": "string", "required": True, "empty": False},
+    "username": {"type": "string", "required": True, "empty": False},
+    "client_id": {"type": "string", "required": True, "empty": False},
+    "secret_id": {"type": "string", "required": True, "empty": False},
+    "secret_value": {"type": "string", "required": True, "empty": False},
+    "site_name": {"type": "string"},
+    "verify_ssl": {"type": "boolean"},
+    "token_expiration_seconds": {"type": "integer"},
+}
+
 TABLEAU_DEFAULT_CTP = CtpConfig(
     name="tableau-default",
+    raw_credentials_schema=TABLEAU_CREDENTIALS_SCHEMA,
     steps=[],
     mapper=MapperConfig(
         name="tableau_client_args",

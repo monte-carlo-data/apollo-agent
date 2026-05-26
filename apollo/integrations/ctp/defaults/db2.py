@@ -1,5 +1,6 @@
 from typing import NotRequired, Required, TypedDict
 
+from apollo.credentials.schema.common import SSL_OPTIONS_FIELD
 from apollo.integrations.ctp.models import CtpConfig, MapperConfig, TransformStep
 from apollo.integrations.ctp.registry import CtpRegistry
 
@@ -20,8 +21,29 @@ class Db2ClientArgs(TypedDict):
     SSLServerCertificate: NotRequired[str]  # path to CA PEM file
 
 
+# DB2 self-hosted credentials schema mirrors the docs accordion. The CTP also
+# accepts host/user/password/db_name as alternate spellings on the DC pre-shape
+# path, but customer self-hosted JSON is expected to follow the docs.
+DB2_CREDENTIALS_SCHEMA = {
+    "connect_args": {
+        "type": "dict",
+        "required": True,
+        "schema": {
+            "hostname": {"type": "string", "required": True, "empty": False},
+            "port": {"type": "integer", "required": True},
+            "database": {"type": "string", "required": True, "empty": False},
+            "uid": {"type": "string", "required": True, "empty": False},
+            "pwd": {"type": "string", "required": True, "empty": False},
+            "query_timeout_in_seconds": {"type": "integer"},
+            "connect_timeout": {"type": "integer"},
+        },
+    },
+    "ssl_options": SSL_OPTIONS_FIELD,
+}
+
 DB2_DEFAULT_CTP = CtpConfig(
     name="db2-default",
+    raw_credentials_schema=DB2_CREDENTIALS_SCHEMA,
     steps=[
         # SSL: write CA cert to a temp file and add Security + SSLServerCertificate
         # to the connect_args dict. The proxy client serializes the full dict to the

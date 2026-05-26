@@ -88,6 +88,96 @@ MS_FABRIC_DEFAULT_CTP = CtpConfig(
     ),
 )
 
+# Schemas for the customer-facing self-hosted credentials JSON. The docs
+# document `connect_args` as a STRING (a pre-built ODBC connection string);
+# the CTP also accepts a structured dict. The validator accepts both — when
+# a string, only "non-empty" is enforced (no parsing); when a dict, full
+# field-level validation runs. See the follow-up tracked in the plan for
+# docs eventually preferring the dict example.
+_SQL_SERVER_CONNECT_ARGS_DICT_SCHEMA = {
+    "type": "dict",
+    "schema": {
+        "host": {"type": "string", "required": True, "empty": False},
+        "port": {"type": "integer"},
+        "user": {"type": "string", "required": True, "empty": False},
+        "password": {"type": "string", "required": True, "empty": False},
+        "database": {"type": "string"},
+    },
+    "allow_unknown": True,
+}
+
+_AZURE_SQL_CONNECT_ARGS_DICT_SCHEMA = {
+    "type": "dict",
+    "schema": {
+        "host": {"type": "string", "required": True, "empty": False},
+        "port": {"type": "integer"},
+        "user": {"type": "string", "required": True, "empty": False},
+        "password": {"type": "string", "required": True, "empty": False},
+        "database": {"type": "string", "required": True, "empty": False},
+    },
+    "allow_unknown": True,
+}
+
+
+def _string_or_dict(dict_schema: dict) -> dict:
+    """Customer can supply connect_args as a pre-built ODBC string OR a dict."""
+    return {
+        "required": True,
+        "anyof": [
+            {"type": "string", "empty": False},
+            dict_schema,
+        ],
+    }
+
+
+SQL_SERVER_CREDENTIALS_SCHEMA = {
+    "connect_args": _string_or_dict(_SQL_SERVER_CONNECT_ARGS_DICT_SCHEMA),
+    "login_timeout": {"type": "integer"},
+    "query_timeout_in_seconds": {"type": "integer"},
+    "query_timeout": {"type": "integer"},  # docs example uses this spelling
+}
+
+AZURE_SQL_DATABASE_CREDENTIALS_SCHEMA = {
+    "connect_args": _string_or_dict(_AZURE_SQL_CONNECT_ARGS_DICT_SCHEMA),
+    "login_timeout": {"type": "integer"},
+    "query_timeout": {"type": "integer"},
+}
+
+AZURE_DEDICATED_SQL_POOL_CREDENTIALS_SCHEMA = {
+    "connect_args": _string_or_dict(_AZURE_SQL_CONNECT_ARGS_DICT_SCHEMA),
+    "login_timeout": {"type": "integer"},
+    "query_timeout": {"type": "integer"},
+}
+
+# Fabric is dict-only — there is no legacy ODBC-string path here. The customer
+# supplies the structured fields and the proxy client builds the ODBC string.
+MS_FABRIC_CREDENTIALS_SCHEMA = {
+    "connect_args": {
+        "type": "dict",
+        "required": True,
+        "schema": {
+            "server": {"type": "string", "required": True, "empty": False},
+            "port": {"type": ["string", "integer"]},
+            "database": {"type": "string", "required": True, "empty": False},
+            "tenant_id": {"type": "string", "required": True, "empty": False},
+            "client_id": {"type": "string", "required": True, "empty": False},
+            "client_secret": {"type": "string", "required": True, "empty": False},
+        },
+    },
+}
+
+
+# Attach schemas to the existing CtpConfig instances.
+SQL_SERVER_DEFAULT_CTP.raw_credentials_schema = SQL_SERVER_CREDENTIALS_SCHEMA
+AZURE_SQL_DATABASE_DEFAULT_CTP.raw_credentials_schema = (
+    AZURE_SQL_DATABASE_CREDENTIALS_SCHEMA
+)
+AZURE_DEDICATED_SQL_POOL_DEFAULT_CTP.raw_credentials_schema = (
+    AZURE_DEDICATED_SQL_POOL_CREDENTIALS_SCHEMA
+)
+MS_FABRIC_DEFAULT_CTP.raw_credentials_schema = MS_FABRIC_CREDENTIALS_SCHEMA
+
+
 from apollo.integrations.ctp.registry import CtpRegistry  # noqa: E402
 
 CtpRegistry.register("sql-server", SQL_SERVER_DEFAULT_CTP)
