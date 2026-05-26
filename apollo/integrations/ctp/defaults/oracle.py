@@ -1,5 +1,6 @@
 from typing import Any, NotRequired, Required, TypedDict
 
+from apollo.credentials.schema.common import SSL_OPTIONS_FIELD
 from apollo.integrations.ctp.models import CtpConfig, MapperConfig
 
 
@@ -56,8 +57,25 @@ class OracleClientArgs(TypedDict):
     debug_jdwp: NotRequired[str]  # "host=<host>;port=<port>"
 
 
+# Oracle self-hosted credentials schema. The customer supplies a pre-built
+# `dsn` string plus user/password. The CTP does not split host/port/service,
+# so the validator only requires `dsn` (matches the docs accordion).
+ORACLE_CREDENTIALS_SCHEMA = {
+    "connect_args": {
+        "type": "dict",
+        "required": True,
+        "schema": {
+            "dsn": {"type": "string", "required": True, "empty": False},
+            "user": {"type": "string", "required": True, "empty": False},
+            "password": {"type": "string", "required": True, "empty": False},
+        },
+    },
+    "ssl_options": SSL_OPTIONS_FIELD,
+}
+
 ORACLE_DEFAULT_CTP = CtpConfig(
     name="oracle-default",
+    raw_credentials_schema=ORACLE_CREDENTIALS_SCHEMA,
     steps=[],
     mapper=MapperConfig(
         name="oracle_client_args",

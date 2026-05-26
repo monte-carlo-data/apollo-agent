@@ -78,6 +78,15 @@ class CtpConfig:
     name: str = ""
     steps: list[TransformStep] = field(default_factory=list)
     connect_args_defaults: dict[str, Any] = field(default_factory=dict)
+    # Cerberus schema for the *raw* customer-supplied credentials JSON (the
+    # input to this CTP pipeline). Used by the self-hosted-credentials
+    # validate endpoint to surface mismatches before the pipeline runs.
+    # None when no schema is declared — typically infrastructure connectors
+    # not exposed via the self-hosted-credentials docs (athena, glue, s3,
+    # msk-*, hive, presto, http, mulesoft). The post-transform shape is
+    # captured by MapperConfig.schema and remains the contract for proxy
+    # clients.
+    raw_credentials_schema: dict[str, Any] | None = None
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> CtpConfig:
@@ -96,6 +105,11 @@ class CtpConfig:
             name=data.get("name", ""),
             steps=[TransformStep.from_dict(s) for s in steps],
             connect_args_defaults=connect_args_defaults,
+            # raw_credentials_schema is intentionally not deserialised from
+            # caller-supplied CTP override dicts — it is a code-authoritative
+            # field declared in apollo/integrations/ctp/defaults/<connector>.py
+            # and injected by the registry, not part of the customer-facing
+            # CTP override surface.
         )
 
 

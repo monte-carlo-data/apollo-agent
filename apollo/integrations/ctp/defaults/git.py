@@ -1,5 +1,6 @@
 from typing import NotRequired, Required, TypedDict
 
+from apollo.credentials.schema.common import SSL_OPTIONS_FIELD
 from apollo.integrations.ctp.models import CtpConfig, MapperConfig, TransformStep
 
 
@@ -17,8 +18,18 @@ class GitClientArgs(TypedDict):
     ssl_skip_verification: NotRequired[bool]
 
 
+# Customer-facing self-hosted credentials match the Looker-GIT docs accordion:
+# repo_url + ssh_key. The CTP also supports HTTPS-token auth on the DC pre-shape
+# path, but customer self-hosted JSON for git/Looker-GIT uses SSH per docs.
+GIT_CREDENTIALS_SCHEMA = {
+    "repo_url": {"type": "string", "required": True, "empty": False},
+    "ssh_key": {"type": "string", "required": True, "empty": False},
+    "ssl_options": SSL_OPTIONS_FIELD,
+}
+
 GIT_DEFAULT_CTP = CtpConfig(
     name="git-default",
+    raw_credentials_schema=GIT_CREDENTIALS_SCHEMA,
     steps=[
         TransformStep(
             type="resolve_ssl_options",

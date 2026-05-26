@@ -1,5 +1,6 @@
 from typing import TypedDict, Required, NotRequired
 
+from apollo.credentials.schema.common import SSL_OPTIONS_FIELD
 from apollo.integrations.ctp.models import CtpConfig, MapperConfig, TransformStep
 
 
@@ -29,8 +30,29 @@ class PostgresClientArgs(TypedDict):
     target_session_attrs: NotRequired[str]
 
 
+# Schema mirrors the docs accordion (dbname/host/port/user/password). The CTP
+# also accepts `database` and `db_name` as fallback spellings for legacy DC
+# pre-shape paths, but the validator surfaces only the docs spelling so
+# customers get a clear "use this field name" message if they typo it.
+POSTGRES_CREDENTIALS_SCHEMA = {
+    "connect_args": {
+        "type": "dict",
+        "required": True,
+        "schema": {
+            "host": {"type": "string", "required": True, "empty": False},
+            "port": {"type": "integer", "required": True},
+            "dbname": {"type": "string", "required": True, "empty": False},
+            "user": {"type": "string", "required": True, "empty": False},
+            "password": {"type": "string", "required": True, "empty": False},
+            "ssl_mode": {"type": "string"},
+        },
+    },
+    "ssl_options": SSL_OPTIONS_FIELD,
+}
+
 POSTGRES_DEFAULT_CTP = CtpConfig(
     name="postgres-default",
+    raw_credentials_schema=POSTGRES_CREDENTIALS_SCHEMA,
     steps=[
         TransformStep(
             type="resolve_ssl_options",
