@@ -15,10 +15,7 @@ from apollo.agent.logging_utils import LoggingUtils
 from apollo.common.agent.redact_formatter import RedactFormatterWrapper
 from apollo.agent.settings import VERSION
 from apollo.agent.utils import AgentUtils
-from apollo.credentials.factory import (
-    CredentialsFactory,
-    SELF_HOSTED_CREDENTIALS_TYPE,
-)
+from apollo.credentials.factory import CredentialsFactory
 from apollo.integrations.ctp.validator import validate_ctp_config
 
 app = Flask(__name__)
@@ -322,46 +319,14 @@ def validate_self_hosted_credentials(
         )
     json_request: Dict = request.json
     trace_id: Optional[str] = json_request.get("trace_id")
-    raw_credentials: Dict = json_request.get("credentials", {})
 
-    # This endpoint is specifically for *self-hosted* credentials. The
-    # CredentialsFactory silently falls back to a passthrough service when
-    # `self_hosted_credentials_type` is absent, which would let inline
-    # credentials slip through the schema check without ever exercising the
-    # secret-store fetch this endpoint exists to test. Reject early.
-    if not raw_credentials.get(SELF_HOSTED_CREDENTIALS_TYPE):
-        return (
-            {
-                "__mcd_error__": (
-                    "This endpoint validates self-hosted credentials only. "
-                    f"Missing required '{SELF_HOSTED_CREDENTIALS_TYPE}' in the "
-                    "credentials envelope (one of: env_var, aws_secrets_manager, "
-                    "gcp_secret_manager, azure_key_vault, file)."
-                )
-            },
-            400,
-            None,
-        )
-
-    # Phase 1 — fetch + decode. Reuse the exact path execute_agent_operation
-    # uses so customers see the same error envelope on access/parse failures.
-    try:
-        decoded = _extract_credentials_in_request(raw_credentials)
-    except Exception:  # noqa: BLE001 — mirror execute_agent_operation
-        logger.exception("Failed to read self-hosted credentials")
-        response = AgentUtils.agent_response_for_last_exception(
-            prefix="Failed to read self-hosted credentials:",
-            status_code=400,
-            trace_id=trace_id,
-        )
-        return _get_flask_response(response)
-
-    # Phase 2 — schema validation. Errors here are part of the contract and
-    # come back at 200; a "Connection type not supported" response comes
-    # back at 400 from the agent layer.
+    # Agent owns the full pipeline (self-hosted guard, secret fetch via the
+    # CredentialsFactory, schema validation) so behavior is identical with
+    # the egress entry point in hermes-agent. See
+    # ``Agent.validate_self_hosted_credentials`` for the response contract.
     response = agent.validate_self_hosted_credentials(
         connection_type=connection_type,
-        decoded_credentials=decoded,
+        credentials=json_request.get("credentials"),
         trace_id=trace_id,
     )
     return _get_flask_response(response)
