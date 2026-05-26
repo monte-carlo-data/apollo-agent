@@ -15,7 +15,10 @@ from apollo.agent.logging_utils import LoggingUtils
 from apollo.common.agent.redact_formatter import RedactFormatterWrapper
 from apollo.agent.settings import VERSION
 from apollo.agent.utils import AgentUtils
-from apollo.credentials.factory import CredentialsFactory
+from apollo.credentials.factory import (
+    CredentialsFactory,
+    SELF_HOSTED_CREDENTIALS_TYPE,
+)
 from apollo.integrations.ctp.validator import validate_ctp_config
 
 app = Flask(__name__)
@@ -225,7 +228,7 @@ def execute_agent_operation(
     )
 
 
-@app.route("/api/v1/credentials/validate/<connection_type>", methods=["POST"])  # type: ignore
+@app.route("/api/v1/self-hosted-credentials/validate/<connection_type>", methods=["POST"])  # type: ignore
 def validate_self_hosted_credentials(
     connection_type: str,
 ) -> Union[Response, Tuple[Dict, int, Optional[Dict]]]:
@@ -261,12 +264,15 @@ def validate_self_hosted_credentials(
                 credentials:
                     type: object
                     description: |
-                        Self-hosted credentials envelope. Same shape accepted
-                        by /api/v1/agent/execute — either a passthrough JSON
-                        body (no `self_hosted_credentials_type` key) or a
-                        wrapper indicating the secret store (`aws_secrets_manager`,
-                        `gcp_secret_manager`, `azure_key_vault`, `env_var`,
-                        `file`) plus that store's identifier fields.
+                        Self-hosted credentials envelope. Must include a
+                        `self_hosted_credentials_type` key (one of
+                        `aws_secrets_manager`, `gcp_secret_manager`,
+                        `azure_key_vault`, `env_var`, `file`) plus that
+                        store's identifier fields. Inline (passthrough)
+                        credentials are rejected with HTTP 400 — this
+                        endpoint exists to validate the self-hosted flow
+                        end-to-end (secret fetch + schema), and a request
+                        without the wrapper is a caller error.
                 trace_id:
                     type: string
                     description: Optional trace_id echoed back in the response.
@@ -317,6 +323,25 @@ def validate_self_hosted_credentials(
     json_request: Dict = request.json
     trace_id: Optional[str] = json_request.get("trace_id")
     raw_credentials: Dict = json_request.get("credentials", {})
+
+    # This endpoint is specifically for *self-hosted* credentials. The
+    # CredentialsFactory silently falls back to a passthrough service when
+    # `self_hosted_credentials_type` is absent, which would let inline
+    # credentials slip through the schema check without ever exercising the
+    # secret-store fetch this endpoint exists to test. Reject early.
+    if not raw_credentials.get(SELF_HOSTED_CREDENTIALS_TYPE):
+        return (
+            {
+                "__mcd_error__": (
+                    "This endpoint validates self-hosted credentials only. "
+                    f"Missing required '{SELF_HOSTED_CREDENTIALS_TYPE}' in the "
+                    "credentials envelope (one of: env_var, aws_secrets_manager, "
+                    "gcp_secret_manager, azure_key_vault, file)."
+                )
+            },
+            400,
+            None,
+        )
 
     # Phase 1 — fetch + decode. Reuse the exact path execute_agent_operation
     # uses so customers see the same error envelope on access/parse failures.
