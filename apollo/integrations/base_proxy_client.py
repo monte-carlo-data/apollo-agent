@@ -46,6 +46,18 @@ class BaseProxyClient(ABC):
         """
         return None
 
+    def get_connection_metadata(self) -> Dict[str, Any]:
+        """
+        Non-secret metadata resolved during CTP / client construction that the
+        caller (Data Collector) may need to include in emitted records — e.g.,
+        the API base URL resolved from a login response, used by callers to
+        construct stable customer-facing links to integration UIs.
+
+        Default: empty dict. Override on subclasses that have something
+        useful to expose. Values must be JSON-serializable.
+        """
+        return {}
+
     def log_payload(self, request: AgentOperation) -> Dict:
         """
         Returns the `extra` payload to include in the log message for the given operation on this client.

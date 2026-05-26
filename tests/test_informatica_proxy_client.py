@@ -294,3 +294,58 @@ class InformaticaV2ProxyClientReuseTests(TestCase):
         self.assertTrue(api_url.startswith(_API_BASE_URL))
         headers = mock_request.call_args[1]["headers"]
         self.assertEqual(headers["icSessionId"], _SESSION_ID)
+
+
+class InformaticaConnectionMetadataTests(TestCase):
+    """`get_connection_metadata` exposes the CTP-resolved API base URL so the
+    DC can construct customer-facing run links — it's the DC's only way to
+    discover the resolved POD URL when running through an agent."""
+
+    def setUp(self) -> None:
+        self._agent = Agent(LoggingUtils())
+
+    def _operation(self) -> dict:
+        return {
+            "trace_id": "test",
+            "skip_cache": True,
+            "commands": [{"method": "get_connection_metadata", "kwargs": {}}],
+        }
+
+    def test_returns_resolved_api_base_url_for_informatica(self):
+        response = self._agent.execute_operation(
+            "informatica",
+            "get_connection_metadata",
+            self._operation(),
+            {"connect_args": _RESOLVED_CONNECT_ARGS},
+        )
+
+        self.assertEqual(
+            {"api_base_url": _API_BASE_URL}, response.result["__mcd_result__"]
+        )
+
+    def test_returns_resolved_api_base_url_for_informatica_v2(self):
+        """v2 uses the same proxy client — confirm the metadata surfaces identically."""
+        response = self._agent.execute_operation(
+            "informatica-v2",
+            "get_connection_metadata",
+            self._operation(),
+            {"connect_args": _RESOLVED_CONNECT_ARGS},
+        )
+
+        self.assertEqual(
+            {"api_base_url": _API_BASE_URL}, response.result["__mcd_result__"]
+        )
+
+
+class BaseProxyClientConnectionMetadataDefaultTests(TestCase):
+    """The base class default is an empty dict — subclasses opt in by overriding."""
+
+    def test_default_returns_empty_dict(self):
+        from apollo.integrations.base_proxy_client import BaseProxyClient
+
+        class _NoOverride(BaseProxyClient):
+            @property
+            def wrapped_client(self):
+                return None
+
+        self.assertEqual({}, _NoOverride().get_connection_metadata())
