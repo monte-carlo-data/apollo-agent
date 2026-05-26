@@ -39,6 +39,10 @@ from apollo.agent.proxy_client_factory import ProxyClientFactory
 from apollo.agent.settings import VERSION, BUILD_NUMBER
 from apollo.agent.updater import AgentUpdater
 from apollo.agent.utils import AgentUtils
+from apollo.credentials.factory import (
+    CredentialsFactory,
+    SELF_HOSTED_CREDENTIALS_TYPE,
+)
 from apollo.credentials.schema import (
     get_credentials_schema as get_credentials_schema_for_connection_type,
     validate as validate_credentials_against_schema,
@@ -498,25 +502,35 @@ class Agent:
     def validate_self_hosted_credentials(
         self,
         connection_type: str,
-        decoded_credentials: Dict,
+        credentials: Optional[Dict],
         trace_id: Optional[str] = None,
     ) -> AgentResponse:
-        """Validate already-fetched self-hosted credentials against a schema.
+        """Validate a self-hosted credentials envelope end-to-end.
 
-        The fetch phase (talking to the customer's secret store, JSON-parsing,
-        KMS decryption, etc.) runs at the route layer using the same
-        ``CredentialsFactory`` path as ``execute_agent_operation`` — any
-        failure there raises the same exception customers see today and the
-        route turns it into a 400 with ``__mcd_error__``.
+        Owns the full pipeline so both transport layers (Flask and the
+        egress event handler) hand off a raw credentials envelope and get
+        the same behavior:
 
-        Once the route has the decoded credentials dict in hand it calls
-        this method, which runs cerberus + variant checks against the
-        per-connector schema and returns the cerberus-style errors dict at
-        HTTP 200. An empty errors dict means valid.
+        1. **Self-hosted guard** — reject envelopes missing
+           ``self_hosted_credentials_type``. The endpoint exists to validate
+           the self-hosted flow specifically; ``CredentialsFactory`` would
+           otherwise fall back to a passthrough service and the schema
+           check would run without exercising the secret fetch.
+        2. **Fetch + decode** — exercise the same ``CredentialsFactory``
+           path ``execute_operation`` uses. Failures (permission denied,
+           secret not found, JSON parse, KMS decrypt, env var missing,
+           file not found) are wrapped with the same ``Failed to read
+           self-hosted credentials:`` prefix so customers see identical
+           messages across both transports.
+        3. **Schema validation** — run the per-connector cerberus schema
+           against the decoded JSON. Returns cerberus's native errors
+           dict (empty iff valid) at HTTP 200.
 
         Returns:
-            ``AgentResponse`` with body
-            ``{"valid": bool, "connection_type": str, "errors": dict}``.
+            ``AgentResponse``. Body on success is
+            ``{"valid": bool, "connection_type": str, "errors": dict}``;
+            on guard or fetch failure, the standard error envelope with
+            ``__mcd_error__`` at HTTP 400.
         """
         with self._inject_log_context(
             f"{connection_type}/validate_self_hosted_credentials", trace_id
@@ -529,6 +543,30 @@ class Agent:
                     extra={"connection_type": connection_type},
                 ),
             )
+
+            if not credentials or not credentials.get(SELF_HOSTED_CREDENTIALS_TYPE):
+                return AgentUtils.agent_response_for_error(
+                    "This endpoint validates self-hosted credentials only. "
+                    f"Missing required '{SELF_HOSTED_CREDENTIALS_TYPE}' in the "
+                    "credentials envelope (one of: env_var, aws_secrets_manager, "
+                    "gcp_secret_manager, azure_key_vault, file).",
+                    status_code=400,
+                    trace_id=trace_id,
+                )
+
+            try:
+                credential_service = CredentialsFactory.get_credentials_service(
+                    credentials
+                )
+                decoded = credential_service.get_credentials(credentials)
+            except Exception:  # noqa: BLE001 — mirror execute_operation envelope
+                logger.exception("Failed to read self-hosted credentials")
+                return AgentUtils.agent_response_for_last_exception(
+                    prefix="Failed to read self-hosted credentials:",
+                    status_code=400,
+                    trace_id=trace_id,
+                )
+
             cerberus_schema = get_credentials_schema_for_connection_type(
                 connection_type
             )
@@ -538,9 +576,7 @@ class Agent:
                     status_code=400,
                     trace_id=trace_id,
                 )
-            errors = validate_credentials_against_schema(
-                cerberus_schema, decoded_credentials
-            )
+            errors = validate_credentials_against_schema(cerberus_schema, decoded)
             return AgentUtils.agent_ok_response(
                 {
                     "valid": not errors,
