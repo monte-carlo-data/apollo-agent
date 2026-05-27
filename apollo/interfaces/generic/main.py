@@ -232,13 +232,11 @@ def validate_self_hosted_credentials(
     """
     Validate self-hosted credentials for the given connection type.
 
-    Two phases: (1) fetch the credentials from the customer's secret store
-    using the existing CredentialsFactory path — any failure (permission
-    denied, secret not found, JSON parse, KMS decrypt, env var missing,
-    file not found) raises the same exception ``execute_agent_operation``
-    raises and is surfaced as HTTP 400 with ``__mcd_error__``. (2) Once
-    fetched, run cerberus + variant checks against the per-connector
-    schema and return the errors dict at HTTP 200.
+    Thin forwarding wrapper around ``Agent.validate_self_hosted_credentials``,
+    which owns the full pipeline (self-hosted guard, secret fetch via
+    ``CredentialsFactory``, cerberus schema check). Behavior is identical to
+    the egress entry point in hermes-agent that forwards to the same route.
+    See ``Agent.validate_self_hosted_credentials`` for the response contract.
 
     ---
     tags:
@@ -320,10 +318,6 @@ def validate_self_hosted_credentials(
     json_request: Dict = request.json
     trace_id: Optional[str] = json_request.get("trace_id")
 
-    # Agent owns the full pipeline (self-hosted guard, secret fetch via the
-    # CredentialsFactory, schema validation) so behavior is identical with
-    # the egress entry point in hermes-agent. See
-    # ``Agent.validate_self_hosted_credentials`` for the response contract.
     response = agent.validate_self_hosted_credentials(
         connection_type=connection_type,
         credentials=json_request.get("credentials"),
