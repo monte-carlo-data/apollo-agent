@@ -513,10 +513,31 @@ def test_health_post() -> Tuple[Dict, int]:
 
 
 def _test_health() -> Tuple[Dict, int]:
+    # SP auth uses Easy Auth — probe requests must short-circuit (recursion
+    # avoidance) and the enforcement check gates the health response.
+    _verify_easy_auth = None
+    if os.getenv("MCD_AUTH_TYPE") == "AZURE_FUNCTION_SERVICE_PRINCIPAL":
+        from apollo.interfaces.azure.auth import (
+            is_easy_auth_probe,
+            verify_easy_auth_enforcement,
+        )
+
+        if is_easy_auth_probe(request.headers):
+            return {"status": "up"}, 200
+        _verify_easy_auth = verify_easy_auth_enforcement
+
     request_dict: Dict = request.json if request.method == "POST" else request.args  # type: ignore
     trace_id = request_dict.get("trace_id")
     full = str(request_dict.get("full", "false")).lower() == "true"
-    return agent.health_information(trace_id, full).to_dict(), 200
+    health_dict = agent.health_information(trace_id, full).to_dict()
+
+    if _verify_easy_auth is not None:
+        error = _verify_easy_auth()
+        if error:
+            health_dict["easy_auth_error"] = error
+            return health_dict, 503
+
+    return health_dict, 200
 
 
 @app.route("/api/v1/test/network/open", methods=["GET"])

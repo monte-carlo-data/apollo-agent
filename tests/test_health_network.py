@@ -13,6 +13,8 @@ from apollo.common.agent.constants import (
 )
 from apollo.agent.logging_utils import LoggingUtils
 from apollo.agent.utils import AgentUtils
+import apollo.interfaces.azure.auth as azure_auth_module
+from apollo.interfaces.generic.main import app
 from apollo.validators.validate_network import _DEFAULT_TIMEOUT_SECS
 from tests.platform_provider import TestPlatformProvider
 
@@ -174,3 +176,64 @@ class HealthNetworkTests(TestCase):
             "URL https://foo.bar responded with status: 200 (OK)",
             response.result.get(ATTRIBUTE_NAME_RESULT).get("message"),
         )
+
+
+class TestHealthEasyAuthIntegration(TestCase):
+    """Tests for Easy Auth enforcement verification in the health endpoint."""
+
+    def setUp(self) -> None:
+        self.client = app.test_client()
+        azure_auth_module._easy_auth_verified = False
+
+    def test_health_probe_request_returns_200_shortcircuit(self):
+        """Probe requests get a minimal 200 response — avoids recursion."""
+        with patch.dict(
+            os.environ,
+            {"MCD_AUTH_TYPE": "AZURE_FUNCTION_SERVICE_PRINCIPAL"},
+        ):
+            resp = self.client.get(
+                "/api/v1/test/health",
+                headers={"X-MCD-EasyAuth-Probe": "1"},
+            )
+            assert resp.status_code == 200
+            assert resp.get_json() == {"status": "up"}
+
+    def test_health_returns_200_when_easy_auth_verified(self):
+        """SP auth with Easy Auth verified -> normal 200 health response."""
+        with patch.dict(
+            os.environ,
+            {"MCD_AUTH_TYPE": "AZURE_FUNCTION_SERVICE_PRINCIPAL"},
+        ):
+            with patch(
+                "apollo.interfaces.azure.auth.verify_easy_auth_enforcement",
+                return_value=None,
+            ):
+                resp = self.client.get("/api/v1/test/health")
+                assert resp.status_code == 200
+                data = resp.get_json()
+                assert "easy_auth_error" not in data
+
+    def test_health_returns_503_when_easy_auth_not_verified(self):
+        """SP auth with Easy Auth NOT verified -> 503 with error detail."""
+        error_msg = "Easy Auth is NOT intercepting unauthenticated requests"
+        with patch.dict(
+            os.environ,
+            {"MCD_AUTH_TYPE": "AZURE_FUNCTION_SERVICE_PRINCIPAL"},
+        ):
+            with patch(
+                "apollo.interfaces.azure.auth.verify_easy_auth_enforcement",
+                return_value=error_msg,
+            ):
+                resp = self.client.get("/api/v1/test/health")
+                assert resp.status_code == 503
+                data = resp.get_json()
+                assert data["easy_auth_error"] == error_msg
+
+    def test_health_returns_200_when_not_sp_auth(self):
+        """Without SP auth, no Easy Auth check — normal 200."""
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("MCD_AUTH_TYPE", None)
+            resp = self.client.get("/api/v1/test/health")
+            assert resp.status_code == 200
+            data = resp.get_json()
+            assert "easy_auth_error" not in data
