@@ -548,8 +548,7 @@ class Agent:
                 return AgentUtils.agent_response_for_error(
                     "This endpoint validates self-hosted credentials only. "
                     f"Missing required '{SELF_HOSTED_CREDENTIALS_TYPE}' in the "
-                    "credentials envelope (one of: env_var, aws_secrets_manager, "
-                    "gcp_secret_manager, azure_key_vault, file).",
+                    "credentials envelope.",
                     status_code=400,
                     trace_id=trace_id,
                 )
