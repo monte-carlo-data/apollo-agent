@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import traceback
 from typing import Tuple, Dict, Optional
 
@@ -27,6 +28,20 @@ def azure_filter_extra(extra: Optional[Dict]) -> Optional[Dict]:
 
 
 main.logging_utils.extra_filterer = azure_filter_extra
+
+# Register Easy Auth health hooks when SP auth is active.  This injects
+# probe detection (pre-hook) and enforcement verification (post-hook) into
+# the generic health endpoint without putting Azure-specific code there.
+if os.getenv("MCD_AUTH_TYPE") == "AZURE_FUNCTION_SERVICE_PRINCIPAL":
+    from apollo.interfaces.azure.auth import (
+        easy_auth_pre_health_hook,
+        easy_auth_post_health_hook,
+    )
+
+    main.register_health_hooks(
+        pre_hook=easy_auth_pre_health_hook,
+        post_hook=easy_auth_post_health_hook,
+    )
 
 
 @app.route("/api/v1/azure/logs/query", methods=["GET"])

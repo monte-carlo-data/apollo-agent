@@ -30,6 +30,30 @@ agent = Agent(logging_utils)
 
 _DEFAULT_UPDATE_EVENTS_LIMIT = 100
 
+# Platform-specific health hooks.  Interfaces (e.g. Azure) register these at
+# import time via register_health_hooks() to inject behaviour without putting
+# platform code in this generic module.
+#
+# pre_health_hook(headers) -> Optional[Tuple[Dict, int]]
+#   Called before health logic runs.  Return a (body, status) tuple to
+#   short-circuit, or None to proceed normally.
+#
+# post_health_hook(health_dict) -> Optional[Tuple[Dict, int]]
+#   Called after the health dict is built.  Return a (body, status) tuple
+#   to override the response, or None for the default 200.
+_pre_health_hook: Optional[Callable] = None
+_post_health_hook: Optional[Callable] = None
+
+
+def register_health_hooks(
+    pre_hook: Optional[Callable] = None,
+    post_hook: Optional[Callable] = None,
+) -> None:
+    """Register platform-specific health endpoint hooks."""
+    global _pre_health_hook, _post_health_hook
+    _pre_health_hook = pre_hook
+    _post_health_hook = post_hook
+
 
 def _get_response_headers(response: AgentResponse) -> Dict:
     headers = {}
@@ -513,32 +537,20 @@ def test_health_post() -> Tuple[Dict, int]:
 
 
 def _test_health() -> Tuple[Dict, int]:
-    # SP auth uses Easy Auth — probe requests must short-circuit (recursion
-    # avoidance) and the enforcement check gates the health response.
-    _verify_easy_auth = None
-    if os.getenv("MCD_AUTH_TYPE") == "AZURE_FUNCTION_SERVICE_PRINCIPAL":
-        from apollo.interfaces.azure.auth import (
-            is_easy_auth_probe,
-            verify_easy_auth_enforcement,
-        )
-
-        if is_easy_auth_probe(request.headers):
-            return {"status": "up"}, 200
-        _verify_easy_auth = verify_easy_auth_enforcement
+    if _pre_health_hook is not None:
+        early = _pre_health_hook(request.headers)
+        if early is not None:
+            return early
 
     request_dict: Dict = request.json if request.method == "POST" else request.args  # type: ignore
     trace_id = request_dict.get("trace_id")
     full = str(request_dict.get("full", "false")).lower() == "true"
     health_dict = agent.health_information(trace_id, full).to_dict()
 
-    if _verify_easy_auth is not None:
-        error = _verify_easy_auth()
-        if error:
-            logger.error(f"Easy Auth enforcement check failed: {error}")
-            health_dict["easy_auth_error"] = (
-                "Easy Auth enforcement could not be verified"
-            )
-            return health_dict, 503
+    if _post_health_hook is not None:
+        override = _post_health_hook(health_dict)
+        if override is not None:
+            return override
 
     return health_dict, 200
 

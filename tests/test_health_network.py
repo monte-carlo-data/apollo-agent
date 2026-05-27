@@ -14,7 +14,13 @@ from apollo.common.agent.constants import (
 from apollo.agent.logging_utils import LoggingUtils
 from apollo.agent.utils import AgentUtils
 import apollo.interfaces.azure.auth as azure_auth_module
-from apollo.interfaces.azure.auth import _EASY_AUTH_PROBE_HEADER, _EASY_AUTH_PROBE_TOKEN
+from apollo.interfaces.azure.auth import (
+    _EASY_AUTH_PROBE_HEADER,
+    _EASY_AUTH_PROBE_TOKEN,
+    easy_auth_pre_health_hook,
+    easy_auth_post_health_hook,
+)
+from apollo.interfaces.generic import main as generic_main
 from apollo.interfaces.generic.main import app
 from apollo.validators.validate_network import _DEFAULT_TIMEOUT_SECS
 from tests.platform_provider import TestPlatformProvider
@@ -186,56 +192,48 @@ class TestHealthEasyAuthIntegration(TestCase):
         self.client = app.test_client()
         azure_auth_module._easy_auth_verified = False
 
+    def tearDown(self) -> None:
+        generic_main.register_health_hooks()  # clear hooks between tests
+
     def test_health_probe_request_returns_200_shortcircuit(self):
-        """Probe requests get a minimal 200 response — avoids recursion."""
-        with patch.dict(
-            os.environ,
-            {"MCD_AUTH_TYPE": "AZURE_FUNCTION_SERVICE_PRINCIPAL"},
-        ):
-            resp = self.client.get(
-                "/api/v1/test/health",
-                headers={_EASY_AUTH_PROBE_HEADER: _EASY_AUTH_PROBE_TOKEN},
-            )
-            assert resp.status_code == 200
-            assert resp.get_json() == {"status": "up"}
+        """Pre-hook short-circuits probe requests with a minimal 200."""
+        generic_main.register_health_hooks(pre_hook=easy_auth_pre_health_hook)
+        resp = self.client.get(
+            "/api/v1/test/health",
+            headers={_EASY_AUTH_PROBE_HEADER: _EASY_AUTH_PROBE_TOKEN},
+        )
+        assert resp.status_code == 200
+        assert resp.get_json() == {"status": "up"}
 
     def test_health_returns_200_when_easy_auth_verified(self):
-        """SP auth with Easy Auth verified -> normal 200 health response."""
-        with patch.dict(
-            os.environ,
-            {"MCD_AUTH_TYPE": "AZURE_FUNCTION_SERVICE_PRINCIPAL"},
+        """Post-hook with Easy Auth verified -> normal 200 health response."""
+        generic_main.register_health_hooks(post_hook=easy_auth_post_health_hook)
+        with patch(
+            "apollo.interfaces.azure.auth.verify_easy_auth_enforcement",
+            return_value=None,
         ):
-            with patch(
-                "apollo.interfaces.azure.auth.verify_easy_auth_enforcement",
-                return_value=None,
-            ):
-                resp = self.client.get("/api/v1/test/health")
-                assert resp.status_code == 200
-                data = resp.get_json()
-                assert "easy_auth_error" not in data
-
-    def test_health_returns_503_when_easy_auth_not_verified(self):
-        """SP auth with Easy Auth NOT verified -> 503 with generic error."""
-        with patch.dict(
-            os.environ,
-            {"MCD_AUTH_TYPE": "AZURE_FUNCTION_SERVICE_PRINCIPAL"},
-        ):
-            with patch(
-                "apollo.interfaces.azure.auth.verify_easy_auth_enforcement",
-                return_value="Easy Auth is NOT intercepting unauthenticated requests",
-            ):
-                resp = self.client.get("/api/v1/test/health")
-                assert resp.status_code == 503
-                data = resp.get_json()
-                assert data["easy_auth_error"] == (
-                    "Easy Auth enforcement could not be verified"
-                )
-
-    def test_health_returns_200_when_not_sp_auth(self):
-        """Without SP auth, no Easy Auth check — normal 200."""
-        env = {k: v for k, v in os.environ.items() if k != "MCD_AUTH_TYPE"}
-        with patch.dict(os.environ, env, clear=True):
             resp = self.client.get("/api/v1/test/health")
             assert resp.status_code == 200
             data = resp.get_json()
             assert "easy_auth_error" not in data
+
+    def test_health_returns_503_when_easy_auth_not_verified(self):
+        """Post-hook with Easy Auth NOT verified -> 503 with generic error."""
+        generic_main.register_health_hooks(post_hook=easy_auth_post_health_hook)
+        with patch(
+            "apollo.interfaces.azure.auth.verify_easy_auth_enforcement",
+            return_value="Easy Auth is NOT intercepting unauthenticated requests",
+        ):
+            resp = self.client.get("/api/v1/test/health")
+            assert resp.status_code == 503
+            data = resp.get_json()
+            assert data["easy_auth_error"] == (
+                "Easy Auth enforcement could not be verified"
+            )
+
+    def test_health_returns_200_when_no_hooks_registered(self):
+        """Without hooks, no Easy Auth check — normal 200."""
+        resp = self.client.get("/api/v1/test/health")
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert "easy_auth_error" not in data
