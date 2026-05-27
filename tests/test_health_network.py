@@ -14,6 +14,7 @@ from apollo.common.agent.constants import (
 from apollo.agent.logging_utils import LoggingUtils
 from apollo.agent.utils import AgentUtils
 import apollo.interfaces.azure.auth as azure_auth_module
+from apollo.interfaces.azure.auth import _EASY_AUTH_PROBE_HEADER, _EASY_AUTH_PROBE_TOKEN
 from apollo.interfaces.generic.main import app
 from apollo.validators.validate_network import _DEFAULT_TIMEOUT_SECS
 from tests.platform_provider import TestPlatformProvider
@@ -193,7 +194,7 @@ class TestHealthEasyAuthIntegration(TestCase):
         ):
             resp = self.client.get(
                 "/api/v1/test/health",
-                headers={"X-MCD-EasyAuth-Probe": "1"},
+                headers={_EASY_AUTH_PROBE_HEADER: _EASY_AUTH_PROBE_TOKEN},
             )
             assert resp.status_code == 200
             assert resp.get_json() == {"status": "up"}
@@ -214,25 +215,26 @@ class TestHealthEasyAuthIntegration(TestCase):
                 assert "easy_auth_error" not in data
 
     def test_health_returns_503_when_easy_auth_not_verified(self):
-        """SP auth with Easy Auth NOT verified -> 503 with error detail."""
-        error_msg = "Easy Auth is NOT intercepting unauthenticated requests"
+        """SP auth with Easy Auth NOT verified -> 503 with generic error."""
         with patch.dict(
             os.environ,
             {"MCD_AUTH_TYPE": "AZURE_FUNCTION_SERVICE_PRINCIPAL"},
         ):
             with patch(
                 "apollo.interfaces.azure.auth.verify_easy_auth_enforcement",
-                return_value=error_msg,
+                return_value="Easy Auth is NOT intercepting unauthenticated requests",
             ):
                 resp = self.client.get("/api/v1/test/health")
                 assert resp.status_code == 503
                 data = resp.get_json()
-                assert data["easy_auth_error"] == error_msg
+                assert data["easy_auth_error"] == (
+                    "Easy Auth enforcement could not be verified"
+                )
 
     def test_health_returns_200_when_not_sp_auth(self):
         """Without SP auth, no Easy Auth check — normal 200."""
-        with patch.dict(os.environ, {}, clear=False):
-            os.environ.pop("MCD_AUTH_TYPE", None)
+        env = {k: v for k, v in os.environ.items() if k != "MCD_AUTH_TYPE"}
+        with patch.dict(os.environ, env, clear=True):
             resp = self.client.get("/api/v1/test/health")
             assert resp.status_code == 200
             data = resp.get_json()

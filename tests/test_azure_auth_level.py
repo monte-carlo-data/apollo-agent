@@ -7,6 +7,7 @@ import azure.functions as func
 import apollo.interfaces.azure.auth as azure_auth_module
 from apollo.interfaces.azure.auth import (
     _EASY_AUTH_PROBE_HEADER,
+    _EASY_AUTH_PROBE_TOKEN,
     is_easy_auth_probe,
     resolve_auth_level,
     verify_easy_auth_enforcement,
@@ -141,6 +142,7 @@ class TestEasyAuthEnforcementVerification(TestCase):
         mock_get.return_value = Mock(status_code=403)
         result = verify_easy_auth_enforcement()
         assert result is None
+        assert azure_auth_module._easy_auth_verified is True
 
     @patch("apollo.interfaces.azure.auth.requests.get")
     @patch.dict(
@@ -152,17 +154,21 @@ class TestEasyAuthEnforcementVerification(TestCase):
         result = verify_easy_auth_enforcement()
         assert result is not None
         assert "NOT intercepting" in result
+        assert azure_auth_module._easy_auth_verified is False
 
+    @patch("apollo.interfaces.azure.auth.time.sleep")
     @patch("apollo.interfaces.azure.auth.requests.get")
     @patch.dict(
         os.environ, {"WEBSITE_HOSTNAME": "myfunc.azurewebsites.net"}, clear=True
     )
-    def test_verify_returns_error_on_unexpected_status(self, mock_get):
-        """An unexpected status code (e.g. 500) should return an error message."""
+    def test_verify_returns_error_on_unexpected_status(self, mock_get, mock_sleep):
+        """An unexpected 500 is now retried — all 3 attempts return 500."""
         mock_get.return_value = Mock(status_code=500)
         result = verify_easy_auth_enforcement()
         assert result is not None
         assert "Unexpected status code" in result
+        assert azure_auth_module._easy_auth_verified is False
+        assert mock_get.call_count == 3
 
     @patch("apollo.interfaces.azure.auth.time.sleep")
     @patch("apollo.interfaces.azure.auth.requests.get")
@@ -176,6 +182,8 @@ class TestEasyAuthEnforcementVerification(TestCase):
         mock_get.side_effect = [ConnectionError("fail"), Mock(status_code=401)]
         result = verify_easy_auth_enforcement()
         assert result is None
+        assert mock_get.call_count == 2
+        mock_sleep.assert_called_once_with(1)
 
     @patch("apollo.interfaces.azure.auth.time.sleep")
     @patch("apollo.interfaces.azure.auth.requests.get")
@@ -190,6 +198,8 @@ class TestEasyAuthEnforcementVerification(TestCase):
         result = verify_easy_auth_enforcement()
         assert result is not None
         assert "after 3 attempts" in result
+        assert mock_get.call_count == 3
+        assert mock_sleep.call_count == 2
 
     @patch.dict(os.environ, {}, clear=True)
     def test_verify_returns_error_when_hostname_not_set(self):
@@ -211,9 +221,16 @@ class TestEasyAuthEnforcementVerification(TestCase):
         assert result2 is None
         assert mock_get.call_count == 1
 
-    def test_is_easy_auth_probe_with_header(self):
-        """A request carrying the probe header should be detected."""
-        assert is_easy_auth_probe({_EASY_AUTH_PROBE_HEADER: "1"}) is True
+    def test_is_easy_auth_probe_with_valid_token(self):
+        """A request with the correct probe token should be detected."""
+        assert (
+            is_easy_auth_probe({_EASY_AUTH_PROBE_HEADER: _EASY_AUTH_PROBE_TOKEN})
+            is True
+        )
+
+    def test_is_easy_auth_probe_with_wrong_token(self):
+        """A request with an incorrect token value should not be detected."""
+        assert is_easy_auth_probe({_EASY_AUTH_PROBE_HEADER: "wrong-value"}) is False
 
     def test_is_easy_auth_probe_without_header(self):
         """A request without the probe header should not be detected."""
@@ -229,6 +246,6 @@ class TestEasyAuthEnforcementVerification(TestCase):
         verify_easy_auth_enforcement()
         mock_get.assert_called_once_with(
             "https://myfunc.azurewebsites.net/api/v1/test/health",
-            headers={_EASY_AUTH_PROBE_HEADER: "1"},
+            headers={_EASY_AUTH_PROBE_HEADER: _EASY_AUTH_PROBE_TOKEN},
             timeout=10,
         )

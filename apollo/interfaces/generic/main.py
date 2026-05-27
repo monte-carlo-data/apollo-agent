@@ -534,7 +534,10 @@ def _test_health() -> Tuple[Dict, int]:
     if _verify_easy_auth is not None:
         error = _verify_easy_auth()
         if error:
-            health_dict["easy_auth_error"] = error
+            logger.error(f"Easy Auth enforcement check failed: {error}")
+            health_dict["easy_auth_error"] = (
+                "Easy Auth enforcement could not be verified"
+            )
             return health_dict, 503
 
     return health_dict, 200

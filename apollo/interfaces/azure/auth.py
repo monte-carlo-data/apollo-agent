@@ -9,6 +9,7 @@ unauthenticated requests (lazy self-call probe).
 
 import logging
 import os
+import secrets
 import time
 from typing import Any, Optional
 
@@ -26,6 +27,16 @@ _EASY_AUTH_PRESENCE_VARS = (
 
 _EASY_AUTH_PROBE_HEADER = "X-MCD-EasyAuth-Probe"
 
+# Per-process random token ensures only this process can trigger the probe
+# short-circuit.  Without this, any caller who knows the header name could
+# bypass Easy Auth verification — exactly the failure mode this feature
+# is designed to detect.
+_EASY_AUTH_PROBE_TOKEN = secrets.token_hex(32)
+
+# The check-then-act on this boolean is not atomic, but Azure Functions
+# workers typically use a single-threaded WSGI server so concurrent health
+# requests within one process are unlikely.  At worst, a few redundant
+# probe requests fire during cold start — no data corruption risk.
 _easy_auth_verified = False
 
 
@@ -58,16 +69,21 @@ def resolve_auth_level() -> func.AuthLevel:
 
 
 def is_easy_auth_probe(headers: Any) -> bool:
-    """Return True if the request carries the Easy Auth probe header."""
-    return _EASY_AUTH_PROBE_HEADER in headers
+    """Return True if the request carries a valid Easy Auth probe token.
+
+    Only the current process knows the token value, so external callers
+    cannot forge a probe request to bypass verification.
+    """
+    return headers.get(_EASY_AUTH_PROBE_HEADER) == _EASY_AUTH_PROBE_TOKEN
 
 
 def verify_easy_auth_enforcement() -> Optional[str]:
     """Verify that Easy Auth is actually rejecting unauthenticated requests.
 
     Sends an unauthenticated probe to the health endpoint and expects a
-    401/403 from the Easy Auth middleware.  The result is cached so the
-    probe only runs once per process lifetime.
+    401/403 from the Easy Auth middleware.  Successful verification is
+    cached for the process lifetime.  Failed results are not cached and
+    will be re-checked on each call.
 
     Returns:
         None if enforcement is verified (or was already cached).
@@ -89,7 +105,7 @@ def verify_easy_auth_enforcement() -> Optional[str]:
         try:
             resp = requests.get(
                 url,
-                headers={_EASY_AUTH_PROBE_HEADER: "1"},
+                headers={_EASY_AUTH_PROBE_HEADER: _EASY_AUTH_PROBE_TOKEN},
                 timeout=10,
             )
             if resp.status_code in (401, 403):
@@ -106,19 +122,26 @@ def verify_easy_auth_enforcement() -> Optional[str]:
                 )
                 logger.critical(msg)
                 return msg
-            # Unexpected status code (3xx, 4xx other than 401/403, 5xx)
-            msg = (
-                "Unexpected status code from Easy Auth enforcement "
+            # Unexpected/transient status (3xx, 4xx other than 401/403,
+            # 5xx) — retry like connection errors.  Platform 502/503 is
+            # common during Azure Function cold-start.
+            last_error = Exception(  # noqa: TRY002
+                f"Unexpected status code from Easy Auth enforcement "
                 f"probe: {resp.status_code}"
             )
-            logger.error(msg)
-            return msg
+            logger.warning(
+                f"Easy Auth probe got {resp.status_code} — will retry "
+                f"({attempt + 1}/3)"
+            )
+            if attempt < 2:
+                time.sleep(1)
+            continue
         except Exception as exc:  # noqa: BLE001
             last_error = exc
             if attempt < 2:
                 time.sleep(1)
             continue
 
-    msg = "Could not verify Easy Auth enforcement after 3 attempts: " f"{last_error}"
+    msg = f"Could not verify Easy Auth enforcement after 3 attempts: {last_error}"
     logger.error(msg)
     return msg
