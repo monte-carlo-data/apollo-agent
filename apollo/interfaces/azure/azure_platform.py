@@ -51,26 +51,29 @@ class AzurePlatformProvider(AgentPlatformProvider):
         }
 
     def pre_health_check(self, headers: Any) -> Optional[Tuple[Dict, int]]:
-        """Short-circuit Easy Auth probe requests to avoid infinite recursion."""
-        if self._sp_auth:
-            from apollo.interfaces.azure.auth import is_easy_auth_probe
+        """Verify Easy Auth enforcement on every health check.
 
-            if is_easy_auth_probe(headers):
-                return {"status": "up"}, 200
-        return None
+        Short-circuits probe requests (to avoid infinite recursion) and
+        returns 503 if enforcement cannot be verified.
+        """
+        if not self._sp_auth:
+            return None
 
-    def post_health_check(self, health_dict: Dict) -> Optional[Tuple[Dict, int]]:
-        """Verify Easy Auth enforcement; return 503 if not verified."""
-        if self._sp_auth:
-            from apollo.interfaces.azure.auth import verify_easy_auth_enforcement
+        from apollo.interfaces.azure.auth import (
+            is_easy_auth_probe,
+            verify_easy_auth_enforcement,
+        )
 
-            error = verify_easy_auth_enforcement()
-            if error:
-                logger.error(f"Easy Auth enforcement check failed: {error}")
-                health_dict["easy_auth_error"] = (
-                    "Easy Auth enforcement could not be verified"
-                )
-                return health_dict, 503
+        if is_easy_auth_probe(headers):
+            return {"status": "up"}, 200
+
+        error = verify_easy_auth_enforcement()
+        if error:
+            logger.error(f"Easy Auth enforcement check failed: {error}")
+            return {
+                "easy_auth_error": "Easy Auth enforcement could not be verified"
+            }, 503
+
         return None
 
     @classmethod

@@ -523,12 +523,6 @@ def _test_health() -> Tuple[Dict, int]:
     trace_id = request_dict.get("trace_id")
     full = str(request_dict.get("full", "false")).lower() == "true"
     health_dict = agent.health_information(trace_id, full).to_dict()
-
-    if pp is not None:
-        override = pp.post_health_check(health_dict)
-        if override is not None:
-            return override
-
     return health_dict, 200
 
 

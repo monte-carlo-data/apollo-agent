@@ -49,12 +49,3 @@ class AgentPlatformProvider(ABC):
         endpoint, or None to proceed with the normal health response.
         """
         return None
-
-    def post_health_check(self, health_dict: Dict) -> Optional[Tuple[Dict, int]]:
-        """Called after the health dict is built.
-
-        Return a (body, status_code) tuple to override the response,
-        or None for the default 200.  The hook may mutate *health_dict*
-        in place (e.g. to add error details).
-        """
-        return None
