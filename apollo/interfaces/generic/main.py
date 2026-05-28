@@ -30,30 +30,6 @@ agent = Agent(logging_utils)
 
 _DEFAULT_UPDATE_EVENTS_LIMIT = 100
 
-# Platform-specific health hooks.  Interfaces (e.g. Azure) register these at
-# import time via register_health_hooks() to inject behaviour without putting
-# platform code in this generic module.
-#
-# pre_health_hook(headers) -> Optional[Tuple[Dict, int]]
-#   Called before health logic runs.  Return a (body, status) tuple to
-#   short-circuit, or None to proceed normally.
-#
-# post_health_hook(health_dict) -> Optional[Tuple[Dict, int]]
-#   Called after the health dict is built.  Return a (body, status) tuple
-#   to override the response, or None for the default 200.
-_pre_health_hook: Optional[Callable] = None
-_post_health_hook: Optional[Callable] = None
-
-
-def register_health_hooks(
-    pre_hook: Optional[Callable] = None,
-    post_hook: Optional[Callable] = None,
-) -> None:
-    """Register platform-specific health endpoint hooks."""
-    global _pre_health_hook, _post_health_hook
-    _pre_health_hook = pre_hook
-    _post_health_hook = post_hook
-
 
 def _get_response_headers(response: AgentResponse) -> Dict:
     headers = {}
@@ -537,8 +513,9 @@ def test_health_post() -> Tuple[Dict, int]:
 
 
 def _test_health() -> Tuple[Dict, int]:
-    if _pre_health_hook is not None:
-        early = _pre_health_hook(request.headers)
+    pp = agent.platform_provider
+    if pp is not None:
+        early = pp.pre_health_check(request.headers)
         if early is not None:
             return early
 
@@ -547,8 +524,8 @@ def _test_health() -> Tuple[Dict, int]:
     full = str(request_dict.get("full", "false")).lower() == "true"
     health_dict = agent.health_information(trace_id, full).to_dict()
 
-    if _post_health_hook is not None:
-        override = _post_health_hook(health_dict)
+    if pp is not None:
+        override = pp.post_health_check(health_dict)
         if override is not None:
             return override
 

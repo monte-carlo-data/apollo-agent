@@ -11,7 +11,7 @@ import logging
 import os
 import secrets
 import time
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Optional
 
 import azure.functions as func
 import requests
@@ -145,35 +145,3 @@ def verify_easy_auth_enforcement() -> Optional[str]:
     msg = f"Could not verify Easy Auth enforcement after 3 attempts: {last_error}"
     logger.error(msg)
     return msg
-
-
-# ---------------------------------------------------------------------------
-# Health endpoint hooks — registered by azure/main.py via
-# generic.main.register_health_hooks() when SP auth is active.
-# ---------------------------------------------------------------------------
-
-
-def easy_auth_pre_health_hook(headers: Any) -> Optional[Tuple[Dict, int]]:
-    """Short-circuit probe requests to avoid infinite recursion.
-
-    The verification probe includes a per-process token.  When we see it,
-    return a minimal 200 immediately — the probe sender only cares whether
-    the request was rejected by Easy Auth (401/403) or reached our code.
-    """
-    if is_easy_auth_probe(headers):
-        return {"status": "up"}, 200
-    return None
-
-
-def easy_auth_post_health_hook(health_dict: Dict) -> Optional[Tuple[Dict, int]]:
-    """Verify Easy Auth enforcement after building the health response.
-
-    Returns a 503 override if verification fails, causing the DC's
-    reachability check to fail and blocking the deployment.
-    """
-    error = verify_easy_auth_enforcement()
-    if error:
-        logger.error(f"Easy Auth enforcement check failed: {error}")
-        health_dict["easy_auth_error"] = "Easy Auth enforcement could not be verified"
-        return health_dict, 503
-    return None
