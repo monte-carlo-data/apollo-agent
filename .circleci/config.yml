@@ -94,48 +94,127 @@ jobs:
       - checkout
       - docker/check:
           use-docker-credentials-store: true
+      # Attestations (SBOM + SLSA provenance) require the docker-container
+      # buildx driver — the default docker driver writes single manifests, not
+      # the OCI image index that holds attestation manifests alongside the
+      # platform image. Set up once; reused by every buildx call below.
+      - run:
+          name: Set up buildx (docker-container driver)
+          command: |
+            docker buildx create --use --name apollo-builder --driver docker-container
+            docker buildx inspect --bootstrap
+      # Each target is built TWICE per the BuildKit-attestations workflow:
+      #   1. --load into the local daemon so verify-version-in-docker-image
+      #      can `docker run` against the image before anything is published.
+      #   2. --push with --sbom=true --provenance=mode=max so the registry
+      #      copy carries the supply-chain attestations Docker Scout reads.
+      # BuildKit cache makes the second build cheap — only SBOM/provenance
+      # generation is new work. --load and --push are mutually exclusive when
+      # attestations are involved (the daemon can't load an OCI image index),
+      # which is why two passes are necessary.
+      #
       # Publish the `system-base` stage (apt-only, no venv, no apollo source) as
       # `<version>-system-base`. Downstream consumers (e.g. hermes-agent) build
       # their own venv on top against the same native libs without inheriting
-      # apollo's pip-installed Python deps. Replaces the previous `generic-base`
-      # tag, which bundled the venv and caused image bloat for downstream repos
-      # whose pinned versions diverged from apollo's resolved set.
-      - docker/build:
-          step-name: Build system base image
-          use-buildkit: true # to build only the required stages
-          extra_build_args: --target system-base --build-arg code_version=<< parameters.code_version >> --build-arg build_number=<< pipeline.number >>
-          image: montecarlodata/<< parameters.docker_hub_repository >>
-          tag: latest-system-base,<< parameters.code_version >>-system-base
-      - docker/build:
-          step-name: Build AWS generic image
-          use-buildkit: true  # to build only the required stages
-          extra_build_args: --target aws_proxied --build-arg code_version=<< parameters.code_version >> --build-arg build_number=<< pipeline.number >>
-          image: montecarlodata/<< parameters.docker_hub_repository >>
-          tag: latest-aws-generic,<< parameters.code_version >>-aws-generic,latest-aws-proxied,<< parameters.code_version >>-aws-proxied
-      - docker/build:
-          step-name: Build cloudrun image
-          use-buildkit: true # to build only the required stages
-          extra_build_args: --target cloudrun --build-arg code_version=<< parameters.code_version >> --build-arg build_number=<< pipeline.number >>
-          image: montecarlodata/<< parameters.docker_hub_repository >>
-          tag: latest-cloudrun,<< parameters.code_version >>-cloudrun
-      - docker/build:
-          step-name: Build azure image
-          use-buildkit: true # to build only the required stages
-          extra_build_args: --target azure --build-arg code_version=<< parameters.code_version >> --build-arg build_number=<< pipeline.number >>
-          image: montecarlodata/<< parameters.docker_hub_repository >>
-          tag: latest-azure,<< parameters.code_version >>-azure
-      - verify-version-in-docker-image:
-          image: montecarlodata/<< parameters.docker_hub_repository >>:latest-cloudrun
-          version: << parameters.code_version >>,<< pipeline.number >>
-      - verify-version-in-docker-image:
-          image: montecarlodata/<< parameters.docker_hub_repository >>:latest-azure
-          version: << parameters.code_version >>,<< pipeline.number >>
+      # apollo's pip-installed Python deps. No version check — system-base has
+      # no apollo/agent/version file, so it goes straight to push.
+      - run:
+          name: Build and push system-base with SBOM + SLSA provenance
+          command: |
+            docker buildx build \
+              --target system-base \
+              --build-arg code_version=<< parameters.code_version >> \
+              --build-arg build_number=<< pipeline.number >> \
+              --tag montecarlodata/<< parameters.docker_hub_repository >>:latest-system-base \
+              --tag montecarlodata/<< parameters.docker_hub_repository >>:<< parameters.code_version >>-system-base \
+              --sbom=true \
+              --provenance=mode=max \
+              --push \
+              .
+      # AWS proxied/generic — same image, four tags (aws-proxied is the
+      # current name, aws-generic is the legacy alias kept for back-compat).
+      - run:
+          name: Build aws_proxied image (local) for version verification
+          command: |
+            docker buildx build \
+              --target aws_proxied \
+              --build-arg code_version=<< parameters.code_version >> \
+              --build-arg build_number=<< pipeline.number >> \
+              --tag montecarlodata/<< parameters.docker_hub_repository >>:latest-aws-proxied \
+              --load \
+              .
       - verify-version-in-docker-image:
           image: montecarlodata/<< parameters.docker_hub_repository >>:latest-aws-proxied
           version: << parameters.code_version >>,<< pipeline.number >>
-      - docker/push:
-          image: montecarlodata/<< parameters.docker_hub_repository >>
-          tag: latest-system-base,<< parameters.code_version >>-system-base,latest-cloudrun,<< parameters.code_version >>-cloudrun,latest-azure,<< parameters.code_version >>-azure,latest-aws-generic,<< parameters.code_version >>-aws-generic,latest-aws-proxied,<< parameters.code_version >>-aws-proxied
+      - run:
+          name: Build and push aws_proxied with SBOM + SLSA provenance
+          command: |
+            docker buildx build \
+              --target aws_proxied \
+              --build-arg code_version=<< parameters.code_version >> \
+              --build-arg build_number=<< pipeline.number >> \
+              --tag montecarlodata/<< parameters.docker_hub_repository >>:latest-aws-proxied \
+              --tag montecarlodata/<< parameters.docker_hub_repository >>:<< parameters.code_version >>-aws-proxied \
+              --tag montecarlodata/<< parameters.docker_hub_repository >>:latest-aws-generic \
+              --tag montecarlodata/<< parameters.docker_hub_repository >>:<< parameters.code_version >>-aws-generic \
+              --sbom=true \
+              --provenance=mode=max \
+              --push \
+              .
+      # cloudrun
+      - run:
+          name: Build cloudrun image (local) for version verification
+          command: |
+            docker buildx build \
+              --target cloudrun \
+              --build-arg code_version=<< parameters.code_version >> \
+              --build-arg build_number=<< pipeline.number >> \
+              --tag montecarlodata/<< parameters.docker_hub_repository >>:latest-cloudrun \
+              --load \
+              .
+      - verify-version-in-docker-image:
+          image: montecarlodata/<< parameters.docker_hub_repository >>:latest-cloudrun
+          version: << parameters.code_version >>,<< pipeline.number >>
+      - run:
+          name: Build and push cloudrun with SBOM + SLSA provenance
+          command: |
+            docker buildx build \
+              --target cloudrun \
+              --build-arg code_version=<< parameters.code_version >> \
+              --build-arg build_number=<< pipeline.number >> \
+              --tag montecarlodata/<< parameters.docker_hub_repository >>:latest-cloudrun \
+              --tag montecarlodata/<< parameters.docker_hub_repository >>:<< parameters.code_version >>-cloudrun \
+              --sbom=true \
+              --provenance=mode=max \
+              --push \
+              .
+      # azure
+      - run:
+          name: Build azure image (local) for version verification
+          command: |
+            docker buildx build \
+              --target azure \
+              --build-arg code_version=<< parameters.code_version >> \
+              --build-arg build_number=<< pipeline.number >> \
+              --tag montecarlodata/<< parameters.docker_hub_repository >>:latest-azure \
+              --load \
+              .
+      - verify-version-in-docker-image:
+          image: montecarlodata/<< parameters.docker_hub_repository >>:latest-azure
+          version: << parameters.code_version >>,<< pipeline.number >>
+      - run:
+          name: Build and push azure with SBOM + SLSA provenance
+          command: |
+            docker buildx build \
+              --target azure \
+              --build-arg code_version=<< parameters.code_version >> \
+              --build-arg build_number=<< pipeline.number >> \
+              --tag montecarlodata/<< parameters.docker_hub_repository >>:latest-azure \
+              --tag montecarlodata/<< parameters.docker_hub_repository >>:<< parameters.code_version >>-azure \
+              --sbom=true \
+              --provenance=mode=max \
+              --push \
+              .
 
   build-and-push-lambda:
     machine:
