@@ -230,18 +230,32 @@ jobs:
       - checkout
       - docker/check:
           use-docker-credentials-store: true
-      # Docker Hub copy: keep BuildKit's default provenance attestation
-      # (improves Docker Scout health scores; Docker Hub handles the OCI
-      # image index correctly).
-      - docker/build:
-          step-name: Build lambda image (Docker Hub)
-          use-buildkit: true # to build only the required stages
-          extra_build_args: --target lambda --build-arg code_version=<< parameters.code_version >> --build-arg build_number=<< pipeline.number >>
-          image: montecarlodata/<< parameters.docker_hub_repository >>
-          tag: latest-lambda,<< parameters.code_version >>-lambda
-      - docker/push:
-          image: montecarlodata/<< parameters.docker_hub_repository >>
-          tag: latest-lambda,<< parameters.code_version >>-lambda
+      # Docker Hub copy: build and push with SBOM + SLSA provenance (mode=max)
+      # attestations attached. The ECR step below uses the classic docker/build
+      # orb, so we create the buildx builder WITHOUT --use and pass --builder
+      # apollo-builder explicitly on this command. That leaves the default
+      # builder in place so the classic `docker build` the orb runs for the
+      # ECR step continues to use the daemon's docker driver and produces a
+      # single-manifest image (which AWS Lambda / CloudFormation require).
+      - run:
+          name: Set up buildx (docker-container driver) for the Docker Hub build
+          command: |
+            docker buildx create --name apollo-builder --driver docker-container
+            docker buildx inspect --builder apollo-builder --bootstrap
+      - run:
+          name: Build and push lambda (Docker Hub) with SBOM + SLSA provenance
+          command: |
+            docker buildx build \
+              --builder apollo-builder \
+              --target lambda \
+              --build-arg code_version=<< parameters.code_version >> \
+              --build-arg build_number=<< pipeline.number >> \
+              --tag montecarlodata/<< parameters.docker_hub_repository >>:latest-lambda \
+              --tag montecarlodata/<< parameters.docker_hub_repository >>:<< parameters.code_version >>-lambda \
+              --sbom=true \
+              --provenance=mode=max \
+              --push \
+              .
       # ECR copy: rebuild with --provenance=false. AWS Lambda / CloudFormation
       # reject the OCI image index that BuildKit emits when attestations are
       # attached ("image manifest, config or layer media type ... is not
