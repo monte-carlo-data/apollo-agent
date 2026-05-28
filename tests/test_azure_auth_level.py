@@ -4,7 +4,6 @@ from unittest.mock import Mock, patch
 
 import azure.functions as func
 
-import apollo.interfaces.azure.auth as azure_auth_module
 from apollo.interfaces.azure.auth import (
     _EASY_AUTH_PROBE_HEADER,
     _EASY_AUTH_PROBE_TOKEN,
@@ -119,9 +118,6 @@ class TestAzureAuthLevel(TestCase):
 class TestEasyAuthEnforcementVerification(TestCase):
     """Tests for the lazy self-call probe that verifies Easy Auth enforcement."""
 
-    def setUp(self):
-        azure_auth_module._easy_auth_verified = False
-
     @patch("apollo.interfaces.azure.auth.requests.get")
     @patch.dict(
         os.environ, {"WEBSITE_HOSTNAME": "myfunc.azurewebsites.net"}, clear=True
@@ -131,7 +127,6 @@ class TestEasyAuthEnforcementVerification(TestCase):
         mock_get.return_value = Mock(status_code=401)
         result = verify_easy_auth_enforcement()
         assert result is None
-        assert azure_auth_module._easy_auth_verified is True
 
     @patch("apollo.interfaces.azure.auth.requests.get")
     @patch.dict(
@@ -142,7 +137,6 @@ class TestEasyAuthEnforcementVerification(TestCase):
         mock_get.return_value = Mock(status_code=403)
         result = verify_easy_auth_enforcement()
         assert result is None
-        assert azure_auth_module._easy_auth_verified is True
 
     @patch("apollo.interfaces.azure.auth.requests.get")
     @patch.dict(
@@ -154,7 +148,6 @@ class TestEasyAuthEnforcementVerification(TestCase):
         result = verify_easy_auth_enforcement()
         assert result is not None
         assert "NOT intercepting" in result
-        assert azure_auth_module._easy_auth_verified is False
 
     @patch("apollo.interfaces.azure.auth.time.sleep")
     @patch("apollo.interfaces.azure.auth.requests.get")
@@ -167,7 +160,6 @@ class TestEasyAuthEnforcementVerification(TestCase):
         result = verify_easy_auth_enforcement()
         assert result is not None
         assert "Unexpected status code" in result
-        assert azure_auth_module._easy_auth_verified is False
         assert mock_get.call_count == 3
 
     @patch("apollo.interfaces.azure.auth.time.sleep")
@@ -207,19 +199,6 @@ class TestEasyAuthEnforcementVerification(TestCase):
         result = verify_easy_auth_enforcement()
         assert result is not None
         assert "WEBSITE_HOSTNAME not set" in result
-
-    @patch("apollo.interfaces.azure.auth.requests.get")
-    @patch.dict(
-        os.environ, {"WEBSITE_HOSTNAME": "myfunc.azurewebsites.net"}, clear=True
-    )
-    def test_verify_caches_successful_result(self, mock_get):
-        """After a successful verification, subsequent calls skip the HTTP probe."""
-        mock_get.return_value = Mock(status_code=401)
-        result1 = verify_easy_auth_enforcement()
-        result2 = verify_easy_auth_enforcement()
-        assert result1 is None
-        assert result2 is None
-        assert mock_get.call_count == 1
 
     def test_is_easy_auth_probe_with_valid_token(self):
         """A request with the correct probe token should be detected."""

@@ -33,12 +33,6 @@ _EASY_AUTH_PROBE_HEADER = "X-MCD-EasyAuth-Probe"
 # is designed to detect.
 _EASY_AUTH_PROBE_TOKEN = secrets.token_hex(32)
 
-# The check-then-act on this boolean is not atomic, but Azure Functions
-# workers typically use a single-threaded WSGI server so concurrent health
-# requests within one process are unlikely.  At worst, a few redundant
-# probe requests fire during cold start — no data corruption risk.
-_easy_auth_verified = False
-
 
 def resolve_auth_level() -> func.AuthLevel:
     """Determine the appropriate auth level for the Azure Function App.
@@ -81,19 +75,12 @@ def verify_easy_auth_enforcement() -> Optional[str]:
     """Verify that Easy Auth is actually rejecting unauthenticated requests.
 
     Sends an unauthenticated probe to the health endpoint and expects a
-    401/403 from the Easy Auth middleware.  Successful verification is
-    cached for the process lifetime.  Failed results are not cached and
-    will be re-checked on each call.
+    401/403 from the Easy Auth middleware.
 
     Returns:
-        None if enforcement is verified (or was already cached).
+        None if enforcement is verified.
         An error message string if verification fails.
     """
-    global _easy_auth_verified
-
-    if _easy_auth_verified:
-        return None
-
     hostname = os.getenv("WEBSITE_HOSTNAME")
     if not hostname:
         return "WEBSITE_HOSTNAME not set — cannot verify Easy Auth enforcement"
@@ -109,7 +96,6 @@ def verify_easy_auth_enforcement() -> Optional[str]:
                 timeout=10,
             )
             if resp.status_code in (401, 403):
-                _easy_auth_verified = True
                 logger.info(
                     "Easy Auth enforcement verified — unauthenticated "
                     "request was rejected"

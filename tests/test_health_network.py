@@ -13,7 +13,6 @@ from apollo.common.agent.constants import (
 )
 from apollo.agent.logging_utils import LoggingUtils
 from apollo.agent.utils import AgentUtils
-import apollo.interfaces.azure.auth as azure_auth_module
 from apollo.interfaces.azure.auth import _EASY_AUTH_PROBE_HEADER, _EASY_AUTH_PROBE_TOKEN
 from apollo.interfaces.azure.azure_platform import AzurePlatformProvider
 from apollo.interfaces.generic import main as generic_main
@@ -186,7 +185,6 @@ class TestHealthEasyAuthIntegration(TestCase):
 
     def setUp(self) -> None:
         self.client = app.test_client()
-        azure_auth_module._easy_auth_verified = False
         self._prev_provider = generic_main.agent.platform_provider
 
     def tearDown(self) -> None:
