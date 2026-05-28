@@ -84,12 +84,10 @@ class InformaticaHttpTests(TestCase):
         self.assertIn("/api/v2/workflow", api_url)
 
     @patch("requests.request")
-    def test_do_http_request_sends_ic_session_id_header(self, mock_request):
-        """All API calls use icSessionId header regardless of how the session was obtained.
-
-        This is coupled to V2 API usage, not the auth method. Acts as a regression
-        guard for the intentional icSessionId-over-INFA-SESSION-ID behavior.
-        """
+    def test_v2_path_sends_only_ic_session_id(self, mock_request):
+        """V2 endpoints (``/api/v2/...``) read the session token from
+        ``icSessionId``. The proxy sends only that header on the wire — no
+        redundant ``INFA-SESSION-ID`` carried for endpoints that don't read it."""
         mock_request.return_value = _make_api_mock({"result": "ok"})
 
         self._agent.execute_operation(
@@ -100,11 +98,50 @@ class InformaticaHttpTests(TestCase):
         )
 
         headers = mock_request.call_args[1]["headers"]
-        self.assertIn("icSessionId", headers, "icSessionId header must always be sent")
-        self.assertNotIn(
-            "INFA-SESSION-ID", headers, "INFA-SESSION-ID must not be used (V2 API path)"
+        self.assertEqual(headers.get("icSessionId"), _SESSION_ID)
+        self.assertNotIn("INFA-SESSION-ID", headers)
+
+    @patch("requests.request")
+    def test_v3_path_sends_only_infa_session_id(self, mock_request):
+        """V3 endpoints (``/public/core/v3/...``) read the session token from
+        ``INFA-SESSION-ID``. The proxy sends only that header — pinning the
+        path-based routing here so a future refactor doesn't silently regress
+        to dual-header or wrong-header behavior."""
+        mock_request.return_value = _make_api_mock({"items": []})
+
+        self._agent.execute_operation(
+            "informatica",
+            "http_request",
+            _make_operation(
+                "/public/core/v3/objects",
+                params={"q": "type=='MTT'", "limit": 200, "skip": 0},
+            ),
+            {"connect_args": _RESOLVED_CONNECT_ARGS},
         )
-        self.assertEqual(headers["icSessionId"], _SESSION_ID)
+
+        headers = mock_request.call_args[1]["headers"]
+        self.assertEqual(headers.get("INFA-SESSION-ID"), _SESSION_ID)
+        self.assertNotIn("icSessionId", headers)
+
+    @patch("requests.request")
+    def test_caller_headers_win_on_session_header_collision(self, mock_request):
+        """Caller-supplied ``additional_headers`` override the proxy's defaults —
+        guards against the proxy silently masking a deliberate header override
+        from a DC call site."""
+        mock_request.return_value = _make_api_mock({"items": []})
+
+        self._agent.execute_operation(
+            "informatica",
+            "http_request",
+            _make_operation(
+                "/public/core/v3/objects",
+                additional_headers={"INFA-SESSION-ID": "caller-override-token"},
+            ),
+            {"connect_args": _RESOLVED_CONNECT_ARGS},
+        )
+
+        headers = mock_request.call_args[1]["headers"]
+        self.assertEqual(headers.get("INFA-SESSION-ID"), "caller-override-token")
 
     @patch("requests.request")
     def test_do_http_request_passes_params(self, mock_request):
@@ -294,6 +331,7 @@ class InformaticaV2ProxyClientReuseTests(TestCase):
         self.assertTrue(api_url.startswith(_API_BASE_URL))
         headers = mock_request.call_args[1]["headers"]
         self.assertEqual(headers["icSessionId"], _SESSION_ID)
+        self.assertNotIn("INFA-SESSION-ID", headers)
 
 
 class InformaticaConnectionMetadataTests(TestCase):
