@@ -1,10 +1,16 @@
 import os
 from unittest import TestCase
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import azure.functions as func
 
-from apollo.interfaces.azure.auth import resolve_auth_level
+from apollo.interfaces.azure.auth import (
+    _EASY_AUTH_PROBE_HEADER,
+    _EASY_AUTH_PROBE_TOKEN,
+    is_easy_auth_probe,
+    resolve_auth_level,
+    verify_easy_auth_enforcement,
+)
 
 # Full set of Easy Auth env vars as the platform would inject.
 _EASY_AUTH_ENV = {
@@ -107,3 +113,118 @@ class TestAzureAuthLevel(TestCase):
                 resolve_auth_level()
             assert "WEBSITE_AUTH_OPENID_ISSUER" in str(ctx.exception)
             assert "WEBSITE_AUTH_CLIENT_ID" not in str(ctx.exception)
+
+
+class TestEasyAuthEnforcementVerification(TestCase):
+    """Tests for the lazy self-call probe that verifies Easy Auth enforcement."""
+
+    @patch("apollo.interfaces.azure.auth.requests.get")
+    @patch.dict(
+        os.environ, {"WEBSITE_HOSTNAME": "myfunc.azurewebsites.net"}, clear=True
+    )
+    def test_verify_returns_none_on_401(self, mock_get):
+        """A 401 response means Easy Auth is blocking — verification passes."""
+        mock_get.return_value = Mock(status_code=401)
+        result = verify_easy_auth_enforcement()
+        assert result is None
+
+    @patch("apollo.interfaces.azure.auth.requests.get")
+    @patch.dict(
+        os.environ, {"WEBSITE_HOSTNAME": "myfunc.azurewebsites.net"}, clear=True
+    )
+    def test_verify_returns_none_on_403(self, mock_get):
+        """A 403 response means Easy Auth is blocking — verification passes."""
+        mock_get.return_value = Mock(status_code=403)
+        result = verify_easy_auth_enforcement()
+        assert result is None
+
+    @patch("apollo.interfaces.azure.auth.requests.get")
+    @patch.dict(
+        os.environ, {"WEBSITE_HOSTNAME": "myfunc.azurewebsites.net"}, clear=True
+    )
+    def test_verify_returns_error_on_200(self, mock_get):
+        """A 200 means the request went through unauthenticated — verification fails."""
+        mock_get.return_value = Mock(status_code=200)
+        result = verify_easy_auth_enforcement()
+        assert result is not None
+        assert "NOT intercepting" in result
+
+    @patch("apollo.interfaces.azure.auth.time.sleep")
+    @patch("apollo.interfaces.azure.auth.requests.get")
+    @patch.dict(
+        os.environ, {"WEBSITE_HOSTNAME": "myfunc.azurewebsites.net"}, clear=True
+    )
+    def test_verify_returns_error_on_unexpected_status(self, mock_get, mock_sleep):
+        """An unexpected 500 is now retried — all 3 attempts return 500."""
+        mock_get.return_value = Mock(status_code=500)
+        result = verify_easy_auth_enforcement()
+        assert result is not None
+        assert "Unexpected status code" in result
+        assert mock_get.call_count == 3
+
+    @patch("apollo.interfaces.azure.auth.time.sleep")
+    @patch("apollo.interfaces.azure.auth.requests.get")
+    @patch.dict(
+        os.environ, {"WEBSITE_HOSTNAME": "myfunc.azurewebsites.net"}, clear=True
+    )
+    def test_verify_retries_on_connection_error_then_succeeds(
+        self, mock_get, mock_sleep
+    ):
+        """First attempt fails with ConnectionError, second succeeds with 401."""
+        mock_get.side_effect = [ConnectionError("fail"), Mock(status_code=401)]
+        result = verify_easy_auth_enforcement()
+        assert result is None
+        assert mock_get.call_count == 2
+        mock_sleep.assert_called_once_with(1)
+
+    @patch("apollo.interfaces.azure.auth.time.sleep")
+    @patch("apollo.interfaces.azure.auth.requests.get")
+    @patch.dict(
+        os.environ, {"WEBSITE_HOSTNAME": "myfunc.azurewebsites.net"}, clear=True
+    )
+    def test_verify_returns_error_after_all_retries_exhausted(
+        self, mock_get, mock_sleep
+    ):
+        """All 3 attempts fail with ConnectionError — returns error message."""
+        mock_get.side_effect = ConnectionError("fail")
+        result = verify_easy_auth_enforcement()
+        assert result is not None
+        assert "after 3 attempts" in result
+        assert mock_get.call_count == 3
+        assert mock_sleep.call_count == 2
+
+    @patch.dict(os.environ, {}, clear=True)
+    def test_verify_returns_error_when_hostname_not_set(self):
+        """Without WEBSITE_HOSTNAME, verification cannot proceed."""
+        result = verify_easy_auth_enforcement()
+        assert result is not None
+        assert "WEBSITE_HOSTNAME not set" in result
+
+    def test_is_easy_auth_probe_with_valid_token(self):
+        """A request with the correct probe token should be detected."""
+        assert (
+            is_easy_auth_probe({_EASY_AUTH_PROBE_HEADER: _EASY_AUTH_PROBE_TOKEN})
+            is True
+        )
+
+    def test_is_easy_auth_probe_with_wrong_token(self):
+        """A request with an incorrect token value should not be detected."""
+        assert is_easy_auth_probe({_EASY_AUTH_PROBE_HEADER: "wrong-value"}) is False
+
+    def test_is_easy_auth_probe_without_header(self):
+        """A request without the probe header should not be detected."""
+        assert is_easy_auth_probe({}) is False
+
+    @patch("apollo.interfaces.azure.auth.requests.get")
+    @patch.dict(
+        os.environ, {"WEBSITE_HOSTNAME": "myfunc.azurewebsites.net"}, clear=True
+    )
+    def test_verify_sends_correct_url_and_headers(self, mock_get):
+        """The probe should hit the correct URL with the probe header and timeout."""
+        mock_get.return_value = Mock(status_code=401)
+        verify_easy_auth_enforcement()
+        mock_get.assert_called_once_with(
+            "https://myfunc.azurewebsites.net/api/v1/test/health",
+            headers={_EASY_AUTH_PROBE_HEADER: _EASY_AUTH_PROBE_TOKEN},
+            timeout=10,
+        )

@@ -614,6 +614,12 @@ def test_health_post() -> Tuple[Dict, int]:
 
 
 def _test_health() -> Tuple[Dict, int]:
+    pp = agent.platform_provider
+    if pp is not None:
+        early = pp.pre_health_check(request.headers)
+        if early is not None:
+            return early
+
     request_dict: Dict = request.json if request.method == "POST" else request.args  # type: ignore
     trace_id = request_dict.get("trace_id")
     full = str(request_dict.get("full", "false")).lower() == "true"
