@@ -1,5 +1,6 @@
 from typing import Any, NotRequired, Required, TypedDict
 
+from apollo.credentials.schema.common import SSL_OPTIONS_FIELD
 from apollo.integrations.ctp.models import CtpConfig, MapperConfig, TransformStep
 
 
@@ -52,8 +53,48 @@ class MysqlClientArgs(TypedDict):
     binary_prefix: NotRequired[bool]
 
 
+# MySQL self-hosted credentials schema. The docs accordion documents
+# host/port/user/password as required and database as optional; the code
+# additionally accepts an ssl_options block which we surface here so
+# customers using SSL get a useful error if it's malformed. ssl_options.ca
+# may be either inline CA data (handled by resolve_ssl_options) or a URL the
+# fetch_remote_file transform downloads — both are accepted as strings.
+MYSQL_CREDENTIALS_SCHEMA = {
+    "connect_args": {
+        "type": "dict",
+        "required": True,
+        "schema": {
+            "host": {"type": "string", "required": True, "empty": False},
+            "port": {"type": "integer", "required": True},
+            "user": {"type": "string", "required": True, "empty": False},
+            "password": {"type": "string", "required": True, "empty": False},
+            "database": {"type": "string"},
+        },
+    },
+    # MySQL allows ssl_options.ca to be either a URL (downloaded by the
+    # fetch_remote_file transform) or inline ca_data. We accept the
+    # generic SSL_OPTIONS_FIELD shape plus the URL-form `ca`/`mechanism`.
+    "ssl_options": {
+        "type": "dict",
+        "allow_unknown": True,
+        "schema": {
+            "ca": {"type": "string"},
+            "ca_data": {"type": "string"},
+            "cert_data": {"type": "string"},
+            "key_data": {"type": "string"},
+            "key_password": {"type": "string"},
+            "mechanism": {"type": "string"},
+            "disabled": {"type": "boolean"},
+            "skip_cert_verification": {"type": "boolean"},
+            "verify_cert": {"type": "boolean"},
+            "verify_identity": {"type": "boolean"},
+        },
+    },
+}
+
 MYSQL_DEFAULT_CTP = CtpConfig(
     name="mysql-default",
+    raw_credentials_schema=MYSQL_CREDENTIALS_SCHEMA,
     steps=[
         # Remote CA: download cert from URL/storage, pass as {"ca": path}
         TransformStep(

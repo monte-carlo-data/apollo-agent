@@ -15,8 +15,78 @@ class DatabricksSqlClientArgs(TypedDict):
     _user_agent_entry: NotRequired[str]
 
 
+# Schema for the *customer-facing* Databricks self-hosted credentials JSON.
+# The customer is responsible only for the fields documented at
+# /docs/self-hosted-credentials#databricks. The DC injects http_path from the
+# CLI-supplied --databricks-warehouse-id at execute time, so http_path is NOT
+# part of this validation surface — the validator should pass for JSON the
+# customer can reasonably author from the docs alone.
+# Auth modes are mutually exclusive via oneof_schema. Supplying both PAT and
+# OAuth credentials is ambiguous and surfaces as a validation error.
+_DATABRICKS_WORKSPACE_URL = {
+    "databricks_workspace_url": {"type": "string", "required": True, "empty": False},
+}
+
+DATABRICKS_CREDENTIALS_SCHEMA = {
+    "connect_args": {
+        "type": "dict",
+        "required": True,
+        "oneof_schema": [
+            # PAT.
+            {
+                **_DATABRICKS_WORKSPACE_URL,
+                "databricks_token": {
+                    "type": "string",
+                    "required": True,
+                    "empty": False,
+                },
+            },
+            # Databricks OAuth (workspace-level client credentials).
+            {
+                **_DATABRICKS_WORKSPACE_URL,
+                "databricks_client_id": {
+                    "type": "string",
+                    "required": True,
+                    "empty": False,
+                },
+                "databricks_client_secret": {
+                    "type": "string",
+                    "required": True,
+                    "empty": False,
+                },
+            },
+            # Azure OAuth — adds tenant + workspace resource id.
+            {
+                **_DATABRICKS_WORKSPACE_URL,
+                "databricks_client_id": {
+                    "type": "string",
+                    "required": True,
+                    "empty": False,
+                },
+                "databricks_client_secret": {
+                    "type": "string",
+                    "required": True,
+                    "empty": False,
+                },
+                "azure_tenant_id": {
+                    "type": "string",
+                    "required": True,
+                    "empty": False,
+                },
+                "azure_workspace_resource_id": {
+                    "type": "string",
+                    "required": True,
+                    "empty": False,
+                },
+            },
+        ],
+    },
+}
+
+
 DATABRICKS_DEFAULT_CTP = CtpConfig(
     name="databricks-default",
+    raw_credentials_schema=DATABRICKS_CREDENTIALS_SCHEMA,
     steps=[
         # OAuth path: build credentials_provider callable and contribute it to connect_args.
         # databricks_client_id / databricks_client_secret are intentionally excluded from the

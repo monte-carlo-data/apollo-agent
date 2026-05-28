@@ -24,8 +24,56 @@ class SalesforceCrmClientArgs(TypedDict):
     session: NotRequired[Any]  # requests.Session
 
 
+# Salesforce CRM supports two auth modes per docs (token vs OAuth). Each is
+# a fully-specified variant under oneof_schema; cerberus rejects ambiguous
+# combinations (e.g. supplying both consumer_key AND security_token).
+SALESFORCE_CRM_CREDENTIALS_SCHEMA = {
+    "connect_args": {
+        "type": "dict",
+        "required": True,
+        "oneof_schema": [
+            # Token auth — docs spelling is `user`.
+            {
+                "user": {"type": "string", "required": True, "empty": False},
+                "password": {"type": "string", "required": True, "empty": False},
+                "security_token": {
+                    "type": "string",
+                    "required": True,
+                    "empty": False,
+                },
+            },
+            # Token auth — `username` alternate accepted by the CTP and used
+            # by some customers.
+            {
+                "username": {"type": "string", "required": True, "empty": False},
+                "password": {"type": "string", "required": True, "empty": False},
+                "security_token": {
+                    "type": "string",
+                    "required": True,
+                    "empty": False,
+                },
+            },
+            # Connected App / OAuth.
+            {
+                "consumer_key": {
+                    "type": "string",
+                    "required": True,
+                    "empty": False,
+                },
+                "consumer_secret": {
+                    "type": "string",
+                    "required": True,
+                    "empty": False,
+                },
+                "domain": {"type": "string", "required": True, "empty": False},
+            },
+        ],
+    },
+}
+
 SALESFORCE_CRM_DEFAULT_CTP = CtpConfig(
     name="salesforce-crm-default",
+    raw_credentials_schema=SALESFORCE_CRM_CREDENTIALS_SCHEMA,
     steps=[],
     mapper=MapperConfig(
         name="salesforce_crm_client_args",

@@ -8,8 +8,25 @@ class PowerBiClientArgs(TypedDict):
     auth_type: Required[str]  # always "Bearer" for Power BI
 
 
+# Power BI self-hosted creds are flat top-level (no `connect_args` wrapper)
+# per docs. The docs example shows only client_id/client_secret/tenant_id,
+# matching client_credentials OAuth — the only auth mode used in practice.
+# The CTP also supports password grant via `auth_mode: "password"`, which is
+# left as an optional alternative variant.
+POWER_BI_CREDENTIALS_SCHEMA = {
+    "auth_mode": {"type": "string", "allowed": ["client_credentials", "password"]},
+    "client_id": {"type": "string", "required": True, "empty": False},
+    "tenant_id": {"type": "string", "required": True, "empty": False},
+    "client_secret": {"type": "string"},
+    "username": {"type": "string"},
+    "password": {"type": "string"},
+    # Pre-resolved MSAL token (DC pre-shape path, rare for self-hosted).
+    "token": {"type": "string"},
+}
+
 POWERBI_DEFAULT_CTP = CtpConfig(
     name="powerbi-default",
+    raw_credentials_schema=POWER_BI_CREDENTIALS_SCHEMA,
     steps=[
         # Resolve MSAL token from raw credentials. Skipped when credentials are
         # pre-shaped (DC path) and a token is already present.

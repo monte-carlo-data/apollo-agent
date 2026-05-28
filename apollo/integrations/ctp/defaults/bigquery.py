@@ -21,8 +21,39 @@ class BqClientArgs(TypedDict):
     socket_timeout_in_seconds: NotRequired[float]
 
 
+BIGQUERY_CREDENTIALS_SCHEMA = {
+    "connect_args": {
+        "type": "dict",
+        "required": True,
+        # Service-account JSON shape is extensible (Google has added fields
+        # over time, e.g. universe_domain). `allow_unknown` keeps forward
+        # compatibility while the named fields below cover what the proxy
+        # client reads.
+        "allow_unknown": True,
+        "schema": {
+            # `type` is documented as required and "service_account" — code
+            # forwards as-is to from_service_account_info(), which itself
+            # validates the value. We surface a useful error if it's wrong.
+            "type": {"type": "string", "allowed": ["service_account"]},
+            "project_id": {"type": "string"},
+            "private_key_id": {"type": "string"},
+            "private_key": {"type": "string"},
+            "client_email": {"type": "string"},
+            "client_id": {"type": "string"},
+            "auth_uri": {"type": "string"},
+            "token_uri": {"type": "string"},
+            "auth_provider_x509_cert_url": {"type": "string"},
+            "client_x509_cert_url": {"type": "string"},
+            # Popped by the proxy client before passing the rest to
+            # from_service_account_info().
+            "socket_timeout_in_seconds": {"type": "number"},
+        },
+    },
+}
+
 BIGQUERY_DEFAULT_CTP = CtpConfig(
     name="bigquery-default",
+    raw_credentials_schema=BIGQUERY_CREDENTIALS_SCHEMA,
     steps=[],
     mapper=MapperConfig(
         name="bq_client_args",

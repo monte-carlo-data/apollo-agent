@@ -15,8 +15,44 @@ class InformaticaV2ClientArgs(TypedDict):
 #   - "password" → V2 or V3 password login (same as v1's INFORMATICA_DEFAULT_CTP)
 # `resolve_informatica_session` picks the right Informatica login path from
 # whichever fields are present. We only need a leading OAuth step in oauth mode.
+# v2 supports two auth modes (oauth and password). Each is a fully-specified
+# oneof_schema variant. Password mode mirrors v1; OAuth mode requires an
+# `oauth` grant config dict plus `org_id` for /loginOAuth.
+_INFORMATICA_V2_BASE_URL = {
+    "base_url": {"type": "string", "required": True, "empty": False},
+}
+
+INFORMATICA_V2_CREDENTIALS_SCHEMA = {
+    "connect_args": {
+        "type": "dict",
+        "required": True,
+        "oneof_schema": [
+            # Password mode.
+            {
+                **_INFORMATICA_V2_BASE_URL,
+                "auth_mode": {"type": "string", "allowed": ["password"]},
+                "username": {"type": "string", "required": True, "empty": False},
+                "password": {"type": "string", "required": True, "empty": False},
+                "informatica_auth": {"type": "string"},
+            },
+            # OAuth mode.
+            {
+                **_INFORMATICA_V2_BASE_URL,
+                "auth_mode": {
+                    "type": "string",
+                    "required": True,
+                    "allowed": ["oauth"],
+                },
+                "oauth": {"type": "dict", "required": True, "allow_unknown": True},
+                "org_id": {"type": "string", "required": True, "empty": False},
+            },
+        ],
+    },
+}
+
 INFORMATICA_V2_DEFAULT_CTP = CtpConfig(
     name="informatica-v2-default",
+    raw_credentials_schema=INFORMATICA_V2_CREDENTIALS_SCHEMA,
     steps=[
         # Step 1 (OAuth mode only): OAuth grant against the customer's IDP using
         # the shared `oauth` transform. Whatever grant_type `raw.oauth` declares
