@@ -220,7 +220,10 @@ def _safe_create_connection(address: Tuple[str, int], *args: Any, **kwargs: Any)
 
     err: Union[BaseException, None] = None
     for info in infos:
-        ip_str = info[4][0]
+        # info[4] is the sockaddr tuple; first element is the IP literal as
+        # a string (str() is a no-op typed-narrowing here, since getaddrinfo
+        # always returns IP literals as strings for AF_INET / AF_INET6).
+        ip_str = str(info[4][0])
         try:
             ip = ipaddress.ip_address(ip_str)
         except ValueError:
