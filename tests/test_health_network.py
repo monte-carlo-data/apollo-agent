@@ -174,3 +174,99 @@ class HealthNetworkTests(TestCase):
             "URL https://foo.bar responded with status: 200 (OK)",
             response.result.get(ATTRIBUTE_NAME_RESULT).get("message"),
         )
+
+
+class TestHealthEasyAuthIntegration(TestCase):
+    """Tests for Easy Auth enforcement verification in the health endpoint.
+
+    Imports of ``apollo.interfaces.generic.main`` are deferred to setUp so
+    that the module-level ``RedactFormatterWrapper`` monkey-patch on the root
+    logger does not corrupt pytest's log-capture handler for the rest of the
+    test session (it mutates ``record.msg`` before %-formatting, which breaks
+    any ``logger.warning("… %s", val)`` call elsewhere).
+    """
+
+    def setUp(self) -> None:
+        # Importing generic/main.py wraps every root-logger handler with
+        # RedactFormatterWrapper (module-level side effect).  The wrapper
+        # mutates record.msg *before* %-formatting, which breaks any
+        # logger.warning("… %s", val) call in later tests.  Snapshot
+        # formatters *before* the import so we can restore them in tearDown.
+        import logging
+
+        root = logging.getLogger()
+        self._original_formatters = [(h, h.formatter) for h in root.handlers]
+
+        # Deferred imports — see class docstring.
+        from apollo.interfaces.azure.auth import (
+            _EASY_AUTH_PROBE_HEADER,
+            _EASY_AUTH_PROBE_TOKEN,
+        )
+        from apollo.interfaces.generic import main as generic_main
+        from apollo.interfaces.generic.main import app
+
+        self._generic_main = generic_main
+        self._probe_header = _EASY_AUTH_PROBE_HEADER
+        self._probe_token = _EASY_AUTH_PROBE_TOKEN
+        self.client = app.test_client()
+        self._prev_provider = generic_main.agent.platform_provider
+
+    def tearDown(self) -> None:
+        self._generic_main.agent.platform_provider = self._prev_provider
+        # Restore original formatters to undo RedactFormatterWrapper.
+        for handler, fmt in self._original_formatters:
+            handler.setFormatter(fmt)
+
+    def _set_azure_sp_provider(self) -> None:
+        """Set an AzurePlatformProvider with SP auth enabled."""
+        from apollo.interfaces.azure.azure_platform import AzurePlatformProvider
+
+        with patch.dict(
+            os.environ,
+            {"MCD_AUTH_TYPE": "AZURE_FUNCTION_SERVICE_PRINCIPAL"},
+        ):
+            self._generic_main.agent.platform_provider = AzurePlatformProvider()
+
+    def test_health_probe_request_returns_200_shortcircuit(self):
+        """Platform provider short-circuits probe requests with a minimal 200."""
+        self._set_azure_sp_provider()
+        resp = self.client.get(
+            "/api/v1/test/health",
+            headers={self._probe_header: self._probe_token},
+        )
+        assert resp.status_code == 200
+        assert resp.get_json() == {"status": "up"}
+
+    def test_health_returns_200_when_easy_auth_verified(self):
+        """SP provider with Easy Auth verified -> normal 200 health response."""
+        self._set_azure_sp_provider()
+        with patch(
+            "apollo.interfaces.azure.auth.verify_easy_auth_enforcement",
+            return_value=None,
+        ):
+            resp = self.client.get("/api/v1/test/health")
+            assert resp.status_code == 200
+            data = resp.get_json()
+            assert "easy_auth_error" not in data
+
+    def test_health_returns_503_when_easy_auth_not_verified(self):
+        """SP provider with Easy Auth NOT verified -> 503 with generic error."""
+        self._set_azure_sp_provider()
+        with patch(
+            "apollo.interfaces.azure.auth.verify_easy_auth_enforcement",
+            return_value="Easy Auth is NOT intercepting unauthenticated requests",
+        ):
+            resp = self.client.get("/api/v1/test/health")
+            assert resp.status_code == 503
+            data = resp.get_json()
+            assert data["easy_auth_error"] == (
+                "Easy Auth enforcement could not be verified"
+            )
+
+    def test_health_returns_200_without_platform_provider(self):
+        """Without a platform provider, no Easy Auth check — normal 200."""
+        self._generic_main.agent.platform_provider = None
+        resp = self.client.get("/api/v1/test/health")
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert "easy_auth_error" not in data

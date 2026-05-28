@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 from apollo.agent.updater import AgentUpdater
 
@@ -41,3 +41,11 @@ class AgentPlatformProvider(ABC):
         Get infrastructure information like the CloudFormation template or current parameters.
         """
         pass
+
+    def pre_health_check(self, headers: Any) -> Optional[Tuple[Dict, int]]:
+        """Called before health logic runs.
+
+        Return a (body, status_code) tuple to short-circuit the health
+        endpoint, or None to proceed with the normal health response.
+        """
+        return None
