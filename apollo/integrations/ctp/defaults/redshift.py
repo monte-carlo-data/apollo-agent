@@ -1,5 +1,6 @@
 from typing import Any, NotRequired, Required, TypedDict
 
+from apollo.credentials.schema.common import SSL_OPTIONS_FIELD
 from apollo.integrations.ctp.models import CtpConfig, MapperConfig, TransformStep
 
 
@@ -27,8 +28,36 @@ class RedshiftClientArgs(TypedDict):
     keepalives_count: NotRequired[int]
 
 
+# Redshift self-hosted credentials schema. Docs require all five fields but
+# the CTP defaults `port` to 5439 and `user` to "awsuser"; the validator
+# matches the more forgiving code shape and only requires host/dbname/password.
+# Port is documented as a string ("5439") but the connector accepts both
+# string and integer; we accept either to avoid spurious type errors.
+REDSHIFT_CREDENTIALS_SCHEMA = {
+    "connect_args": {
+        "type": "dict",
+        "required": True,
+        "schema": {
+            "host": {"type": "string", "required": True, "empty": False},
+            "dbname": {"type": "string", "required": True, "empty": False},
+            "user": {"type": "string"},  # CTP defaults to "awsuser"
+            "password": {"type": "string", "required": True, "empty": False},
+            # Port is documented as a string ("5439"); the connector
+            # accepts both; CTP defaults to 5439.
+            "port": {"type": ["string", "integer"]},
+            "connect_timeout": {"type": "integer"},
+            "query_timeout_in_seconds": {"type": "integer"},
+            "ssl_mode": {"type": "string"},
+        },
+    },
+    "ssl_options": SSL_OPTIONS_FIELD,
+    # Top-level autocommit per docs example.
+    "autocommit": {"type": "boolean"},
+}
+
 REDSHIFT_DEFAULT_CTP = CtpConfig(
     name="redshift-default",
+    raw_credentials_schema=REDSHIFT_CREDENTIALS_SCHEMA,
     steps=[
         TransformStep(
             type="resolve_ssl_options",

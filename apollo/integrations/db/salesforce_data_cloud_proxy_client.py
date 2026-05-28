@@ -279,7 +279,31 @@ class SalesforceDataCloudCredentials:
     dataspace: str | None = None
 
 
+# Cerberus schema for the customer-facing self-hosted credentials JSON. Lives
+# on the proxy client because Salesforce Data Cloud is not enrolled in CTP —
+# the factory function in proxy_client_factory.py inlines the field reads
+# (domain/client_id/client_secret/[core_token]/[refresh_token]/[dataspace]).
+SALESFORCE_DATA_CLOUD_CREDENTIALS_SCHEMA: dict[str, Any] = {
+    "connect_args": {
+        "type": "dict",
+        "required": True,
+        "schema": {
+            "domain": {"type": "string", "required": True, "empty": False},
+            "client_id": {"type": "string", "required": True, "empty": False},
+            "client_secret": {"type": "string", "required": True, "empty": False},
+            "core_token": {"type": "string"},
+            "refresh_token": {"type": "string"},
+            "dataspace": {"type": "string"},
+        },
+    },
+}
+
+
 class SalesforceDataCloudProxyClient(BaseDbProxyClient):
+    SELF_HOSTED_CREDENTIALS_SCHEMA: dict[str, Any] = (
+        SALESFORCE_DATA_CLOUD_CREDENTIALS_SCHEMA
+    )
+
     def __init__(self, credentials: SalesforceDataCloudCredentials):
         super().__init__(connection_type="salesforce-data-cloud")
         self._credentials = credentials

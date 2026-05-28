@@ -31,8 +31,30 @@ class SapHanaClientArgs(TypedDict):
     compress: NotRequired[bool]
 
 
+# SAP HANA self-hosted credentials schema mirrors the docs accordion
+# (`address`, `databaseName`). CTP accepts `host`/`db_name` for the DC pre-shape
+# path but customer self-hosted JSON is expected to follow the docs spellings.
+SAP_HANA_CREDENTIALS_SCHEMA = {
+    "connect_args": {
+        "type": "dict",
+        "required": True,
+        "schema": {
+            "address": {"type": "string", "required": True, "empty": False},
+            "port": {"type": "integer", "required": True},
+            "user": {"type": "string", "required": True, "empty": False},
+            "password": {"type": "string", "required": True, "empty": False},
+            "databaseName": {"type": "string", "required": True, "empty": False},
+            # Timeout fields per docs Notes (ms-units names; the CTP
+            # converts from `*_in_seconds` on the flat path).
+            "connectTimeout": {"type": "integer"},
+            "communicationTimeout": {"type": "integer"},
+        },
+    },
+}
+
 SAP_HANA_DEFAULT_CTP = CtpConfig(
     name="sap-hana-default",
+    raw_credentials_schema=SAP_HANA_CREDENTIALS_SCHEMA,
     steps=[],
     mapper=MapperConfig(
         name="sap_hana_client_args",

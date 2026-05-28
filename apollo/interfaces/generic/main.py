@@ -225,6 +225,107 @@ def execute_agent_operation(
     )
 
 
+@app.route("/api/v1/self-hosted-credentials/validate/<connection_type>", methods=["POST"])  # type: ignore
+def validate_self_hosted_credentials(
+    connection_type: str,
+) -> Union[Response, Tuple[Dict, int, Optional[Dict]]]:
+    """
+    Validate self-hosted credentials for the given connection type.
+
+    Thin forwarding wrapper around ``Agent.validate_self_hosted_credentials``,
+    which owns the full pipeline (self-hosted guard, secret fetch via
+    ``CredentialsFactory``, cerberus schema check). Behavior is identical to
+    the egress entry point in hermes-agent that forwards to the same route.
+    See ``Agent.validate_self_hosted_credentials`` for the response contract.
+
+    ---
+    tags:
+        - Agent Operations
+    produces:
+        - application/json
+    parameters:
+        - in: path
+          name: connection_type
+          required: true
+          description: The connection type to validate against, e.g. snowflake.
+          schema:
+              type: string
+              example: snowflake
+        - in: body
+          name: body
+          schema:
+            id: ValidateSelfHostedCredentialsRequest
+            properties:
+                credentials:
+                    type: object
+                    description: |
+                        Self-hosted credentials envelope. Must include a
+                        `self_hosted_credentials_type` key (one of
+                        `aws_secrets_manager`, `gcp_secret_manager`,
+                        `azure_key_vault`, `env_var`, `file`) plus that
+                        store's identifier fields. Inline (passthrough)
+                        credentials are rejected with HTTP 400 — this
+                        endpoint exists to validate the self-hosted flow
+                        end-to-end (secret fetch + schema), and a request
+                        without the wrapper is a caller error.
+                trace_id:
+                    type: string
+                    description: Optional trace_id echoed back in the response.
+                    example: 324986b4-b185-4187-b4af-b0c2cd60f7a0
+    responses:
+        200:
+            description: |
+                Validation result. ``valid`` is true when ``errors`` is empty.
+                ``errors`` follows cerberus's ``Validator.errors`` shape with
+                an optional ``__variants__`` key when one-of auth groups fail.
+            schema:
+                properties:
+                    __mcd_result__:
+                        type: object
+                        properties:
+                            valid:
+                                type: boolean
+                            connection_type:
+                                type: string
+                            errors:
+                                type: object
+                    __mcd_trace_id__:
+                        type: string
+                example:
+                    __mcd_result__:
+                        valid: false
+                        connection_type: snowflake
+                        errors:
+                            connect_args:
+                                - account: ["required field"]
+                            __variants__:
+                                - "At least one of these field groups must be fully present: ..."
+        400:
+            description: |
+                Either the request body was malformed / the connection type
+                does not support self-hosted credentials validation, OR the
+                agent failed to fetch / decode the credentials from the
+                customer's secret store. Same ``__mcd_error__`` /
+                ``__mcd_stack_trace__`` envelope returned by /api/v1/agent/execute
+                when the credentials fetch path raises.
+    """
+    if not request.is_json or not isinstance(request.json, dict):
+        return (
+            {"__mcd_error__": "Request body must be a JSON object"},
+            400,
+            None,
+        )
+    json_request: Dict = request.json
+    trace_id: Optional[str] = json_request.get("trace_id")
+
+    response = agent.validate_self_hosted_credentials(
+        connection_type=connection_type,
+        credentials=json_request.get("credentials"),
+        trace_id=trace_id,
+    )
+    return _get_flask_response(response)
+
+
 @app.route("/api/v1/ctp/validate/<connection_type>", methods=["POST"])  # type: ignore
 def ctp_validate(connection_type: str) -> Tuple[Dict, int]:
     """

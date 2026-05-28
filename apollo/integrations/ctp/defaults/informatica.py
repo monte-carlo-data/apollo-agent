@@ -10,8 +10,26 @@ class InformaticaClientArgs(TypedDict):
     api_base_url: Required[str]
 
 
+INFORMATICA_CREDENTIALS_SCHEMA = {
+    "connect_args": {
+        "type": "dict",
+        "required": True,
+        "schema": {
+            "username": {"type": "string", "required": True, "empty": False},
+            "password": {"type": "string", "required": True, "empty": False},
+            "base_url": {"type": "string", "required": True, "empty": False},
+            # CTP also accepts informatica_auth/jwt_token/org_id for the v3
+            # password+JWT flow; these are optional alternates.
+            "informatica_auth": {"type": "string"},
+            "jwt_token": {"type": "string"},
+            "org_id": {"type": "string"},
+        },
+    },
+}
+
 INFORMATICA_DEFAULT_CTP = CtpConfig(
     name="informatica-default",
+    raw_credentials_schema=INFORMATICA_CREDENTIALS_SCHEMA,
     steps=[
         # Skipped when session_id is already present (DC pre-shaped path or custom CTP
         # config that resolved the session upstream). When running, supports both

@@ -38,8 +38,24 @@ class StarburstGalaxyClientArgs(TypedDict):
     encoding: NotRequired[Any]
 
 
+STARBURST_GALAXY_CREDENTIALS_SCHEMA = {
+    "connect_args": {
+        "type": "dict",
+        "required": True,
+        "schema": {
+            "host": {"type": "string", "required": True, "empty": False},
+            "user": {"type": "string", "required": True, "empty": False},
+            "password": {"type": "string", "required": True, "empty": False},
+            "port": {"type": ["string", "integer"]},
+            "catalog": {"type": "string"},
+            "schema": {"type": "string"},
+        },
+    },
+}
+
 STARBURST_GALAXY_DEFAULT_CTP = CtpConfig(
     name="starburst-galaxy-default",
+    raw_credentials_schema=STARBURST_GALAXY_CREDENTIALS_SCHEMA,
     steps=[
         TransformStep(
             type="resolve_ssl_options",

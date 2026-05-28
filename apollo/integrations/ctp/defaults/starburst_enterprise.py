@@ -1,5 +1,6 @@
 from typing import Any, NotRequired, Required, TypedDict
 
+from apollo.credentials.schema.common import SSL_OPTIONS_FIELD
 from apollo.integrations.ctp.models import CtpConfig, MapperConfig, TransformStep
 
 
@@ -38,8 +39,25 @@ class StarburstEnterpriseClientArgs(TypedDict):
     encoding: NotRequired[Any]
 
 
+STARBURST_ENTERPRISE_CREDENTIALS_SCHEMA = {
+    "connect_args": {
+        "type": "dict",
+        "required": True,
+        "schema": {
+            "host": {"type": "string", "required": True, "empty": False},
+            "port": {"type": ["string", "integer"], "required": True},
+            "user": {"type": "string", "required": True, "empty": False},
+            "password": {"type": "string", "required": True, "empty": False},
+            "catalog": {"type": "string"},
+            "schema": {"type": "string"},
+        },
+    },
+    "ssl_options": SSL_OPTIONS_FIELD,
+}
+
 STARBURST_ENTERPRISE_DEFAULT_CTP = CtpConfig(
     name="starburst-enterprise-default",
+    raw_credentials_schema=STARBURST_ENTERPRISE_CREDENTIALS_SCHEMA,
     steps=[
         TransformStep(
             type="resolve_ssl_options",

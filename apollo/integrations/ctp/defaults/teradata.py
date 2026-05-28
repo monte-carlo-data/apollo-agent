@@ -1,5 +1,6 @@
 from typing import NotRequired, Required, TypedDict
 
+from apollo.credentials.schema.common import SSL_OPTIONS_FIELD
 from apollo.integrations.ctp.models import CtpConfig, MapperConfig, TransformStep
 from apollo.integrations.ctp.registry import CtpRegistry
 
@@ -26,8 +27,36 @@ class TeradataClientArgs(TypedDict):
     sslca: NotRequired[str]  # path to CA bundle PEM file
 
 
+# Teradata self-hosted credentials schema. Docs mark tmode/sslmode/logmech as
+# required but the CTP defaults them; we relax to optional to match code.
+# dbs_port is documented as a string ("1025"); accept either form.
+TERADATA_CREDENTIALS_SCHEMA = {
+    "connect_args": {
+        "type": "dict",
+        "required": True,
+        "schema": {
+            "host": {"type": "string", "required": True, "empty": False},
+            "user": {"type": "string", "required": True, "empty": False},
+            "password": {"type": "string", "required": True, "empty": False},
+            # Port spelt as `dbs_port` per the docs, or just `port` for
+            # the flat-credentials path (CTP maps the latter to dbs_port).
+            "dbs_port": {"type": ["string", "integer"]},
+            "port": {"type": ["string", "integer"]},
+            "request_timeout": {"type": ["string", "integer"]},
+            "logon_timeout": {"type": ["string", "integer"]},
+            "query_timeout_in_seconds": {"type": ["string", "integer"]},
+            "login_timeout_in_seconds": {"type": ["string", "integer"]},
+            "tmode": {"type": "string"},
+            "sslmode": {"type": "string"},
+            "logmech": {"type": "string"},
+        },
+    },
+    "ssl_options": SSL_OPTIONS_FIELD,
+}
+
 TERADATA_DEFAULT_CTP = CtpConfig(
     name="teradata-default",
+    raw_credentials_schema=TERADATA_CREDENTIALS_SCHEMA,
     steps=[
         # SSL: write CA cert to a temp file and switch from dbs_port to https_port.
         #

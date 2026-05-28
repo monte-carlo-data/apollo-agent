@@ -4,6 +4,23 @@ from apollo.integrations.ctp.models import CtpConfig, MapperConfig, TransformSte
 from apollo.integrations.ctp.registry import CtpRegistry
 
 
+# Common Snowflake identity + session fields shared by every auth mode.
+# Spread into each ``oneof_schema`` variant below so each variant is a
+# complete, independently-valid schema (a requirement for ``oneof_schema``).
+_SNOWFLAKE_COMMON_CONNECT_ARGS = {
+    "user": {"type": "string", "required": True, "empty": False},
+    "account": {"type": "string", "required": True, "empty": False},
+    "warehouse": {"type": "string"},
+    "database": {"type": "string"},
+    "schema": {"type": "string"},
+    "role": {"type": "string"},
+    "login_timeout": {"type": "integer"},
+    "application": {"type": "string"},
+    "session_parameters": {"type": "dict"},
+    "authenticator": {"type": "string"},
+}
+
+
 class SnowflakeClientArgs(TypedDict):
     # Identity — required by the connector for all auth modes
     user: Required[str]
@@ -28,8 +45,54 @@ class SnowflakeClientArgs(TypedDict):
     ]  # e.g. "oauth", "snowflake_jwt", or "snowflake" (default)
 
 
+# Each variant under ``oneof_schema`` is a complete, independently-valid
+# shape for the connect_args dict. Cerberus picks the matching variant; if
+# zero match (no auth field present) or more than one matches (ambiguous,
+# e.g. both password AND private_key_pem set), validation fails with a
+# diagnostic listing every candidate variant.
+SNOWFLAKE_CREDENTIALS_SCHEMA = {
+    "connect_args": {
+        "type": "dict",
+        "required": True,
+        "oneof_schema": [
+            # Password auth.
+            {
+                **_SNOWFLAKE_COMMON_CONNECT_ARGS,
+                "password": {"type": "string", "required": True, "empty": False},
+            },
+            # Key-pair auth — PEM form (flat-credentials path; CTP decodes to DER).
+            {
+                **_SNOWFLAKE_COMMON_CONNECT_ARGS,
+                "private_key_pem": {"type": "string", "required": True, "empty": False},
+                "private_key_passphrase": {"type": "string"},
+            },
+            # Key-pair auth — PKCS#8-base64 form (DC pre-shape path, what the
+            # public docs document today).
+            {
+                **_SNOWFLAKE_COMMON_CONNECT_ARGS,
+                "private_key": {"type": "string", "required": True, "empty": False},
+            },
+            # OAuth — customer-supplied OAuth grant config.
+            {
+                **_SNOWFLAKE_COMMON_CONNECT_ARGS,
+                "oauth": {
+                    "type": "dict",
+                    "required": True,
+                    "allow_unknown": True,
+                },
+            },
+            # Pre-resolved bearer token (rare; pair with authenticator="oauth").
+            {
+                **_SNOWFLAKE_COMMON_CONNECT_ARGS,
+                "token": {"type": "string", "required": True, "empty": False},
+            },
+        ],
+    },
+}
+
 SNOWFLAKE_DEFAULT_CTP = CtpConfig(
     name="snowflake-default",
+    raw_credentials_schema=SNOWFLAKE_CREDENTIALS_SCHEMA,
     steps=[
         # Key-pair auth: load PEM string → unencrypted DER bytes for the connector.
         # Activate when the user provides private_key_pem; skip for password / OAuth.
