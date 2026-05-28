@@ -522,8 +522,7 @@ def _test_health() -> Tuple[Dict, int]:
     request_dict: Dict = request.json if request.method == "POST" else request.args  # type: ignore
     trace_id = request_dict.get("trace_id")
     full = str(request_dict.get("full", "false")).lower() == "true"
-    health_dict = agent.health_information(trace_id, full).to_dict()
-    return health_dict, 200
+    return agent.health_information(trace_id, full).to_dict(), 200
 
 
 @app.route("/api/v1/test/network/open", methods=["GET"])
