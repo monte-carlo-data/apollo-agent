@@ -48,7 +48,19 @@ ENV PYTHONUNBUFFERED=True
 
 ENV VENV_DIR=.venv
 
-COPY requirements.txt ./
+# Create the non-root user up front and own the app dir, so every file created
+# below (venv, pip-installed packages, copied source) is owned by mcdagent
+# from the start. This avoids a final `chown -R` that would otherwise duplicate
+# the entire venv into a new layer just to flip ownership metadata.
+# Not added in system-base because hermes-agent extends that stage and creates
+# its own mcdagent user; duplicating it here would conflict.
+RUN groupadd --gid 1000 mcdagent \
+    && useradd --uid 1000 --gid mcdagent --no-create-home --home-dir $APP_HOME --shell /usr/sbin/nologin mcdagent \
+    && chown mcdagent:mcdagent $APP_HOME
+
+USER mcdagent
+
+COPY --chown=mcdagent:mcdagent requirements.txt ./
 
 RUN python -m venv $VENV_DIR
 RUN . $VENV_DIR/bin/activate && pip install --no-cache-dir -r requirements.txt
@@ -56,7 +68,7 @@ RUN . $VENV_DIR/bin/activate && pip install --no-cache-dir -r requirements.txt
 RUN . $VENV_DIR/bin/activate && pip install -U pip setuptools
 
 # copy sources in the last step so we don't install python libraries due to a change in source code
-COPY apollo/ ./apollo
+COPY --chown=mcdagent:mcdagent apollo/ ./apollo
 
 ARG code_version="local"
 ARG build_number="0"
@@ -64,16 +76,16 @@ RUN echo $code_version,$build_number > ./apollo/agent/version
 
 FROM base AS tests
 
-COPY requirements-dev.txt ./
-COPY requirements-cloudrun.txt ./
-COPY requirements-azure.txt ./
+COPY --chown=mcdagent:mcdagent requirements-dev.txt ./
+COPY --chown=mcdagent:mcdagent requirements-cloudrun.txt ./
+COPY --chown=mcdagent:mcdagent requirements-azure.txt ./
 RUN . $VENV_DIR/bin/activate \
     && pip install --no-cache-dir \
     -r requirements-dev.txt \
     -r requirements-cloudrun.txt \
     -r requirements-azure.txt
 
-COPY tests ./tests
+COPY --chown=mcdagent:mcdagent tests ./tests
 ARG CACHEBUST=1
 RUN . $VENV_DIR/bin/activate && \
     PYTHONPATH=. pytest tests
@@ -90,7 +102,7 @@ CMD . $VENV_DIR/bin/activate \
 
 FROM base AS cloudrun
 
-COPY requirements-cloudrun.txt ./
+COPY --chown=mcdagent:mcdagent requirements-cloudrun.txt ./
 RUN . $VENV_DIR/bin/activate && pip install --no-cache-dir -r requirements-cloudrun.txt
 
 CMD . $VENV_DIR/bin/activate && \
@@ -112,12 +124,20 @@ RUN pip install --no-cache-dir --target "${LAMBDA_TASK_ROOT}" \
 
 FROM public.ecr.aws/lambda/python:3.12 AS lambda
 
+# Create non-root user up front so the cross-stage COPY below can use --chown
+# and so the final container runs as mcdagent. The Amazon Linux 2023 minimal
+# rootfs that backs the Lambda base image doesn't ship shadow-utils
+# (no `useradd`/`groupadd`); editing /etc/passwd and /etc/group directly
+# avoids installing an extra package for one-time user registration.
+RUN echo "mcdagent:x:1000:1000:mcdagent:${LAMBDA_TASK_ROOT}:/sbin/nologin" >> /etc/passwd \
+    && echo "mcdagent:x:1000:" >> /etc/group
+
 # VULN-369: Base ECR image includes urllib3-1.26.18 which is vulnerable (CVE-2024-37891).
 # Note that this is the system install, not our app.
 # Added setuptools as distutils is required by the git module we use for Looker
 RUN pip install --no-cache-dir -U urllib3 setuptools
 
-COPY --from=lambda-builder "${LAMBDA_TASK_ROOT}" "${LAMBDA_TASK_ROOT}"
+COPY --from=lambda-builder --chown=mcdagent:mcdagent "${LAMBDA_TASK_ROOT}" "${LAMBDA_TASK_ROOT}"
 
 # install unixodbc and 'ODBC Driver 17 for SQL Server', needed for Azure Dedicated SQL Pools
 # install git needed for looker views collection
@@ -132,11 +152,13 @@ RUN rm -rf /var/lib/rpm/rpmdb.sqlite*
 
 RUN dnf clean all && rm -rf /var/cache/yum
 
-COPY apollo "${LAMBDA_TASK_ROOT}/apollo"
-COPY resources/lambda/openssl ${LAMBDA_TASK_ROOT}
+COPY --chown=mcdagent:mcdagent apollo "${LAMBDA_TASK_ROOT}/apollo"
+COPY --chown=mcdagent:mcdagent resources/lambda/openssl ${LAMBDA_TASK_ROOT}
 ARG code_version="local"
 ARG build_number="0"
 RUN echo $code_version,$build_number > ./apollo/agent/version
+
+USER mcdagent
 
 CMD [ "apollo.interfaces.lambda_function.handler.lambda_handler" ]
 
