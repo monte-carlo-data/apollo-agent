@@ -1,5 +1,7 @@
+import concurrent.futures
 import ipaddress
 import socket
+import threading
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
@@ -230,6 +232,102 @@ class TestSafeCreateConnection(TestCase):
         self.assertEqual(first_args[0], ("93.184.216.34", 443))
         self.assertEqual(second_args[0], ("93.184.216.35", 443))
 
+    # --- T-F10: Cross-thread isolation ---
+
+    def test_policy_is_per_thread(self):
+        """T-F10: A policy active on the main thread must not be visible on a
+        worker thread. threading.local ensures each thread starts with no
+        policy."""
+        worker_observations = []
+        worker_error: list = []
+
+        def worker():
+            try:
+                active = getattr(_policy, "active", False)
+                worker_observations.append(active)
+            except Exception as exc:  # pragma: no cover
+                worker_error.append(exc)
+
+        url = "https://93.184.216.34/"
+        with safety_policy(url, strict_ip_policy=True):
+            self.assertTrue(_policy.active)
+            self.assertTrue(_policy.strict_ip_policy)
+            t = threading.Thread(target=worker)
+            t.start()
+            t.join()
+
+        # Main thread: policy deactivated after context exits.
+        self.assertFalse(_policy.active)
+        # Worker thread: never saw the main thread's policy.
+        self.assertEqual([], worker_error)
+        self.assertEqual([False], worker_observations)
+
+    def test_active_policy_on_one_thread_does_not_block_another(self):
+        """T-F10 (additional): When the main thread has strict_ip_policy active,
+        a worker thread that calls _safe_create_connection directly sees no
+        active policy (passthrough), so RFC1918 addresses are allowed on the
+        worker even though they'd be blocked on the main thread."""
+        sentinel_sock = MagicMock(name="socket")
+        worker_results: list = []
+        worker_errors: list = []
+
+        def worker():
+            try:
+                # RFC1918 — would be blocked under strict_ip_policy on main
+                # thread but must be a passthrough on the worker (no policy).
+                with patch.object(
+                    url_safety,
+                    "_original_create_connection",
+                    return_value=sentinel_sock,
+                ) as called:
+                    result = _safe_create_connection(("10.0.0.5", 443))
+                worker_results.append((result, called.call_count))
+            except Exception as exc:  # pragma: no cover
+                worker_errors.append(exc)
+
+        url = "https://93.184.216.34/"
+        with safety_policy(url, strict_ip_policy=True):
+            t = threading.Thread(target=worker)
+            t.start()
+            t.join()
+
+        self.assertEqual([], worker_errors, f"worker raised: {worker_errors}")
+        self.assertEqual(1, len(worker_results))
+        result, call_count = worker_results[0]
+        self.assertIs(sentinel_sock, result)
+        self.assertEqual(1, call_count)
+
+    # --- T-F6: ThreadPoolExecutor does not propagate policy ---
+
+    def test_threadpool_executor_does_not_propagate_policy(self):
+        """T-F6 / T-F10 (docs contract): A policy active on the submitting
+        thread does NOT propagate into a ThreadPoolExecutor worker. Callers
+        that fan out HTTP work to a thread pool MUST re-enter safety_policy on
+        the worker thread — the threading.local semantics make this explicit.
+
+        This test locks the contract by asserting that an RFC1918 address
+        (blocked under strict_ip_policy) does NOT raise HttpClientError when
+        called from a pool worker — confirming the policy was not inherited."""
+        sentinel_sock = MagicMock(name="socket")
+
+        def worker_task():
+            # Under the main thread's strict policy this would raise. On the
+            # worker thread there is no policy — so it must be a passthrough.
+            with patch.object(
+                url_safety,
+                "_original_create_connection",
+                return_value=sentinel_sock,
+            ):
+                return _safe_create_connection(("10.0.0.5", 443))
+
+        url = "https://93.184.216.34/"
+        with safety_policy(url, strict_ip_policy=True):
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                future = pool.submit(worker_task)
+                result = future.result()  # raises if worker raised
+
+        self.assertIs(sentinel_sock, result)
+
 
 class TestExtraBlockedCidrs(TestCase):
     """``MCD_HTTP_BLOCKED_CIDRS`` env var feeds the ``_EXTRA_NETWORKS``
@@ -344,6 +442,161 @@ class TestSafetyPolicyContext(TestCase):
             self.assertTrue(_policy.active)
             self.assertTrue(_policy.strict_ip_policy)
         self.assertFalse(_policy.active)
+
+    # --- T-F1: Nested safety_policy save/restore ---
+
+    def test_nested_safety_policy_restores_strict_flag(self):
+        """T-F1: After an inner safety_policy (default tier) exits inside an
+        outer safety_policy (strict tier), the outer's strict_ip_policy flag
+        must be restored on the current thread."""
+        url = "https://93.184.216.34/"
+        with safety_policy(url, strict_ip_policy=True):
+            self.assertTrue(_policy.strict_ip_policy)
+            with safety_policy(url):  # inner: default tier (strict=False)
+                self.assertFalse(_policy.strict_ip_policy)
+            # Inner has exited — outer's strict flag must be back.
+            self.assertTrue(
+                _policy.strict_ip_policy,
+                "outer strict_ip_policy was not restored after inner context exited",
+            )
+
+    def test_nested_safety_policy_restores_active_flag(self):
+        """T-F1: After an inner safety_policy exits inside an outer
+        safety_policy, the outer's active flag must still be True."""
+        url = "https://93.184.216.34/"
+        with safety_policy(url):
+            self.assertTrue(_policy.active)
+            with safety_policy(url):
+                self.assertTrue(_policy.active)
+            # Inner exited — outer is still active.
+            self.assertTrue(
+                _policy.active,
+                "outer active flag was cleared when inner context exited",
+            )
+
+    def test_outer_safety_policy_stays_active_after_inner_exits(self):
+        """T-F1 (regression): Both active and strict_ip_policy are correctly
+        restored when a default-tier inner context exits inside a strict-tier
+        outer context."""
+        url = "https://93.184.216.34/"
+        with safety_policy(url, strict_ip_policy=True):
+            with safety_policy(url):  # inner: default tier
+                pass
+            # After inner exits, outer's full state must be intact.
+            self.assertTrue(
+                _policy.active,
+                "_policy.active was False after inner context exited",
+            )
+            self.assertTrue(
+                _policy.strict_ip_policy,
+                "_policy.strict_ip_policy was False after inner context exited",
+            )
+
+
+class TestRedirectGuard(TestCase):
+    """T-F3: The create_connection hook guards every hop — including redirected
+    connections — because it runs on every TCP connect, not just the first.
+
+    Since requests_mock is not a dependency, these tests exercise the hook
+    directly: call _safe_create_connection for an allowed host (simulating the
+    initial connect) then for a blocked host (simulating the redirect connect).
+    This is a direct proxy for the per-hop guarantee: if the hook runs on every
+    create_connection call, it will block the redirect's TCP connect the same
+    way it blocks the test's second direct call.
+    """
+
+    def tearDown(self):
+        _policy.active = False
+
+    @patch("apollo.integrations.http.url_safety.socket.getaddrinfo")
+    def test_blocked_redirect_target_raises_on_connect(self, mock_gai):
+        """T-F3: Simulates the initial connect succeeding (public IP) then the
+        redirect connect being blocked (metadata IP literal). The hook must
+        raise HttpClientError on the second call without ever delegating to
+        the original create_connection."""
+        url = "https://safe-source.example.com/"
+        with safety_policy(url):
+            # --- hop 1: initial request to a public host (hostname path) ---
+            mock_gai.return_value = [_addrinfo("93.184.216.34")]
+            sentinel = MagicMock(name="socket")
+            with patch.object(
+                url_safety, "_original_create_connection", return_value=sentinel
+            ) as called_first:
+                result = _safe_create_connection(("safe-source.example.com", 443))
+            self.assertIs(sentinel, result)
+            called_first.assert_called_once()
+
+            # --- hop 2: redirect to cloud metadata (IP literal path) ---
+            with patch.object(
+                url_safety, "_original_create_connection"
+            ) as called_second:
+                with self.assertRaises(HttpClientError) as ctx:
+                    _safe_create_connection(("169.254.169.254", 80))
+            self.assertIn("blocked address", str(ctx.exception))
+            called_second.assert_not_called()
+
+    @patch("apollo.integrations.http.url_safety.socket.getaddrinfo")
+    def test_safe_redirect_target_is_allowed(self, mock_gai):
+        """T-F3 (complement): A redirect to a safe public IP must succeed — the
+        guard must not over-block legitimate redirects."""
+        url = "https://safe-source.example.com/"
+        sentinel = MagicMock(name="socket")
+
+        with safety_policy(url):
+            # hop 1
+            mock_gai.return_value = [_addrinfo("93.184.216.34")]
+            with patch.object(
+                url_safety, "_original_create_connection", return_value=sentinel
+            ):
+                _safe_create_connection(("safe-source.example.com", 443))
+
+            # hop 2: redirect to another safe public host
+            mock_gai.return_value = [_addrinfo("93.184.216.35")]
+            with patch.object(
+                url_safety, "_original_create_connection", return_value=sentinel
+            ) as called:
+                result = _safe_create_connection(("safe-redirect.example.com", 443))
+            self.assertIs(sentinel, result)
+            called.assert_called_once()
+
+
+class TestRequireHttpsEnvVar(TestCase):
+    """T-F14: MCD_HTTP_REQUIRE_HTTPS env-var feeds _REQUIRE_HTTPS_BY_DEFAULT.
+    Tests use patch.object on the module attribute rather than reloading the
+    module (which would create new _policy / _safe_create_connection objects
+    and break other tests that hold references to the originals)."""
+
+    def tearDown(self):
+        _policy.active = False
+
+    def test_default_tier_allows_http_when_env_var_false(self):
+        """T-F14: When _REQUIRE_HTTPS_BY_DEFAULT is False (the default), the
+        default policy tier must accept HTTP URLs."""
+        with patch.object(url_safety, "_REQUIRE_HTTPS_BY_DEFAULT", False):
+            # Must not raise — HTTP is allowed in the default tier.
+            with safety_policy("http://93.184.216.34/"):
+                self.assertTrue(_policy.active)
+
+    def test_default_tier_rejects_http_when_env_var_true(self):
+        """T-F14: When _REQUIRE_HTTPS_BY_DEFAULT is True (operator opt-in),
+        the default policy tier must reject HTTP URLs the same way the strict
+        tier does."""
+        with patch.object(url_safety, "_REQUIRE_HTTPS_BY_DEFAULT", True):
+            with self.assertRaises(HttpClientError) as ctx:
+                with safety_policy("http://93.184.216.34/"):
+                    self.fail("body must not run when env-var HTTPS enforcement is on")
+        self.assertIn("scheme", str(ctx.exception))
+
+    def test_strict_tier_rejects_http_regardless_of_env_var(self):
+        """T-F14 (OR semantics): even with _REQUIRE_HTTPS_BY_DEFAULT=False, the
+        strict tier (https_only=True) still rejects HTTP — the env-var default
+        is OR'd into the explicit https_only flag, so both paths lead to
+        rejection."""
+        with patch.object(url_safety, "_REQUIRE_HTTPS_BY_DEFAULT", False):
+            with self.assertRaises(HttpClientError) as ctx:
+                with safety_policy("http://93.184.216.34/", https_only=True):
+                    self.fail("strict tier must reject HTTP regardless of env-var")
+        self.assertIn("scheme", str(ctx.exception))
 
 
 class TestSafeRequest(TestCase):

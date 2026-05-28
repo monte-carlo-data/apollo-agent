@@ -467,6 +467,45 @@ class TestHttpClient(TestCase):
         )
 
 
+class TestHttpClientSsrfGuard(TestCase):
+    """T-F4: Verify the do_request → safe_request → safety_policy chain
+    rejects SSRF-dangerous URLs. IP rejection happens at the urllib3
+    create_connection hook (not the URL pre-flight), so this test must NOT
+    mock requests.request — it lets the call flow through to urllib3 where
+    the hook short-circuits with HttpClientError before any TCP attempt."""
+
+    def test_do_request_rejects_metadata_ip_literal(self):
+        """T-F4: Calling do_request with the AWS IMDS URL must raise
+        HttpClientError. The urllib3 create_connection hook fires before any
+        real TCP connect, so no network access is needed for this test."""
+        client = HttpProxyClient(credentials={})
+        with self.assertRaises(HttpClientError):
+            client.do_request(
+                url="http://169.254.169.254/latest/meta-data/",
+                http_method="GET",
+            )
+
+    @patch("requests.request")
+    def test_do_request_with_rfc1918_url_is_allowed(self, mock_request):
+        """T-F4 (companion): RFC1918 addresses are intentionally allowed by the
+        default policy tier so the agent can reach databases and services in
+        the customer's VPC/VNet. do_request must succeed and delegate to
+        requests.request."""
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status.return_value = None
+        mock_resp.json.return_value = {"ok": True}
+        mock_request.return_value = mock_resp
+
+        client = HttpProxyClient(credentials={})
+        result = client.do_request(
+            url="http://10.0.0.20/api",
+            http_method="GET",
+        )
+
+        mock_request.assert_called_once()
+        self.assertEqual({"ok": True}, result)
+
+
 class TestDownloadBytes(TestCase):
     """Tests for HttpProxyClient.download_bytes — streaming binary fetches with
     optional auth-skip and size cap."""

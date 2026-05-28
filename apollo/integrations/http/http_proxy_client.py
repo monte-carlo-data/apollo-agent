@@ -12,7 +12,7 @@ from apollo.common.agent.models import AgentOperation
 from apollo.common.agent.redact import AgentRedactUtilities
 from apollo.integrations.base_proxy_client import BaseProxyClient
 from apollo.integrations.http.url_safety import (
-    HttpClientError,
+    HttpClientError as HttpClientError,
     safe_request,
     safety_policy,
 )

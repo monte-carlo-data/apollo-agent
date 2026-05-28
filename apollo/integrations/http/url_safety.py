@@ -35,7 +35,14 @@ Operators can extend the default block list via the
 ``MCD_HTTP_BLOCKED_CIDRS`` env var: a comma-separated list of CIDRs
 (e.g. ``"100.64.0.0/10,10.50.0.0/16"``). Invalid entries are logged
 and skipped at import time so a typo never crashes the agent. The
-env-var extension applies on top of both policy tiers.
+env-var extension applies on top of both policy tiers. Read once at
+module-import time — changes require a process restart.
+
+Operators can also enforce HTTPS in the default policy tier by setting
+``MCD_HTTP_REQUIRE_HTTPS=true``. The strict download tier (which passes
+``https_only=True`` explicitly) is unaffected — it already requires
+HTTPS unconditionally. Only the default tier picks up the env-var policy.
+Read once at module-import time — changes require a process restart.
 
 The ``create_connection`` wrapper is **always installed** at import
 time but is a passthrough whenever no policy is active on the current
@@ -86,6 +93,7 @@ class HttpClientError(Exception):
 
 
 _ENV_EXTRA_BLOCKED_CIDRS = "MCD_HTTP_BLOCKED_CIDRS"
+_ENV_REQUIRE_HTTPS = "MCD_HTTP_REQUIRE_HTTPS"
 
 _DEFAULT_BLOCKED_CIDRS: Tuple[str, ...] = (
     "169.254.0.0/16",
@@ -123,10 +131,39 @@ def _load_extra_blocked_networks() -> List[_Network]:
     return _parse_cidrs(tuple(raw.split(",")), source=_ENV_EXTRA_BLOCKED_CIDRS)
 
 
+def _load_bool_env(name: str, *, default: bool) -> bool:
+    raw = os.environ.get(name, "").strip().lower()
+    if raw in ("true", "1", "yes", "on"):
+        return True
+    if raw in ("false", "0", "no", "off", ""):
+        return default if raw == "" else False
+    _logger.warning(
+        "url_safety: ignoring invalid value for %s: '%s' — using default %s",
+        name,
+        raw,
+        default,
+    )
+    return default
+
+
 _DEFAULT_NETWORKS: List[_Network] = _parse_cidrs(
     _DEFAULT_BLOCKED_CIDRS, source="defaults"
 )
 _EXTRA_NETWORKS: List[_Network] = _load_extra_blocked_networks()
+_REQUIRE_HTTPS_BY_DEFAULT: bool = _load_bool_env(_ENV_REQUIRE_HTTPS, default=False)
+
+
+def _log_startup_summary() -> None:
+    _logger.info(
+        "url_safety: SSRF guard initialized — %d default CIDR(s), %d extra CIDR(s) from %s, https_only=%s",
+        len(_DEFAULT_NETWORKS),
+        len(_EXTRA_NETWORKS),
+        _ENV_EXTRA_BLOCKED_CIDRS,
+        _REQUIRE_HTTPS_BY_DEFAULT,
+    )
+
+
+_log_startup_summary()
 
 
 def _ip_is_rejected(ip: _Address, *, strict_ip_policy: bool) -> bool:
@@ -159,7 +196,8 @@ def _assert_safe_url_scheme_and_host(url: str, *, https_only: bool) -> None:
     block) but produces a clearer error message at the URL layer.
     """
     parts = urlsplit(url)
-    allowed_schemes = ("https",) if https_only else ("http", "https")
+    effective_https_only = https_only or _REQUIRE_HTTPS_BY_DEFAULT
+    allowed_schemes = ("https",) if effective_https_only else ("http", "https")
     if parts.scheme not in allowed_schemes:
         raise HttpClientError(f"request refuses unsupported scheme '{parts.scheme}'")
     host = (parts.hostname or "").lower()
@@ -187,6 +225,13 @@ def _assert_safe_url_scheme_and_host(url: str, *, https_only: bool) -> None:
 # ``requests.Session`` subclassing.
 
 _policy = threading.local()
+# We hook urllib3.util.connection.create_connection because it is the
+# function every HTTP(S) connection ultimately calls for the TCP socket
+# create+connect step. This is internal urllib3 API; the hook has been
+# verified against urllib3 1.26.x and 2.x. If a future urllib3 version
+# reorganizes connection creation away from this function, the hook
+# will silently become a no-op — `test_hook_is_installed` is the
+# canary for that.
 _original_create_connection = _urllib3_connection.create_connection
 
 
@@ -206,6 +251,11 @@ def _safe_create_connection(address: Tuple[str, int], *args: Any, **kwargs: Any)
     if literal is not None:
         if _ip_is_rejected(literal, strict_ip_policy=strict):
             raise HttpClientError(f"request refuses blocked address: {literal}")
+        # Pass the original `address` tuple through unchanged: when the IP is
+        # not rejected, urllib3 sees exactly what it would have without the
+        # wrapper. Reconstructing here (e.g. `(str(literal), port)`) would
+        # work — but minimizing interference avoids subtle interpretation
+        # drift between the validated and pass-through paths.
         return _original_create_connection(address, *args, **kwargs)
 
     # Hostname: resolve, then validate-and-connect in a single pass.
@@ -241,7 +291,13 @@ def _safe_create_connection(address: Tuple[str, int], *args: Any, **kwargs: Any)
     raise OSError("getaddrinfo returned no usable address")
 
 
-_urllib3_connection.create_connection = _safe_create_connection
+_safe_create_connection._mc_ssrf_guard = True  # marker for idempotency check
+
+if not getattr(_urllib3_connection.create_connection, "_mc_ssrf_guard", False):
+    _urllib3_connection.create_connection = _safe_create_connection
+# else: module already imported (possibly via a different import path);
+# don't re-wrap. _original_create_connection retains the value from
+# the first import.
 
 
 @contextmanager
@@ -265,6 +321,23 @@ def safety_policy(
     callers do not need to subclass ``requests.Session`` to handle
     cross-host redirects safely.
 
+    ``https_only`` is enforced ONLY against the entry URL via the
+    URL-layer pre-flight; it is NOT re-checked on redirected hops (the
+    TCP-layer hook does not see the URL scheme). Callers that need to
+    prevent redirect-based scheme downgrade MUST also pass
+    ``allow_redirects=False`` to the underlying ``requests`` call. The
+    strict download path in ``HttpProxyClient._open_download_response``
+    already does this.
+
+    The policy is per-thread (``threading.local``). It applies only to
+    HTTP calls issued on the same thread that entered ``safety_policy``.
+    If the calling code dispatches the HTTP request to a worker thread
+    (``concurrent.futures.ThreadPoolExecutor``) or via
+    ``asyncio.get_event_loop().run_in_executor(...)``, the worker thread
+    will see no active policy and the guard will be a passthrough.
+    Callers that fan out HTTP work to other threads MUST re-enter
+    ``safety_policy`` on the worker thread.
+
     Args:
         url: optional URL whose scheme + host should be validated
             upfront against the active tier.
@@ -280,13 +353,15 @@ def safety_policy(
     """
     if url is not None:
         _assert_safe_url_scheme_and_host(url, https_only=https_only)
+    prev_active = getattr(_policy, "active", False)
+    prev_strict = getattr(_policy, "strict_ip_policy", False)
     _policy.active = True
     _policy.strict_ip_policy = strict_ip_policy
-    _policy.https_only = https_only
     try:
         yield
     finally:
-        _policy.active = False
+        _policy.active = prev_active
+        _policy.strict_ip_policy = prev_strict
 
 
 def safe_request(method: str, url: str, **kwargs: Any) -> requests.Response:
