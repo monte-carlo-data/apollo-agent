@@ -9,11 +9,11 @@ from typing import (
 )
 
 import jwt
-import requests
 from tableauserverclient.models.tableau_auth import Credentials
 from tableauserverclient.server.server import Server
 
 from apollo.integrations.base_proxy_client import BaseProxyClient
+from apollo.integrations.http.url_safety import safe_request
 
 logger = logging.getLogger(__name__)
 
@@ -146,7 +146,7 @@ class TableauProxyClient(BaseProxyClient):
             url = f"{self._server.baseurl}{path}"
         else:
             url = f"{self._server.baseurl}/sites/{self._server.site_id}/{path}"
-        response = requests.request(
+        response = safe_request(
             method=request_method,
             url=url,
             data=data,

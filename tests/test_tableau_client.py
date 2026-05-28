@@ -139,8 +139,8 @@ class TableauTests(TestCase):
         self.assertEqual((expected_result, 200), response)
         self._mock_client.auth.sign_in.assert_called_once_with(self._mock_creds)
         mock_request.assert_called_once_with(
-            method="GET",
-            url="https://example.com/sites/sample_site_id/views?includeUsageStatistics=true",
+            "GET",
+            "https://example.com/sites/sample_site_id/views?includeUsageStatistics=true",
             data=None,
             headers={
                 "X-Tableau-Auth": "fizz|buzz|sample_site_id",
@@ -199,8 +199,8 @@ class TableauTests(TestCase):
         self.assertEqual((expected_result, 200), response)
         self._mock_client.auth.sign_in.assert_called_once_with(self._mock_creds)
         mock_request.assert_called_once_with(
-            method="GET",
-            url="https://example.com/sites/sample_site_id/views?includeUsageStatistics=true",
+            "GET",
+            "https://example.com/sites/sample_site_id/views?includeUsageStatistics=true",
             data=None,
             headers={
                 "X-Tableau-Auth": "fizz|buzz|sample_site_id",
