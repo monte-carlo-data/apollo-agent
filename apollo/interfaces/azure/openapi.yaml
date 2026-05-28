@@ -28,6 +28,8 @@ tags:
     description: Infrastructure detail retrieval.
   - name: Azure Logs
     description: Query Azure Application Insights log events.
+  - name: Agent Operations
+    description: Synchronous operation execution handled by the Flask WSGI app.
   - name: Azure Async Operations
     description: Asynchronous operation execution via Azure Durable Functions.
 
@@ -428,6 +430,57 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AzureLogsResponse"
+
+  # ---------------------------------------------------------------------------
+  # Synchronous agent operations
+  # ---------------------------------------------------------------------------
+
+  /api/v1/agent/execute/storage/{operation_name}:
+    post:
+      summary: Execute a synchronous storage agent operation
+      description: >
+        Executes a storage agent operation synchronously and returns the result in
+        the same response.
+
+        On Azure, agent operations are normally run asynchronously via Azure Durable
+        Functions (see `POST /async/api/v1/agent/execute/{connection_type}/{operation_name}`)
+        because they can exceed the 4 minute Azure Functions execution limit. Storage
+        operations are the exception: they are short-lived and are always invoked
+        synchronously, so `storage` is the only connection type served by this route.
+      tags: [Agent Operations]
+      parameters:
+        - name: operation_name
+          in: path
+          required: true
+          description: >
+            Name of the operation, used for logging only. The actual commands are
+            defined in the `operation` body field.
+          schema:
+            type: string
+            example: is_bucket_private
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExecuteOperationRequest"
+            example:
+              credentials:
+                connect_args:
+                  account_name: account_name
+                  account_key: account_key
+              operation:
+                trace_id: "324986b4-b185-4187-b4af-b0c2cd60f7a0"
+                commands:
+                  - method: is_bucket_private
+                    args: []
+      responses:
+        "200":
+          description: The result of the storage operation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentOperationResponse"
 
   # ---------------------------------------------------------------------------
   # Azure Durable Functions – async operations
