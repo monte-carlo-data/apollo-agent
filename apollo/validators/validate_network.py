@@ -2,10 +2,13 @@ import socket
 from telnetlib import Telnet
 from typing import Optional, Callable, Dict, Tuple, Union
 
-import requests
-
 from apollo.agent.utils import AgentUtils
 from apollo.common.interfaces.agent_response import AgentResponse
+from apollo.integrations.http.url_safety import (
+    HttpClientError,
+    assert_safe_destination,
+    safe_request,
+)
 
 _DEFAULT_TIMEOUT_SECS = 5
 _DEFAULT_HTTP_TIMEOUT_SECS = 10
@@ -156,6 +159,14 @@ class ValidateNetwork:
             host, port_str, timeout_str
         )
 
+        # SSRF guard: refuse to probe blocked destinations (cloud metadata
+        # services, loopback) — the troubleshooting endpoint should not
+        # be a reconnaissance vector even for Monte Carlo operators.
+        try:
+            assert_safe_destination(host, port)  # type: ignore[arg-type]
+        except HttpClientError as err:
+            raise ConnectionFailedError(str(err)) from err
+
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(timeout_in_seconds)
 
@@ -179,6 +190,12 @@ class ValidateNetwork:
             host, port_str, timeout_str
         )
         friendly_name = f"{host}:{port}"
+
+        # SSRF guard: see _internal_validate_tcp_open_connection for rationale.
+        try:
+            assert_safe_destination(host, port)  # type: ignore[arg-type]
+        except HttpClientError as err:
+            raise ConnectionFailedError(str(err)) from err
 
         try:
             with Telnet(host, port, timeout_in_seconds) as session:
@@ -240,8 +257,12 @@ class ValidateNetwork:
             int(timeout_str) if timeout_str else _DEFAULT_HTTP_TIMEOUT_SECS
         )
 
+        # Route through the SSRF guard so the troubleshooting endpoint can't
+        # be used to reach cloud metadata services or other blocked targets.
+        # safe_request applies the default policy tier (RFC1918 allowed for
+        # legitimate VPC troubleshooting; metadata/loopback blocked).
         try:
-            response = requests.get(url, timeout=timeout_in_seconds)
+            response = safe_request("GET", url, timeout=timeout_in_seconds)
             message = f"URL {url} responded with status: {response.status_code} ({response.reason})"
             if include_response:
                 content_str = response.content.decode("utf-8")

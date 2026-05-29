@@ -11,6 +11,7 @@ from apollo.integrations.http.url_safety import (
     HttpClientError,
     _policy,
     _safe_create_connection,
+    assert_safe_destination,
     safe_request,
     safety_policy,
 )
@@ -702,3 +703,62 @@ class TestLoadBoolEnv(TestCase):
                 result = url_safety._load_bool_env("MCD_TEST", default=False)
             self.assertFalse(result)
             self.assertTrue(any("invalid value" in msg for msg in cm.output))
+
+
+class TestAssertSafeDestination(TestCase):
+    """`assert_safe_destination(host, port)` is a no-connection variant of
+    the SSRF guard for callers that own their own socket / telnet layer
+    (the troubleshooting validators). It must reject empty / localhost,
+    blocked IP literals, and hostnames that resolve to a blocked IP."""
+
+    def test_rejects_empty_host(self):
+        with self.assertRaises(HttpClientError):
+            assert_safe_destination("", 80)
+
+    def test_rejects_localhost(self):
+        with self.assertRaises(HttpClientError) as ctx:
+            assert_safe_destination("localhost", 80)
+        self.assertIn("localhost", str(ctx.exception))
+
+    def test_rejects_metadata_ip_literal(self):
+        with self.assertRaises(HttpClientError) as ctx:
+            assert_safe_destination("169.254.169.254", 80)
+        self.assertIn("blocked address", str(ctx.exception))
+
+    def test_rejects_loopback_ipv4(self):
+        with self.assertRaises(HttpClientError):
+            assert_safe_destination("127.0.0.1", 80)
+
+    def test_rejects_loopback_ipv6(self):
+        with self.assertRaises(HttpClientError):
+            assert_safe_destination("::1", 80)
+
+    def test_strict_policy_rejects_rfc1918(self):
+        with self.assertRaises(HttpClientError):
+            assert_safe_destination("10.0.0.5", 80, strict_ip_policy=True)
+
+    def test_default_policy_allows_rfc1918(self):
+        # Returns None on success (no exception).
+        self.assertIsNone(assert_safe_destination("10.0.0.5", 80))
+
+    def test_allows_public_ip_literal(self):
+        self.assertIsNone(assert_safe_destination("93.184.216.34", 80))
+
+    @patch("apollo.integrations.http.url_safety.socket.getaddrinfo")
+    def test_rejects_hostname_resolving_to_blocked_ip(self, mock_gai):
+        mock_gai.return_value = [_addrinfo("169.254.169.254", port=80)]
+        with self.assertRaises(HttpClientError) as ctx:
+            assert_safe_destination("attacker.example.com", 80)
+        self.assertIn("blocked address resolved from hostname", str(ctx.exception))
+
+    @patch("apollo.integrations.http.url_safety.socket.getaddrinfo")
+    def test_allows_hostname_resolving_to_public_ip(self, mock_gai):
+        mock_gai.return_value = [_addrinfo("93.184.216.34", port=80)]
+        self.assertIsNone(assert_safe_destination("example.com", 80))
+
+    @patch("apollo.integrations.http.url_safety.socket.getaddrinfo")
+    def test_wraps_dns_failure(self, mock_gai):
+        mock_gai.side_effect = socket.gaierror("Name or service not known")
+        with self.assertRaises(HttpClientError) as ctx:
+            assert_safe_destination("nonexistent.invalid", 80)
+        self.assertIn("DNS resolution failed", str(ctx.exception))

@@ -194,6 +194,69 @@ def _ip_is_rejected(ip: _Address, *, strict_ip_policy: bool) -> bool:
     return False
 
 
+def assert_safe_destination(
+    host: str,
+    port: int,
+    *,
+    strict_ip_policy: bool = False,
+) -> None:
+    """Validate that ``(host, port)`` is a safe destination under the
+    active block list, without opening any connection.
+
+    Used by callers that issue raw socket / telnet probes (i.e. anything
+    not going through ``requests`` / ``urllib3``). The URL-layer
+    pre-flight does not apply (no scheme) — this helper only checks
+    host validity + IP block list. Hostnames are resolved via
+    ``getaddrinfo`` and the whole hostname is rejected if any A/AAAA
+    record is blocked (no fallback connect to defer to here, unlike
+    the ``create_connection`` wrapper).
+
+    Args:
+        host: destination hostname or IP literal. Empty / ``"localhost"``
+            are rejected with a clearer message than the IP-block would
+            produce.
+        port: destination port (passed to ``getaddrinfo`` for hostname
+            resolution; not otherwise inspected).
+        strict_ip_policy: when True, reject every non-public IP (RFC1918,
+            link-local, loopback, multicast, reserved, unspecified).
+            Default False — only the explicit block list applies.
+
+    Raises:
+        HttpClientError: empty/localhost host, blocked IP literal, or
+            blocked IP in the resolved record set.
+    """
+    if not host:
+        raise HttpClientError("destination refuses '<empty>' host")
+    host_lower = host.lower()
+    if host_lower == "localhost":
+        raise HttpClientError("destination refuses 'localhost' host")
+
+    try:
+        literal = ipaddress.ip_address(host_lower.strip("[]"))
+    except ValueError:
+        literal = None
+    if literal is not None:
+        if _ip_is_rejected(literal, strict_ip_policy=strict_ip_policy):
+            raise HttpClientError(f"destination refuses blocked address: {literal}")
+        return
+
+    try:
+        infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+    except socket.gaierror as exc:
+        raise HttpClientError(f"DNS resolution failed: {exc}") from None
+
+    for info in infos:
+        ip_str = str(info[4][0])
+        try:
+            ip = ipaddress.ip_address(ip_str)
+        except ValueError:
+            continue
+        if _ip_is_rejected(ip, strict_ip_policy=strict_ip_policy):
+            raise HttpClientError(
+                f"destination refuses blocked address resolved from hostname: {ip}"
+            )
+
+
 def _assert_safe_url_scheme_and_host(url: str, *, https_only: bool) -> None:
     """URL-layer pre-flight: scheme + host sanity.
 
