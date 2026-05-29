@@ -95,6 +95,12 @@ class HttpClientError(Exception):
 _ENV_EXTRA_BLOCKED_CIDRS = "MCD_HTTP_BLOCKED_CIDRS"
 _ENV_REQUIRE_HTTPS = "MCD_HTTP_REQUIRE_HTTPS"
 
+# Sentinel for idempotency guard on the create_connection wrapper. Using a
+# private object() instance prevents any external code from accidentally
+# setting an attribute of the same name with a truthy value — which would
+# cause a silent SSRF regression by skipping the install.
+_MC_SSRF_GUARD_SENTINEL = object()
+
 _DEFAULT_BLOCKED_CIDRS: Tuple[str, ...] = (
     "169.254.0.0/16",
     "fe80::/10",
@@ -133,10 +139,12 @@ def _load_extra_blocked_networks() -> List[_Network]:
 
 def _load_bool_env(name: str, *, default: bool) -> bool:
     raw = os.environ.get(name, "").strip().lower()
+    if not raw:
+        return default
     if raw in ("true", "1", "yes", "on"):
         return True
-    if raw in ("false", "0", "no", "off", ""):
-        return default if raw == "" else False
+    if raw in ("false", "0", "no", "off"):
+        return False
     _logger.warning(
         "url_safety: ignoring invalid value for %s: '%s' — using default %s",
         name,
@@ -291,13 +299,24 @@ def _safe_create_connection(address: Tuple[str, int], *args: Any, **kwargs: Any)
     raise OSError("getaddrinfo returned no usable address")
 
 
-_safe_create_connection._mc_ssrf_guard = True  # marker for idempotency check
+_safe_create_connection._mc_ssrf_guard = (
+    _MC_SSRF_GUARD_SENTINEL  # marker for idempotency check
+)
 
-if not getattr(_urllib3_connection.create_connection, "_mc_ssrf_guard", False):
+if (
+    getattr(_urllib3_connection.create_connection, "_mc_ssrf_guard", None)
+    is not _MC_SSRF_GUARD_SENTINEL
+):
     _urllib3_connection.create_connection = _safe_create_connection
 # else: module already imported (possibly via a different import path);
 # don't re-wrap. _original_create_connection retains the value from
 # the first import.
+#
+# Note: under ``importlib.reload(...)``, the captured
+# ``_original_create_connection`` would point at the already-installed
+# wrapper. The marker check correctly short-circuits installation in that
+# case, but ``reload`` is not a supported recovery path — restart the
+# process.
 
 
 @contextmanager
@@ -351,13 +370,13 @@ def safety_policy(
             check, or any TCP connect made inside the context targets
             a blocked address.
     """
-    if url is not None:
-        _assert_safe_url_scheme_and_host(url, https_only=https_only)
     prev_active = getattr(_policy, "active", False)
     prev_strict = getattr(_policy, "strict_ip_policy", False)
     _policy.active = True
     _policy.strict_ip_policy = strict_ip_policy
     try:
+        if url is not None:
+            _assert_safe_url_scheme_and_host(url, https_only=https_only)
         yield
     finally:
         _policy.active = prev_active

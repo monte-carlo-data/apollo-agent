@@ -1,5 +1,6 @@
 import concurrent.futures
 import ipaddress
+import os
 import socket
 import threading
 from unittest import TestCase
@@ -27,6 +28,7 @@ class TestSafeCreateConnection(TestCase):
     def tearDown(self):
         # Belt-and-suspenders: never leave the policy active across tests.
         _policy.active = False
+        _policy.strict_ip_policy = False
 
     def test_hook_is_installed(self):
         from urllib3.util import connection as urllib3_connection
@@ -271,31 +273,29 @@ class TestSafeCreateConnection(TestCase):
         worker_results: list = []
         worker_errors: list = []
 
-        def worker():
-            try:
-                # RFC1918 — would be blocked under strict_ip_policy on main
-                # thread but must be a passthrough on the worker (no policy).
-                with patch.object(
-                    url_safety,
-                    "_original_create_connection",
-                    return_value=sentinel_sock,
-                ) as called:
+        with patch.object(
+            url_safety,
+            "_original_create_connection",
+            return_value=sentinel_sock,
+        ) as called:
+
+            def worker_task():
+                try:
+                    # RFC1918 — would be blocked under strict_ip_policy on main
+                    # thread but must be a passthrough on the worker (no policy).
                     result = _safe_create_connection(("10.0.0.5", 443))
-                worker_results.append((result, called.call_count))
-            except Exception as exc:  # pragma: no cover
-                worker_errors.append(exc)
+                    worker_results.append(result)
+                except Exception as exc:  # pragma: no cover
+                    worker_errors.append(exc)
 
-        url = "https://93.184.216.34/"
-        with safety_policy(url, strict_ip_policy=True):
-            t = threading.Thread(target=worker)
-            t.start()
-            t.join()
-
-        self.assertEqual([], worker_errors, f"worker raised: {worker_errors}")
-        self.assertEqual(1, len(worker_results))
-        result, call_count = worker_results[0]
-        self.assertIs(sentinel_sock, result)
-        self.assertEqual(1, call_count)
+            with safety_policy("https://93.184.216.34/", strict_ip_policy=True):
+                t = threading.Thread(target=worker_task)
+                t.start()
+                t.join()
+            # Now we can inspect `called` — patch is still active in this with block
+            self.assertEqual([], worker_errors, f"worker raised: {worker_errors}")
+            self.assertEqual([sentinel_sock], worker_results)
+            self.assertEqual(called.call_count, 1)
 
     # --- T-F6: ThreadPoolExecutor does not propagate policy ---
 
@@ -310,21 +310,22 @@ class TestSafeCreateConnection(TestCase):
         called from a pool worker — confirming the policy was not inherited."""
         sentinel_sock = MagicMock(name="socket")
 
-        def worker_task():
-            # Under the main thread's strict policy this would raise. On the
-            # worker thread there is no policy — so it must be a passthrough.
-            with patch.object(
-                url_safety,
-                "_original_create_connection",
-                return_value=sentinel_sock,
-            ):
+        with patch.object(
+            url_safety,
+            "_original_create_connection",
+            return_value=sentinel_sock,
+        ):
+
+            def worker_task():
+                # Under the main thread's strict policy this would raise. On the
+                # worker thread there is no policy — so it must be a passthrough.
                 return _safe_create_connection(("10.0.0.5", 443))
 
-        url = "https://93.184.216.34/"
-        with safety_policy(url, strict_ip_policy=True):
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                future = pool.submit(worker_task)
-                result = future.result()  # raises if worker raised
+            url = "https://93.184.216.34/"
+            with safety_policy(url, strict_ip_policy=True):
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                    future = pool.submit(worker_task)
+                    result = future.result()  # raises if worker raised
 
         self.assertIs(sentinel_sock, result)
 
@@ -492,6 +493,27 @@ class TestSafetyPolicyContext(TestCase):
                 "_policy.strict_ip_policy was False after inner context exited",
             )
 
+    def test_nested_inner_exception_restores_outer_state(self):
+        """The F1 fix's central guarantee: if an inner safety_policy
+        raises mid-body, the outer context's prev_active and
+        prev_strict are still restored on inner exit, and the outer
+        body continues with its own state intact."""
+        with safety_policy("https://93.184.216.34/", strict_ip_policy=False):
+            outer_active_before = _policy.active
+            outer_strict_before = _policy.strict_ip_policy
+            with self.assertRaises(RuntimeError):
+                with safety_policy("https://93.184.216.34/", strict_ip_policy=True):
+                    # inner is now active with strict=True
+                    self.assertTrue(_policy.active)
+                    self.assertTrue(_policy.strict_ip_policy)
+                    raise RuntimeError("boom")
+            # after inner exits via exception, outer state must be intact
+            self.assertEqual(_policy.active, outer_active_before)
+            self.assertEqual(_policy.strict_ip_policy, outer_strict_before)
+        # after outer exits, both back to baseline
+        self.assertFalse(getattr(_policy, "active", False))
+        self.assertFalse(getattr(_policy, "strict_ip_policy", False))
+
 
 class TestRedirectGuard(TestCase):
     """T-F3: The create_connection hook guards every hop — including redirected
@@ -507,6 +529,7 @@ class TestRedirectGuard(TestCase):
 
     def tearDown(self):
         _policy.active = False
+        _policy.strict_ip_policy = False
 
     @patch("apollo.integrations.http.url_safety.socket.getaddrinfo")
     def test_blocked_redirect_target_raises_on_connect(self, mock_gai):
@@ -568,6 +591,7 @@ class TestRequireHttpsEnvVar(TestCase):
 
     def tearDown(self):
         _policy.active = False
+        _policy.strict_ip_policy = False
 
     def test_default_tier_allows_http_when_env_var_false(self):
         """T-F14: When _REQUIRE_HTTPS_BY_DEFAULT is False (the default), the
@@ -630,3 +654,51 @@ class TestSafeRequest(TestCase):
         with self.assertRaises(RuntimeError):
             safe_request("GET", "https://93.184.216.34/")
         self.assertFalse(getattr(_policy, "active", False))
+
+
+class TestLoadBoolEnv(TestCase):
+    """Direct unit tests for the env-var → bool parser used by
+    _REQUIRE_HTTPS_BY_DEFAULT. The integration tests patch
+    _REQUIRE_HTTPS_BY_DEFAULT directly so this parsing logic was
+    previously untested."""
+
+    def test_truthy_aliases_return_true(self):
+        for value in ("true", "1", "yes", "on", "TRUE", "YeS", "  true  "):
+            with patch.dict(os.environ, {"MCD_TEST": value}):
+                self.assertTrue(
+                    url_safety._load_bool_env("MCD_TEST", default=False),
+                    f"expected True for {value!r}",
+                )
+
+    def test_falsy_aliases_return_false(self):
+        for value in ("false", "0", "no", "off", "FALSE", "Off"):
+            with patch.dict(os.environ, {"MCD_TEST": value}):
+                self.assertFalse(
+                    url_safety._load_bool_env("MCD_TEST", default=True),
+                    f"expected False for {value!r}",
+                )
+
+    def test_empty_string_returns_default(self):
+        with patch.dict(os.environ, {"MCD_TEST": ""}):
+            self.assertTrue(url_safety._load_bool_env("MCD_TEST", default=True))
+            self.assertFalse(url_safety._load_bool_env("MCD_TEST", default=False))
+
+    def test_whitespace_only_returns_default(self):
+        with patch.dict(os.environ, {"MCD_TEST": "   "}):
+            self.assertTrue(url_safety._load_bool_env("MCD_TEST", default=True))
+            self.assertFalse(url_safety._load_bool_env("MCD_TEST", default=False))
+
+    def test_missing_env_var_returns_default(self):
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("MCD_TEST", None)
+            self.assertTrue(url_safety._load_bool_env("MCD_TEST", default=True))
+            self.assertFalse(url_safety._load_bool_env("MCD_TEST", default=False))
+
+    def test_invalid_value_logs_warning_and_returns_default(self):
+        with patch.dict(os.environ, {"MCD_TEST": "maybe"}):
+            with self.assertLogs(
+                "apollo.integrations.http.url_safety", level="WARNING"
+            ) as cm:
+                result = url_safety._load_bool_env("MCD_TEST", default=False)
+            self.assertFalse(result)
+            self.assertTrue(any("invalid value" in msg for msg in cm.output))

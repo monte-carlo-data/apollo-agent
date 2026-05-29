@@ -486,7 +486,7 @@ class TestHttpClientSsrfGuard(TestCase):
             )
 
     @patch("requests.request")
-    def test_do_request_with_rfc1918_url_is_allowed(self, mock_request):
+    def test_do_request_rfc1918_passes_default_tier(self, mock_request):
         """T-F4 (companion): RFC1918 addresses are intentionally allowed by the
         default policy tier so the agent can reach databases and services in
         the customer's VPC/VNet. do_request must succeed and delegate to

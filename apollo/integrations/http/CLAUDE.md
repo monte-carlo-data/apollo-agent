@@ -31,7 +31,7 @@ the connection.
 
 | Tier | Activated by | What it allows |
 |---|---|---|
-| **Default** | `safe_request(method, url, **kwargs)` | RFC 1918 allowed; metadata service ranges and loopback blocked |
+| **Default** | `safe_request(method, url, **kwargs)` | RFC 1918 allowed; metadata service ranges and loopback blocked. HTTP allowed by default; set `MCD_HTTP_REQUIRE_HTTPS=true` to require HTTPS. |
 | **Strict** | `safety_policy(url, strict_ip_policy=True, https_only=True)` | Public IPs only + HTTPS required; used for pre-signed URL downloads |
 
 ### Redirect handling
@@ -70,6 +70,8 @@ import requests
 with safety_policy(url, strict_ip_policy=True, https_only=True):
     response = requests.get(url, allow_redirects=False)
 ```
+
+**Subclasses of `HttpProxyClient`** get the guard automatically — `do_request` already routes through `safe_request`. New request paths that bypass `do_request` (or new clients that don't subclass `HttpProxyClient`) must wrap with `safe_request` explicitly.
 
 **Do not use `requests.request` directly** — the URL-layer scheme and host
 pre-flight checks in `safety_policy` will be skipped (the IP-level hook still
