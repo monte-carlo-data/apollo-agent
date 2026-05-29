@@ -162,10 +162,16 @@ USER mcdagent
 
 CMD [ "apollo.interfaces.lambda_function.handler.lambda_handler" ]
 
-FROM mcr.microsoft.com/azure-functions/python:4-python3.12 AS azure
+FROM mcr.microsoft.com/azure-functions/python:4-python3.12 AS azure-base
 
 ENV AzureWebJobsScriptRoot=/home/site/wwwroot \
     AzureFunctionsJobHost__Logging__Console__IsEnabled=true
+
+# Registered here (no USER switch) so COPY --chown below can land files
+# mcdagent-owned without a later `chown -R` layer. azure-nonroot adds USER.
+RUN groupadd --gid 1000 mcdagent \
+    && useradd --uid 1000 --gid mcdagent --no-create-home --home-dir /home/site/wwwroot --shell /usr/sbin/nologin mcdagent \
+    && chown mcdagent:mcdagent /home/site/wwwroot
 
 RUN apt-get update
 RUN apt-get install -y --no-install-recommends git
@@ -201,14 +207,15 @@ COPY requirements-azure.txt /
 RUN pip install --no-cache-dir -r /requirements.txt -r /requirements-azure.txt && rm -rf /opt/python/3/_manifest
 RUN pip install --no-cache-dir -U setuptools==80.10.2  # INC-265 - opentelemetry requires pkg_resources that was removed in setuptools 81
 
-COPY apollo /home/site/wwwroot/apollo
+COPY --chown=mcdagent:mcdagent apollo /home/site/wwwroot/apollo
 
 # the files under apollo/interfaces/azure like function_app.py must be in the root folder of the app
-COPY apollo/interfaces/azure /home/site/wwwroot
+COPY --chown=mcdagent:mcdagent apollo/interfaces/azure /home/site/wwwroot
 
 ARG code_version="local"
 ARG build_number="0"
-RUN echo $code_version,$build_number > /home/site/wwwroot/apollo/agent/version
+RUN echo $code_version,$build_number > /home/site/wwwroot/apollo/agent/version \
+    && chown mcdagent:mcdagent /home/site/wwwroot/apollo/agent/version
 
 # delete MS provided SBOM as it's outdated after the packages we installed
 # docker scout will find vulnerabilities anyway by scanning the image
@@ -216,3 +223,17 @@ RUN rm -rf /usr/local/_manifest
 
 # required for the verify-version-in-docker-image step in circle-ci
 WORKDIR /home/site/wwwroot
+
+# Default target: root, port 80. Back-compat for existing deployments.
+FROM azure-base AS azure
+
+# Hardened variant: mcdagent + port 8080 (non-root can't bind <1024).
+# Customer must set WEBSITES_PORT=8080 in App Service config or ingress
+# breaks — the platform default is 80.
+FROM azure-base AS azure-nonroot
+
+ENV ASPNETCORE_URLS=http://+:8080
+
+USER mcdagent
+
+EXPOSE 8080
