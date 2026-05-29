@@ -14,16 +14,23 @@ class InformaticaProxyClient(BaseProxyClient):
     resolve_informatica_session transform) to contain a pre-resolved session:
 
         connect_args:
-            session_id    (required): icSessionId from the Informatica login response
+            session_id    (required): session token from the Informatica login response
             api_base_url  (required): API base URL from the Informatica login response
 
     All authentication — V2 password, V3 password, or JWT loginOAuth — is handled
     upstream in the CTP pipeline. This client is auth-method agnostic.
 
-    The icSessionId header is always used for API calls regardless of how the session
-    was obtained. This is intentional: the DC currently calls only V2 API endpoints,
-    which require icSessionId (not INFA-SESSION-ID).
+    The Informatica session header is selected per request based on the path:
+
+    - V3 endpoints (``/public/core/v3/...``) read the token from ``INFA-SESSION-ID``.
+    - Any other path falls back to ``icSessionId`` (which is what V2
+      ``/api/v2/...`` endpoints expect).
+
+    Each request carries only the header its endpoint actually reads — no
+    redundant auth header on the wire.
     """
+
+    _V3_PATH_PREFIX = "/public/core/v3/"
 
     def __init__(self, credentials: Optional[Dict], **kwargs: Any):
         if not credentials or _ATTR_CONNECT_ARGS not in credentials:
@@ -46,15 +53,12 @@ class InformaticaProxyClient(BaseProxyClient):
             )
 
         self._api_base_url: str = api_base_url.rstrip("/")
+        self._session_id: str = session_id
 
-        # icSessionId is used for all API calls — this is coupled to V2 API usage,
-        # not the auth method used to obtain the session.
-        http_credentials: Dict[str, Any] = {
-            "token": session_id,
-            "auth_header": "icSessionId",
-            "auth_type": "",  # empty string → send token as-is, no "Bearer " prefix
-        }
-        self._http_client = HttpProxyClient(credentials=http_credentials)
+        # The Informatica session header is path-dependent (V2 vs V3), so we
+        # don't rely on HttpProxyClient's auto-attached auth header. The right
+        # header is injected per request in ``do_http_request`` instead.
+        self._http_client = HttpProxyClient(credentials=None)
 
     @property
     def wrapped_client(self):
@@ -82,6 +86,10 @@ class InformaticaProxyClient(BaseProxyClient):
         """
         Execute an HTTP request against the Informatica API base URL.
 
+        The session header is selected by path prefix: ``/public/core/v3/...``
+        gets ``INFA-SESSION-ID``; everything else gets ``icSessionId``.
+        Caller-supplied ``additional_headers`` override on collision.
+
         :param path: Path to append to the API base URL (e.g., "/v2/jobs"). Must start with "/".
         :param http_method: HTTP method (GET, POST, PUT, DELETE, etc.)
         :param payload: Optional JSON payload for the request body
@@ -97,13 +105,24 @@ class InformaticaProxyClient(BaseProxyClient):
             path = f"/{path}"
         url = f"{self._api_base_url}{path}"
 
+        # Pick the session header for the API surface this path targets.
+        # Caller-supplied additional_headers win on collision so a deliberate
+        # override (e.g., for an unusual endpoint) isn't silently masked.
+        if path.startswith(self._V3_PATH_PREFIX):
+            session_header = "INFA-SESSION-ID"
+        else:
+            session_header = "icSessionId"
+        merged_headers: Dict[str, Any] = {session_header: self._session_id}
+        if additional_headers:
+            merged_headers.update(additional_headers)
+
         return self._http_client.do_request(
             url=url,
             http_method=http_method,
             payload=payload,
             content_type=content_type,
             timeout=timeout,
-            additional_headers=additional_headers,
+            additional_headers=merged_headers,
             params=params,
             retry_status_code_ranges=retry_status_code_ranges,
             data=data,
