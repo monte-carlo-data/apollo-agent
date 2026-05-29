@@ -86,6 +86,10 @@ class InformaticaProxyClient(BaseProxyClient):
         """
         Execute an HTTP request against the Informatica API base URL.
 
+        The session header is selected by path prefix: ``/public/core/v3/...``
+        gets ``INFA-SESSION-ID``; everything else gets ``icSessionId``.
+        Caller-supplied ``additional_headers`` override on collision.
+
         :param path: Path to append to the API base URL (e.g., "/v2/jobs"). Must start with "/".
         :param http_method: HTTP method (GET, POST, PUT, DELETE, etc.)
         :param payload: Optional JSON payload for the request body
