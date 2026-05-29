@@ -215,6 +215,38 @@ jobs:
               --provenance=mode=max \
               --push \
               .
+      # azure-nonroot — hardened variant. Runs as mcdagent (UID/GID 1000)
+      # with the Functions host bound to port 8080. Customers opting into
+      # this image must also set WEBSITES_PORT=8080 in their App Service
+      # config. The Dockerfile target inherits from azure-base, so the
+      # heavy apt/pip work is cache-shared with the azure build above —
+      # only the chown + USER + ENV layers are new.
+      - run:
+          name: Build azure-nonroot image (local) for version verification
+          command: |
+            docker buildx build \
+              --target azure-nonroot \
+              --build-arg code_version=<< parameters.code_version >> \
+              --build-arg build_number=<< pipeline.number >> \
+              --tag montecarlodata/<< parameters.docker_hub_repository >>:latest-azure-nonroot \
+              --load \
+              .
+      - verify-version-in-docker-image:
+          image: montecarlodata/<< parameters.docker_hub_repository >>:latest-azure-nonroot
+          version: << parameters.code_version >>,<< pipeline.number >>
+      - run:
+          name: Build and push azure-nonroot with SBOM + SLSA provenance
+          command: |
+            docker buildx build \
+              --target azure-nonroot \
+              --build-arg code_version=<< parameters.code_version >> \
+              --build-arg build_number=<< pipeline.number >> \
+              --tag montecarlodata/<< parameters.docker_hub_repository >>:latest-azure-nonroot \
+              --tag montecarlodata/<< parameters.docker_hub_repository >>:<< parameters.code_version >>-azure-nonroot \
+              --sbom=true \
+              --provenance=mode=max \
+              --push \
+              .
 
   build-and-push-lambda:
     machine:
