@@ -23,7 +23,8 @@ class InformaticaProxyClient(BaseProxyClient):
     The Informatica session header is selected per request based on the path:
 
     - V3 endpoints (``/public/core/v3/...``) read the token from ``INFA-SESSION-ID``.
-    - Everything else (V2 ``/api/v2/...``) reads it from ``icSessionId``.
+    - Any other path falls back to ``icSessionId`` (which is what V2
+      ``/api/v2/...`` endpoints expect).
 
     Each request carries only the header its endpoint actually reads — no
     redundant auth header on the wire.
@@ -84,6 +85,10 @@ class InformaticaProxyClient(BaseProxyClient):
     ) -> Any:
         """
         Execute an HTTP request against the Informatica API base URL.
+
+        The session header is selected by path prefix: ``/public/core/v3/...``
+        gets ``INFA-SESSION-ID``; everything else gets ``icSessionId``.
+        Caller-supplied ``additional_headers`` override on collision.
 
         :param path: Path to append to the API base URL (e.g., "/v2/jobs"). Must start with "/".
         :param http_method: HTTP method (GET, POST, PUT, DELETE, etc.)
