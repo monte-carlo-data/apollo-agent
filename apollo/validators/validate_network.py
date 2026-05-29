@@ -2,10 +2,13 @@ import socket
 from telnetlib import Telnet
 from typing import Optional, Callable, Dict, Tuple, Union
 
-import requests
-
 from apollo.agent.utils import AgentUtils
 from apollo.common.interfaces.agent_response import AgentResponse
+from apollo.integrations.http.url_safety import (
+    HttpClientError,
+    assert_safe_destination,
+    safe_request,
+)
 
 _DEFAULT_TIMEOUT_SECS = 5
 _DEFAULT_HTTP_TIMEOUT_SECS = 10
@@ -156,10 +159,18 @@ class ValidateNetwork:
             host, port_str, timeout_str
         )
 
+        # SSRF guard: resolve and validate ONCE here, then connect by IP. Connecting
+        # to the original hostname would re-trigger DNS and expose a rebinding
+        # TOCTOU where the second lookup could return a blocked address.
+        try:
+            validated_ip = assert_safe_destination(host, port)  # type: ignore[arg-type]
+        except HttpClientError as err:
+            raise ConnectionFailedError(str(err)) from err
+
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(timeout_in_seconds)
 
-        if sock.connect_ex((host, port)) == 0:
+        if sock.connect_ex((validated_ip, port)) == 0:
             sock.shutdown(socket.SHUT_RDWR)
             sock.close()
             return {
@@ -180,8 +191,38 @@ class ValidateNetwork:
         )
         friendly_name = f"{host}:{port}"
 
+        # SSRF guard: resolve and validate ONCE, then create the socket ourselves
+        # and hand it to Telnet. Telnet(host, port, ...) does its own internal
+        # socket.create_connection which re-resolves DNS and would expose a
+        # rebinding TOCTOU.
         try:
-            with Telnet(host, port, timeout_in_seconds) as session:
+            validated_ip = assert_safe_destination(host, port)  # type: ignore[arg-type]
+        except HttpClientError as err:
+            raise ConnectionFailedError(str(err)) from err
+
+        try:
+            sock = socket.create_connection(
+                (validated_ip, port), timeout=timeout_in_seconds
+            )
+        except socket.timeout as err:
+            raise ConnectionFailedError(
+                f"Socket timeout for {friendly_name}. Connection unusable."
+            ) from err
+        except socket.gaierror as err:
+            # validated_ip is an IP literal, so getaddrinfo on it shouldn't fail
+            # under normal conditions — but the original code caught gaierror, so
+            # keep the handler for parity.
+            raise ConnectionFailedError(
+                f"Invalid hostname {host} ({err}). Connection unusable."
+            ) from err
+
+        try:
+            session = Telnet()
+            session.sock = sock
+            # Telnet().host / .port are not in telnetlib's type stubs (they're
+            # set inside .open()), but read_very_eager() only uses .sock — so
+            # we just hand over the pre-created socket and skip the rest.
+            try:
                 try:
                     session.read_very_eager()
                     return {
@@ -191,14 +232,17 @@ class ValidateNetwork:
                     raise ConnectionFailedError(
                         f"Telnet connection for {friendly_name} is unusable."
                     ) from err
-        except socket.timeout as err:
-            raise ConnectionFailedError(
-                f"Socket timeout for {friendly_name}. Connection unusable."
-            ) from err
-        except socket.gaierror as err:
-            raise ConnectionFailedError(
-                f"Invalid hostname {host} ({err}). Connection unusable."
-            ) from err
+            finally:
+                session.close()
+        except ConnectionFailedError:
+            raise
+        except Exception:
+            # ensure socket is closed if Telnet setup itself fails
+            try:
+                sock.close()
+            except Exception:
+                pass
+            raise
 
     @classmethod
     def _internal_perform_dns_lookup(
@@ -240,17 +284,26 @@ class ValidateNetwork:
             int(timeout_str) if timeout_str else _DEFAULT_HTTP_TIMEOUT_SECS
         )
 
+        # Route through the SSRF guard so the troubleshooting endpoint can't
+        # be used to reach cloud metadata services or other blocked targets.
+        # safe_request applies the default policy tier (RFC1918 allowed for
+        # legitimate VPC troubleshooting; metadata/loopback blocked).
         try:
-            response = requests.get(url, timeout=timeout_in_seconds)
-            message = f"URL {url} responded with status: {response.status_code} ({response.reason})"
-            if include_response:
-                content_str = response.content.decode("utf-8")
-                message += f" and content: {content_str}"
-            return {"message": message}
+            response = safe_request("GET", url, timeout=timeout_in_seconds)
+        except HttpClientError as err:
+            # SSRF guard rejected the URL — surface as ConnectionFailedError to
+            # match the TCP/Telnet sibling validators' error shape.
+            raise ConnectionFailedError(str(err)) from err
         except Exception as err:
             raise ConnectionFailedError(
                 f"HTTP request failed for {url}: {err}."
             ) from err
+
+        message = f"URL {url} responded with status: {response.status_code} ({response.reason})"
+        if include_response:
+            content_str = response.content.decode("utf-8")
+            message += f" and content: {content_str}"
+        return {"message": message}
 
     @staticmethod
     def _internal_validate_network_parameters(

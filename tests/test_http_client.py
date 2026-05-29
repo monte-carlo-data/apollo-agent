@@ -467,6 +467,45 @@ class TestHttpClient(TestCase):
         )
 
 
+class TestHttpClientSsrfGuard(TestCase):
+    """T-F4: Verify the do_request → safe_request → safety_policy chain
+    rejects SSRF-dangerous URLs. IP rejection happens at the urllib3
+    create_connection hook (not the URL pre-flight), so this test must NOT
+    mock requests.request — it lets the call flow through to urllib3 where
+    the hook short-circuits with HttpClientError before any TCP attempt."""
+
+    def test_do_request_rejects_metadata_ip_literal(self):
+        """T-F4: Calling do_request with the AWS IMDS URL must raise
+        HttpClientError. The urllib3 create_connection hook fires before any
+        real TCP connect, so no network access is needed for this test."""
+        client = HttpProxyClient(credentials={})
+        with self.assertRaises(HttpClientError):
+            client.do_request(
+                url="http://169.254.169.254/latest/meta-data/",
+                http_method="GET",
+            )
+
+    @patch("requests.request")
+    def test_do_request_rfc1918_passes_default_tier(self, mock_request):
+        """T-F4 (companion): RFC1918 addresses are intentionally allowed by the
+        default policy tier so the agent can reach databases and services in
+        the customer's VPC/VNet. do_request must succeed and delegate to
+        requests.request."""
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status.return_value = None
+        mock_resp.json.return_value = {"ok": True}
+        mock_request.return_value = mock_resp
+
+        client = HttpProxyClient(credentials={})
+        result = client.do_request(
+            url="http://10.0.0.20/api",
+            http_method="GET",
+        )
+
+        mock_request.assert_called_once()
+        self.assertEqual({"ok": True}, result)
+
+
 class TestDownloadBytes(TestCase):
     """Tests for HttpProxyClient.download_bytes — streaming binary fetches with
     optional auth-skip and size cap."""
@@ -669,9 +708,11 @@ class TestDownloadBytes(TestCase):
 
 
 class TestDownloadBytesUrlSafety(TestCase):
-    """SSRF defense-in-depth: verify _assert_safe_download_url rejects every
-    non-public IP-literal class (not just RFC1918 / loopback / link-local) and
-    that download_bytes itself refuses to follow redirects."""
+    """SSRF defense-in-depth: verify the strict-tier guard (applied via
+    ``safety_policy(url, strict_ip_policy=True, https_only=True)`` in
+    ``_open_download_response``) rejects every non-public IP-literal class
+    (not just RFC1918 / loopback / link-local) and that download_bytes
+    itself refuses to follow redirects."""
 
     def _make_response(
         self,
@@ -700,41 +741,41 @@ class TestDownloadBytesUrlSafety(TestCase):
         client = HttpProxyClient(credentials={"connect_args": {}})
         with self.assertRaises(HttpClientError) as ctx:
             client.download_bytes("https://0.0.0.0/file")
-        self.assertIn("non-public", str(ctx.exception))
+        self.assertIn("blocked address", str(ctx.exception))
 
     def test_rejects_unspecified_ipv6(self):
         # IPv6 :: — not private/loopback/link-local, but not global either.
         client = HttpProxyClient(credentials={"connect_args": {}})
         with self.assertRaises(HttpClientError) as ctx:
             client.download_bytes("https://[::]/file")
-        self.assertIn("non-public", str(ctx.exception))
+        self.assertIn("blocked address", str(ctx.exception))
 
     def test_rejects_multicast_ipv4(self):
         # 224.0.0.0/4 is multicast — is_global is False.
         client = HttpProxyClient(credentials={"connect_args": {}})
         with self.assertRaises(HttpClientError) as ctx:
             client.download_bytes("https://224.0.0.1/file")
-        self.assertIn("non-public", str(ctx.exception))
+        self.assertIn("blocked address", str(ctx.exception))
 
     def test_rejects_reserved_ipv4(self):
         # 240.0.0.0/4 is reserved — is_global is False.
         client = HttpProxyClient(credentials={"connect_args": {}})
         with self.assertRaises(HttpClientError) as ctx:
             client.download_bytes("https://240.0.0.1/file")
-        self.assertIn("non-public", str(ctx.exception))
+        self.assertIn("blocked address", str(ctx.exception))
 
     def test_rejects_imds_link_local(self):
         # 169.254.169.254 — AWS IMDS, the canonical SSRF target.
         client = HttpProxyClient(credentials={"connect_args": {}})
         with self.assertRaises(HttpClientError) as ctx:
             client.download_bytes("https://169.254.169.254/latest/meta-data/")
-        self.assertIn("non-public", str(ctx.exception))
+        self.assertIn("blocked address", str(ctx.exception))
 
     def test_rejects_rfc1918(self):
         client = HttpProxyClient(credentials={"connect_args": {}})
         with self.assertRaises(HttpClientError) as ctx:
             client.download_bytes("https://10.0.0.1/file")
-        self.assertIn("non-public", str(ctx.exception))
+        self.assertIn("blocked address", str(ctx.exception))
 
     @patch("requests.get")
     def test_dns_hostname_passes_url_safety_check(self, mock_get):
