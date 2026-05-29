@@ -104,3 +104,9 @@ Before starting, the function validates that Easy Auth is actually configured by
 If any of these are missing or invalid, the function **refuses to start** with a `RuntimeError` — this fail-closed design prevents the function from running unauthenticated if Easy Auth was not properly configured.
 
 To enable Easy Auth on a Function App, configure Authentication in the Azure portal or via ARM/Bicep with a Microsoft Entra ID provider.
+
+**Enforcement Verification (Self-Call)**
+
+In addition to checking environment variables at startup, the health endpoint (`/api/v1/test/health`) performs a runtime verification when `MCD_AUTH_TYPE=AZURE_FUNCTION_SERVICE_PRINCIPAL`: it makes an unauthenticated HTTP request to itself and confirms that Easy Auth rejects it (401/403). If the request is not rejected, the health endpoint returns 503 — this fails the DC's reachability check and blocks the deployment. Successful verification is cached for the process lifetime; failed results are retried on each health call.
+
+To avoid infinite recursion (the probe request would itself trigger another verification), the probe includes a per-process random token in the `X-MCD-EasyAuth-Probe` header. The health handler recognises the token and short-circuits with a minimal `200` response before running any verification logic. Because the token is generated at import time via `secrets.token_hex()`, only the current process can produce a valid probe — external callers cannot forge the header to bypass verification.

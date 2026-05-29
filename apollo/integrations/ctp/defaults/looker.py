@@ -13,8 +13,17 @@ class LookerClientArgs(TypedDict):
     ]  # path to temp INI file written by write_ini_file transform
 
 
+LOOKER_CREDENTIALS_SCHEMA = {
+    # Looker credentials are flat — no `connect_args` wrapper.
+    "base_url": {"type": "string", "required": True, "empty": False},
+    "client_id": {"type": "string", "required": True, "empty": False},
+    "client_secret": {"type": "string", "required": True, "empty": False},
+    "verify_ssl": {"type": "boolean"},
+}
+
 LOOKER_DEFAULT_CTP = CtpConfig(
     name="looker-default",
+    raw_credentials_schema=LOOKER_CREDENTIALS_SCHEMA,
     steps=[
         TransformStep(
             type="write_ini_file",

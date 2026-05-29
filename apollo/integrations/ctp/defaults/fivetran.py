@@ -11,8 +11,29 @@ class FivetranClientArgs(TypedDict):
     auth_type: NotRequired[str]  # always "Basic"
 
 
+# Fivetran self-hosted credentials per docs: api key + api password inside
+# connect_args. CTP encodes them to a Basic auth header. The DC pre-shape path
+# can also supply a pre-encoded `token`; we accept either form via cerberus
+# `anyof` on connect_args field requirements... simpler: just leave both
+# field families optional and let the customer follow docs.
+FIVETRAN_CREDENTIALS_SCHEMA = {
+    "connect_args": {
+        "type": "dict",
+        "required": True,
+        "schema": {
+            "fivetran_api_key": {"type": "string", "required": True, "empty": False},
+            "fivetran_api_password": {
+                "type": "string",
+                "required": True,
+                "empty": False,
+            },
+        },
+    },
+}
+
 FIVETRAN_DEFAULT_CTP = CtpConfig(
     name="fivetran-default",
+    raw_credentials_schema=FIVETRAN_CREDENTIALS_SCHEMA,
     steps=[
         # Encode fivetran_api_key:fivetran_api_password into a base64 token.
         # Skipped on the DC pre-shaped path (raw.token already present).

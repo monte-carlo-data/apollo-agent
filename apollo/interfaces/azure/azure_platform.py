@@ -3,7 +3,7 @@ import logging
 import os
 from datetime import datetime, timezone, timedelta
 from json import JSONDecodeError
-from typing import Dict, Optional, List, cast, Any
+from typing import Any, Dict, Optional, List, Tuple, cast
 
 from azure.monitor.query import (
     LogsQueryClient,
@@ -29,6 +29,9 @@ class AzurePlatformProvider(AgentPlatformProvider):
     returning the Azure Resource for the function.
     """
 
+    def __init__(self) -> None:
+        self._sp_auth = os.getenv("MCD_AUTH_TYPE") == "AZURE_FUNCTION_SERVICE_PRINCIPAL"
+
     @property
     def platform(self) -> str:
         return PLATFORM_AZURE
@@ -46,6 +49,32 @@ class AzurePlatformProvider(AgentPlatformProvider):
             "resource": AzureUpdater.get_function_resource(),
             "parameters": AzureUpdater.get_current_parameter_values(),
         }
+
+    def pre_health_check(self, headers: Any) -> Optional[Tuple[Dict, int]]:
+        """Verify Easy Auth enforcement on every health check.
+
+        Short-circuits probe requests (to avoid infinite recursion) and
+        returns 503 if enforcement cannot be verified.
+        """
+        if not self._sp_auth:
+            return None
+
+        from apollo.interfaces.azure.auth import (
+            is_easy_auth_probe,
+            verify_easy_auth_enforcement,
+        )
+
+        if is_easy_auth_probe(headers):
+            return {"status": "up"}, 200
+
+        error = verify_easy_auth_enforcement()
+        if error:
+            logger.error(f"Easy Auth enforcement check failed: {error}")
+            return {
+                "easy_auth_error": "Easy Auth enforcement could not be verified"
+            }, 503
+
+        return None
 
     @classmethod
     def get_logs(
