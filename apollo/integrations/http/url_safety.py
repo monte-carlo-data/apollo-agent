@@ -1,11 +1,15 @@
-"""SSRF defense for the agent's HTTP integrations.
+"""SSRF defense for the agent's HTTP integrations and raw-socket callers.
 
 The guard is enforced inside urllib3's TCP-connect path, gated by a
 per-thread policy that the caller activates around the request via
 ``safety_policy``. Because urllib3 calls ``create_connection`` for every
 connection it opens — initial request, redirected request, retry — a
 single wrapper on that function covers every hop without any special
-``requests.Session`` plumbing.
+``requests.Session`` plumbing. The module also exposes
+``assert_safe_destination`` for non-HTTP raw-socket / telnet callers
+(the network troubleshooting validators in ``apollo/validators/``) that
+manage their own TCP layer and need the same block-list enforcement
+without going through ``requests``.
 
 Two policy tiers share one implementation:
 
@@ -30,6 +34,7 @@ addresses the agent never has a legitimate reason to reach:
   - fe80::/10       IPv6 link-local
   - 127.0.0.0/8     IPv4 loopback
   - ::1/128         IPv6 loopback
+  - fd00:ec2::/64   AWS IMDSv2 IPv6 endpoint (fd00:ec2::254)
 
 Operators can extend the default block list via the
 ``MCD_HTTP_BLOCKED_CIDRS`` env var: a comma-separated list of CIDRs
@@ -77,6 +82,11 @@ class HttpClientError(Exception):
     """Raised when a request URL or its resolved IP fails the SSRF
     safety check.
 
+    Despite the HTTP-flavored name (retained for backwards compatibility),
+    this is the generic "destination blocked by SSRF guard" exception for
+    this module — it is also raised by ``assert_safe_destination`` for
+    non-HTTP raw-socket / telnet callers that share the same block list.
+
     Defined here (rather than in ``http_proxy_client``) so that
     ``url_safety`` has no upward dependency on the client module.
     ``http_proxy_client`` re-exports it under the same name to
@@ -102,10 +112,11 @@ _ENV_REQUIRE_HTTPS = "MCD_HTTP_REQUIRE_HTTPS"
 _MC_SSRF_GUARD_SENTINEL = object()
 
 _DEFAULT_BLOCKED_CIDRS: Tuple[str, ...] = (
-    "169.254.0.0/16",
-    "fe80::/10",
-    "127.0.0.0/8",
-    "::1/128",
+    "169.254.0.0/16",  # IPv4 link-local (AWS / GCP / Azure / Oracle / etc. metadata)
+    "fe80::/10",  # IPv6 link-local
+    "127.0.0.0/8",  # IPv4 loopback
+    "::1/128",  # IPv6 loopback
+    "fd00:ec2::/64",  # AWS IMDSv2 IPv6 endpoint (fd00:ec2::254)
 )
 
 _Network = Union[ipaddress.IPv4Network, ipaddress.IPv6Network]
@@ -199,17 +210,16 @@ def assert_safe_destination(
     port: int,
     *,
     strict_ip_policy: bool = False,
-) -> None:
+) -> str:
     """Validate that ``(host, port)`` is a safe destination under the
-    active block list, without opening any connection.
+    active block list and return the IP literal callers should connect to.
 
-    Used by callers that issue raw socket / telnet probes (i.e. anything
-    not going through ``requests`` / ``urllib3``). The URL-layer
-    pre-flight does not apply (no scheme) — this helper only checks
-    host validity + IP block list. Hostnames are resolved via
-    ``getaddrinfo`` and the whole hostname is rejected if any A/AAAA
-    record is blocked (no fallback connect to defer to here, unlike
-    the ``create_connection`` wrapper).
+    Used by callers that own their own socket / telnet layer (the
+    ``ValidateNetwork`` troubleshooting validators). Callers MUST connect
+    to the returned IP (not the original hostname) — connecting to the
+    hostname re-triggers DNS resolution and exposes a rebinding TOCTOU
+    where an attacker can return a safe IP for the validation lookup
+    and a blocked IP for the connect.
 
     Args:
         host: destination hostname or IP literal. Empty / ``"localhost"``
@@ -221,30 +231,52 @@ def assert_safe_destination(
             link-local, loopback, multicast, reserved, unspecified).
             Default False — only the explicit block list applies.
 
+    Returns:
+        The validated IP literal as a string. For IP-literal inputs this
+        is the input itself (normalized via ``ipaddress.ip_address``). For
+        hostnames, this is the first non-rejected address from
+        ``getaddrinfo`` in OS-preference order.
+
     Raises:
-        HttpClientError: empty/localhost host, blocked IP literal, or
-            blocked IP in the resolved record set.
+        HttpClientError: empty/localhost host, blocked IP literal, blocked
+            IP in the resolved record set, or DNS resolution failure.
+
+    See also:
+        ``_safe_create_connection`` — the connection-time sibling that
+        applies the same block list inside urllib3's TCP-connect path.
+        These two functions share ``_ip_is_rejected``, so any change to
+        the block list applies uniformly — but the policy structure
+        (e.g. adding a new early-exit check) must be kept in sync
+        manually.
     """
     if not host:
         raise HttpClientError("destination refuses '<empty>' host")
     host_lower = host.lower()
-    if host_lower == "localhost":
+    # Normalize a trailing dot (valid FQDN form) so the fast-path catches
+    # both `localhost` and `localhost.` with the same clearer-message check.
+    if host_lower.rstrip(".") == "localhost":
         raise HttpClientError("destination refuses 'localhost' host")
 
+    # Strip IPv6 zone IDs (e.g. `fe80::1%eth0`) before parsing — `ip_address`
+    # raises ValueError on `%`. The DNS path would catch zone-IDed link-locals
+    # via the `fe80::/10` CIDR anyway, but normalizing here keeps the
+    # fast-path comment accurate.
+    literal_candidate = host_lower.strip("[]").split("%", 1)[0]
     try:
-        literal = ipaddress.ip_address(host_lower.strip("[]"))
+        literal = ipaddress.ip_address(literal_candidate)
     except ValueError:
         literal = None
     if literal is not None:
         if _ip_is_rejected(literal, strict_ip_policy=strict_ip_policy):
             raise HttpClientError(f"destination refuses blocked address: {literal}")
-        return
+        return str(literal)
 
     try:
         infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
     except socket.gaierror as exc:
         raise HttpClientError(f"DNS resolution failed: {exc}") from None
 
+    validated_ip: Union[str, None] = None
     for info in infos:
         ip_str = str(info[4][0])
         try:
@@ -255,6 +287,12 @@ def assert_safe_destination(
             raise HttpClientError(
                 f"destination refuses blocked address resolved from hostname: {ip}"
             )
+        if validated_ip is None:
+            validated_ip = ip_str
+
+    if validated_ip is None:
+        raise HttpClientError("DNS resolution returned no usable address")
+    return validated_ip
 
 
 def _assert_safe_url_scheme_and_host(url: str, *, https_only: bool) -> None:
@@ -306,6 +344,10 @@ _policy = threading.local()
 _original_create_connection = _urllib3_connection.create_connection
 
 
+# See `assert_safe_destination` for the no-connection sibling used by raw
+# socket / telnet callers — both share `_ip_is_rejected`, so block-list
+# changes propagate uniformly, but the check-sequence structure must be
+# kept in sync manually.
 def _safe_create_connection(address: Tuple[str, int], *args: Any, **kwargs: Any) -> Any:
     if not getattr(_policy, "active", False):
         return _original_create_connection(address, *args, **kwargs)

@@ -738,11 +738,11 @@ class TestAssertSafeDestination(TestCase):
             assert_safe_destination("10.0.0.5", 80, strict_ip_policy=True)
 
     def test_default_policy_allows_rfc1918(self):
-        # Returns None on success (no exception).
-        self.assertIsNone(assert_safe_destination("10.0.0.5", 80))
+        # Returns the validated IP string on success (no exception).
+        self.assertEqual(assert_safe_destination("10.0.0.5", 80), "10.0.0.5")
 
     def test_allows_public_ip_literal(self):
-        self.assertIsNone(assert_safe_destination("93.184.216.34", 80))
+        self.assertEqual(assert_safe_destination("93.184.216.34", 80), "93.184.216.34")
 
     @patch("apollo.integrations.http.url_safety.socket.getaddrinfo")
     def test_rejects_hostname_resolving_to_blocked_ip(self, mock_gai):
@@ -754,7 +754,7 @@ class TestAssertSafeDestination(TestCase):
     @patch("apollo.integrations.http.url_safety.socket.getaddrinfo")
     def test_allows_hostname_resolving_to_public_ip(self, mock_gai):
         mock_gai.return_value = [_addrinfo("93.184.216.34", port=80)]
-        self.assertIsNone(assert_safe_destination("example.com", 80))
+        self.assertEqual(assert_safe_destination("example.com", 80), "93.184.216.34")
 
     @patch("apollo.integrations.http.url_safety.socket.getaddrinfo")
     def test_wraps_dns_failure(self, mock_gai):
@@ -762,3 +762,37 @@ class TestAssertSafeDestination(TestCase):
         with self.assertRaises(HttpClientError) as ctx:
             assert_safe_destination("nonexistent.invalid", 80)
         self.assertIn("DNS resolution failed", str(ctx.exception))
+
+    def test_rejects_aws_imds_ipv6(self):
+        """F3: fd00:ec2::/64 (AWS IMDSv2 IPv6) is blocked."""
+        with self.assertRaises(HttpClientError) as ctx:
+            assert_safe_destination("fd00:ec2::254", 80)
+        self.assertIn("blocked address", str(ctx.exception))
+
+    @patch("apollo.integrations.http.url_safety.socket.getaddrinfo")
+    def test_rejects_hostname_resolving_to_aws_imds_ipv6(self, mock_gai):
+        """F3: hostname that resolves to the IMDSv2 IPv6 address is blocked."""
+        mock_gai.return_value = [
+            _addrinfo("fd00:ec2::254", port=80, family=socket.AF_INET6)
+        ]
+        with self.assertRaises(HttpClientError) as ctx:
+            assert_safe_destination("imds.internal.example.com", 80)
+        self.assertIn("blocked address", str(ctx.exception))
+
+    def test_rejects_loopback_ipv6_bracketed(self):
+        """F9: bracket-stripped `[::1]` is caught as a blocked loopback address."""
+        with self.assertRaises(HttpClientError):
+            assert_safe_destination("[::1]", 80)
+
+    def test_rejects_localhost_trailing_dot(self):
+        """F6 regression: `localhost.` (trailing dot, valid FQDN) is caught by
+        the fast-path before DNS is attempted, same as plain `localhost`."""
+        with self.assertRaises(HttpClientError) as ctx:
+            assert_safe_destination("localhost.", 80)
+        self.assertIn("localhost", str(ctx.exception))
+
+    def test_strips_ipv6_zone_id(self):
+        """F7 regression: `fe80::1%eth0` has its zone ID stripped then is
+        rejected by the fe80::/10 IP-literal fast-path — no DNS call needed."""
+        with self.assertRaises(HttpClientError):
+            assert_safe_destination("fe80::1%eth0", 80)

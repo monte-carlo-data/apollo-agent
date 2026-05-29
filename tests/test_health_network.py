@@ -113,8 +113,16 @@ class HealthNetworkTests(TestCase):
         )
 
     @patch("apollo.validators.validate_network.Telnet")
-    def test_telnet_success(self, mock_telnet):
+    @patch("apollo.validators.validate_network.socket.create_connection")
+    def test_telnet_success(self, mock_create_conn, mock_telnet):
+        mock_sock = mock_create_conn.return_value
+        mock_telnet_inst = mock_telnet.return_value
+        mock_telnet_inst.read_very_eager.return_value = None
+
         response = self._agent.validate_telnet_connection("93.184.216.34", "123", None)
+
+        mock_telnet.assert_called_once_with()
+        self.assertIs(mock_telnet_inst.sock, mock_sock)
         self.assertIsNone(response.result.get(ATTRIBUTE_NAME_ERROR))
         self.assertEqual(
             "Telnet connection for 93.184.216.34:123 is usable.",
@@ -122,28 +130,82 @@ class HealthNetworkTests(TestCase):
         )
 
     @patch("apollo.validators.validate_network.Telnet")
-    def test_telnet_timeout(self, mock_telnet):
-        mock_telnet.side_effect = socket.timeout
+    @patch("apollo.validators.validate_network.socket.create_connection")
+    def test_telnet_timeout(self, mock_create_conn, mock_telnet):
+        mock_create_conn.side_effect = socket.timeout
 
         response = self._agent.validate_telnet_connection("93.184.216.34", "123", "11")
-        mock_telnet.assert_called_with("93.184.216.34", 123, 11)
+        mock_telnet.assert_not_called()
         self.assertEqual(
             "Socket timeout for 93.184.216.34:123. Connection unusable.",
             response.result.get(ATTRIBUTE_NAME_ERROR),
         )
 
     @patch("apollo.validators.validate_network.Telnet")
-    def test_telnet_read_failed(self, mock_telnet):
-        mock_session = create_autospec(Telnet)
-        mock_telnet.return_value.__enter__.return_value = mock_session
-        mock_session.read_very_eager.side_effect = EOFError
+    @patch("apollo.validators.validate_network.socket.create_connection")
+    def test_telnet_read_failed(self, mock_create_conn, mock_telnet):
+        mock_telnet_inst = mock_telnet.return_value
+        mock_telnet_inst.read_very_eager.side_effect = EOFError
 
         response = self._agent.validate_telnet_connection("93.184.216.34", "123", None)
-        mock_telnet.assert_called_with("93.184.216.34", 123, _DEFAULT_TIMEOUT_SECS)
+        mock_telnet.assert_called_once_with()
         self.assertEqual(
             "Telnet connection for 93.184.216.34:123 is unusable.",
             response.result.get(ATTRIBUTE_NAME_ERROR),
         )
+
+    # --- TOCTOU regression tests ------------------------------------------
+
+    @patch("apollo.validators.validate_network.socket.socket")
+    @patch("apollo.integrations.http.url_safety.socket.getaddrinfo")
+    def test_tcp_open_resolves_once_no_toctou(self, mock_gai, mock_socket_cls):
+        """Regression: TCP validator must resolve DNS once (via assert_safe_destination)
+        and connect by IP, not re-resolve. Mock getaddrinfo to return a public IP;
+        assert connect_ex was called with that IP, not with the hostname."""
+        mock_gai.return_value = [
+            (socket.AF_INET, socket.SOCK_STREAM, 0, "", ("93.184.216.34", 80)),
+        ]
+        mock_sock = mock_socket_cls.return_value
+        mock_sock.connect_ex.return_value = 0
+
+        response = self._agent.validate_tcp_open_connection(
+            "example.com", "80", None, trace_id=None
+        )
+
+        # getaddrinfo called once (by assert_safe_destination); connect_ex called
+        # with the resolved IP literal, not the hostname.
+        self.assertEqual(mock_gai.call_count, 1)
+        mock_sock.connect_ex.assert_called_once_with(("93.184.216.34", 80))
+        self.assertIsNone(response.result.get(ATTRIBUTE_NAME_ERROR))
+
+    @patch("apollo.validators.validate_network.Telnet")
+    @patch("apollo.validators.validate_network.socket.create_connection")
+    @patch("apollo.integrations.http.url_safety.socket.getaddrinfo")
+    def test_telnet_resolves_once_no_toctou(
+        self, mock_gai, mock_create_conn, mock_telnet
+    ):
+        """Regression: Telnet validator must resolve DNS once (via assert_safe_destination)
+        and connect by IP via socket.create_connection. Mock getaddrinfo to return a
+        public IP; assert socket.create_connection was called with that IP."""
+        mock_gai.return_value = [
+            (socket.AF_INET, socket.SOCK_STREAM, 0, "", ("93.184.216.34", 23)),
+        ]
+        mock_sock = mock_create_conn.return_value
+        mock_telnet_inst = mock_telnet.return_value
+        mock_telnet_inst.read_very_eager.return_value = None
+
+        response = self._agent.validate_telnet_connection(
+            "example.com", "23", None, trace_id=None
+        )
+
+        self.assertEqual(mock_gai.call_count, 1)
+        mock_create_conn.assert_called_once_with(
+            ("93.184.216.34", 23), timeout=_DEFAULT_TIMEOUT_SECS
+        )
+        # Telnet() called with no args; .sock set to the mock socket.
+        mock_telnet.assert_called_once_with()
+        self.assertIs(mock_telnet_inst.sock, mock_sock)
+        self.assertIsNone(response.result.get(ATTRIBUTE_NAME_ERROR))
 
     # --- SSRF guard regression tests --------------------------------------
 
@@ -169,6 +231,14 @@ class HealthNetworkTests(TestCase):
         response = self._agent.validate_telnet_connection("169.254.169.254", "80", None)
         self.assertIn(
             "blocked address",
+            response.result.get(ATTRIBUTE_NAME_ERROR) or "",
+        )
+
+    def test_telnet_rejects_localhost(self):
+        """F4: SSRF guard symmetry — Telnet mirrors TCP's localhost rejection."""
+        response = self._agent.validate_telnet_connection("localhost", "80", None)
+        self.assertIn(
+            "localhost",
             response.result.get(ATTRIBUTE_NAME_ERROR) or "",
         )
 
