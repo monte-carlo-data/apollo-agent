@@ -18,7 +18,7 @@ flask-compress==1.14
 google-api-python-client==2.176.0  # Upgraded in VULN-620
 google-cloud-secret-manager==2.25.0
 google-cloud-storage==2.10.0
-gunicorn==23.0.0
+gunicorn==26.0.0  # VULN-1117/YET-1356: request-smuggling & header-framing hardening (AIKIDO-2026-10742); stricter RFC 9112/9110 parsing. Default sync/gthread workers unaffected by the eventlet-worker removal.
 hdbcli==2.18.27
 ibm-db==3.2.7
 jinja2>=3.1.6
@@ -50,7 +50,7 @@ tableauserverclient==0.25 ; python_version < "3.10"
 tableauserverclient==0.38 ; python_version >= "3.10"
 urllib3~=2.7  # CVE-2026-44431, CVE-2026-44432
 
-teradatasql>=20.0.0.59  # 20.0.0.59 bumps embedded Go stdlib to 1.26.3 (closes CVE-2026-33811, -39820, -39836, -42499); golang.org/x/net 0.49.0 + thrift 0.22.0 still bundled (33814, 41602 pending upstream)
+teradatasql>=20.0.0.60  # 20.0.0.60 bumps embedded golang.org/x/crypto 0.47.0->0.52.0 (closes CVE-2026-39829/-39830/-39831/-39832/-39833/-39834/-42508/-46595/-46597) and golang.org/x/net 0.49.0->0.54.0 (closes CVE-2026-33814); Go stdlib still 1.26.3. Still bundled at vulnerable versions: x/net 0.54.0 (CVE-2026-39821 needs >=0.55.0) + thrift 0.22.0 (CVE-2026-41602 needs >=0.23.0), pending upstream
 oscrypto @ git+https://github.com/wbond/oscrypto@master
 
 impyla==0.22.0
