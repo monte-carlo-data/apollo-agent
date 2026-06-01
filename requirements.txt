@@ -7,9 +7,7 @@
 agent-base @ git+https://github.com/monte-carlo-data/agent-base.git@v0.0.2
     # via -r requirements.in
 asn1crypto==1.5.1
-    # via
-    #   oscrypto
-    #   snowflake-connector-python
+    # via snowflake-connector-python
 attrs==23.2.0
     # via
     #   cattrs
@@ -230,8 +228,6 @@ orjson==3.11.7
     # via
     #   -r requirements.in
     #   trino
-oscrypto @ git+https://github.com/wbond/oscrypto@master
-    # via -r requirements.in
 packaging==24.1
     # via
     #   gunicorn
