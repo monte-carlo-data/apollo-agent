@@ -337,8 +337,6 @@ requests-file==2.1.0
     # via zeep
 requests-toolbelt==1.0.0
     # via zeep
-restrictedpython==8.0
-    # via -r requirements.in
 retry2==0.9.5
     # via -r requirements.in
 rsa==4.9

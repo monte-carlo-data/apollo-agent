@@ -40,7 +40,6 @@ pyjwt>=2.12.0  # CVE-2026-32597
 PyMySQL>=1.1.1
 pyodbc==5.0.1
 pyOpenSSL>=26.0.0  # CVE-2026-27459 (buffer overflow)
-RestrictedPython==8.0
 retry2==0.9.5
 salesforce-cdp-connector==1.0.19  # For Salesforce Data Cloud integration (YET-615: dataspace= support)
 simple-salesforce==1.12.6
