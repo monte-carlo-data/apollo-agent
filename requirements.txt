@@ -280,7 +280,7 @@ pycryptodome==3.21.0
     # via
     #   -r requirements.in
     #   teradatasql
-pyjwt==2.12.1
+pyjwt==2.13.0
     # via
     #   -r requirements.in
     #   msal
