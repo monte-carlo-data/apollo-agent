@@ -1,4 +1,4 @@
-agent-base @ git+https://github.com/monte-carlo-data/agent-base.git@dev
+agent-base @ git+https://github.com/monte-carlo-data/agent-base.git@v0.0.2
 
 azure-identity==1.18.0
 azure-core==1.38.2  # YET-463
@@ -40,6 +40,7 @@ pyjwt>=2.13.0  # CVE-2026-32597, CVE-2026-48526
 PyMySQL>=1.1.1
 pyodbc==5.0.1
 pyOpenSSL>=26.0.0  # CVE-2026-27459 (buffer overflow)
+RestrictedPython==8.0
 retry2==0.9.5
 salesforce-cdp-connector==1.0.19  # For Salesforce Data Cloud integration (YET-615: dataspace= support)
 simple-salesforce==1.12.6
