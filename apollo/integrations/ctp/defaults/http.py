@@ -18,7 +18,7 @@ HTTP_DEFAULT_CTP = CtpConfig(
     steps=[
         TransformStep(
             type="tmp_file_write",
-            when="raw.ssl_options is defined and raw.ssl_options.ca_data is defined",
+            when="raw.ssl_options is mapping and raw.ssl_options.ca_data is defined",
             input={
                 "contents": "{{ raw.ssl_options.ca_data }}",
                 "file_suffix": ".pem",
@@ -41,7 +41,7 @@ HTTP_DEFAULT_CTP = CtpConfig(
             "auth_type": "{{ '' if (raw.auth_type is defined and raw.auth_type is none) else (raw.auth_type | default(none)) }}",
             # ssl_verify: pass through a pre-resolved path/bool (DC pre-shaped path),
             # or derive from ssl_options when present in raw credentials.
-            "ssl_verify": "{{ raw.ssl_verify if raw.ssl_verify is defined else (false if raw.ssl_options is defined and raw.ssl_options.disabled else none) }}",
+            "ssl_verify": "{{ raw.ssl_verify if raw.ssl_verify is defined else (false if raw.ssl_options is mapping and raw.ssl_options.disabled else none) }}",
         },
     ),
 )

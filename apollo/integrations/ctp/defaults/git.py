@@ -33,7 +33,7 @@ GIT_DEFAULT_CTP = CtpConfig(
     steps=[
         TransformStep(
             type="resolve_ssl_options",
-            when="raw.ssl_options is defined",
+            when="raw.ssl_options is mapping",
             input={"ssl_options": "{{ raw.ssl_options }}"},
             output={
                 "ssl_options": "ssl_options",  # derived.ssl_options for condition access
