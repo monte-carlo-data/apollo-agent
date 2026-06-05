@@ -30,7 +30,7 @@ def _serialize(obj: Any) -> Any:
     if isinstance(obj, list):
         return [_serialize(item) for item in obj]
     if isinstance(obj, dict):
-        return {k: _serialize(v) for k, v in obj.items()}
+        return {k: _serialize(v) for k, v in obj.items() if v is not None}
     try:
         if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
             return {
@@ -65,14 +65,14 @@ class CustomEtlProxyClient(BaseProxyClient):
         connector_dir: str,
         **kwargs: Any,
     ):
-        module = load_connector_module(connector_dir)
-        self._connector = module.Connector()
-
         if not credentials or _ATTR_CONNECT_ARGS not in credentials:
             raise ValueError(
                 f"Custom ETL connector agent client requires "
                 f"{_ATTR_CONNECT_ARGS} in credentials"
             )
+
+        module = load_connector_module(connector_dir)
+        self._connector = module.Connector()
 
         self._connector.credentials = credentials[_ATTR_CONNECT_ARGS]
         self._connector.setup_connection()
@@ -113,7 +113,7 @@ class CustomEtlProxyClient(BaseProxyClient):
         """Fetch ETL run events from the connector.
 
         Translates the DC-facing parameters into the connector's
-        ``_fetch_run_details`` interface: ``lookback_min`` becomes a
+        ``fetch_run_details`` interface: ``lookback_min`` becomes a
         ``timedelta``, ``job_run_ids`` maps to ``run_ids``.  When
         ``job_ids`` is provided, results are post-filtered to include
         only runs whose ``job_source_id`` is in the set.

@@ -12,6 +12,9 @@ _CUSTOM_ETL_CONNECTORS_BASE_PATH = "/opt/custom-etl-connectors"
 # Module-level cache: {connection_type: connector_dir_path}
 _custom_etl_connector_registry: Optional[Dict[str, str]] = None
 
+# Module-level cache: {module_name: loaded module}
+_loaded_modules: Dict[str, types.ModuleType] = {}
+
 
 def _discover_custom_etl_connectors() -> Dict[str, str]:
     """
@@ -84,11 +87,15 @@ def load_connector_module(connector_dir: str) -> types.ModuleType:
     dir_name = os.path.basename(connector_dir)
     module_name = f"custom_etl_connector_{dir_name}"
 
+    if module_name in _loaded_modules:
+        return _loaded_modules[module_name]
+
     spec = importlib.util.spec_from_file_location(module_name, module_path)
     if spec is None or spec.loader is None:
         raise ImportError(f"Failed to create module spec for {module_path}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    _loaded_modules[module_name] = module
     return module
 
 

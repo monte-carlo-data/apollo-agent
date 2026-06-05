@@ -76,6 +76,11 @@ class Connector:
 
 
 class TestCustomEtlConnectorDiscovery(TestCase):
+    def tearDown(self):
+        import apollo.integrations.custom_etl.custom_etl_connector_loader as loader
+
+        loader._custom_etl_connector_registry = None
+
     def test_discovery_reads_manifests(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             _create_mock_etl_connector_dir(
@@ -525,6 +530,48 @@ class TestCustomEtlProxyClient(TestCase):
     @patch(
         "apollo.integrations.custom_etl.custom_etl_proxy_client.load_connector_module"
     )
+    def test_setup_connection_failure_propagates(
+        self, mock_load_module, mock_load_manifest
+    ):
+        mock_load_module.return_value = self._mock_module
+        self._mock_connector.setup_connection.side_effect = RuntimeError("auth failed")
+
+        with self.assertRaises(RuntimeError) as ctx:
+            CustomEtlProxyClient(
+                credentials={"connect_args": {"tenant_id": "abc"}},
+                connector_dir="/opt/custom-etl-connectors/adf",
+            )
+        self.assertIn("auth failed", str(ctx.exception))
+
+    @patch(
+        "apollo.integrations.custom_etl.custom_etl_proxy_client.load_manifest",
+        return_value={},
+    )
+    @patch(
+        "apollo.integrations.custom_etl.custom_etl_proxy_client.load_connector_module"
+    )
+    def test_close_suppresses_exception(self, mock_load_module, mock_load_manifest):
+        mock_load_module.return_value = self._mock_module
+
+        client = CustomEtlProxyClient(
+            credentials={"connect_args": {}},
+            connector_dir="/opt/custom-etl-connectors/adf",
+        )
+        self._mock_connector.close_connection.side_effect = RuntimeError(
+            "disconnect failed"
+        )
+
+        # close() should not raise
+        client.close()
+        self._mock_connector.close_connection.assert_called_once()
+
+    @patch(
+        "apollo.integrations.custom_etl.custom_etl_proxy_client.load_manifest",
+        return_value={},
+    )
+    @patch(
+        "apollo.integrations.custom_etl.custom_etl_proxy_client.load_connector_module"
+    )
     def test_wrapped_client_returns_connector(
         self, mock_load_module, mock_load_manifest
     ):
@@ -544,6 +591,11 @@ class TestCustomEtlProxyClient(TestCase):
 
 
 class TestGetConnectionManifests(TestCase):
+    def tearDown(self):
+        import apollo.integrations.custom_etl.custom_etl_connector_loader as loader
+
+        loader._custom_etl_connector_registry = None
+
     def test_returns_all_connectors(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             _create_mock_etl_connector_dir(
@@ -598,6 +650,11 @@ class TestGetConnectionManifests(TestCase):
 
 
 class TestGetCustomEtlConnectorTypes(TestCase):
+    def tearDown(self):
+        import apollo.integrations.custom_etl.custom_etl_connector_loader as loader
+
+        loader._custom_etl_connector_registry = None
+
     def test_returns_all_types(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             _create_mock_etl_connector_dir(tmp_dir, "adf", "custom-etl-connector-aaa")
@@ -740,6 +797,11 @@ class TestAgentGetSupportedConnectorTypes(TestCase):
 
 
 class TestProxyClientFactory(TestCase):
+    def tearDown(self):
+        import apollo.integrations.custom_etl.custom_etl_connector_loader as loader
+
+        loader._custom_etl_connector_registry = None
+
     @patch(
         "apollo.integrations.custom_etl.custom_etl_connector_loader._CUSTOM_ETL_CONNECTORS_BASE_PATH",
         "/nonexistent",
