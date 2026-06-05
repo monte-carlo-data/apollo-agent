@@ -10,7 +10,7 @@ class that inherits from `BaseEtlConnector`).
   dynamically via `importlib.util`, and caches the registry at module level.
 - **`custom_etl_proxy_client.py`** — `CustomEtlProxyClient(BaseProxyClient)` wraps a loaded
   connector module. Exposes `fetch_etl_assets` and `fetch_etl_runs` which delegate to the
-  connector's `fetch_metadata` and `_fetch_run_details` methods, serializing the model objects
+  connector's `fetch_metadata` and `fetch_run_details` methods, serializing the model objects
   (EtlAsset/EtlRunEvent) to dicts for the data-collector.
 
 ## Opt-in gating
@@ -49,7 +49,7 @@ The `connector.py` module must define a `Connector` class with:
 - `setup_connection()` — establish connection using credentials
 - `close_connection()` — clean up resources
 - `fetch_metadata(limit, offset)` → `List[EtlAsset]`
-- `_fetch_run_details(run_ids, lookback, limit, offset)` → `List[EtlRunEvent]`
+- `fetch_run_details(run_ids, lookback, limit, offset)` → `List[EtlRunEvent]`
 
 ## How it differs from custom (warehouse) connectors
 

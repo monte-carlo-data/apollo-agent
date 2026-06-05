@@ -56,7 +56,7 @@ class CustomEtlProxyClient(BaseProxyClient):
 
     The connector module is expected to define a Connector class
     (inheriting from BaseEtlConnector) with methods: setup_connection,
-    close_connection, fetch_metadata, and _fetch_run_details.
+    close_connection, fetch_metadata, and fetch_run_details.
     """
 
     def __init__(
@@ -119,7 +119,7 @@ class CustomEtlProxyClient(BaseProxyClient):
         only runs whose ``job_source_id`` is in the set.
         """
         lookback = timedelta(minutes=lookback_min)
-        runs = self._connector._fetch_run_details(
+        runs = self._connector.fetch_run_details(
             run_ids=job_run_ids,
             lookback=lookback,
             limit=limit,

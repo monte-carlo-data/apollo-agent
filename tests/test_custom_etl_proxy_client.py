@@ -61,7 +61,7 @@ class Connector:
     def fetch_metadata(self, limit=1000, offset=0):
         return []
 
-    def _fetch_run_details(self, run_ids=None, lookback=None, limit=100, offset=0):
+    def fetch_run_details(self, run_ids=None, lookback=None, limit=100, offset=0):
         return []
 """
     with open(os.path.join(connector_dir, "connector.py"), "w") as f:
@@ -371,7 +371,7 @@ class TestCustomEtlProxyClient(TestCase):
             job_source_id="job-1", run_source_id="run-1", status="success"
         )
         run2 = _FakeModel(job_source_id="job-1", run_source_id="run-2", status="failed")
-        self._mock_connector._fetch_run_details.return_value = [run1, run2]
+        self._mock_connector.fetch_run_details.return_value = [run1, run2]
 
         client = CustomEtlProxyClient(
             credentials={"connect_args": {}},
@@ -379,7 +379,7 @@ class TestCustomEtlProxyClient(TestCase):
         )
         result = client.fetch_etl_runs(lookback_min=1440, limit=100, offset=0)
 
-        self._mock_connector._fetch_run_details.assert_called_once_with(
+        self._mock_connector.fetch_run_details.assert_called_once_with(
             run_ids=None,
             lookback=timedelta(minutes=1440),
             limit=100,
@@ -403,7 +403,7 @@ class TestCustomEtlProxyClient(TestCase):
         run1 = _FakeModel(
             job_source_id="job-1", run_source_id="run-1", status="success"
         )
-        self._mock_connector._fetch_run_details.return_value = [run1]
+        self._mock_connector.fetch_run_details.return_value = [run1]
 
         client = CustomEtlProxyClient(
             credentials={"connect_args": {}},
@@ -416,7 +416,7 @@ class TestCustomEtlProxyClient(TestCase):
             offset=10,
         )
 
-        self._mock_connector._fetch_run_details.assert_called_once_with(
+        self._mock_connector.fetch_run_details.assert_called_once_with(
             run_ids=["run-1"],
             lookback=timedelta(minutes=720),
             limit=50,
@@ -441,7 +441,7 @@ class TestCustomEtlProxyClient(TestCase):
         run2 = _FakeModel(
             job_source_id="job-2", run_source_id="run-2", status="success"
         )
-        self._mock_connector._fetch_run_details.return_value = [run1, run2]
+        self._mock_connector.fetch_run_details.return_value = [run1, run2]
 
         client = CustomEtlProxyClient(
             credentials={"connect_args": {}},
@@ -467,7 +467,7 @@ class TestCustomEtlProxyClient(TestCase):
     )
     def test_fetch_etl_runs_empty(self, mock_load_module, mock_load_manifest):
         mock_load_module.return_value = self._mock_module
-        self._mock_connector._fetch_run_details.return_value = []
+        self._mock_connector.fetch_run_details.return_value = []
 
         client = CustomEtlProxyClient(
             credentials={"connect_args": {}},
