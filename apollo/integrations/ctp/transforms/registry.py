@@ -1,7 +1,10 @@
+import threading
+
 from apollo.integrations.ctp.errors import CtpPipelineError
 from apollo.integrations.ctp.transforms.base import Transform
 
 _initialized: bool = False
+_init_lock = threading.Lock()
 
 
 def _discover() -> None:
@@ -27,10 +30,19 @@ def _discover() -> None:
 
 
 def _ensure_initialized() -> None:
+    # Double-checked locking: keep the post-init path lock-free, but guard the
+    # cold-start window so a second thread cannot observe a partial registry
+    # while another thread is mid-discover. The flag flip MUST happen after
+    # _discover() completes — flipping it first (the prior implementation)
+    # caused YET-1420: under Azure WSGI threading, late-registered transforms
+    # appeared "unknown" while another thread's imports were still in flight.
     global _initialized
-    if not _initialized:
-        _initialized = True
-        _discover()
+    if _initialized:
+        return
+    with _init_lock:
+        if not _initialized:
+            _discover()
+            _initialized = True
 
 
 class TransformRegistry:
