@@ -99,7 +99,7 @@ MYSQL_DEFAULT_CTP = CtpConfig(
         # Remote CA: download cert from URL/storage, pass as {"ca": path}
         TransformStep(
             type="fetch_remote_file",
-            when="raw.ssl_options is defined and raw.ssl_options.ca is defined",
+            when="raw.ssl_options is mapping and raw.ssl_options.ca is defined",
             input={
                 "url": "{{ raw.ssl_options.ca }}",
                 "sub_folder": "mysql",
@@ -113,7 +113,7 @@ MYSQL_DEFAULT_CTP = CtpConfig(
         # Inline cert data: build SSLContext from ca_data / cert_data / key_data
         TransformStep(
             type="resolve_ssl_options",
-            when="raw.ssl_options is defined and raw.ssl_options.ca is not defined",
+            when="raw.ssl_options is mapping and raw.ssl_options.ca is not defined",
             input={"ssl_options": "{{ raw.ssl_options }}"},
             output={"ssl_context": "ssl_context"},
             field_map={
