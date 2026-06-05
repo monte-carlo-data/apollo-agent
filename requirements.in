@@ -36,7 +36,7 @@ psycopg2-binary==2.9.9
 pyarrow==23.0.1  # CVE-2026-25087 (Python bindings unaffected per GHSA-rgxp-2hwp-jwgg, but Trivy/Scout flag <23.0.1)
 pyasn1>=0.6.3  # CVE-2026-30922 (uncontrolled recursion), CVE-2026-23490
 pycryptodome>=3.21.0
-pyjwt>=2.12.0  # CVE-2026-32597
+pyjwt>=2.13.0  # CVE-2026-32597, CVE-2026-48526
 PyMySQL>=1.1.1
 pyodbc==5.0.1
 pyOpenSSL>=26.0.0  # CVE-2026-27459 (buffer overflow)
