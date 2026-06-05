@@ -1,4 +1,5 @@
 # apollo/integrations/ctp/registry.py
+import threading
 from typing import Any
 
 from apollo.integrations.ctp.errors import CtpPipelineError
@@ -7,6 +8,7 @@ from apollo.integrations.ctp.pipeline import CtpPipeline
 
 _ATTR_CONNECT_ARGS = "connect_args"
 _initialized: bool = False
+_init_lock = threading.Lock()
 
 
 def _discover() -> None:
@@ -46,10 +48,18 @@ def _discover() -> None:
 
 
 def _ensure_initialized() -> None:
+    # Double-checked locking: keep the post-init path lock-free, but guard the
+    # cold-start window so a second thread cannot observe a partial registry
+    # while another thread is mid-discover. The flag flip MUST happen after
+    # _discover() completes — see YET-1420 (apollo/integrations/ctp/transforms/
+    # registry.py has the same pattern and was the original symptom site).
     global _initialized
-    if not _initialized:
-        _initialized = True
-        _discover()
+    if _initialized:
+        return
+    with _init_lock:
+        if not _initialized:
+            _discover()
+            _initialized = True
 
 
 class CtpRegistry:
