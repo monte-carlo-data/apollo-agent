@@ -1,6 +1,7 @@
 import dataclasses
 import logging
-from datetime import timedelta
+from datetime import date, datetime, timedelta
+from enum import Enum
 from typing import Any, Dict, List, Optional
 
 from apollo.integrations.base_proxy_client import BaseProxyClient
@@ -22,11 +23,27 @@ def _serialize(obj: Any) -> Any:
     and primitive/collection types.  ``None`` values are stripped from the
     top-level dict so the response stays compact — downstream consumers treat
     absent keys as null anyway.
+
+    Serialization is fully recursive and field-name-agnostic: it preserves the
+    nested structure of whatever the connector returns.  For ETL metadata this
+    means the nested ``group`` object and the ``tasks`` array (each with its own
+    nested ``inputs``/``outputs``/``*_source_ids``) come through unflattened, and
+    ``schedule.event_trigger``/``attributes``/``raw`` dicts are emitted as dicts.
+    Because it never references model field names, new fields added by a
+    connector are carried through automatically rather than dropped.
+
+    ``Enum`` members serialize to their ``.value`` (e.g. ``schedule.kind``,
+    ``asset_ref.asset_type``/``role``) and ``datetime``/``date`` to ISO-8601
+    strings (e.g. ``schedule.next_run_at``).
     """
     if obj is None:
         return None
+    if isinstance(obj, Enum):
+        return _serialize(obj.value)
     if isinstance(obj, (str, int, float, bool)):
         return obj
+    if isinstance(obj, (datetime, date)):
+        return obj.isoformat()
     if isinstance(obj, list):
         return [_serialize(item) for item in obj]
     if isinstance(obj, dict):
