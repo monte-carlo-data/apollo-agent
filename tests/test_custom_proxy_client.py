@@ -609,10 +609,14 @@ class TestGetConnectionManifests(TestCase):
 
 class TestAgentGetConnectionManifests(TestCase):
     @patch(
+        "apollo.integrations.custom_etl.custom_etl_proxy_client.get_custom_etl_connector_registry",
+        return_value={},
+    )
+    @patch(
         "apollo.integrations.custom.custom_proxy_client.get_custom_connector_registry",
         return_value={},
     )
-    def test_returns_ok_response(self, _mock_registry):
+    def test_returns_ok_response(self, _mock_registry, _mock_etl_registry):
         agent = Agent(None)
         response = agent.get_connection_manifests(trace_id="test-trace")
 
@@ -690,10 +694,14 @@ class TestGetCustomConnectorTypes(TestCase):
 
 class TestAgentGetSupportedConnectorTypes(TestCase):
     @patch(
+        "apollo.integrations.custom_etl.custom_etl_proxy_client.get_custom_etl_connector_registry",
+        return_value={},
+    )
+    @patch(
         "apollo.integrations.custom.custom_proxy_client.get_custom_connector_registry",
         return_value={},
     )
-    def test_returns_native_and_custom(self, _mock_registry):
+    def test_returns_native_and_custom(self, _mock_registry, _mock_etl_registry):
         agent = Agent(None)
         response = agent.get_supported_connector_types(trace_id="test-trace")
 
@@ -703,6 +711,7 @@ class TestAgentGetSupportedConnectorTypes(TestCase):
         self.assertIn("connector_types", result)
         self.assertIn("native", result["connector_types"])
         self.assertIn("custom", result["connector_types"])
+        self.assertIn("custom_etl", result["connector_types"])
         # native should contain known built-in types
         native = result["connector_types"]["native"]
         self.assertIn("bigquery", native)
@@ -710,8 +719,9 @@ class TestAgentGetSupportedConnectorTypes(TestCase):
         self.assertIn("postgres", native)
         # native list should be sorted
         self.assertEqual(native, sorted(native))
-        # custom is empty because registry is mocked empty
+        # custom and custom_etl are empty because registries are mocked empty
         self.assertEqual(result["connector_types"]["custom"], [])
+        self.assertEqual(result["connector_types"]["custom_etl"], [])
         self.assertEqual(response.trace_id, "test-trace")
 
     @patch(
