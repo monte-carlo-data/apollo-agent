@@ -13,6 +13,21 @@ class that inherits from `BaseEtlConnector`).
   connector's `fetch_metadata` and `fetch_run_details` methods, serializing the model objects
   (EtlAsset/EtlRunEvent) to dicts for the data-collector.
 
+## Wire serialization (`_serialize`)
+
+The proxy is **decoupled from the model definitions** — those ship inside the connector
+bundle (pycarlo), not this repo. `_serialize` is therefore generic and
+**field-name-agnostic**: it recurses through dataclasses (`dataclasses.asdict`), objects with
+`__dict__`, dicts, and lists, preserving whatever nested structure the connector returns and
+stripping `None` values. New fields a connector adds are carried through automatically.
+
+Per the pycarlo PR #1527 ETL metadata contract, this means the emitted shape is the **nested
+`group` object** and **`tasks` array** (NOT flat `group_*` keys), with `*_source_ids`
+reference fields, `schedule.event_trigger`/`attributes`/`raw` as dicts, and `asset_ref`
+without a `metadata` field. `Enum` members serialize to their `.value` (e.g. `schedule.kind`,
+`asset_ref.asset_type`/`role`) and `datetime`/`date` to ISO-8601 strings (e.g.
+`schedule.next_run_at`). Because the wire carries SOURCE ids, the backend mints global ids.
+
 ## Opt-in gating
 
 Custom ETL connectors share the same gate as custom connectors: the env var
