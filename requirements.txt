@@ -359,7 +359,7 @@ sortedcontainers==2.4.0
     # via snowflake-connector-python
 tableauserverclient==0.38 ; python_version >= "3.10"
     # via -r requirements.in
-teradatasql==20.0.0.60
+teradatasql==20.0.0.61
     # via -r requirements.in
 thrift==0.16.0
     # via

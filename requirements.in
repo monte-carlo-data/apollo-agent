@@ -50,7 +50,7 @@ tableauserverclient==0.25 ; python_version < "3.10"
 tableauserverclient==0.38 ; python_version >= "3.10"
 urllib3~=2.7  # CVE-2026-44431, CVE-2026-44432
 
-teradatasql>=20.0.0.60  # 20.0.0.60 bumps embedded golang.org/x/crypto 0.47.0->0.52.0 (closes CVE-2026-39829/-39830/-39831/-39832/-39833/-39834/-42508/-46595/-46597) and golang.org/x/net 0.49.0->0.54.0 (closes CVE-2026-33814); Go stdlib still 1.26.3. Still bundled at vulnerable versions: x/net 0.54.0 (CVE-2026-39821 needs >=0.55.0) + thrift 0.22.0 (CVE-2026-41602 needs >=0.23.0), pending upstream
+teradatasql>=20.0.0.61  # 20.0.0.61 resolves the last teradata-bundled HIGH/CRITICAL from the daily scan: drops the standalone golang.org/x/net (was 0.54.0, CVE-2026-39821) and github.com/apache/thrift (was 0.22.0, CVE-2026-41602 — module now entirely absent from the .so) deps, and bumps the Go toolchain 1.26.3->1.26.4 (closes stdlib CVE-2026-42504); golang.org/x/crypto stays 0.52.0. Verified by extracting the wheel and diffing teradatasql.arm.fips.so build info
 
 impyla==0.22.0
 werkzeug==3.1.0
