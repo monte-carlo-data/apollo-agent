@@ -398,7 +398,7 @@ class Agent:
     def get_supported_connector_types(self, trace_id: Optional[str]) -> AgentResponse:
         """
         Returns the connector types this agent supports, split into
-        native (built-in) and custom categories.
+        native (built-in), custom, and custom_etl categories.
         """
         with self._inject_log_context("get_supported_connector_types", trace_id):
             try:
@@ -409,12 +409,16 @@ class Agent:
                 from apollo.integrations.custom.custom_proxy_client import (
                     CustomProxyClient,
                 )
+                from apollo.integrations.custom_etl.custom_etl_proxy_client import (
+                    CustomEtlProxyClient,
+                )
 
                 return AgentUtils.agent_ok_response(
                     {
                         "connector_types": {
                             "native": get_native_connection_types(),
                             "custom": CustomProxyClient.get_custom_connector_types(),
+                            "custom_etl": CustomEtlProxyClient.get_custom_etl_connector_types(),
                         }
                     },
                     trace_id,
@@ -427,7 +431,7 @@ class Agent:
     def get_connection_manifests(self, trace_id: Optional[str]) -> AgentResponse:
         """
         Returns manifests, capabilities, and templates for all custom
-        connectors installed on this agent.
+        connectors (warehouse and ETL) installed on this agent.
         """
         with self._inject_log_context("get_connection_manifests", trace_id):
             try:
@@ -435,8 +439,12 @@ class Agent:
                 from apollo.integrations.custom.custom_proxy_client import (
                     CustomProxyClient,
                 )
+                from apollo.integrations.custom_etl.custom_etl_proxy_client import (
+                    CustomEtlProxyClient,
+                )
 
                 manifests = CustomProxyClient.get_connection_manifests()
+                manifests.update(CustomEtlProxyClient.get_connection_manifests())
                 return AgentUtils.agent_ok_response(manifests, trace_id)
             except Exception:  # noqa
                 return AgentUtils.agent_response_for_last_exception(

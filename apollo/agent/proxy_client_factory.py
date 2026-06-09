@@ -378,6 +378,16 @@ def _get_proxy_client_custom(
     return CustomProxyClient(credentials=credentials, connector_dir=connector_dir)
 
 
+def _get_proxy_client_custom_etl(
+    credentials: Optional[Dict], connector_dir: str, **kwargs  # type: ignore
+) -> BaseProxyClient:
+    from apollo.integrations.custom_etl.custom_etl_proxy_client import (
+        CustomEtlProxyClient,
+    )
+
+    return CustomEtlProxyClient(credentials=credentials, connector_dir=connector_dir)
+
+
 def _get_proxy_client_microsoft_fabric(
     credentials: Optional[Dict], platform: str, **kwargs  # type: ignore
 ) -> BaseProxyClient:
@@ -542,6 +552,17 @@ class ProxyClientFactory:
             connector_dir = custom_registry.get(connection_type)
             if connector_dir:
                 return _get_proxy_client_custom(
+                    credentials, connector_dir=connector_dir
+                )
+
+            from apollo.integrations.custom_etl.custom_etl_connector_loader import (
+                get_custom_etl_connector_registry,
+            )
+
+            custom_etl_registry = get_custom_etl_connector_registry()
+            connector_dir = custom_etl_registry.get(connection_type)
+            if connector_dir:
+                return _get_proxy_client_custom_etl(
                     credentials, connector_dir=connector_dir
                 )
 
