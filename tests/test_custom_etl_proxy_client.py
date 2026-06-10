@@ -719,13 +719,10 @@ class TestCustomEtlProxyClient(TestCase):
         self, mock_load_module, mock_load_manifest
     ):
         mock_load_module.return_value = self._mock_module
-        run1 = _FakeModel(
-            job_source_id="job-1", run_source_id="run-1", status="success"
-        )
-        run2 = _FakeModel(
-            job_source_id="job-2", run_source_id="run-2", status="success"
-        )
-        self._mock_connector.fetch_run_details.return_value = [run1, run2]
+        self._mock_connector.fetch_run_details.return_value = [
+            {"job_source_id": "job-1", "run_source_id": "run-1", "status": "success"},
+            {"job_source_id": "job-2", "run_source_id": "run-2", "status": "success"},
+        ]
 
         client = CustomEtlProxyClient(
             credentials={"connect_args": {}},

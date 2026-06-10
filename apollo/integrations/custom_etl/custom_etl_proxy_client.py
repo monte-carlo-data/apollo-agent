@@ -144,7 +144,7 @@ class CustomEtlProxyClient(BaseProxyClient):
         )
         if job_ids:
             allowed = set(job_ids)
-            runs = [r for r in runs if getattr(r, "job_source_id", None) in allowed]
+            runs = [r for r in runs if r.get("job_source_id") in allowed]
         return {"all_results": [_serialize(r) for r in runs]}
 
     def get_manifest(self) -> Dict:
