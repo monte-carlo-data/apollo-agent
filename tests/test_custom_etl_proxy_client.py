@@ -38,7 +38,7 @@ def _create_mock_etl_connector_dir(
 
     manifest = {
         "connection_type": connection_type,
-        "name": name,
+        "connection_name": name,
     }
     if terminology is not None:
         manifest["terminology"] = terminology
@@ -903,7 +903,7 @@ class TestGetConnectionManifests(TestCase):
             self.assertEqual(
                 aaa["manifest"]["connection_type"], "custom-etl-connector-aaa"
             )
-            self.assertEqual(aaa["manifest"]["name"], "adf")
+            self.assertEqual(aaa["manifest"]["connection_name"], "adf")
             self.assertEqual(
                 aaa["manifest"]["terminology"],
                 {"group": "Factory", "job": "Pipeline"},

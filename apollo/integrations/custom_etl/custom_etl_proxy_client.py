@@ -169,7 +169,7 @@ class CustomEtlProxyClient(BaseProxyClient):
             result.append(
                 {
                     "type": connection_type,
-                    "name": manifest.get("name", connection_type),
+                    "name": manifest.get("connection_name", connection_type),
                 }
             )
         return result
