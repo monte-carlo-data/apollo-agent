@@ -208,3 +208,49 @@ def test_salesforce_crm_no_variant_fails(client):
     # cerberus's oneof_schema flags the dict — every candidate variant is
     # listed under the connect_args error so the customer can see the choices.
     assert "connect_args" in payload["errors"]
+
+
+# -- custom connector tests ------------------------------------------------
+
+
+def _custom_connector_schema() -> dict[str, Any]:
+    """Schema returned by the platform for a hypothetical custom connector."""
+    return {
+        "connect_args": {
+            "type": "dict",
+            "required": True,
+            "schema": {
+                "host": {"type": "string", "required": True},
+                "port": {"type": "integer", "required": True},
+            },
+        }
+    }
+
+
+def test_custom_connector_valid_credentials(client):
+    with patch(
+        "apollo.agent.agent.get_credentials_schema_for_connection_type",
+        return_value=_custom_connector_schema(),
+    ):
+        payload = _post_validate(
+            client,
+            "custom-connector-abc1234",
+            {"connect_args": {"host": "db.example.com", "port": 5432}},
+        )
+    assert payload["valid"] is True
+    assert payload["connection_type"] == "custom-connector-abc1234"
+    assert payload["errors"] == {}
+
+
+def test_custom_connector_invalid_credentials(client):
+    with patch(
+        "apollo.agent.agent.get_credentials_schema_for_connection_type",
+        return_value=_custom_connector_schema(),
+    ):
+        payload = _post_validate(
+            client,
+            "custom-connector-abc1234",
+            {"connect_args": {"host": "db.example.com"}},
+        )
+    assert payload["valid"] is False
+    assert "connect_args" in payload["errors"]
