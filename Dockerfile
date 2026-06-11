@@ -169,9 +169,17 @@ ENV AzureWebJobsScriptRoot=/home/site/wwwroot \
 
 # Register mcdagent early so COPY --chown below lands files mcdagent-owned
 # without a later `chown -R` layer.
+#
+# /home/data must be mcdagent-owned too: the Functions host writes a secrets
+# sentinel under /home/data/Functions/secrets when it creates a host key on
+# cold start, and with WEBSITES_ENABLE_APP_SERVICE_STORAGE=false (our
+# deployments) /home is the root-owned local container layer, so a non-root
+# process gets EACCES there and the host fails to start. Pre-create and chown
+# it so the host can write.
 RUN groupadd --gid 1000 mcdagent \
     && useradd --uid 1000 --gid mcdagent --no-create-home --home-dir /home/site/wwwroot --shell /usr/sbin/nologin mcdagent \
-    && chown mcdagent:mcdagent /home/site/wwwroot
+    && mkdir -p /home/data \
+    && chown mcdagent:mcdagent /home/site/wwwroot /home/data
 
 RUN apt-get update
 RUN apt-get install -y --no-install-recommends git
