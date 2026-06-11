@@ -9,6 +9,8 @@ CtpConfig (or the proxy client class attribute, for non-CTP) — see
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock, patch
+
 import pytest
 
 from apollo.credentials.schema import get_credentials_schema
@@ -74,3 +76,133 @@ def test_infrastructure_connectors_return_none() -> None:
             f"{ct} should not have a self-hosted-credentials schema "
             "(it is an infrastructure connector, not in the public docs)."
         )
+
+
+# ---------------------------------------------------------------------------
+# Custom connector registry tests
+#
+# The custom connector loaders read from /opt/custom-connectors at import
+# time and cache the result at module level.  We mock at the definition site
+# so the tests never touch the filesystem or interact with the cache.
+# ---------------------------------------------------------------------------
+
+_CC_LOADER = "apollo.integrations.custom.custom_connector_loader"
+_ETL_LOADER = "apollo.integrations.custom_etl.custom_etl_connector_loader"
+
+
+@patch(
+    f"{_CC_LOADER}.load_manifest",
+    return_value={
+        "connection_type": "custom-connector-abc1234",
+        "credentials_schema": {"connect_args": {"type": "dict", "required": True}},
+    },
+)
+@patch(
+    f"{_CC_LOADER}.get_custom_connector_registry",
+    return_value={
+        "custom-connector-abc1234": "/fake/path",
+    },
+)
+def test_custom_connector_with_credentials_schema(
+    _mock_registry: MagicMock,
+    _mock_manifest: MagicMock,
+) -> None:
+    schema = get_credentials_schema("custom-connector-abc1234")
+    assert schema == {"connect_args": {"type": "dict", "required": True}}
+
+
+@patch(
+    f"{_CC_LOADER}.load_manifest",
+    return_value={
+        "connection_type": "custom-connector-abc1234",
+    },
+)
+@patch(
+    f"{_CC_LOADER}.get_custom_connector_registry",
+    return_value={
+        "custom-connector-abc1234": "/fake/path",
+    },
+)
+def test_custom_connector_without_credentials_schema_returns_none(
+    _mock_registry: MagicMock,
+    _mock_manifest: MagicMock,
+) -> None:
+    assert get_credentials_schema("custom-connector-abc1234") is None
+
+
+@patch(
+    f"{_ETL_LOADER}.load_manifest",
+    return_value={
+        "connection_type": "custom-etl-connector-abc1234",
+        "credentials_schema": {"connect_args": {"type": "dict", "required": True}},
+    },
+)
+@patch(
+    f"{_ETL_LOADER}.get_custom_etl_connector_registry",
+    return_value={
+        "custom-etl-connector-abc1234": "/fake/etl/path",
+    },
+)
+def test_custom_etl_connector_with_credentials_schema(
+    _mock_registry: MagicMock,
+    _mock_manifest: MagicMock,
+) -> None:
+    schema = get_credentials_schema("custom-etl-connector-abc1234")
+    assert schema == {"connect_args": {"type": "dict", "required": True}}
+
+
+@patch(
+    f"{_ETL_LOADER}.load_manifest",
+    return_value={
+        "connection_type": "custom-etl-connector-abc1234",
+    },
+)
+@patch(
+    f"{_ETL_LOADER}.get_custom_etl_connector_registry",
+    return_value={
+        "custom-etl-connector-abc1234": "/fake/etl/path",
+    },
+)
+def test_custom_etl_connector_without_credentials_schema_returns_none(
+    _mock_registry: MagicMock,
+    _mock_manifest: MagicMock,
+) -> None:
+    assert get_credentials_schema("custom-etl-connector-abc1234") is None
+
+
+@patch(f"{_ETL_LOADER}.get_custom_etl_connector_registry", return_value={})
+@patch(f"{_CC_LOADER}.get_custom_connector_registry", return_value={})
+def test_custom_connector_not_in_registry_returns_none(
+    _mock_cc_registry: MagicMock,
+    _mock_etl_registry: MagicMock,
+) -> None:
+    assert get_credentials_schema("custom-connector-unknown") is None
+
+
+@patch.dict("os.environ", {}, clear=False)
+@patch(
+    f"{_CC_LOADER}.load_manifest",
+    return_value={
+        "connection_type": "custom-connector-abc1234",
+        "credentials_schema": {"connect_args": {"type": "dict", "required": True}},
+    },
+)
+@patch(
+    f"{_CC_LOADER}.get_custom_connector_registry",
+    return_value={
+        "custom-connector-abc1234": "/fake/path",
+    },
+)
+def test_custom_connector_schema_works_without_feature_gate(
+    _mock_registry: MagicMock,
+    _mock_manifest: MagicMock,
+) -> None:
+    # Credential validation is read-only and should work regardless of the
+    # MCD_CUSTOM_CONNECTORS_ENABLED proxy factory gate.  The schema lookup
+    # intentionally bypasses the feature flag so operators can validate
+    # credentials even when the connector is not yet enabled for collection.
+    import os
+
+    assert "MCD_CUSTOM_CONNECTORS_ENABLED" not in os.environ
+    schema = get_credentials_schema("custom-connector-abc1234")
+    assert schema == {"connect_args": {"type": "dict", "required": True}}
