@@ -1,10 +1,8 @@
-import ipaddress
 import logging
 import os
 import tempfile
 from contextlib import contextmanager
 from typing import Dict, Iterator, List, Optional, Tuple, Union
-from urllib.parse import urlsplit
 
 import requests
 from requests import HTTPError
@@ -13,6 +11,11 @@ from retry.api import retry_call
 from apollo.common.agent.models import AgentOperation
 from apollo.common.agent.redact import AgentRedactUtilities
 from apollo.integrations.base_proxy_client import BaseProxyClient
+from apollo.integrations.http.url_safety import (
+    HttpClientError as HttpClientError,
+    safe_request,
+    safety_policy,
+)
 from apollo.integrations.storage.base_storage_client import BaseStorageClient
 
 # Hoisted to module scope: a late import inside `download_to_storage` would
@@ -38,10 +41,6 @@ _RRI = dict(
     backoff=2,
     max_delay=10,
 )
-
-
-class HttpClientError(Exception):
-    pass
 
 
 class HttpRetryableError(Exception):
@@ -104,31 +103,6 @@ class HttpProxyClient(BaseProxyClient):
             payload, _HTTP_REDACTED_ATTRIBUTES
         )
 
-    @staticmethod
-    def _assert_safe_download_url(url: str) -> None:
-        # Phrasing is method-agnostic so the same helper can be reused by every
-        # streaming download entry point on this client (download_bytes,
-        # download_to_storage, future additions) without misnaming the caller.
-        parts = urlsplit(url)
-        if parts.scheme != "https":
-            raise HttpClientError(
-                f"download requires https scheme; got '{parts.scheme}'"
-            )
-        host = (parts.hostname or "").lower()
-        if host in ("", "localhost"):
-            raise HttpClientError(f"download refuses '{host or '<empty>'}' host")
-        try:
-            ip = ipaddress.ip_address(host)
-        except ValueError:
-            return  # not a literal IP — DNS hostname is OK
-        # Reject every IP-literal class that is not appropriate as a download
-        # target. `is_global` is False for private (RFC1918), loopback,
-        # link-local, reserved, and unspecified (0.0.0.0 / ::) — but Python's
-        # ipaddress module reports `is_global=True` for multicast (e.g.
-        # 224.0.0.0/4), so we add an explicit multicast check.
-        if not ip.is_global or ip.is_multicast:
-            raise HttpClientError(f"download refuses non-public address: {ip}")
-
     def _get_storage_client(self) -> BaseStorageClient:
         """Lazy + cached storage client for ``download_to_storage``.
 
@@ -181,14 +155,16 @@ class HttpProxyClient(BaseProxyClient):
             The ranges are expected to be specified in a list of tuples where each tuple includes two elements:
             inclusive from and exclusive to, for example: [(500, 600)] means: `500 <= status_code < 600`.
 
-        URL validation: ``do_request`` does NOT validate the destination URL — no
-        scheme check, no host allowlist, no IP-range guard. The agent trusts the
-        caller (typically the Monte Carlo DC) for URL construction. This is a
-        deliberate design choice for the MuleSoft and ``http`` connection types,
-        where the DC owns endpoint selection. Callers that need SSRF defenses
-        (e.g., for downloading from caller-supplied URLs that may originate further
-        upstream) should use ``download_bytes`` instead, which calls
-        ``_assert_safe_download_url``.
+        URL validation: the destination URL is validated against the SSRF block
+        list in ``apollo.integrations.http.url_safety`` (default-blocks cloud
+        metadata services and loopback; operator-extensible via
+        ``MCD_HTTP_BLOCKED_CIDRS``) and the underlying TCP connect is pinned to
+        the validated IP to close DNS-rebinding. RFC1918 is intentionally
+        allowed — VPC/Private-Link traffic is in scope for this client.
+        Callers needing the stricter "public-only" policy (e.g. for
+        caller-supplied URLs whose host comes from further upstream) should
+        use ``download_bytes`` instead, which wraps the request in
+        ``safety_policy(url, strict_ip_policy=True, https_only=True)``.
 
         :return: the JSON result of the request
         """
@@ -215,7 +191,7 @@ class HttpProxyClient(BaseProxyClient):
             headers["User-Agent"] = user_agent
         request_args["headers"] = headers
 
-        response = requests.request(http_method, url, **request_args)
+        response = safe_request(http_method, url, **request_args)
         try:
             response.raise_for_status()
         except HTTPError as err:
@@ -264,8 +240,6 @@ class HttpProxyClient(BaseProxyClient):
                 or 4xx response.
             HTTPError: 5xx response.
         """
-        self._assert_safe_download_url(url)
-
         headers = {**additional_headers} if additional_headers else {}
         if not no_auth:
             self._attach_auth_header(headers)
@@ -287,8 +261,13 @@ class HttpProxyClient(BaseProxyClient):
             request_func = requests.head
         else:
             request_func = requests.get
+        # Strict tier: downloads only ever target signed public HTTPS URLs;
+        # non-public IPs and non-HTTPS schemes are out-of-band. ``allow_redirects=False``
+        # is set in ``request_kwargs`` above, so the IP guard installed by
+        # ``safety_policy`` only runs for the initial connection.
         try:
-            response = request_func(url, **request_kwargs)
+            with safety_policy(url, strict_ip_policy=True, https_only=True):
+                response = request_func(url, **request_kwargs)
         except requests.RequestException as exc:
             raise HttpClientError(
                 f"{op_label} transport error: {type(exc).__name__}"

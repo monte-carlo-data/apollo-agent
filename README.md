@@ -187,6 +187,22 @@ See [LICENSE](https://github.com/monte-carlo-data/apollo-agent/blob/main/LICENSE
 
 See [SECURITY](https://github.com/monte-carlo-data/apollo-agent/blob/main/SECURITY.md) for more information.
 
+### SSRF protection
+
+The agent's HTTP integrations include a built-in SSRF guard that blocks requests to link-local and
+loopback addresses (including cloud metadata endpoints such as `169.254.169.254`). Two environment
+variables allow operators to tune this behaviour:
+
+- **`MCD_HTTP_BLOCKED_CIDRS`** — comma-separated list of additional CIDRs (IPv4 or IPv6) the agent
+  should refuse to connect to, extending the default block list. Invalid entries are logged and
+  skipped. The value is read once at module import time. Example:
+  `MCD_HTTP_BLOCKED_CIDRS=100.64.0.0/10,10.50.0.0/16`
+
+- **`MCD_HTTP_REQUIRE_HTTPS`** — boolean (`true`/`false`). When `true`, the default SSRF-guard tier
+  rejects plain HTTP URLs, allowing only HTTPS. Defaults to `false` (both HTTP and HTTPS are
+  permitted in the default tier). The strict download tier always requires HTTPS regardless of this
+  setting.
+
 ## Advanced deployment
 This section is intended only for troubleshooting and advanced scenarios, using templates (Terraform or CloudFormation)
 is the preferred way to deploy agents (even test agents as you can customize the image to use).
