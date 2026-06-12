@@ -71,7 +71,7 @@ TERADATA_DEFAULT_CTP = CtpConfig(
         TransformStep(
             type="tmp_file_write",
             when=(
-                "raw.ssl_options is defined"
+                "raw.ssl_options is mapping"
                 " and raw.ssl_options.ca_data is defined"
                 " and not (raw.ssl_options.disabled is defined and raw.ssl_options.disabled)"
             ),

@@ -7,9 +7,7 @@
 agent-base @ git+https://github.com/monte-carlo-data/agent-base.git@v0.0.2
     # via -r requirements.in
 asn1crypto==1.5.1
-    # via
-    #   oscrypto
-    #   snowflake-connector-python
+    # via snowflake-connector-python
 attrs==23.2.0
     # via
     #   cattrs
@@ -230,8 +228,6 @@ orjson==3.11.7
     # via
     #   -r requirements.in
     #   trino
-oscrypto @ git+https://github.com/wbond/oscrypto@master
-    # via -r requirements.in
 packaging==24.1
     # via
     #   gunicorn
@@ -284,7 +280,7 @@ pycryptodome==3.21.0
     # via
     #   -r requirements.in
     #   teradatasql
-pyjwt==2.12.1
+pyjwt==2.13.0
     # via
     #   -r requirements.in
     #   msal
@@ -363,7 +359,7 @@ sortedcontainers==2.4.0
     # via snowflake-connector-python
 tableauserverclient==0.38 ; python_version >= "3.10"
     # via -r requirements.in
-teradatasql==20.0.0.60
+teradatasql==20.0.0.61
     # via -r requirements.in
 thrift==0.16.0
     # via
