@@ -21,7 +21,7 @@ the custom connector path.
 
 ```
 /opt/custom-connectors/<name>/
-├── manifest.json        # connection_type, connection_name, capabilities, metrics
+├── manifest.json        # connection_type, connection_name, capabilities, metrics, credentials_schema (optional)
 ├── connector.py         # BaseConnector class (create_connection, execute_query, etc.)
 └── templates/           # optional Jinja2 .j2 query templates
 ```

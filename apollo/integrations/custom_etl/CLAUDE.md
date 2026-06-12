@@ -38,7 +38,7 @@ checks this before falling through to either custom connector path.
 
 ```
 /opt/custom-etl-connectors/<name>/
-├── manifest.json        # connection_type, name, terminology, icon_url
+├── manifest.json        # connection_type, name, terminology, icon_url, credentials_schema (optional)
 └── connector.py         # Connector(BaseEtlConnector) class
 ```
 
@@ -53,7 +53,8 @@ checks this before falling through to either custom connector path.
     "job": "Pipeline",
     "task": "Activity"
   },
-  "icon_url": "https://example.com/icon.png"
+  "icon_url": "https://example.com/icon.png",
+  "credentials_schema": {}
 }
 ```
 

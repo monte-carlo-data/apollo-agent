@@ -61,17 +61,27 @@ def _resolve_custom_connector(connection_type: str) -> dict[str, Any] | None:
 
         registry = get_custom_connector_registry()
         connector_dir = registry.get(connection_type)
-        if connector_dir is None:
-            return None
-        manifest = load_manifest(connector_dir)
-        schema = manifest.get("credentials_schema")
-        if isinstance(schema, dict):
-            return schema
     except Exception:
         logger.warning(
-            "Failed to resolve credentials schema for custom connector %s",
+            "Failed to load custom connector registry for %s",
             connection_type,
             exc_info=True,
+        )
+        return None
+
+    if connector_dir is None:
+        return None
+
+    # Connector is registered — failures here are real errors, not "not found".
+    manifest = load_manifest(connector_dir)
+    schema = manifest.get("credentials_schema")
+    if isinstance(schema, dict):
+        return schema
+    if schema is not None:
+        logger.warning(
+            "credentials_schema for %s is not a dict (got %s); ignoring",
+            connection_type,
+            type(schema).__name__,
         )
     return None
 
@@ -86,17 +96,27 @@ def _resolve_custom_etl_connector(connection_type: str) -> dict[str, Any] | None
 
         registry = get_custom_etl_connector_registry()
         connector_dir = registry.get(connection_type)
-        if connector_dir is None:
-            return None
-        manifest = load_manifest(connector_dir)
-        schema = manifest.get("credentials_schema")
-        if isinstance(schema, dict):
-            return schema
     except Exception:
         logger.warning(
-            "Failed to resolve credentials schema for custom ETL connector %s",
+            "Failed to load custom ETL connector registry for %s",
             connection_type,
             exc_info=True,
+        )
+        return None
+
+    if connector_dir is None:
+        return None
+
+    # Connector is registered — failures here are real errors, not "not found".
+    manifest = load_manifest(connector_dir)
+    schema = manifest.get("credentials_schema")
+    if isinstance(schema, dict):
+        return schema
+    if schema is not None:
+        logger.warning(
+            "credentials_schema for %s is not a dict (got %s); ignoring",
+            connection_type,
+            type(schema).__name__,
         )
     return None
 
