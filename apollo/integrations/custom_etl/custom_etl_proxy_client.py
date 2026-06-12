@@ -148,8 +148,10 @@ class CustomEtlProxyClient(BaseProxyClient):
         return {"all_results": [_serialize(r) for r in runs]}
 
     def get_manifest(self) -> Dict:
-        """Return the full manifest from manifest.json."""
-        return self._manifest
+        """Return the manifest from manifest.json (excluding credentials_schema)."""
+        result = dict(self._manifest)
+        result.pop("credentials_schema", None)
+        return result
 
     @staticmethod
     def get_custom_etl_connector_types() -> List[Dict[str, str]]:
@@ -194,8 +196,10 @@ class CustomEtlProxyClient(BaseProxyClient):
         registry = get_custom_etl_connector_registry()
         result: Dict[str, Dict[str, Any]] = {}
         for connection_type, connector_dir in registry.items():
+            manifest = load_manifest(connector_dir)
+            manifest.pop("credentials_schema", None)
             result[connection_type] = {
-                "manifest": load_manifest(connector_dir),
+                "manifest": manifest,
             }
         return result
 

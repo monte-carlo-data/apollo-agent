@@ -62,7 +62,7 @@ def _resolve_custom_connector(connection_type: str) -> dict[str, Any] | None:
         registry = get_custom_connector_registry()
         connector_dir = registry.get(connection_type)
     except Exception:
-        logger.warning(
+        logger.debug(
             "Failed to load custom connector registry for %s",
             connection_type,
             exc_info=True,
@@ -97,7 +97,7 @@ def _resolve_custom_etl_connector(connection_type: str) -> dict[str, Any] | None
         registry = get_custom_etl_connector_registry()
         connector_dir = registry.get(connection_type)
     except Exception:
-        logger.warning(
+        logger.debug(
             "Failed to load custom ETL connector registry for %s",
             connection_type,
             exc_info=True,
