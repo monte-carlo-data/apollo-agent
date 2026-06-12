@@ -219,7 +219,7 @@ content-type: application/octet-stream
 ```
 
 ## Upgrade endpoint
-The agent can be requested to self-upgrade for those platforms supporting it, for now only CloudRun.
+The agent can be requested to self-upgrade on the platforms that support it: CloudRun, Azure and AWS Lambda.
 The following call requests the agent to upgrade to the given image:
 
 ```shell
@@ -228,3 +228,16 @@ curl http://localhost:8081/api/v1/upgrade -X POST -H "Content-Type: application/
     "image": "montecarlodata/pre-release-agent:0.0.1rc202-cloudrun"
 }'
 ```
+
+The requested image is validated before the agent redeploys; it is rejected unless it:
+- comes from the same registry and namespace as the currently running image (on a
+  private registry such as ECR, the same registry/account), so the upgrade can only
+  pull from an already-trusted source;
+- targets the same platform as the running agent (a CloudRun agent cannot be switched
+  to an Azure image, or vice versa);
+- carries a version no older than the running one (downgrades are rejected), expressed
+  as a parseable version — `latest` and other unversioned tags are not accepted.
+
+If you need to allow images from an additional registry/namespace, set the
+`MCD_AGENT_UPGRADE_ALLOWED_REPOS` environment variable to a comma-separated list of
+allowed `registry/namespace` (or `registry/repository`) prefixes.
