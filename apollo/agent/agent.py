@@ -33,7 +33,6 @@ from apollo.common.agent.models import (
     AgentHealthInformation,
     AgentConfigurationError,
     AgentOperation,
-    AgentScript,
 )
 from apollo.agent.proxy_client_factory import ProxyClientFactory
 from apollo.agent.settings import VERSION, BUILD_NUMBER
@@ -633,50 +632,6 @@ class Agent:
             ctp_config=ctp_config,
         )
 
-    def execute_script(
-        self,
-        connection_type: str,
-        script_dict: Optional[Dict],
-        credentials: Optional[Dict],
-    ) -> AgentResponse:
-        """
-        Executes a given script on a specified connection type, using optional credentials.
-
-        The proxy client factory is used to get a proxy client for the given connection type
-        and then the list of commands in the operation are executed on the client object.
-
-        :param connection_type: the type of connection to be used for script execution.
-            This parameter determines the kind of client that will be used to run the script.
-            For example, "bigquery".
-        :param script_dict: a dictionary representation of the script to be executed. The
-            dictionary should be convertible into an AgentScript object. If this parameter is None
-            or empty, the method returns an error.
-        :param credentials: A dictionary containing the credentials necessary for accessing the
-            execution environment. This parameter may be None if no authentication is required.
-        :return: An object representing the outcome of the script execution. This object may contain
-            the result of the execution or details of any error that occurred.
-        """
-        if not script_dict:
-            return AgentUtils.agent_response_for_error(
-                "script is a required parameter", status_code=400
-            )
-        try:
-            script = AgentScript.from_dict(script_dict)
-        except Exception:  # noqa
-            logger.exception("Failed to read script")
-            return AgentUtils.agent_response_for_last_exception(
-                prefix="Failed to read script:", status_code=400
-            )
-
-        operation_name = "#execute_script"
-        return self._execute_with_client(
-            connection_type,
-            operation_name,
-            credentials,
-            script,
-            lambda client: self._execute_script(client, operation_name, script),
-        )
-
     def _execute_with_client(
         self,
         connection_type: str,
@@ -809,21 +764,6 @@ class Agent:
         # clear cyclic reference involving the client, which delays the release of memory
         context.clear()
         return result
-
-    def _execute_script(
-        self,
-        client: BaseProxyClient,
-        operation_name: str,
-        script: AgentScript,
-    ) -> Optional[Any]:
-        context: Dict[str, Any] = {
-            CONTEXT_VAR_CLIENT: client,
-        }
-        context[CONTEXT_VAR_UTILS] = OperationUtils(context)
-
-        return AgentEvaluationUtils.execute_script(
-            context, self._logging_utils, operation_name, script, script.trace_id
-        )
 
     @contextmanager
     def _inject_log_context(self, operation_name: str, trace_id: Optional[str]):
