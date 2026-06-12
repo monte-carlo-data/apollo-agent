@@ -248,6 +248,17 @@ def assert_safe_destination(
         the block list applies uniformly — but the policy structure
         (e.g. adding a new early-exit check) must be kept in sync
         manually.
+
+        Note the two intentionally differ on mixed record sets: this
+        function is strict and rejects if *any* resolved address is
+        blocked, because it only returns a validated IP and does not
+        connect. ``_safe_create_connection`` validates lazily, in
+        ``getaddrinfo`` order, only the addresses it actually attempts —
+        a blocked address that appears *after* one it connects to
+        successfully is never reached and never checked. That is
+        deliberate (it mirrors urllib3's own fall-through-on-failure
+        behavior); don't "fix" the divergence by forcing either side to
+        match the other.
     """
     if not host:
         raise HttpClientError("destination refuses '<empty>' host")
