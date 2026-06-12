@@ -38,6 +38,10 @@ from apollo.common.agent.models import (
 from apollo.agent.proxy_client_factory import ProxyClientFactory
 from apollo.agent.settings import VERSION, BUILD_NUMBER
 from apollo.agent.updater import AgentUpdater
+from apollo.agent.upgrade_validation import (
+    get_configured_allowed_repos,
+    validate_upgrade_image,
+)
 from apollo.agent.utils import AgentUtils
 from apollo.credentials.factory import (
     CredentialsFactory,
@@ -322,6 +326,10 @@ class Agent:
         parameters.
         This method checks if there's an agent updater installed in `agent.updater` property and that
         the env var `MCD_AGENT_IS_REMOTE_UPGRADABLE` is set to `true`.
+        When an image is specified it must pass `validate_upgrade_image`: it has to come from the same
+        registry/namespace as the currently running image (widenable via `MCD_AGENT_UPGRADE_ALLOWED_REPOS`)
+        and must not be older than the running version. This prevents the upgrade path from being used to
+        deploy arbitrary or downgraded images.
         The returned response is a dictionary returned by the agent updater implementation.
         """
         with self._inject_log_context("update", trace_id):
@@ -467,6 +475,14 @@ class Agent:
         upgradable = os.getenv(IS_REMOTE_UPGRADABLE_ENV_VAR, "false").lower() == "true"
         if not upgradable:
             raise AgentConfigurationError("Remote upgrades are disabled for this agent")
+
+        if image:
+            validate_upgrade_image(
+                image=image,
+                current_image=updater.get_current_image(),
+                current_version=VERSION,
+                extra_allowed_repos=get_configured_allowed_repos(),
+            )
 
         log_payload = self._logging_utils.build_extra(
             trace_id=trace_id,

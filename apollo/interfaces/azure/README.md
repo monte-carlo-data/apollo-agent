@@ -1,3 +1,22 @@
+### Deployment assumptions / required app settings
+
+The agent image runs the Azure Functions host as a **non-root** user (`mcdagent`, uid/gid 1000).
+Deployments must use the following app settings:
+
+- **`WEBSITES_ENABLE_APP_SERVICE_STORAGE=false`** — the recommended (and assumed) value for
+  containerized Functions. When `false`, `/home` is the container's local, ephemeral filesystem,
+  so the image pre-creates and chowns `/home/data` and `/home/LogFiles` to `mcdagent` for the
+  non-root host to write its sentinel files (secrets sentinel under
+  `/home/data/Functions/secrets`, debug sentinel under `/home/LogFiles/Application/Functions/Host`).
+  If set to `true`, Azure mounts the storage account's file share over `/home` at startup — this
+  shadows the image's directories (the chowns become inert) but the share is writable so the host
+  still works; the trade-off is the mount must be reachable at startup (problematic over private
+  endpoints in a VNet) and adds latency, so prefer `false`.
+- **`WEBSITES_PORT`** — the image's Functions host (Kestrel) binds to `8080` (a non-root process
+  can't bind ports `<1024`). Leave `WEBSITES_PORT` **unset** so App Service auto-discovers the
+  `EXPOSE`d port `8080`, or set it explicitly to `8080`. A legacy value of `80` causes
+  `ContainerTimeout` after 230s.
+
 ### Required steps to manually deploy a new Azure Function
 Create resource group
 ```shell
