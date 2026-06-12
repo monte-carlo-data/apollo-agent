@@ -911,6 +911,36 @@ class TestGetConnectionManifests(TestCase):
 
             self.assertIn("custom-etl-connector-bbb", result)
 
+    def test_strips_credentials_schema_from_manifest(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            connector_dir = os.path.join(tmp_dir, "adf")
+            os.makedirs(connector_dir, exist_ok=True)
+            manifest = {
+                "connection_type": "custom-etl-connector-aaa",
+                "connection_name": "adf",
+                "credentials_schema": {"connect_args": {"type": "dict"}},
+            }
+            with open(os.path.join(connector_dir, "manifest.json"), "w") as f:
+                json.dump(manifest, f)
+            # connector.py needed for discovery
+            with open(os.path.join(connector_dir, "connector.py"), "w") as f:
+                f.write("class Connector: pass\n")
+
+            with patch(
+                "apollo.integrations.custom_etl.custom_etl_connector_loader._CUSTOM_ETL_CONNECTORS_BASE_PATH",
+                tmp_dir,
+            ), patch(
+                "apollo.integrations.custom_etl.custom_etl_connector_loader._custom_etl_connector_registry",
+                None,
+            ):
+                result = CustomEtlProxyClient.get_connection_manifests()
+
+            aaa = result["custom-etl-connector-aaa"]
+            self.assertNotIn("credentials_schema", aaa["manifest"])
+            self.assertEqual(
+                aaa["manifest"]["connection_type"], "custom-etl-connector-aaa"
+            )
+
     def test_returns_empty_when_no_connectors(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             with patch(
@@ -923,6 +953,37 @@ class TestGetConnectionManifests(TestCase):
                 result = CustomEtlProxyClient.get_connection_manifests()
 
             self.assertEqual(result, {})
+
+
+class TestGetManifestStripsCredentialsSchema(TestCase):
+    """Verify get_manifest() strips credentials_schema from the returned dict."""
+
+    @patch(
+        "apollo.integrations.custom_etl.custom_etl_proxy_client.load_manifest",
+        return_value={
+            "connection_type": "custom-etl-connector-abc",
+            "name": "adf",
+            "credentials_schema": {"connect_args": {"type": "dict"}},
+        },
+    )
+    @patch(
+        "apollo.integrations.custom_etl.custom_etl_proxy_client.load_connector_module"
+    )
+    def test_get_manifest_strips_credentials_schema(
+        self, mock_load_module, mock_load_manifest
+    ):
+        mock_module = MagicMock()
+        mock_module.Connector.return_value = MagicMock()
+        mock_load_module.return_value = mock_module
+
+        client = CustomEtlProxyClient(
+            credentials={"connect_args": {}},
+            connector_dir="/opt/custom-etl-connectors/adf",
+        )
+        result = client.get_manifest()
+
+        self.assertNotIn("credentials_schema", result)
+        self.assertEqual(result["name"], "adf")
 
 
 class TestGetCustomEtlConnectorTypes(TestCase):
