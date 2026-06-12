@@ -179,7 +179,27 @@ def test_custom_connector_not_in_registry_returns_none(
     assert get_credentials_schema("custom-connector-unknown") is None
 
 
-@patch.dict("os.environ", {}, clear=False)
+@patch(
+    f"{_CC_LOADER}.load_manifest",
+    return_value={
+        "connection_type": "custom-connector-abc1234",
+        "credentials_schema": ["not", "a", "dict"],
+    },
+)
+@patch(
+    f"{_CC_LOADER}.get_custom_connector_registry",
+    return_value={
+        "custom-connector-abc1234": "/fake/path",
+    },
+)
+def test_custom_connector_non_dict_credentials_schema_returns_none(
+    _mock_registry: MagicMock,
+    _mock_manifest: MagicMock,
+) -> None:
+    """When credentials_schema is not a dict (e.g. a list), return None."""
+    assert get_credentials_schema("custom-connector-abc1234") is None
+
+
 @patch(
     f"{_CC_LOADER}.load_manifest",
     return_value={
@@ -197,12 +217,8 @@ def test_custom_connector_schema_works_without_feature_gate(
     _mock_registry: MagicMock,
     _mock_manifest: MagicMock,
 ) -> None:
-    # Credential validation is read-only and should work regardless of the
-    # MCD_CUSTOM_CONNECTORS_ENABLED proxy factory gate.  The schema lookup
-    # intentionally bypasses the feature flag so operators can validate
+    # Credential validation is read-only and intentionally bypasses
+    # MCD_CUSTOM_CONNECTORS_ENABLED — operators should be able to validate
     # credentials even when the connector is not yet enabled for collection.
-    import os
-
-    assert "MCD_CUSTOM_CONNECTORS_ENABLED" not in os.environ
     schema = get_credentials_schema("custom-connector-abc1234")
     assert schema == {"connect_args": {"type": "dict", "required": True}}

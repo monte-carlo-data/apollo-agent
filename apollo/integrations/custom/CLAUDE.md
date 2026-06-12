@@ -26,6 +26,8 @@ the custom connector path.
 └── templates/           # optional Jinja2 .j2 query templates
 ```
 
+The optional `credentials_schema` key in the manifest accepts a cerberus schema dict for self-hosted credential validation.
+
 ## Adding a new custom connector
 
 Custom connectors are not added to the codebase — they are user-provided and discovered at

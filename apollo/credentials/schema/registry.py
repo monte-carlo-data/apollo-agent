@@ -51,19 +51,32 @@ _NON_CTP_PROXY_RESOLVERS: dict[str, _NonCtpResolver] = {
 }
 
 
-def _resolve_custom_connector(connection_type: str) -> dict[str, Any] | None:
-    """Return ``credentials_schema`` from a custom warehouse connector's manifest."""
-    try:
-        from apollo.integrations.custom.custom_connector_loader import (
-            get_custom_connector_registry,
-            load_manifest,
-        )
+def _resolve_custom_schema(
+    connection_type: str,
+    get_registry_fn: Callable[[], dict[str, str]],
+    load_manifest_fn: Callable[[str], dict[str, Any]],
+    label: str,
+) -> dict[str, Any] | None:
+    """Shared helper: look up ``credentials_schema`` from a custom connector manifest.
 
-        registry = get_custom_connector_registry()
+    Parameters
+    ----------
+    connection_type:
+        The connection type to resolve.
+    get_registry_fn:
+        Callable that returns ``{connection_type: connector_dir, ...}``.
+    load_manifest_fn:
+        Callable that reads and returns the manifest dict from a connector dir.
+    label:
+        Human-readable label for log messages (e.g. "custom connector").
+    """
+    try:
+        registry = get_registry_fn()
         connector_dir = registry.get(connection_type)
     except Exception:
         logger.debug(
-            "Failed to load custom connector registry for %s",
+            "Failed to load %s registry for %s",
+            label,
             connection_type,
             exc_info=True,
         )
@@ -73,7 +86,7 @@ def _resolve_custom_connector(connection_type: str) -> dict[str, Any] | None:
         return None
 
     # Connector is registered — failures here are real errors, not "not found".
-    manifest = load_manifest(connector_dir)
+    manifest = load_manifest_fn(connector_dir)
     schema = manifest.get("credentials_schema")
     if isinstance(schema, dict):
         return schema
@@ -84,41 +97,36 @@ def _resolve_custom_connector(connection_type: str) -> dict[str, Any] | None:
             type(schema).__name__,
         )
     return None
+
+
+def _resolve_custom_connector(connection_type: str) -> dict[str, Any] | None:
+    """Return ``credentials_schema`` from a custom warehouse connector's manifest."""
+    from apollo.integrations.custom.custom_connector_loader import (
+        get_custom_connector_registry,
+        load_manifest,
+    )
+
+    return _resolve_custom_schema(
+        connection_type,
+        get_registry_fn=get_custom_connector_registry,
+        load_manifest_fn=load_manifest,
+        label="custom connector",
+    )
 
 
 def _resolve_custom_etl_connector(connection_type: str) -> dict[str, Any] | None:
     """Return ``credentials_schema`` from a custom ETL connector's manifest."""
-    try:
-        from apollo.integrations.custom_etl.custom_etl_connector_loader import (
-            get_custom_etl_connector_registry,
-            load_manifest,
-        )
+    from apollo.integrations.custom_etl.custom_etl_connector_loader import (
+        get_custom_etl_connector_registry,
+        load_manifest,
+    )
 
-        registry = get_custom_etl_connector_registry()
-        connector_dir = registry.get(connection_type)
-    except Exception:
-        logger.debug(
-            "Failed to load custom ETL connector registry for %s",
-            connection_type,
-            exc_info=True,
-        )
-        return None
-
-    if connector_dir is None:
-        return None
-
-    # Connector is registered — failures here are real errors, not "not found".
-    manifest = load_manifest(connector_dir)
-    schema = manifest.get("credentials_schema")
-    if isinstance(schema, dict):
-        return schema
-    if schema is not None:
-        logger.warning(
-            "credentials_schema for %s is not a dict (got %s); ignoring",
-            connection_type,
-            type(schema).__name__,
-        )
-    return None
+    return _resolve_custom_schema(
+        connection_type,
+        get_registry_fn=get_custom_etl_connector_registry,
+        load_manifest_fn=load_manifest,
+        label="custom ETL connector",
+    )
 
 
 def get_credentials_schema(connection_type: str) -> dict[str, Any] | None:

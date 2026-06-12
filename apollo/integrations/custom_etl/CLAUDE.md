@@ -53,10 +53,11 @@ checks this before falling through to either custom connector path.
     "job": "Pipeline",
     "task": "Activity"
   },
-  "icon_url": "https://example.com/icon.png",
-  "credentials_schema": {}
+  "icon_url": "https://example.com/icon.png"
 }
 ```
+
+The optional `credentials_schema` key accepts a cerberus schema dict for self-hosted credential validation.
 
 ## Connector interface
 
