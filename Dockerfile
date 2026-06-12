@@ -169,9 +169,18 @@ ENV AzureWebJobsScriptRoot=/home/site/wwwroot \
 
 # Register mcdagent early so COPY --chown below lands files mcdagent-owned
 # without a later `chown -R` layer.
+#
+# /home/data and /home/LogFiles must be mcdagent-owned too. With
+# WEBSITES_ENABLE_APP_SERVICE_STORAGE=false (our deployments) /home is the
+# root-owned local container layer, so a non-root host process gets EACCES
+# writing the two sentinel files it maintains there: the secrets sentinel
+# under /home/data/Functions/secrets (fails host startup) and the debug
+# sentinel under /home/LogFiles/Application/Functions/Host (logged error).
+# Pre-create and chown both so the host can write them.
 RUN groupadd --gid 1000 mcdagent \
     && useradd --uid 1000 --gid mcdagent --no-create-home --home-dir /home/site/wwwroot --shell /usr/sbin/nologin mcdagent \
-    && chown mcdagent:mcdagent /home/site/wwwroot
+    && mkdir -p /home/data /home/LogFiles \
+    && chown mcdagent:mcdagent /home/site/wwwroot /home/data /home/LogFiles
 
 RUN apt-get update
 RUN apt-get install -y --no-install-recommends git
