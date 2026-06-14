@@ -136,7 +136,8 @@ class HttpProxyClient(BaseProxyClient):
         verify_ssl: Optional[Union[bool, str]] = None,
         retry_status_code_ranges: Optional[List[Tuple]] = None,
         data: Optional[str] = None,
-    ) -> Dict:
+        response_format: str = "json",
+    ) -> Union[Dict, str]:
         """
         Executes a single request with no retry, intended to be used for JSON request/response endpoints.
         If the status code is included in `retry_status_code_ranges` then `HttpRetryableError` will be raised.
@@ -166,7 +167,12 @@ class HttpProxyClient(BaseProxyClient):
         use ``download_bytes`` instead, which wraps the request in
         ``safety_policy(url, strict_ip_policy=True, https_only=True)``.
 
-        :return: the JSON result of the request
+        :param data: optional raw request body (e.g. a SOAP/XML envelope); sent as-is.
+        :param response_format: "json" (default) decodes the response body as JSON;
+            "text" returns the raw response body string (for non-JSON APIs such as SOAP/XML
+            that the caller parses itself).
+        :return: the JSON-decoded response (response_format="json") or the raw body string
+            (response_format="text")
         """
 
         request_args = {}
@@ -210,6 +216,10 @@ class HttpProxyClient(BaseProxyClient):
                 raise HttpClientError(text) from err
             raise type(err)(text) from err
 
+        # `text` returns the raw response body (e.g. SOAP/XML APIs that the DC parses
+        # itself); default `json` preserves the historical JSON-decoded behavior.
+        if response_format == "text":
+            return response.text
         return response.json()
 
     @contextmanager
@@ -574,12 +584,15 @@ class HttpProxyClient(BaseProxyClient):
         params: Optional[Dict] = None,
         retry_status_code_ranges: Optional[List[Tuple]] = None,
         retry_args: Optional[Dict] = None,
-    ) -> Dict:
+        data: Optional[str] = None,
+        response_format: str = "json",
+    ) -> Union[Dict, str]:
         """
         Same as `do_request` but retrying based on the status codes defined by `retry_status_code_ranges` and
         `retry_args`.
         `retry_status_code_args` defaults to 429 and 5xx errors
         `retry_args` defaults to: tries=2, delay=2, backoff=2, max_delay=10
+        `data` (raw request body) and `response_format` ("json"|"text") are forwarded to `do_request`.
         """
 
         retry_status_code_ranges = (
@@ -598,6 +611,8 @@ class HttpProxyClient(BaseProxyClient):
                 "additional_headers": additional_headers,
                 "params": params,
                 "retry_status_code_ranges": retry_status_code_ranges,
+                "data": data,
+                "response_format": response_format,
             },
             exceptions=HttpRetryableError,
             **retry_params,  # type: ignore
