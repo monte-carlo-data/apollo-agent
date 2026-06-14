@@ -80,6 +80,49 @@ class TestHttpClient(TestCase):
         self.assertEqual(expected_result, response.result.get(ATTRIBUTE_NAME_RESULT))
 
     @patch("requests.request")
+    def test_http_request_text_response_format(self, mock_request):
+        # response_format="text" returns the raw response body (e.g. a SOAP/XML response the
+        # caller parses itself) instead of JSON-decoding, and a raw `data` body + content_type
+        # are forwarded to the request (YET-1511).
+        mock_response = create_autospec(Response)
+        mock_request.return_value = mock_response
+        mock_response.text = "<soapenv:Envelope>resp</soapenv:Envelope>"
+        operation = {
+            "trace_id": "1234",
+            "commands": [
+                {
+                    "method": "do_request",
+                    "kwargs": {
+                        "url": "https://test.com/services/Soap/m/64.0",
+                        "http_method": "POST",
+                        "data": "<soapenv:Envelope>req</soapenv:Envelope>",
+                        "content_type": "text/xml; charset=UTF-8",
+                        "additional_headers": {"SOAPAction": ""},
+                        "response_format": "text",
+                    },
+                }
+            ],
+        }
+        response = self._agent.execute_operation(
+            "http",
+            "do_request",
+            operation,
+            _HTTP_CREDENTIALS,
+        )
+        # Raw XML body + content type are forwarded to the underlying request.
+        _, kwargs = mock_request.call_args
+        self.assertEqual(kwargs["data"], "<soapenv:Envelope>req</soapenv:Envelope>")
+        self.assertEqual(kwargs["headers"]["Content-Type"], "text/xml; charset=UTF-8")
+        self.assertEqual(kwargs["headers"]["SOAPAction"], "")
+        # Response returned as raw text, NOT JSON-decoded.
+        mock_response.raise_for_status.assert_called_once()
+        mock_response.json.assert_not_called()
+        self.assertEqual(
+            "<soapenv:Envelope>resp</soapenv:Envelope>",
+            response.result.get(ATTRIBUTE_NAME_RESULT),
+        )
+
+    @patch("requests.request")
     @patch("apollo.agent.agent.logger.info")
     def test_http_request_data_redacted(self, mock_info, mock_request):
         mock_response = create_autospec(Response)
