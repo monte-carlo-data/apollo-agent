@@ -16,10 +16,20 @@ class CtpPipeline:
         config: CtpConfig,
         raw_credentials: dict[str, Any],
         context: dict[str, Any] | None = None,
+        temp_files: list[str] | None = None,
     ) -> dict[str, Any]:
         # Copy raw_credentials so state.raw is an independent dict — the
         # clear() at the end of this method must not mutate the caller's dict.
-        state = PipelineState(raw=dict(raw_credentials), context=context or {})
+        #
+        # temp_files is an out-param: when the caller passes a list, transforms
+        # append the filesystem paths they create to it so the caller (the
+        # proxy client factory) can hand them to the client for deletion on
+        # close. Defaults to a throwaway list when omitted (e.g. in unit tests).
+        state = PipelineState(
+            raw=dict(raw_credentials),
+            context=context or {},
+            temp_files=temp_files if temp_files is not None else [],
+        )
         step_field_maps: dict[str, Any] = {}
 
         try:
