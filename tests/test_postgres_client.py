@@ -492,6 +492,35 @@ class PostgresCtpCredentialSafetyTests(TestCase):
         self._assert_no_credential_leak(response)
 
     @patch("psycopg2.connect")
+    def test_connect_string_in_exception_does_not_leak_credentials(self, mock_connect):
+        """A driver exception that embeds the full connect string (incl. the password
+        value) must have the secret stripped before the error reaches the SaaS, while
+        the actionable context (hostname) is preserved. Regression for the traceback
+        credential-leak finding."""
+        mock_connect.side_effect = Exception(
+            f'connection failed: "host={self._HOST} port=5432 dbname=mydb '
+            f'user={self._USER} password={self._PASSWORD}"'
+        )
+        response = self._agent.execute_operation(
+            "postgres",
+            "run_query",
+            self._OPERATION,
+            {
+                "host": self._HOST,
+                "port": "5432",
+                "database": "mydb",
+                "user": self._USER,
+                "password": self._PASSWORD,
+            },
+        )
+        self.assertIn(ATTRIBUTE_NAME_ERROR, response.result)
+        error = response.result.get(ATTRIBUTE_NAME_ERROR, "")
+        # actionable: the hostname survives so the caller can debug connectivity
+        self.assertIn(self._HOST, error)
+        # safe: neither the password nor the username value survives anywhere
+        self._assert_no_credential_leak(response)
+
+    @patch("psycopg2.connect")
     def test_log_output_does_not_leak_credentials(self, mock_connect):
         """JsonLogFormatter (Datadog/Lambda path) never emits the password."""
         from apollo.interfaces.lambda_function.json_log_formatter import (

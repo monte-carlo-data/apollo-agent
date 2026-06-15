@@ -4,7 +4,7 @@
 #
 #    pip-compile --output-file=requirements.txt --strip-extras requirements.in
 #
-agent-base @ git+https://github.com/monte-carlo-data/agent-base.git@v0.0.2
+agent-base @ git+https://github.com/monte-carlo-data/agent-base.git@v0.0.3
     # via -r requirements.in
 asn1crypto==1.5.1
     # via snowflake-connector-python
