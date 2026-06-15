@@ -217,9 +217,15 @@ class HttpProxyClient(BaseProxyClient):
             raise type(err)(text) from err
 
         # `text` returns the raw response body (e.g. SOAP/XML APIs that the DC parses
-        # itself); default `json` preserves the historical JSON-decoded behavior.
+        # itself); default `json` preserves the historical JSON-decoded behavior. Reject
+        # anything else so a misspelled option fails loudly here instead of as a confusing
+        # JSON decode error on a non-JSON body.
         if response_format == "text":
             return response.text
+        if response_format != "json":
+            raise ValueError(
+                f"Unsupported response_format '{response_format}'; expected 'json' or 'text'"
+            )
         return response.json()
 
     @contextmanager
