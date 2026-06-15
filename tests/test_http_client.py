@@ -123,6 +123,24 @@ class TestHttpClient(TestCase):
         )
 
     @patch("requests.request")
+    def test_http_request_unsupported_response_format_raises(self, mock_request):
+        # An unsupported response_format must fail loudly rather than silently falling back
+        # to JSON-decoding a (possibly non-JSON) body (YET-1511).
+        mock_response = create_autospec(Response)
+        mock_request.return_value = mock_response
+
+        client = HttpProxyClient(credentials=_HTTP_CREDENTIALS)
+        with self.assertRaises(ValueError) as ctx:
+            client.do_request(
+                url="https://test.com/path",
+                http_method="GET",
+                response_format="xml",
+            )
+        self.assertIn("xml", str(ctx.exception))
+        # The body is never JSON-decoded for an unsupported format.
+        mock_response.json.assert_not_called()
+
+    @patch("requests.request")
     @patch("apollo.agent.agent.logger.info")
     def test_http_request_data_redacted(self, mock_info, mock_request):
         mock_response = create_autospec(Response)
