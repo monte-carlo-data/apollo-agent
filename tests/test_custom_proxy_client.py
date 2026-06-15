@@ -584,6 +584,31 @@ class TestGetConnectionManifests(TestCase):
 
             self.assertEqual(result, {})
 
+    def test_strips_credentials_schema_from_manifest(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            connector_dir = os.path.join(tmp_dir, "db1")
+            os.makedirs(connector_dir, exist_ok=True)
+            manifest = {
+                "connection_type": "custom-connector-aaa",
+                "connection_name": "db1",
+                "credentials_schema": {"connect_args": {"type": "dict"}},
+            }
+            with open(os.path.join(connector_dir, "manifest.json"), "w") as f:
+                json.dump(manifest, f)
+
+            with patch(
+                "apollo.integrations.custom.custom_connector_loader._CUSTOM_CONNECTORS_BASE_PATH",
+                tmp_dir,
+            ), patch(
+                "apollo.integrations.custom.custom_connector_loader._custom_connector_registry",
+                None,
+            ):
+                result = CustomProxyClient.get_connection_manifests()
+
+            aaa = result["custom-connector-aaa"]
+            self.assertNotIn("credentials_schema", aaa["manifest"])
+            self.assertEqual(aaa["manifest"]["connection_type"], "custom-connector-aaa")
+
     def test_handles_missing_templates(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             _create_mock_connector_dir(
