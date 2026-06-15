@@ -31,7 +31,8 @@ class SalesforceCRMProxyClient(BaseDbProxyClient):
     def wrapped_client(self):
         return self._connection
 
-    def close(self):
+    def _close_client(self):
+        # simple_salesforce holds no persistent connection to close.
         pass
 
     def execute(self, query: str) -> Dict:
