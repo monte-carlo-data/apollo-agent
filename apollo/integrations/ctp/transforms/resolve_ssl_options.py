@@ -60,6 +60,8 @@ class ResolveSslOptionsTransform(Transform):
             content_hash = hashlib.sha256(ca_bytes).hexdigest()[:12]
             cert_path = f"/tmp/{content_hash}_ssl_ca.pem"
             ssl_options.write_ca_data_to_temp_file(cert_path, upsert=True)
+            # Record the path so the proxy client can delete it on close.
+            state.temp_files.append(cert_path)
             state.derived[step.output["ca_path"]] = cert_path
 
         if "ssl_context" in step.output:

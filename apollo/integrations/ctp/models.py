@@ -118,3 +118,10 @@ class PipelineState:
     raw: dict[str, Any]
     derived: dict[str, Any] = field(default_factory=dict)
     context: dict[str, Any] = field(default_factory=dict)
+    # Filesystem paths created by transforms (e.g. cert/key/ini temp files).
+    # Surfaced out of the pipeline so the proxy client that consumes the
+    # resolved connect_args can delete them when it is closed — see
+    # BaseProxyClient.register_temp_files / close. Unlike raw/derived this is
+    # NOT scrubbed at the end of a pipeline run: it holds paths, not secrets,
+    # and the caller needs it after execute() returns.
+    temp_files: list[str] = field(default_factory=list)

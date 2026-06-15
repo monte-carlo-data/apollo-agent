@@ -61,18 +61,29 @@ class GitCloneClient:
         :param file_extensions: list of extensions to filter the returned files by, for example "lkml".
         :return: a generator that returns GitFileData objects for each file with on of the specified extensions.
         """
-        if self._ssh_key:
-            self.write_key()
-        self.delete_repo_dir()  # Prepare
-        self.git_clone()
-        yield from self.read_files(file_extensions)
-        self.delete_repo_dir()  # Clean up
+        try:
+            if self._ssh_key:
+                self.write_key()
+            self.delete_repo_dir()  # Prepare
+            self.git_clone()
+            yield from self.read_files(file_extensions)
+        finally:
+            # Always clean up, even on error: the repo dir and especially the
+            # SSH private key must not persist for the lifetime of the container.
+            self.delete_repo_dir()
+            self.delete_key()
 
     def delete_repo_dir(self):
         """Delete a directory if it exists."""
         if self._REPO_DIR.exists():
             logger.info(f"Delete repo dir: {self._REPO_DIR}")
             shutil.rmtree(self._REPO_DIR)
+
+    def delete_key(self):
+        """Delete the SSH private key file if it exists."""
+        if self._KEY_FILE.exists():
+            logger.info(f"Delete key file: {self._KEY_FILE}")
+            self._KEY_FILE.unlink()
 
     @staticmethod
     def git_version() -> Dict:

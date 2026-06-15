@@ -1,4 +1,6 @@
 import base64
+import tempfile
+from pathlib import Path
 from unittest import TestCase
 from unittest.mock import patch, create_autospec, ANY
 
@@ -187,6 +189,50 @@ class GitTests(TestCase):
             "/tmp/repo",
             env=ANY,
         )
+
+    @patch.object(GitCloneClient, "git_clone")
+    @patch.object(GitCloneClient, "delete_repo_dir")
+    def test_ssh_key_deleted_after_get_files(self, _delete_repo, _git_clone):
+        """The SSH private key must not persist after the clone completes."""
+        with tempfile.TemporaryDirectory() as d:
+            key_path = Path(d) / "mcd_rsa"
+            client = GitCloneClient(
+                credentials={
+                    "repo_url": "git@github.com:gh_account/repo.git",
+                    "ssh_key": base64.b64encode(b"SSH TEST KEY"),
+                }
+            )
+            with patch.object(GitCloneClient, "_KEY_FILE", key_path), patch.object(
+                client, "read_files", return_value=[GitFileData("a.txt", "x")]
+            ):
+                list(client.get_files(["txt"]))
+                self.assertFalse(
+                    key_path.exists(), "SSH key file should be deleted after get_files"
+                )
+
+    @patch.object(GitCloneClient, "git_clone")
+    @patch.object(GitCloneClient, "delete_repo_dir")
+    def test_ssh_key_deleted_even_when_read_fails(self, _delete_repo, _git_clone):
+        """Cleanup runs in a finally, so an error mid-clone still removes the key."""
+        with tempfile.TemporaryDirectory() as d:
+            key_path = Path(d) / "mcd_rsa"
+            client = GitCloneClient(
+                credentials={
+                    "repo_url": "git@github.com:gh_account/repo.git",
+                    "ssh_key": base64.b64encode(b"SSH TEST KEY"),
+                }
+            )
+
+            def _boom(_exts):
+                raise RuntimeError("read failed")
+                yield  # pragma: no cover - makes this a generator
+
+            with patch.object(GitCloneClient, "_KEY_FILE", key_path), patch.object(
+                client, "read_files", side_effect=_boom
+            ):
+                with self.assertRaises(RuntimeError):
+                    list(client.get_files(["txt"]))
+                self.assertFalse(key_path.exists())
 
     @patch("apollo.integrations.git.git_client.git")
     def test_git_version(self, git_mock):

@@ -29,7 +29,7 @@ class BaseDbProxyClient(BaseProxyClient, ABC):
     def __del__(self) -> None:
         self.close()
 
-    def close(self):
+    def _close_client(self):
         if self._connection:
             logger.info(f"Closing connection to {self._connection_type}")
             self._connection.close()

@@ -1,8 +1,12 @@
+import logging
+import os
 from abc import ABC, abstractmethod
-from typing import Optional, Any, Dict
+from typing import Iterable, List, Optional, Any, Dict
 
 from apollo.common.agent.models import AgentOperation
 from apollo.common.agent.redact import AgentRedactUtilities
+
+logger = logging.getLogger(__name__)
 
 # any lower cased attribute including any of these values in the key will be redacted in log messages
 _REDACTED_ATTRIBUTES = [
@@ -23,11 +27,54 @@ class BaseProxyClient(ABC):
     def wrapped_client(self):
         pass
 
+    def register_temp_files(self, paths: Iterable[str]) -> None:
+        """
+        Register filesystem paths (e.g. TLS cert/key/ini files materialized by
+        the CTP pipeline) that must be deleted when this client is closed.
+
+        The pipeline that creates these files runs before the client exists and
+        has no handle to it, so the factory threads the paths here after
+        construction. May be called more than once; paths accumulate.
+        """
+        existing: List[str] = getattr(self, "_temp_files", [])
+        self._temp_files = existing + [p for p in paths if p]
+
     def close(self):
         """
-        Closes the underlying client if needed.
+        Public teardown entry point. Do NOT override this — override
+        :meth:`_close_client` instead.
+
+        Runs the subclass teardown and then removes any temp credential files
+        registered via :meth:`register_temp_files`, in a ``finally`` so the
+        files are deleted even if closing the underlying client raises.
+        Otherwise a failure tearing down the connection would leave downloaded
+        TLS private keys lingering for the lifetime of the container.
+        """
+        try:
+            self._close_client()
+        finally:
+            self._remove_temp_files()
+
+    def _close_client(self):
+        """
+        Release the underlying client/connection if needed. Override in
+        subclasses that hold a connection; the base implementation is a no-op.
         """
         pass
+
+    def _remove_temp_files(self) -> None:
+        # getattr default guards subclasses whose __init__ never called
+        # register_temp_files (e.g. clients constructed outside the factory).
+        for path in getattr(self, "_temp_files", []):
+            try:
+                os.unlink(path)
+            except FileNotFoundError:
+                # Already gone — deterministic-path writers (resolve_ssl_options)
+                # can share a path across clients; treat double-removal as fine.
+                pass
+            except OSError:
+                logger.warning("Failed to remove temp credential file", exc_info=True)
+        self._temp_files = []
 
     def get_error_type(self, error: Exception) -> Optional[str]:
         """

@@ -320,8 +320,11 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
     def wrapped_client(self):
         return self._connection
 
-    def close(self):
-        self._connection.close()
+    def _close_client(self):
+        # Guard against a never-established connection (e.g. teardown via
+        # __del__ after a failed __init__).
+        if self._connection:
+            self._connection.close()
 
     def list_tables(self, dataspace: str | None = None) -> list[dict]:
         if dataspace is not None:
