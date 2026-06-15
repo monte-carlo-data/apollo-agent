@@ -41,9 +41,13 @@ class TeradataProxyClient(BaseDbProxyClient):
             hashed_host = hashlib.sha256(connect_args.get("host").encode()).hexdigest()[
                 :12
             ]
-            connect_args["sslca"] = ssl_options.write_ca_data_to_temp_file(
+            ca_path = ssl_options.write_ca_data_to_temp_file(
                 f"/tmp/{hashed_host}_teradata_ca.pem", upsert=True
             )
+            connect_args["sslca"] = ca_path
+            # Delete the CA temp file when the client is closed (legacy
+            # top-level ssl_options path; the CTP path registers via the factory).
+            self.register_temp_files([ca_path])
 
             # Teradatasql has 2 port connection parameters depending on
             # https vs http connections. If we are making an encrypted connection,

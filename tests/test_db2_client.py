@@ -201,3 +201,7 @@ class Db2ClientTests(TestCase):
         self.assertIn("Security=SSL", connection_string)
         self.assertIn("SSLServerCertificate=", connection_string)
         self.assertIn("PORT=50001", connection_string)
+
+        # The CA temp file is registered so it is deleted when the client closes.
+        self.assertEqual(1, len(client._temp_files))
+        self.assertTrue(client._temp_files[0].endswith("_db2_ca.pem"))

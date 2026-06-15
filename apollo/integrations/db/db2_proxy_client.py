@@ -42,6 +42,9 @@ class Db2ProxyClient(BaseDbProxyClient):
             ).hexdigest()[:12]
             cert_file = f"/tmp/{host_hash}_db2_ca.pem"
             ssl_options.write_ca_data_to_temp_file(cert_file, upsert=True)
+            # Delete the CA temp file when the client is closed (legacy
+            # top-level ssl_options path; the CTP path registers via the factory).
+            self.register_temp_files([cert_file])
 
             connect_args["Security"] = "SSL"
             connect_args["SSLServerCertificate"] = cert_file
