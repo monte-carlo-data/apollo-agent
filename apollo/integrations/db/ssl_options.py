@@ -4,6 +4,30 @@ import tempfile
 from dataclasses import dataclass
 
 
+def write_owner_only(path: str, data: str) -> None:
+    """Atomically write ``data`` to ``path`` with owner-only (0o600) perms.
+
+    The data is first written to a private temp file (``mkstemp`` always creates
+    0o600 regardless of umask) and then ``os.replace``d onto the target. This
+    means the target path is never observable with the new contents at the wrong
+    permissions, and a concurrent reader sees either the complete old file or the
+    complete new one — never a half-written one. ``mkstemp`` is created in the
+    target's directory so the replace stays on one filesystem and is atomic.
+    """
+    dir_name = os.path.dirname(path) or "."
+    fd, tmp_path = tempfile.mkstemp(dir=dir_name)
+    try:
+        with os.fdopen(fd, "w") as tmp_file:
+            tmp_file.write(data)
+        os.replace(tmp_path, path)
+    except BaseException:
+        try:
+            os.unlink(tmp_path)
+        except FileNotFoundError:
+            pass
+        raise
+
+
 @dataclass
 class SslOptions:
     """
@@ -97,8 +121,7 @@ class SslOptions:
             raise ValueError("File already exists at this path.")
         if not self.ca_data:
             raise ValueError("No CA data to write to file.")
-        with open(temp_cert_path, "w") as temp_cert_file:
-            temp_cert_file.write(self.ca_data)
+        write_owner_only(temp_cert_path, self.ca_data)
         return temp_cert_path
 
     def _set_cert_and_key_to_context(self, ssl_context: ssl.SSLContext) -> None:
