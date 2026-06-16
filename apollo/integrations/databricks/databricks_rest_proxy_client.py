@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, cast
 
 from apollo.agent.utils import AgentUtils
 from apollo.integrations.base_proxy_client import BaseProxyClient
@@ -47,15 +47,19 @@ class DatabricksRestProxyClient(BaseProxyClient):
         url = AgentUtils.normalize_url(
             self._databricks_workspace_url, url
         )  # url is actually the path
-        return self._http_client.do_request(
-            url=url,
-            http_method=http_method,
-            payload=payload,
-            timeout=timeout,
-            user_agent=user_agent,
-            additional_headers=additional_headers,
-            params=params,
-            retry_status_code_ranges=retry_status_code_ranges,
+        # This client never requests response_format="text", so the proxy always returns a dict.
+        return cast(
+            Dict,
+            self._http_client.do_request(
+                url=url,
+                http_method=http_method,
+                payload=payload,
+                timeout=timeout,
+                user_agent=user_agent,
+                additional_headers=additional_headers,
+                params=params,
+                retry_status_code_ranges=retry_status_code_ranges,
+            ),
         )
 
     def get_error_type(self, error: Exception) -> Optional[str]:
