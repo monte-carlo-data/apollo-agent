@@ -16,6 +16,31 @@ logger = logging.getLogger(__name__)
 _ATTR_CONNECT_ARGS = "connect_args"
 
 
+def _apply_status_mapping(event: Dict[str, Any], mapping: Dict[str, str]) -> None:
+    """Normalize a run/task-run event's status using the manifest mapping.
+
+    Preserves the original vendor status as ``raw_status``. Case-insensitive
+    key lookup. Unmapped statuses normalize to ``"unknown"``.
+
+    Mapping values are validated at build time (generate_agent_image.py) and
+    at monolith registration time — no runtime validation here.
+    """
+    vendor_status = event.get("status", "")
+    if not vendor_status:
+        return
+
+    # Case-insensitive lookup
+    lowered = vendor_status.lower()
+    normalized = "unknown"
+    for key, value in mapping.items():
+        if key.lower() == lowered:
+            normalized = value.lower()
+            break
+
+    event["raw_status"] = vendor_status
+    event["status"] = normalized
+
+
 def _serialize(obj: Any) -> Any:
     """Serialize connector model objects to JSON-compatible dicts.
 
@@ -134,6 +159,13 @@ class CustomEtlProxyClient(BaseProxyClient):
         ``timedelta``, ``job_run_ids`` maps to ``run_ids``.  When
         ``job_ids`` is provided, results are post-filtered to include
         only runs whose ``job_source_id`` is in the set.
+
+        When the manifest declares ``run_status_mapping``, vendor statuses
+        are normalized post-fetch: the original vendor value is preserved
+        as ``raw_status`` and ``status`` is replaced with the canonical MC
+        value.  Unmapped statuses normalize to ``"unknown"``.  This is
+        Option A (agent-side normalization) — diverges from native
+        integrations which normalize in the monolith.
         """
         lookback = timedelta(minutes=lookback_min)
         runs = self._connector.fetch_run_details(
@@ -145,6 +177,15 @@ class CustomEtlProxyClient(BaseProxyClient):
         if job_ids:
             allowed = set(job_ids)
             runs = [r for r in runs if r.get("job_source_id") in allowed]
+
+        run_mapping = self._manifest.get("run_status_mapping")
+        task_mapping = self._manifest.get("task_run_status_mapping") or run_mapping
+        if run_mapping:
+            for run in runs:
+                _apply_status_mapping(run, run_mapping)
+                for task_run in run.get("task_runs", []):
+                    _apply_status_mapping(task_run, task_mapping or run_mapping)
+
         return {"all_results": [_serialize(r) for r in runs]}
 
     def get_manifest(self) -> Dict:
