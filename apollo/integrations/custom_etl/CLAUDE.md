@@ -53,11 +53,29 @@ checks this before falling through to either custom connector path.
     "job": "Pipeline",
     "task": "Activity"
   },
-  "icon_url": "https://example.com/icon.png"
+  "icon_url": "https://example.com/icon.png",
+  "run_status_mapping": {
+    "Succeeded": "success",
+    "Failed": "error",
+    "Running": "running"
+  },
+  "task_run_status_mapping": {
+    "Completed": "success",
+    "Faulted": "error",
+    "InProgress": "running"
+  }
 }
 ```
 
 The optional `credentials_schema` key accepts a cerberus schema dict for self-hosted credential validation.
+
+## Run status normalization
+
+The optional `run_status_mapping` and `task_run_status_mapping` manifest keys let a connector
+declare how its source-specific status strings map to Monte Carlo's normalized status enum
+(e.g. `success`, `error`, `running`). When present, `fetch_etl_runs` applies the mapping
+post-fetch: the original value is preserved as `raw_status` and the normalized value is written
+to `status`. When absent the mapping is a no-op and statuses pass through unchanged.
 
 ## Connector interface
 
