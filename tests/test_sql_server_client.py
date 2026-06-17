@@ -1,4 +1,5 @@
 import datetime
+import json
 from typing import (
     Iterable,
     List,
@@ -7,6 +8,7 @@ from typing import (
 )
 from unittest import TestCase
 from unittest.mock import Mock, call, patch
+import pyodbc
 from psycopg2.errors import InsufficientPrivilege  # noqa
 
 from apollo.agent.agent import Agent
@@ -281,3 +283,62 @@ class SqlServerClientTests(TestCase):
         response = SqlServerProxyClient._handle_datetimeoffset(datetimeoffset_as_binary)
 
         self.assertEqual(response, expected_datetime)
+
+
+class SqlServerCredentialSafetyTests(TestCase):
+    """The SQL Server client passes credentials as a single ODBC connection string
+    (``UID=...;PWD=...``) straight to ``pyodbc.connect``, so it is the structurally-
+    exposed client: if that string surfaces in a connection exception, the password
+    must be stripped before the error reaches the SaaS. Regression for the
+    error-response credential-leak finding (HIGH, CVSS 7.5)."""
+
+    _SERVER = "tcp:db.example.com,1433"
+    _PASSWORD = "S3cr3tMsSqlPwd"
+
+    _CONNECTION_STRING = (
+        "DRIVER={ODBC Driver 17 for SQL Server};"
+        f"SERVER={_SERVER};"
+        "DATABASE=prod;"
+        "UID=alice;"
+        f"PWD={_PASSWORD}"
+    )
+
+    _OPERATION = {
+        "trace_id": "ctp-safety-test",
+        "skip_cache": True,
+        "commands": [
+            {"method": "cursor", "store": "_cursor"},
+        ],
+    }
+
+    def setUp(self) -> None:
+        self._agent = Agent(LoggingUtils())
+
+    @patch("pyodbc.connect")
+    def test_connection_string_in_exception_does_not_leak_credentials(
+        self, mock_connect
+    ):
+        # Fail the connection with an exception that echoes the ODBC connection string
+        # back (UID/PWD included) — the worst case if pyodbc or a wrapper surfaces the DSN.
+        def _raise_echoing_connection_string(connection_string, *args, **kwargs):
+            raise pyodbc.OperationalError(
+                "08001",
+                f"[08001] Login timeout expired; connection string: {connection_string}",
+            )
+
+        mock_connect.side_effect = _raise_echoing_connection_string
+
+        response = self._agent.execute_operation(
+            "sql-server",
+            "run_query",
+            self._OPERATION,
+            {"connect_args": self._CONNECTION_STRING},
+        )
+
+        serialized = json.dumps(response.result, default=str)
+        # safe: the password value never reaches the SaaS, anywhere in the response
+        self.assertNotIn(self._PASSWORD, serialized)
+        # actionable: the server and the error context survive for debugging
+        error = response.result.get(ATTRIBUTE_NAME_ERROR, "")
+        self.assertIn(self._SERVER, error)
+        self.assertIn("Login timeout expired", error)
