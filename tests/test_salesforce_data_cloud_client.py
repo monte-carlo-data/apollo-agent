@@ -545,6 +545,46 @@ class SalesforceDataCloudProxyClientTests(TestCase):
         self.assertIn("HTTP 200", error_message)
         self.assertIn("invalid_dataspace", error_message)
 
+    def test_client_credentials_flow_does_not_revoke_core_token(self):
+        """YET-1546: on the client-credentials (no core_token) path, the freshly minted
+        core token must NOT be revoked after the a360 exchange. Salesforce reuses one
+        platform session per connected app, so revoking it invalidates the session the
+        data-collector reuses for its /ssot/* + SOAP metadata calls (INVALID_SESSION_ID).
+        """
+        revoke_callback = Mock(return_value=(200, {}, ""))
+        self.mock_responses.remove(
+            responses.POST, "https://test.salesforce.com/services/oauth2/revoke"
+        )
+        self.mock_responses.add_callback(
+            method=responses.POST,
+            url="https://test.salesforce.com/services/oauth2/revoke",
+            callback=revoke_callback,
+        )
+
+        operation = {
+            "trace_id": "test-trace-id",
+            "skip_cache": True,
+            "commands": [
+                {"method": "list_tables", "kwargs": {"dataspace": "UnifiedKnowledge"}}
+            ],
+        }
+        credentials = {**self.credentials}
+        credentials["connect_args"] = {
+            k: v
+            for k, v in self.credentials["connect_args"].items()
+            if k != "core_token"
+        }
+
+        response = self.agent.execute_operation(
+            connection_type="salesforce-data-cloud",
+            operation_name="test_no_revoke_client_creds",
+            operation_dict=operation,
+            credentials=credentials,
+        )
+
+        self.assertFalse(response.is_error)
+        revoke_callback.assert_not_called()
+
     def test_classify_exchange_status(self):
         """_classify_exchange_status returns the right label for each HTTP status family."""
         from apollo.integrations.db.salesforce_data_cloud_proxy_client import (
