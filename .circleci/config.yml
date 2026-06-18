@@ -193,7 +193,7 @@ jobs:
           name: Build azure image (local) for version verification
           command: |
             docker buildx build \
-              --target azure \
+              --file Dockerfile.azure \
               --build-arg code_version=<< parameters.code_version >> \
               --build-arg build_number=<< pipeline.number >> \
               --tag montecarlodata/<< parameters.docker_hub_repository >>:latest-azure \
@@ -206,7 +206,7 @@ jobs:
           name: Build and push azure with SBOM + SLSA provenance
           command: |
             docker buildx build \
-              --target azure \
+              --file Dockerfile.azure \
               --build-arg code_version=<< parameters.code_version >> \
               --build-arg build_number=<< pipeline.number >> \
               --tag montecarlodata/<< parameters.docker_hub_repository >>:latest-azure \

@@ -36,9 +36,16 @@ az acr login --name <REGISTRY>
 
 Docker build and tag
 ```shell
-docker build -t agent -f Dockerfile_az --platform linux/amd64 .
+docker build -t agent -f Dockerfile.azure --platform linux/amd64 .
 docker tag agent <REGISTRY>.azurecr.io/mcd-agent/agent
 ```
+
+> **Durable smoke test (not run in CI).** `Dockerfile.azure` prunes the unused SignalR extension
+> from the Functions bundle to drop its vulnerable MessagePack dependency, and the prune fails the
+> build loudly if its targets move. `resources/azure/durable_smoke_test.sh` is the runtime safety
+> net: it builds the image, boots the host against Azurite, and runs a Durable Functions
+> orchestration end-to-end. Run it locally before merging to dev, and after any Functions
+> base-image change (e.g. a Python-version bump).
 
 Docker push:
 - If using dockerhub: the easiest way is to push to dev and circleci will automatically push to dockerhub, but you can manually push it:

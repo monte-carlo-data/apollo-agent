@@ -1,0 +1,94 @@
+# Azure Functions agent image.
+#
+# Extracted from the multi-stage ./Dockerfile into its own file: unlike the
+# other targets (which share the python:3.12-slim `base` stage), the azure
+# image builds FROM Microsoft's Functions base image and shares nothing with
+# them, so keeping it separate makes both files easier to reason about. The
+# build context is still the repo root (CI passes `-f Dockerfile.azure .`).
+FROM mcr.microsoft.com/azure-functions/python:4-python3.12 AS azure
+
+ENV AzureWebJobsScriptRoot=/home/site/wwwroot \
+    AzureFunctionsJobHost__Logging__Console__IsEnabled=true
+
+# Register mcdagent early so COPY --chown below lands files mcdagent-owned
+# without a later `chown -R` layer.
+#
+# /home/data and /home/LogFiles must be mcdagent-owned too. With
+# WEBSITES_ENABLE_APP_SERVICE_STORAGE=false (our deployments) /home is the
+# root-owned local container layer, so a non-root host process gets EACCES
+# writing the two sentinel files it maintains there: the secrets sentinel
+# under /home/data/Functions/secrets (fails host startup) and the debug
+# sentinel under /home/LogFiles/Application/Functions/Host (logged error).
+# Pre-create and chown both so the host can write them.
+RUN groupadd --gid 1000 mcdagent \
+    && useradd --uid 1000 --gid mcdagent --no-create-home --home-dir /home/site/wwwroot --shell /usr/sbin/nologin mcdagent \
+    && mkdir -p /home/data /home/LogFiles \
+    && chown mcdagent:mcdagent /home/site/wwwroot /home/data /home/LogFiles
+
+RUN apt-get update
+RUN apt-get install -y --no-install-recommends git
+# install libcrypt1 for IBM DB2 ibm-db package compatibility (provides libcrypt.so.1)
+RUN apt-get install -y --no-install-recommends libcrypt1
+
+# Azure database clients and sql-server uses pyodbc which requires unixODBC and 'ODBC Driver 17
+# for SQL Server' Microsoft's python 3.12 base image comes with msodbcsql18 but we are expecting to
+# use the msodbcsql17 driver so need to install specific versions of some libraries and allow Docker
+# to downgrade some pre-installed packages.
+RUN apt-get update
+RUN apt-get install -y --no-install-recommends gnupg gnupg2 gnupg1 curl apt-transport-https
+RUN ACCEPT_EULA=Y apt-get install -y --no-install-recommends msodbcsql17 odbcinst=2.3.11-2+deb12u1 odbcinst1debian2=2.3.11-2+deb12u1 unixodbc-dev=2.3.11-2+deb12u1 unixodbc=2.3.11-2+deb12u1
+
+# Hold the ODBC stack at the pinned versions above (those pins force downgrades
+# so msodbcsql17 — rather than the msodbcsql18 expected by the MS base image —
+# stays installable), then upgrade everything else to pick up Debian security
+# fixes (glibc, dpkg, xorg-server, etc.).
+RUN apt-mark hold msodbcsql17 odbcinst odbcinst1debian2 unixodbc unixodbc-dev \
+    && apt-get upgrade -y
+
+# openssh-client required by git client
+RUN apt-get install -y openssh-client
+
+# clean up all unused libraries
+RUN apt-get autoremove -y && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# delete this file that includes an old golang version (including vulns) and is not used
+RUN rm -rf /opt/startupcmdgen/
+
+# Remove the unused SignalR extension from the baked-in Functions extension
+# bundle. SignalR is the sole consumer of MessagePack, which carries
+# CVE-2026-48109 (HIGH); we only use HTTP + Durable Functions triggers. The
+# script deletes the SignalR-cluster assemblies and de-registers the extension,
+# and fails the build loudly if the expected targets aren't found. See the
+# script header for the full rationale.
+COPY resources/azure/prune_signalr_extension.py /tmp/prune_signalr_extension.py
+RUN python3 /tmp/prune_signalr_extension.py && rm /tmp/prune_signalr_extension.py
+
+COPY requirements.txt /
+COPY requirements-azure.txt /
+RUN pip install --no-cache-dir -r /requirements.txt -r /requirements-azure.txt && rm -rf /opt/python/3/_manifest
+RUN pip install --no-cache-dir -U setuptools==80.10.2  # INC-265 - opentelemetry requires pkg_resources that was removed in setuptools 81
+
+COPY --chown=mcdagent:mcdagent apollo /home/site/wwwroot/apollo
+
+# the files under apollo/interfaces/azure like function_app.py must be in the root folder of the app
+COPY --chown=mcdagent:mcdagent apollo/interfaces/azure /home/site/wwwroot
+
+ARG code_version="local"
+ARG build_number="0"
+RUN echo $code_version,$build_number > /home/site/wwwroot/apollo/agent/version \
+    && chown mcdagent:mcdagent /home/site/wwwroot/apollo/agent/version
+
+# delete MS provided SBOM as it's outdated after the packages we installed
+# docker scout will find vulnerabilities anyway by scanning the image
+RUN rm -rf /usr/local/_manifest
+
+# required for the verify-version-in-docker-image step in circle-ci
+WORKDIR /home/site/wwwroot
+
+# Bind Kestrel on 8080 (non-root can't bind <1024). EXPOSE 8080 lets
+# App Service auto-discover the port when WEBSITES_PORT is not set; if
+# a customer pinned WEBSITES_PORT=80 explicitly, they need to unset it
+# or update to 8080.
+ENV ASPNETCORE_URLS=http://+:8080
+EXPOSE 8080
+USER mcdagent
