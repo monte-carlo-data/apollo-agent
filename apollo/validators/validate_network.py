@@ -1,5 +1,4 @@
 import socket
-from telnetlib import Telnet
 from typing import Optional, Callable, Dict, Tuple, Union
 
 from apollo.agent.utils import AgentUtils
@@ -61,7 +60,14 @@ class ValidateNetwork:
         trace_id: Optional[str] = None,
     ):
         """
-        Checks if telnet connection is usable.
+        Checks if a telnet connection is usable.
+
+        This validation is being retired: `telnetlib` was removed from the Python
+        standard library in 3.13 (PEP 594), and a telnet probe provides no more
+        reachability signal than a plain TCP-open check. Until the frontend stops
+        issuing telnet checks, we keep the endpoint and map it to the TCP-open
+        validation, which also routes through the SSRF guard.
+
         :param host: Host to check, will raise `BadRequestError` if None.
         :param port_str: Port to check as a string containing the numeric port value, will raise `BadRequestError`
             if None or non-numeric.
@@ -70,7 +76,7 @@ class ValidateNetwork:
         :param trace_id: Optional trace ID received from the client that will be included in the response, if present.
         """
         return cls._call_validation_method(
-            cls._internal_validate_telnet_connection,
+            cls._internal_validate_tcp_open_connection,
             host=host,
             port_str=port_str,
             timeout_str=timeout_str,
@@ -129,8 +135,8 @@ class ValidateNetwork:
         method: Callable, trace_id: Optional[str], **kwargs  # type: ignore
     ) -> AgentResponse:
         """
-        Internal method to call one of the network validation methods: `internal_validate_tcp_connection` or
-        `_internal_validate_telnet_connection`.
+        Internal method to call one of the network validation methods (e.g.
+        `_internal_validate_tcp_open_connection`).
         Converts the different exceptions and the successful result to an `AgentResponse` object.
         """
         try:
@@ -177,72 +183,6 @@ class ValidateNetwork:
                 "message": f"Port {port} is open on {host}",
             }
         raise ConnectionFailedError(f"Port {port} is closed on {host}.")
-
-    @classmethod
-    def _internal_validate_telnet_connection(
-        cls, host: Optional[str], port_str: Optional[str], timeout_str: Optional[str]
-    ) -> Dict:
-        """
-        Implementation for the Telnet access validation, first validates the parameters and convert port and timeout to
-        int values and then tries to open a Telnet connection to the given destination.
-        """
-        port, timeout_in_seconds = cls._internal_validate_network_parameters(
-            host, port_str, timeout_str
-        )
-        friendly_name = f"{host}:{port}"
-
-        # SSRF guard: resolve and validate ONCE, then create the socket ourselves
-        # and hand it to Telnet. Telnet(host, port, ...) does its own internal
-        # socket.create_connection which re-resolves DNS and would expose a
-        # rebinding TOCTOU.
-        try:
-            validated_ip = assert_safe_destination(host, port)  # type: ignore[arg-type]
-        except HttpClientError as err:
-            raise ConnectionFailedError(str(err)) from err
-
-        try:
-            sock = socket.create_connection(
-                (validated_ip, port), timeout=timeout_in_seconds
-            )
-        except socket.timeout as err:
-            raise ConnectionFailedError(
-                f"Socket timeout for {friendly_name}. Connection unusable."
-            ) from err
-        except socket.gaierror as err:
-            # validated_ip is an IP literal, so getaddrinfo on it shouldn't fail
-            # under normal conditions — but the original code caught gaierror, so
-            # keep the handler for parity.
-            raise ConnectionFailedError(
-                f"Invalid hostname {host} ({err}). Connection unusable."
-            ) from err
-
-        try:
-            session = Telnet()
-            session.sock = sock
-            # Telnet().host / .port are not in telnetlib's type stubs (they're
-            # set inside .open()), but read_very_eager() only uses .sock — so
-            # we just hand over the pre-created socket and skip the rest.
-            try:
-                try:
-                    session.read_very_eager()
-                    return {
-                        "message": f"Telnet connection for {friendly_name} is usable."
-                    }
-                except EOFError as err:
-                    raise ConnectionFailedError(
-                        f"Telnet connection for {friendly_name} is unusable."
-                    ) from err
-            finally:
-                session.close()
-        except ConnectionFailedError:
-            raise
-        except Exception:
-            # ensure socket is closed if Telnet setup itself fails
-            try:
-                sock.close()
-            except Exception:
-                pass
-            raise
 
     @classmethod
     def _internal_perform_dns_lookup(

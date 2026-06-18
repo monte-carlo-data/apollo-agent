@@ -188,7 +188,7 @@ RUN apt-get install -y --no-install-recommends git
 RUN apt-get install -y --no-install-recommends libcrypt1
 
 # Azure database clients and sql-server uses pyodbc which requires unixODBC and 'ODBC Driver 17
-# for SQL Server' Microsoft's python 3.12 base image comes with msodbcsql18 but we are expecting to
+# for SQL Server' Microsoft's python 3.13 base image comes with msodbcsql18 but we are expecting to
 # use the msodbcsql17 driver so need to install specific versions of some libraries and allow Docker
 # to downgrade some pre-installed packages.
 RUN apt-get update
