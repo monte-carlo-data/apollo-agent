@@ -16,6 +16,7 @@ duckdb==1.1.0
 flask==2.3.3
 flask-compress==1.14
 google-api-python-client==2.176.0  # Upgraded in VULN-620
+google-cloud-dataform==0.6.2
 google-cloud-secret-manager==2.25.0
 google-cloud-storage==2.10.0
 gunicorn==26.0.0  # VULN-1117/YET-1356: request-smuggling & header-framing hardening (AIKIDO-2026-10742); stricter RFC 9112/9110 parsing. Default sync/gthread workers unaffected by the eventlet-worker removal.
