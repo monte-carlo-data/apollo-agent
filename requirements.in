@@ -1,4 +1,4 @@
-agent-base @ git+https://github.com/monte-carlo-data/agent-base.git@v0.0.3
+agent-base @ git+https://github.com/monte-carlo-data/agent-base.git@dev  # TEMP: dev carries the RedactFormatterWrapper %-format fix (PR #9) needed for the azure py3.13 worker; repin to the tagged release (v0.0.4) once PR #9 is merged + released
 
 azure-identity==1.18.0
 azure-core==1.38.2  # YET-463
