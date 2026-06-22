@@ -213,8 +213,15 @@ RUN rm -rf /opt/startupcmdgen/
 
 COPY requirements.txt /
 COPY requirements-azure.txt /
-RUN pip install --no-cache-dir -r /requirements.txt -r /requirements-azure.txt && rm -rf /opt/python/3/_manifest
-RUN pip install --no-cache-dir -U setuptools==80.10.2  # INC-265 - opentelemetry requires pkg_resources that was removed in setuptools 81
+# Install deps into the Functions app-package dir (not system site-packages) so the
+# host's dependency isolation keeps them off the worker's sys.path. Otherwise our
+# protobuf and the worker's bundled protobuf co-load and SIGSEGV the worker on py3.13.
+# No setuptools/pkg_resources needed (opentelemetry moved off it; remaining users guard the import).
+RUN pip install --no-cache-dir \
+    --target=/home/site/wwwroot/.python_packages/lib/site-packages \
+    -r /requirements.txt -r /requirements-azure.txt \
+    && chown -R mcdagent:mcdagent /home/site/wwwroot/.python_packages \
+    && rm -rf /opt/python/3/_manifest
 
 COPY --chown=mcdagent:mcdagent apollo /home/site/wwwroot/apollo
 
