@@ -202,7 +202,12 @@ class Agent:
         trace_id: Optional[str] = None,
     ) -> AgentResponse:
         """
-        Checks if telnet connection is usable.
+        Checks if a telnet connection is usable.
+
+        Retired validation: `telnetlib` was removed from the Python stdlib in 3.13
+        (PEP 594). The endpoint is kept for frontend compatibility but now maps to
+        the TCP-open check (see `ValidateNetwork.validate_telnet_connection`).
+
         :param host: Host to check, will raise `BadRequestError` if None.
         :param port_str: Port to check as a string containing the numeric port value, will raise `BadRequestError`
             if None or non-numeric.
