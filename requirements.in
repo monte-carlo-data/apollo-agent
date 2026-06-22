@@ -17,7 +17,7 @@ flask==2.3.3
 flask-compress==1.14
 google-api-python-client==2.176.0  # Upgraded in VULN-620
 google-cloud-secret-manager==2.25.0
-google-cloud-storage==2.10.0
+google-cloud-storage==2.19.0  # 2.10.0 shipped a legacy setuptools namespace (nspkg.pth + namespace_packages.txt for `google`), which corrupts the `google` namespace under Python 3.13 and crashes the Azure Functions worker (KeyError: 'google'). 2.19.0 uses native PEP 420 namespaces.
 gunicorn==26.0.0  # VULN-1117/YET-1356: request-smuggling & header-framing hardening (AIKIDO-2026-10742); stricter RFC 9112/9110 parsing. Default sync/gthread workers unaffected by the eventlet-worker removal.
 hdbcli==2.18.27
 ibm-db==3.2.7
