@@ -21,9 +21,10 @@ class Db2ClientArgs(TypedDict):
     SSLServerCertificate: NotRequired[str]  # path to CA PEM file
 
 
-# DB2 self-hosted credentials schema mirrors the docs accordion. The CTP also
-# accepts host/user/password/db_name as alternate spellings on the DC pre-shape
-# path, but customer self-hosted JSON is expected to follow the docs.
+# DB2 self-hosted credentials schema mirrors the docs accordion: the DC pre-shape
+# path (clients/plugins/plugin_db2.py) sends connect_args with IBM ODBC key names
+# (hostname/uid/pwd/database). The mapper below also accepts the flat spellings
+# (host/user/password/db_name) so direct flat credentials resolve too.
 DB2_CREDENTIALS_SCHEMA = {
     "connect_args": {
         "type": "dict",
@@ -75,11 +76,11 @@ DB2_DEFAULT_CTP = CtpConfig(
         name="db2_client_args",
         schema=Db2ClientArgs,
         field_map={
-            "HOSTNAME": "{{ raw.host }}",
+            "HOSTNAME": "{{ raw.host | default(raw.hostname) }}",
             "PORT": "{{ raw.port | default(50000) }}",
             "DATABASE": "{{ raw.db_name | default(raw.database) }}",
-            "UID": "{{ raw.user | default(raw.username) }}",
-            "PWD": "{{ raw.password }}",
+            "UID": "{{ raw.user | default(raw.username) | default(raw.uid) }}",
+            "PWD": "{{ raw.password | default(raw.pwd) }}",
             "PROTOCOL": "TCPIP",
             "querytimeout": "{{ raw.query_timeout_in_seconds | default(none) }}",
             "connecttimeout": "{{ raw.connect_timeout | default(none) }}",

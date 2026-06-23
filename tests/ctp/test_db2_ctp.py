@@ -65,6 +65,54 @@ class TestDb2Ctp(TestCase):
         )
         self.assertEqual("bob", args["UID"])
 
+    # ── ODBC-spelled aliases (data-collector pre-shape path) ───────────
+    # plugin_db2.py builds connect_args with the IBM ODBC key names
+    # (hostname/uid/pwd/database); the mapper must accept those too.
+
+    def test_hostname_field_alias(self):
+        args = _resolve(
+            {"hostname": "odbc-host", "db_name": "d", "user": "u", "password": "p"}
+        )
+        self.assertEqual("odbc-host", args["HOSTNAME"])
+
+    def test_uid_field_alias(self):
+        args = _resolve(
+            {"host": "h", "db_name": "d", "uid": "db2inst1", "password": "p"}
+        )
+        self.assertEqual("db2inst1", args["UID"])
+
+    def test_pwd_field_alias(self):
+        args = _resolve({"host": "h", "db_name": "d", "user": "u", "pwd": "secret"})
+        self.assertEqual("secret", args["PWD"])
+
+    def test_dc_preshaped_connect_args_path(self):
+        """Replicates the data-collector agent path (plugin_db2.py): ODBC-spelled
+        credentials wrapped in connect_args, resolved through the registry (which
+        unwraps connect_args before running the pipeline). Regression for the
+        "'host' is undefined" failure — the mapper read raw.host/raw.user/
+        raw.password, none of which exist on this path.
+        """
+        resolved = CtpRegistry.resolve(
+            "db2",
+            {
+                "connect_args": {
+                    "hostname": "db2.example.com",
+                    "port": 50000,
+                    "database": "testdb",
+                    "uid": "admin",
+                    "pwd": "secret",
+                },
+                "ssl_options": {},
+            },
+        )
+        args = resolved["connect_args"]
+        self.assertEqual("db2.example.com", args["HOSTNAME"])
+        self.assertEqual(50000, args["PORT"])
+        self.assertEqual("testdb", args["DATABASE"])
+        self.assertEqual("admin", args["UID"])
+        self.assertEqual("secret", args["PWD"])
+        self.assertEqual("TCPIP", args["PROTOCOL"])
+
     # ── Optional timeout fields ────────────────────────────────────────
 
     def test_query_timeout_maps_to_querytimeout(self):
