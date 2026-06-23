@@ -213,6 +213,8 @@ RUN rm -rf /opt/startupcmdgen/
 
 COPY requirements.txt /
 COPY requirements-azure.txt /
+# Azure Functions host puts BOTH wwwroot (app code) and .python_packages/lib/site-packages (deps) on
+# sys.path — these two roots must stay separate; consolidating them would silently break imports.
 # Install deps into the Functions app-package dir (not system site-packages) so the
 # host's dependency isolation keeps them off the worker's sys.path. Otherwise our
 # protobuf and the worker's bundled protobuf co-load and SIGSEGV the worker on py3.13.

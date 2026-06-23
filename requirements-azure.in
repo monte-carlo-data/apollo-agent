@@ -6,7 +6,7 @@ azure-monitor-opentelemetry==1.8.8  # <1.4 pulls opentelemetry-instrumentation 0
 azure-monitor-query==1.2.1
 aiohttp==3.13.3
 deprecated==1.2.18 # Added VULN-620
-opentelemetry-api>=1.25.0 # VULN-620 floor; resolved higher to match azure-monitor-opentelemetry
+opentelemetry-api==1.40.0 # VULN-620; exact pin MUST equal requirements-cloudrun.in's opentelemetry-api pin (tests/linter install cloudrun+azure together); also the version azure-monitor-opentelemetry resolves to
 viztracer==0.17.1 # Added VULN-620
 wrapt==1.17.2 # Added VULN-620
 zipp==3.23.0 # Added VULN-620
