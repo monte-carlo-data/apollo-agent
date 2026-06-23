@@ -15,7 +15,7 @@ Used in two modes:
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, cast
 
 from google.cloud import dataform_v1
 from google.oauth2 import service_account
@@ -80,38 +80,39 @@ class GcpDataformProxyClient(BaseProxyClient):
 
     def list_repositories(self, parent: str) -> list[dict]:
         return [
-            type(r).to_dict(r) for r in self._client.list_repositories(parent=parent)
+            cast(dict, type(r).to_dict(r))
+            for r in self._client.list_repositories(parent=parent)
         ]
 
     def list_workflow_configs(self, parent: str) -> list[dict]:
         return [
-            type(c).to_dict(c)
+            cast(dict, type(c).to_dict(c))
             for c in self._client.list_workflow_configs(parent=parent)
         ]
 
     def list_workflow_invocations(self, parent: str) -> list[dict]:
         return [
-            type(i).to_dict(i)
+            cast(dict, type(i).to_dict(i))
             for i in self._client.list_workflow_invocations(parent=parent)
         ]
 
     def list_compilation_results(self, parent: str) -> list[dict]:
         return [
-            type(c).to_dict(c)
+            cast(dict, type(c).to_dict(c))
             for c in self._client.list_compilation_results(parent=parent)
         ]
 
     def query_compilation_result_actions(self, name: str) -> list[dict]:
         request = dataform_v1.QueryCompilationResultActionsRequest(name=name)
         return [
-            type(a).to_dict(a)
+            cast(dict, type(a).to_dict(a))
             for a in self._client.query_compilation_result_actions(request=request)
         ]
 
     def query_workflow_invocation_actions(self, name: str) -> list[dict]:
         request = dataform_v1.QueryWorkflowInvocationActionsRequest(name=name)
         return [
-            type(a).to_dict(a)
+            cast(dict, type(a).to_dict(a))
             for a in self._client.query_workflow_invocation_actions(request=request)
         ]
 
