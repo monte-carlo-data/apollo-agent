@@ -135,6 +135,13 @@ class HealthNetworkTests(TestCase):
             response.result.get(ATTRIBUTE_NAME_ERROR),
         )
 
+    @patch("socket.socket")
+    def test_telnet_maps_to_tcp_open_timeout(self, mock_socket):
+        mock_socket = mock_socket.return_value
+        mock_socket.connect_ex.side_effect = socket.timeout
+        response = self._agent.validate_telnet_connection("93.184.216.34", "123", None)
+        self.assertIsNotNone(response.result.get(ATTRIBUTE_NAME_ERROR))
+
     # --- TOCTOU regression tests ------------------------------------------
 
     @patch("apollo.validators.validate_network.socket.socket")

@@ -795,6 +795,7 @@ def test_network_telnet_get() -> Tuple[Dict, int]:
                 $ref: "#/definitions/TestNetworkTelnetResponse"
     :return: a message indicating if the connection was successful or not
     """
+    # TODO(VULN-1230): remove this telnet endpoint once the frontend stops calling it.
     return _execute_network_validation(agent.validate_telnet_connection)
 
 
@@ -841,6 +842,7 @@ def test_network_telnet_post() -> Tuple[Dict, int]:
                 $ref: "#/definitions/TestNetworkTelnetResponse"
     :return: a message indicating if the connection was successful or not
     """
+    # TODO(VULN-1230): remove this telnet endpoint once the frontend stops calling it.
     return _execute_network_validation(agent.validate_telnet_connection)
 
 

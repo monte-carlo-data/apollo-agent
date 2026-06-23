@@ -206,7 +206,7 @@ class Agent:
 
         Retired validation: `telnetlib` was removed from the Python stdlib in 3.13
         (PEP 594). The endpoint is kept for frontend compatibility but now maps to
-        the TCP-open check (see `ValidateNetwork.validate_telnet_connection`).
+        the TCP-open check (see `ValidateNetwork.validate_tcp_open_connection`).
 
         :param host: Host to check, will raise `BadRequestError` if None.
         :param port_str: Port to check as a string containing the numeric port value, will raise `BadRequestError`

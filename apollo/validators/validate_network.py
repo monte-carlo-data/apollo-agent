@@ -75,6 +75,7 @@ class ValidateNetwork:
             if non-numeric. Defaults to 5 seconds.
         :param trace_id: Optional trace ID received from the client that will be included in the response, if present.
         """
+        # TODO(VULN-1230): remove this telnet->TCP-open alias once the frontend stops calling /test/network/telnet.
         return cls._call_validation_method(
             cls._internal_validate_tcp_open_connection,
             host=host,
@@ -174,15 +175,16 @@ class ValidateNetwork:
             raise ConnectionFailedError(str(err)) from err
 
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(timeout_in_seconds)
-
-        if sock.connect_ex((validated_ip, port)) == 0:
-            sock.shutdown(socket.SHUT_RDWR)
+        try:
+            sock.settimeout(timeout_in_seconds)
+            if sock.connect_ex((validated_ip, port)) == 0:
+                sock.shutdown(socket.SHUT_RDWR)
+                return {
+                    "message": f"Port {port} is open on {host}",
+                }
+            raise ConnectionFailedError(f"Port {port} is closed on {host}.")
+        finally:
             sock.close()
-            return {
-                "message": f"Port {port} is open on {host}",
-            }
-        raise ConnectionFailedError(f"Port {port} is closed on {host}.")
 
     @classmethod
     def _internal_perform_dns_lookup(
