@@ -14,6 +14,7 @@ from apollo.common.agent.redact import AgentRedactUtilities
 from apollo.common.agent.redact_formatter import RedactFormatterWrapper
 from apollo.agent.utils import AgentUtils
 from apollo.interfaces.generic.log_context import BaseLogContext
+from apollo.interfaces.cloudrun.logging_setup import setup_cloud_run_logging
 from apollo.interfaces.cloudrun.platform import CloudRunPlatformProvider
 
 # CloudRun specific application that adds support for structured logging
@@ -21,9 +22,7 @@ from apollo.interfaces.cloudrun.platform import CloudRunPlatformProvider
 # initialize CloudRun logging
 gcp_logging_client = google.cloud.logging.Client()
 is_debug_log = os.getenv(DEBUG_LOG_ENV_VAR, "false").lower() == "true"
-gcp_logging_client.setup_logging(
-    log_level=logging.DEBUG if is_debug_log else logging.INFO
-)
+setup_cloud_run_logging(gcp_logging_client, is_debug_log)
 
 root_logger = logging.getLogger()
 for h in root_logger.handlers:

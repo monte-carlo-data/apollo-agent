@@ -2,4 +2,4 @@
 google-cloud-logging==3.12.1 # Upgraded in VULN-620
 google-cloud-run==0.10.18 # Upgraded in VULN-620
 importlib-metadata==7.1.0 # Added VULN-620
-opentelemetry-api==1.25.0 # Added VULN-620
+opentelemetry-api==1.40.0 # must equal requirements-azure.in's opentelemetry-api pin (tests/linter install cloudrun+azure together, so they must agree); also the version azure-monitor-opentelemetry resolves to. Bumped from 1.25.0 for that consistency (VULN-620).

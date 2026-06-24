@@ -201,6 +201,9 @@ class SalesforceDataCloudConnection(SalesforceCDPConnection):
         if refresh_token == "required_but_not_used":
             refresh_token = None
 
+        def noop(*args: Any, **kwargs: Any) -> None:
+            pass
+
         if core_token is not None:
             # Old DC path: exchange the externally-provided core_token.
             # Pass a fake refresh_token so the library enters the exchange path.
@@ -216,9 +219,6 @@ class SalesforceDataCloudConnection(SalesforceCDPConnection):
                 refresh_token="required_but_not_used",
                 dataspace=dataspace,
             )
-
-            def noop(*args: Any, **kwargs: Any) -> None:
-                pass
 
             def raise_on_renewal(*args: Any, **kwargs: Any) -> NoReturn:
                 raise Exception(
@@ -241,13 +241,32 @@ class SalesforceDataCloudConnection(SalesforceCDPConnection):
         else:
             # New DC path: let the library handle OAuth + exchange via client credentials.
             # _token_by_client_creds_flow fetches a core token then exchanges it for
-            # a scoped Data Cloud token. No overrides needed.
+            # a scoped Data Cloud token.
             super().__init__(
                 login_url,
                 client_id=client_id,
                 client_secret=client_secret,
                 dataspace=dataspace,
             )
+
+            # Suppress _revoke_core_token (YET-1546). After the a360 exchange the library
+            # revokes the freshly minted core token (_exchange_token -> _revoke_core_token).
+            # Salesforce's client-credentials flow reuses a single platform session per
+            # connected app, so revoking it invalidates the session the data-collector
+            # reuses for its /ssot/* REST and SOAP Metadata calls -> INVALID_SESSION_ID,
+            # which silently drops DLO freshness/volume + federation lineage. The
+            # short-lived core token expires on its own; no explicit revoke is needed.
+            if (
+                hasattr(self, "authentication_helper")
+                and self.authentication_helper
+                and hasattr(self.authentication_helper, "_revoke_core_token")
+            ):
+                self.authentication_helper._revoke_core_token = noop
+            else:
+                raise Exception(
+                    "salesforce-cdp-connector library has changed. "
+                    "Cannot override _revoke_core_token()."
+                )
 
     def cursor(self) -> SalesforceCDPCursor:
         """Override to return a cursor that retries on transient network errors.

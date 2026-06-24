@@ -13,6 +13,7 @@ from apollo.integrations.custom_etl.custom_etl_connector_loader import (
 from apollo.agent.agent import Agent
 from apollo.integrations.custom_etl.custom_etl_proxy_client import (
     CustomEtlProxyClient,
+    _apply_status_mapping,
     _serialize,
 )
 
@@ -1184,3 +1185,145 @@ class TestProxyClientFactory(TestCase):
                 credentials={"connect_args": {}},
                 platform="generic",
             )
+
+
+# ---------------------------------------------------------------------------
+# Status mapping tests
+# ---------------------------------------------------------------------------
+
+
+class TestApplyStatusMapping(TestCase):
+    """Unit tests for _apply_status_mapping helper."""
+
+    def test_mapping_applied_correctly(self):
+        """(a) Vendor status is normalized via the mapping."""
+        event = {"status": "Succeeded", "job_source_id": "j1"}
+        _apply_status_mapping(event, {"Succeeded": "success", "Failed": "failed"})
+        self.assertEqual(event["status"], "success")
+        self.assertEqual(event["raw_status"], "Succeeded")
+
+    def test_unmapped_status_normalizes_to_unknown(self):
+        """(b) Vendor status not in mapping normalizes to 'unknown'."""
+        event = {"status": "Suspended"}
+        _apply_status_mapping(event, {"Succeeded": "success"})
+        self.assertEqual(event["status"], "unknown")
+        self.assertEqual(event["raw_status"], "Suspended")
+
+    def test_raw_status_preserved(self):
+        """(c) raw_status preserves the original vendor value."""
+        event = {"status": "InProgress"}
+        _apply_status_mapping(event, {"InProgress": "in_progress"})
+        self.assertEqual(event["raw_status"], "InProgress")
+        self.assertEqual(event["status"], "in_progress")
+
+    def test_case_insensitive_key_matching(self):
+        """(f) Case-insensitive: manifest has 'Succeeded', event has 'succeeded'."""
+        event = {"status": "succeeded"}
+        _apply_status_mapping(event, {"Succeeded": "success"})
+        self.assertEqual(event["status"], "success")
+        self.assertEqual(event["raw_status"], "succeeded")
+
+    def test_empty_status_is_noop(self):
+        """Empty status string is a no-op."""
+        event = {"status": ""}
+        _apply_status_mapping(event, {"Succeeded": "success"})
+        self.assertNotIn("raw_status", event)
+        self.assertEqual(event["status"], "")
+
+
+class TestFetchEtlRunsStatusMapping(TestCase):
+    """Integration tests for status mapping in fetch_etl_runs."""
+
+    def setUp(self):
+        self._mock_module = MagicMock()
+        self._mock_connector = MagicMock()
+        self._mock_module.Connector.return_value = self._mock_connector
+
+    def _create_client(self, manifest):
+        with patch(
+            "apollo.integrations.custom_etl.custom_etl_proxy_client.load_manifest",
+            return_value=manifest,
+        ), patch(
+            "apollo.integrations.custom_etl.custom_etl_proxy_client.load_connector_module"
+        ) as mock_load_module:
+            mock_load_module.return_value = self._mock_module
+            return CustomEtlProxyClient(
+                credentials={"connect_args": {}},
+                connector_dir="/opt/custom-etl-connectors/test",
+            )
+
+    def test_no_mapping_noop(self):
+        """(d) No mapping in manifest — status unchanged, no raw_status added."""
+        self._mock_connector.fetch_run_details.return_value = [
+            {"job_source_id": "j1", "run_source_id": "r1", "status": "Succeeded"},
+        ]
+        client = self._create_client({})
+        result = client.fetch_etl_runs(lookback_min=60)
+
+        run = result["all_results"][0]
+        self.assertEqual(run["status"], "Succeeded")
+        self.assertNotIn("raw_status", run)
+
+    def test_mapping_applied_to_runs(self):
+        """Mapping normalizes run statuses and preserves raw_status."""
+        self._mock_connector.fetch_run_details.return_value = [
+            {"job_source_id": "j1", "run_source_id": "r1", "status": "Succeeded"},
+            {"job_source_id": "j1", "run_source_id": "r2", "status": "Failed"},
+        ]
+        manifest = {"run_status_mapping": {"Succeeded": "success", "Failed": "failed"}}
+        client = self._create_client(manifest)
+        result = client.fetch_etl_runs(lookback_min=60)
+
+        self.assertEqual(result["all_results"][0]["status"], "success")
+        self.assertEqual(result["all_results"][0]["raw_status"], "Succeeded")
+        self.assertEqual(result["all_results"][1]["status"], "failed")
+        self.assertEqual(result["all_results"][1]["raw_status"], "Failed")
+
+    def test_task_run_status_mapping_used_when_present(self):
+        """(e) task_run_status_mapping used for task runs when present."""
+        self._mock_connector.fetch_run_details.return_value = [
+            {
+                "job_source_id": "j1",
+                "run_source_id": "r1",
+                "status": "Succeeded",
+                "task_runs": [
+                    {
+                        "job_source_id": "j1",
+                        "run_source_id": "t1",
+                        "status": "Completed",
+                    },
+                ],
+            },
+        ]
+        manifest = {
+            "run_status_mapping": {"Succeeded": "success"},
+            "task_run_status_mapping": {"Completed": "success"},
+        }
+        client = self._create_client(manifest)
+        result = client.fetch_etl_runs(lookback_min=60)
+
+        run = result["all_results"][0]
+        self.assertEqual(run["status"], "success")
+        task = run["task_runs"][0]
+        self.assertEqual(task["status"], "success")
+        self.assertEqual(task["raw_status"], "Completed")
+
+    def test_task_runs_fall_back_to_run_mapping(self):
+        """(e) task runs fall back to run_status_mapping when no task mapping."""
+        self._mock_connector.fetch_run_details.return_value = [
+            {
+                "job_source_id": "j1",
+                "run_source_id": "r1",
+                "status": "Failed",
+                "task_runs": [
+                    {"job_source_id": "j1", "run_source_id": "t1", "status": "Failed"},
+                ],
+            },
+        ]
+        manifest = {"run_status_mapping": {"Failed": "failed"}}
+        client = self._create_client(manifest)
+        result = client.fetch_etl_runs(lookback_min=60)
+
+        task = result["all_results"][0]["task_runs"][0]
+        self.assertEqual(task["status"], "failed")
+        self.assertEqual(task["raw_status"], "Failed")
