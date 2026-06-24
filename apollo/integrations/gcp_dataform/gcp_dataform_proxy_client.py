@@ -65,18 +65,13 @@ class GcpDataformProxyClient(BaseProxyClient):
         return self._client
 
     def get_connection_metadata(self) -> dict[str, Any]:
-        """Return non-secret metadata extracted from the resolved credentials.
-
-        Called by the DC to obtain ``project_id`` and ``locations`` when
-        self-hosted credentials are in use and the DC cannot read them
-        directly from the connection credentials.
-        """
+        """Return non-secret metadata extracted from the resolved credentials."""
         return {
             "project_id": self._project_id,
             "locations": self._locations,
         }
 
-    # -- Individual SDK operations --------------------------------------------
+    # -- List operations ------------------------------------------------------
 
     def list_repositories(self, parent: str) -> list[dict]:
         return [
@@ -96,13 +91,17 @@ class GcpDataformProxyClient(BaseProxyClient):
             for i in self._client.list_workflow_invocations(parent=parent)
         ]
 
-    def list_compilation_results(self, parent: str) -> list[dict]:
-        return [
-            cast(dict, type(c).to_dict(c))
-            for c in self._client.list_compilation_results(parent=parent)
-        ]
+    # -- Get operations -------------------------------------------------------
+
+    def get_release_config(self, name: str) -> dict:
+        """Get a single release config by resource name."""
+        result = self._client.get_release_config(name=name)
+        return cast(dict, type(result).to_dict(result))
+
+    # -- Query operations -----------------------------------------------------
 
     def query_compilation_result_actions(self, name: str) -> list[dict]:
+        """Query actions from a compilation result."""
         request = dataform_v1.QueryCompilationResultActionsRequest(name=name)
         return [
             cast(dict, type(a).to_dict(a))
@@ -110,11 +109,14 @@ class GcpDataformProxyClient(BaseProxyClient):
         ]
 
     def query_workflow_invocation_actions(self, name: str) -> list[dict]:
+        """Query action-level run details for a workflow invocation."""
         request = dataform_v1.QueryWorkflowInvocationActionsRequest(name=name)
         return [
             cast(dict, type(a).to_dict(a))
             for a in self._client.query_workflow_invocation_actions(request=request)
         ]
+
+    # -- Misc -----------------------------------------------------------------
 
     def test_connection(self, project_id: str, locations: list[str]) -> dict:
         for location in locations:
