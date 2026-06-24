@@ -82,6 +82,9 @@ tuple([1, 2, 3])
 # class operators
 assert hasattr(Foo(), "bar")
 assert getattr(Foo(), "bar") == "bar_value"
+# NOTE: this is the exact dir() of a plain object on Python 3.13. The list is
+# interpreter-version-specific — 3.13 added __firstlineno__ and
+# __static_attributes__ (PEP-free CPython additions); update if the floor moves.
 assert dir(Foo()) == [
     "__class__",
     "__delattr__",
@@ -89,6 +92,7 @@ assert dir(Foo()) == [
     "__dir__",
     "__doc__",
     "__eq__",
+    "__firstlineno__",
     "__format__",
     "__ge__",
     "__getattribute__",
@@ -107,6 +111,7 @@ assert dir(Foo()) == [
     "__repr__",
     "__setattr__",
     "__sizeof__",
+    "__static_attributes__",
     "__str__",
     "__subclasshook__",
     "__weakref__",

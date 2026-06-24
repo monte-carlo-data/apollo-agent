@@ -736,7 +736,10 @@ def test_network_open_post() -> Tuple[Dict, int]:
 @app.route("/api/v1/test/network/telnet", methods=["GET"])
 def test_network_telnet_get() -> Tuple[Dict, int]:
     """
-    Tests network connectivity to the given host in the specified port using a Telnet connection.
+    Tests network connectivity to the given host in the specified port.
+
+    Deprecated: this telnet check is mapped to the TCP-open validation for
+    backwards compatibility and will be removed in a future release.
     ---
     tags:
         - Troubleshooting
@@ -783,7 +786,7 @@ def test_network_telnet_get() -> Tuple[Dict, int]:
                     description: The trace_id passed as an input parameter.
             example:
                 __mcd_result__:
-                    message: Telnet connection for getmontecarlo.com:80 is usable.
+                    message: Port 80 is open on getmontecarlo.com
                 __mcd_trace_id__: 324986b4-b185-4187-b4af-b0c2cd60f7a0
     responses:
         200:
@@ -792,13 +795,17 @@ def test_network_telnet_get() -> Tuple[Dict, int]:
                 $ref: "#/definitions/TestNetworkTelnetResponse"
     :return: a message indicating if the connection was successful or not
     """
+    # TODO(VULN-1230): remove this telnet endpoint once the frontend stops calling it.
     return _execute_network_validation(agent.validate_telnet_connection)
 
 
 @app.route("/api/v1/test/network/telnet", methods=["POST"])
 def test_network_telnet_post() -> Tuple[Dict, int]:
     """
-    Tests network connectivity to the given host in the specified port using a Telnet connection.
+    Tests network connectivity to the given host in the specified port.
+
+    Deprecated: this telnet check is mapped to the TCP-open validation for
+    backwards compatibility and will be removed in a future release.
     ---
     tags:
         - Troubleshooting
@@ -835,6 +842,7 @@ def test_network_telnet_post() -> Tuple[Dict, int]:
                 $ref: "#/definitions/TestNetworkTelnetResponse"
     :return: a message indicating if the connection was successful or not
     """
+    # TODO(VULN-1230): remove this telnet endpoint once the frontend stops calling it.
     return _execute_network_validation(agent.validate_telnet_connection)
 
 
@@ -898,7 +906,7 @@ def perform_dns_lookup_get() -> Tuple[Dict, int]:
 @app.route("/api/v1/test/network/dns", methods=["POST"])
 def perform_dns_lookup_post() -> Tuple[Dict, int]:
     """
-    Tests network connectivity to the given host in the specified port using a Telnet connection.
+    Performs a DNS lookup for the specified host name.
     ---
     tags:
         - Troubleshooting

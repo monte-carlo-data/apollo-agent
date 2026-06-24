@@ -1,7 +1,6 @@
 import os
 import socket
 import sys
-from telnetlib import Telnet
 from unittest import TestCase
 from unittest.mock import patch, create_autospec, Mock
 
@@ -13,7 +12,6 @@ from apollo.common.agent.constants import (
 )
 from apollo.agent.logging_utils import LoggingUtils
 from apollo.agent.utils import AgentUtils
-from apollo.validators.validate_network import _DEFAULT_TIMEOUT_SECS
 from tests.platform_provider import TestPlatformProvider
 
 
@@ -112,47 +110,37 @@ class HealthNetworkTests(TestCase):
             response.result.get(ATTRIBUTE_NAME_ERROR),
         )
 
-    @patch("apollo.validators.validate_network.Telnet")
-    @patch("apollo.validators.validate_network.socket.create_connection")
-    def test_telnet_success(self, mock_create_conn, mock_telnet):
-        mock_sock = mock_create_conn.return_value
-        mock_telnet_inst = mock_telnet.return_value
-        mock_telnet_inst.read_very_eager.return_value = None
+    # `telnetlib` was removed from the Python stdlib in 3.13 (PEP 594). The
+    # retired telnet check is kept for frontend compatibility but now maps to
+    # the TCP-open validation, so its responses match TCP-open's.
 
+    @patch("socket.socket")
+    def test_telnet_maps_to_tcp_open_success(self, mock_socket):
+        mock_socket = mock_socket.return_value
+        mock_socket.connect_ex.return_value = 0
         response = self._agent.validate_telnet_connection("93.184.216.34", "123", None)
-
-        mock_telnet.assert_called_once_with()
-        self.assertIs(mock_telnet_inst.sock, mock_sock)
         self.assertIsNone(response.result.get(ATTRIBUTE_NAME_ERROR))
         self.assertEqual(
-            "Telnet connection for 93.184.216.34:123 is usable.",
+            "Port 123 is open on 93.184.216.34",
             response.result.get(ATTRIBUTE_NAME_RESULT).get("message"),
         )
 
-    @patch("apollo.validators.validate_network.Telnet")
-    @patch("apollo.validators.validate_network.socket.create_connection")
-    def test_telnet_timeout(self, mock_create_conn, mock_telnet):
-        mock_create_conn.side_effect = socket.timeout
-
-        response = self._agent.validate_telnet_connection("93.184.216.34", "123", "11")
-        mock_telnet.assert_not_called()
-        self.assertEqual(
-            "Socket timeout for 93.184.216.34:123. Connection unusable.",
-            response.result.get(ATTRIBUTE_NAME_ERROR),
-        )
-
-    @patch("apollo.validators.validate_network.Telnet")
-    @patch("apollo.validators.validate_network.socket.create_connection")
-    def test_telnet_read_failed(self, mock_create_conn, mock_telnet):
-        mock_telnet_inst = mock_telnet.return_value
-        mock_telnet_inst.read_very_eager.side_effect = EOFError
-
+    @patch("socket.socket")
+    def test_telnet_maps_to_tcp_open_closed(self, mock_socket):
+        mock_socket = mock_socket.return_value
+        mock_socket.connect_ex.return_value = 1
         response = self._agent.validate_telnet_connection("93.184.216.34", "123", None)
-        mock_telnet.assert_called_once_with()
         self.assertEqual(
-            "Telnet connection for 93.184.216.34:123 is unusable.",
+            "Port 123 is closed on 93.184.216.34.",
             response.result.get(ATTRIBUTE_NAME_ERROR),
         )
+
+    @patch("socket.socket")
+    def test_telnet_maps_to_tcp_open_timeout(self, mock_socket):
+        mock_socket = mock_socket.return_value
+        mock_socket.connect_ex.side_effect = socket.timeout
+        response = self._agent.validate_telnet_connection("93.184.216.34", "123", None)
+        self.assertIsNotNone(response.result.get(ATTRIBUTE_NAME_ERROR))
 
     # --- TOCTOU regression tests ------------------------------------------
 
@@ -178,33 +166,24 @@ class HealthNetworkTests(TestCase):
         mock_sock.connect_ex.assert_called_once_with(("93.184.216.34", 80))
         self.assertIsNone(response.result.get(ATTRIBUTE_NAME_ERROR))
 
-    @patch("apollo.validators.validate_network.Telnet")
-    @patch("apollo.validators.validate_network.socket.create_connection")
+    @patch("apollo.validators.validate_network.socket.socket")
     @patch("apollo.integrations.http.url_safety.socket.getaddrinfo")
-    def test_telnet_resolves_once_no_toctou(
-        self, mock_gai, mock_create_conn, mock_telnet
-    ):
-        """Regression: Telnet validator must resolve DNS once (via assert_safe_destination)
-        and connect by IP via socket.create_connection. Mock getaddrinfo to return a
-        public IP; assert socket.create_connection was called with that IP."""
+    def test_telnet_resolves_once_no_toctou(self, mock_gai, mock_socket_cls):
+        """Regression: the telnet endpoint now maps to TCP-open, which must
+        resolve DNS once (via assert_safe_destination) and connect by IP, not
+        re-resolve. Assert connect_ex was called with the resolved IP."""
         mock_gai.return_value = [
             (socket.AF_INET, socket.SOCK_STREAM, 0, "", ("93.184.216.34", 23)),
         ]
-        mock_sock = mock_create_conn.return_value
-        mock_telnet_inst = mock_telnet.return_value
-        mock_telnet_inst.read_very_eager.return_value = None
+        mock_sock = mock_socket_cls.return_value
+        mock_sock.connect_ex.return_value = 0
 
         response = self._agent.validate_telnet_connection(
             "example.com", "23", None, trace_id=None
         )
 
         self.assertEqual(mock_gai.call_count, 1)
-        mock_create_conn.assert_called_once_with(
-            ("93.184.216.34", 23), timeout=_DEFAULT_TIMEOUT_SECS
-        )
-        # Telnet() called with no args; .sock set to the mock socket.
-        mock_telnet.assert_called_once_with()
-        self.assertIs(mock_telnet_inst.sock, mock_sock)
+        mock_sock.connect_ex.assert_called_once_with(("93.184.216.34", 23))
         self.assertIsNone(response.result.get(ATTRIBUTE_NAME_ERROR))
 
     # --- SSRF guard regression tests --------------------------------------

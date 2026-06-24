@@ -55,7 +55,7 @@ jobs:
 
   run-linter:
     docker:
-      - image: cimg/python:3.12-node
+      - image: cimg/python:3.13-node
     steps:
       - checkout
       - run:
@@ -306,7 +306,7 @@ jobs:
 
   build-and-push-docs:
     docker:
-      - image: python:3.12
+      - image: python:3.13
     parameters:
       code_version:
         type: string

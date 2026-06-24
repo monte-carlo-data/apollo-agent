@@ -11,7 +11,7 @@ The following health related endpoints are exposed by the agent:
       "version": "0.0.1",
       "build": "82",
       "env": {
-          "python_version": "3.12.7",
+          "python_version": "3.13.13",
           "server": "gunicorn/21.2.0"
       }
   }
@@ -26,13 +26,13 @@ The following health related endpoints are exposed by the agent:
       "message": "Port 80 is open on www.google.com"
   }
   ```
-- `GET /api/v1/test/network/telnet?host=www.google.com&port=80&timeout=10`: that tries to open a Telnet connection to the given host:port (`POST` is also supported by passing a JSON object with the same attributes):
+- `GET /api/v1/test/network/telnet?host=www.google.com&port=80&timeout=10`: **deprecated** — kept for backward compatibility; delegates to a TCP-open check identical to `/api/v1/test/network/open` (`POST` is also supported by passing a JSON object with the same attributes):
   ```shell
   curl "http://localhost:8081/api/v1/test/network/telnet?host=www.google.com&port=80&timeout=10"
   ```
   ```json
   {
-      "message": "Telnet connection for www.google.com:80 is usable."
+      "message": "Port 80 is open on www.google.com"
   }
   ```
   
