@@ -2,14 +2,14 @@
 # Published as `<version>-system-base` so downstream consumers (e.g. hermes-agent)
 # can build their own venv against the same native libs without inheriting
 # apollo's pip-installed dependencies.
-FROM python:3.12-slim AS system-base
+FROM python:3.13.13-slim AS system-base
 
 ENV APP_HOME=/app
 WORKDIR $APP_HOME
 
 # Refresh apt index and upgrade base-image packages so OS-level security fixes
 # (glibc, openssh, nghttp2, etc.) land on every rebuild rather than waiting for
-# the upstream python:3.12-slim tag to be republished.
+# the upstream python:3.13.13-slim tag to be republished.
 RUN apt-get update && apt-get upgrade -y
 # install git as we need it for the direct oscrypto dependency
 # this is a temporary workaround and it should be removed once we update oscrypto to 1.3.1+
@@ -108,7 +108,7 @@ RUN . $VENV_DIR/bin/activate && pip install --no-cache-dir -r requirements-cloud
 CMD . $VENV_DIR/bin/activate && \
     gunicorn --timeout 930 --bind :$PORT apollo.interfaces.cloudrun.main:app
 
-FROM public.ecr.aws/lambda/python:3.12 AS lambda-builder
+FROM public.ecr.aws/lambda/python:3.13 AS lambda-builder
 
 RUN dnf update -y
 # install git as we need it for the direct oscrypto dependency
@@ -122,7 +122,7 @@ RUN pip install --no-cache-dir --target "${LAMBDA_TASK_ROOT}" \
     -r requirements.txt \
     -r requirements-lambda.txt
 
-FROM public.ecr.aws/lambda/python:3.12 AS lambda
+FROM public.ecr.aws/lambda/python:3.13 AS lambda
 
 # Create non-root user up front so the cross-stage COPY below can use --chown
 # and so the final container runs as mcdagent. The Amazon Linux 2023 minimal
@@ -162,7 +162,7 @@ USER mcdagent
 
 CMD [ "apollo.interfaces.lambda_function.handler.lambda_handler" ]
 
-FROM mcr.microsoft.com/azure-functions/python:4-python3.12 AS azure
+FROM mcr.microsoft.com/azure-functions/python:4-python3.13 AS azure
 
 ENV AzureWebJobsScriptRoot=/home/site/wwwroot \
     AzureFunctionsJobHost__Logging__Console__IsEnabled=true
@@ -188,7 +188,7 @@ RUN apt-get install -y --no-install-recommends git
 RUN apt-get install -y --no-install-recommends libcrypt1
 
 # Azure database clients and sql-server uses pyodbc which requires unixODBC and 'ODBC Driver 17
-# for SQL Server' Microsoft's python 3.12 base image comes with msodbcsql18 but we are expecting to
+# for SQL Server' Microsoft's python 3.13 base image comes with msodbcsql18 but we are expecting to
 # use the msodbcsql17 driver so need to install specific versions of some libraries and allow Docker
 # to downgrade some pre-installed packages.
 RUN apt-get update
@@ -213,8 +213,17 @@ RUN rm -rf /opt/startupcmdgen/
 
 COPY requirements.txt /
 COPY requirements-azure.txt /
-RUN pip install --no-cache-dir -r /requirements.txt -r /requirements-azure.txt && rm -rf /opt/python/3/_manifest
-RUN pip install --no-cache-dir -U setuptools==80.10.2  # INC-265 - opentelemetry requires pkg_resources that was removed in setuptools 81
+# Azure Functions host puts BOTH wwwroot (app code) and .python_packages/lib/site-packages (deps) on
+# sys.path — these two roots must stay separate; consolidating them would silently break imports.
+# Install deps into the Functions app-package dir (not system site-packages) so the
+# host's dependency isolation keeps them off the worker's sys.path. Otherwise our
+# protobuf and the worker's bundled protobuf co-load and SIGSEGV the worker on py3.13.
+# No setuptools/pkg_resources needed (opentelemetry moved off it; remaining users guard the import).
+RUN pip install --no-cache-dir \
+    --target=/home/site/wwwroot/.python_packages/lib/site-packages \
+    -r /requirements.txt -r /requirements-azure.txt \
+    && chown -R mcdagent:mcdagent /home/site/wwwroot/.python_packages \
+    && rm -rf /opt/python/3/_manifest
 
 COPY --chown=mcdagent:mcdagent apollo /home/site/wwwroot/apollo
 

@@ -6,7 +6,7 @@ deployment options.
 
 ## Local development environment
 ### Pre-requisites
-- Python 3.12 or later
+- Python 3.13 or later
 - If you are on a Mac, you'll need to [install a driver manager for ODBC](https://github.com/mkleehammer/pyodbc/wiki/Install#installing-on-macosx): `brew install unixodbc`.
 
 ### Prepare your local environment
