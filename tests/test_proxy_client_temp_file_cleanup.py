@@ -8,6 +8,7 @@ registered on the proxy client and deleted when the client is closed.
 import os
 import tempfile
 from unittest import TestCase
+from unittest.mock import patch
 
 from apollo.integrations.base_proxy_client import BaseProxyClient
 from apollo.integrations.db.base_db_proxy_client import BaseDbProxyClient
@@ -86,6 +87,26 @@ class _RaisingProxyClient(BaseProxyClient):
 
     def _close_client(self):
         raise RuntimeError("connection teardown failed")
+
+
+class TestGetCertPathRegistration(TestCase):
+    @patch("apollo.integrations.db.base_db_proxy_client.urlretrieve")
+    @patch("apollo.integrations.db.base_db_proxy_client.AgentUtils.temp_file_path")
+    def test_get_cert_path_registers_downloaded_cert(
+        self, mock_temp_path, _mock_urlretrieve
+    ):
+        # get_cert_path (used by Presto and MySQL) must register the cert it
+        # downloads so it is deleted on close — otherwise those connectors leak
+        # the cert for the container lifetime.
+        mock_temp_path.return_value = "/tmp/_stub_downloaded_cert.pem"
+        client = _StubDbProxyClient()
+
+        path = client.get_cert_path(
+            platform="p", remote_location="https://host/cert.pem"
+        )
+
+        self.assertEqual("/tmp/_stub_downloaded_cert.pem", path)
+        self.assertEqual([path], client._temp_files)
 
 
 class TestCloseTemplate(TestCase):
