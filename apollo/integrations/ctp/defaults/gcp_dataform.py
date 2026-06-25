@@ -9,7 +9,7 @@ class GcpDataformClientArgs(TypedDict):
 
     project_id: Required[str]
     service_account_info: Required[dict]
-    locations: NotRequired[list]
+    locations: NotRequired[list[str]]
 
 
 GCP_DATAFORM_CREDENTIALS_SCHEMA = {
@@ -35,7 +35,7 @@ GCP_DATAFORM_DEFAULT_CTP = CtpConfig(
         field_map={
             "project_id": "{{ raw.project_id }}",
             "service_account_info": "{{ raw.service_account_info }}",
-            "locations": "{{ raw.locations | default(none) }}",
+            "locations": "{{ raw.locations | default([]) }}",
         },
     ),
 )

@@ -17,8 +17,8 @@ from __future__ import annotations
 import logging
 from typing import Any, cast
 
-from google.cloud import dataform_v1
-from google.oauth2 import service_account
+from google.cloud import dataform_v1  # type: ignore[attr-defined]  # no type stubs
+from google.oauth2.service_account import Credentials  # type: ignore[import-untyped]
 
 from apollo.integrations.base_proxy_client import BaseProxyClient
 
@@ -44,17 +44,17 @@ class GcpDataformProxyClient(BaseProxyClient):
         credentials: dict | None = None,
         **kwargs: Any,
     ):
-        connect_args = (credentials or {}).get("connect_args", credentials or {})
+        connect_args = (credentials or {}).get("connect_args") or {}
 
         self._project_id: str = connect_args.get("project_id", "")
-        self._locations: list[str] = connect_args.get("locations", [])
+        self._locations: list[str] = connect_args.get("locations") or []
 
         sa_info = connect_args.get("service_account_info")
         if not sa_info:
             raise ValueError(
                 "GCP Dataform requires 'service_account_info' in credentials"
             )
-        creds = service_account.Credentials.from_service_account_info(
+        creds = Credentials.from_service_account_info(
             sa_info,
             scopes=_SCOPES,
         )
@@ -118,9 +118,11 @@ class GcpDataformProxyClient(BaseProxyClient):
 
     # -- Misc -----------------------------------------------------------------
 
-    def test_connection(self, project_id: str, locations: list[str]) -> dict:
-        for location in locations:
-            parent = f"projects/{project_id}/locations/{location}"
+    def test_connection(self) -> dict:
+        if not self._locations:
+            raise ValueError("At least one location is required to test connection")
+        for location in self._locations:
+            parent = f"projects/{self._project_id}/locations/{location}"
             repos = list(self._client.list_repositories(parent=parent))
             logger.info(
                 "Dataform test_connection: found %d repos in %s",
@@ -128,6 +130,3 @@ class GcpDataformProxyClient(BaseProxyClient):
                 location,
             )
         return {"success": True}
-
-    def _close_client(self) -> None:
-        pass
