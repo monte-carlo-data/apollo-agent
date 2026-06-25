@@ -1,5 +1,6 @@
 import http.client
 import logging
+import re
 from dataclasses import dataclass
 from typing import Any, NoReturn
 
@@ -117,24 +118,26 @@ def _classify_exchange_status(status: int | None) -> str:
     return "other"
 
 
-import re as _re
-
-_ACCESS_TOKEN_PATTERN = _re.compile(r"('access_token'\s*:\s*)'[^']*'")
+_SENSITIVE_VALUE_PATTERN = re.compile(
+    r"(['\"](?:access_token|refresh_token|id_token|signature)['\"]\s*:\s*)['\"][^'\"]*['\"]"
+)
 
 
 def _redact_body(body: str | None) -> str | None:
     """
-    Redact access_token values from a captured a360/token response body string
-    before including it in error messages or log records.
+    Redact sensitive token values from a captured a360/token response body
+    string before including it in error messages or log records.
 
-    The body is stored as str(response.json()), so token values appear as
-    Python string literals: 'access_token': 'eyJ...'. Redacting prevents
-    accidental credential exposure when an unrelated error fires after a
-    successful token exchange.
+    The body may be stored as str(response.json()) (token values appear as
+    Python string literals: 'access_token': 'eyJ...') or as raw response.text
+    (double-quoted JSON: "access_token": "eyJ..."). Both single- and
+    double-quoted forms of access_token / refresh_token / id_token / signature
+    are masked. Redacting prevents accidental credential exposure when an
+    unrelated error fires after a successful token exchange.
     """
     if body is None:
         return None
-    return _ACCESS_TOKEN_PATTERN.sub(r"\1'[REDACTED]'", body)
+    return _SENSITIVE_VALUE_PATTERN.sub(r"\1'[REDACTED]'", body)
 
 
 def _attach_capturing_session(
@@ -620,10 +623,14 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
                 f"(HTTP {token_response.status_code}, Salesforce response: {body})"
             ) from e
 
-    def ssot_get(self, path: str) -> dict:
+    def ssot_get(self, path: str) -> dict | list:
         """
         Issue an authenticated GET against a Salesforce **core REST** path on the
         connection's My Domain and return the parsed JSON body.
+
+        The body is returned as-is from ``response.json()`` — usually a JSON
+        object (``dict``), but occasionally a top-level JSON list for some core
+        REST endpoints.
 
         This is the generic primitive the data-collector uses to read the
         Salesforce SSOT metadata endpoints
@@ -648,7 +655,12 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
         (``code NNN`` format) on a non-200 or non-JSON response, with the
         response body redacted before it is surfaced.
         """
-        if not path.startswith("/") or path.startswith("//") or "://" in path:
+        if (
+            not isinstance(path, str)
+            or not path.startswith("/")
+            or path.startswith("//")
+            or "://" in path
+        ):
             raise ValueError(
                 f"Salesforce Data Cloud ssot_get: path must be a relative path "
                 f"beginning with '/' (no scheme or host), got: {path!r}"
