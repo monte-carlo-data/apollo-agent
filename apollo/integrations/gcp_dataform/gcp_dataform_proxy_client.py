@@ -37,6 +37,7 @@ class GcpDataformProxyClient(BaseProxyClient):
     Required connect_args:
         - ``project_id`` — GCP project ID
         - ``service_account_info`` — service account JSON key dict
+        - ``locations`` — list of GCP regions to operate in (e.g. ``["us-central1"]``)
     """
 
     def __init__(

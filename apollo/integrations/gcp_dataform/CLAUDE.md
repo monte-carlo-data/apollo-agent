@@ -30,12 +30,7 @@ Required keys inside `credentials["connect_args"]`:
 |-----|-------------|
 | `project_id` | GCP project ID |
 | `service_account_info` | Service account JSON key as a `dict` |
-
-Optional:
-
-| Key | Description |
-|-----|-------------|
-| `locations` | List of GCP region strings (e.g. `["us-central1"]`); used by `test_connection` and `get_connection_metadata` |
+| `locations` | List of GCP region strings (e.g. `["us-central1"]`); all Dataform resources are location-scoped |
 
 ### Adding new methods
 

@@ -38,18 +38,16 @@ class TestGcpDataformCtp(TestCase):
         self.assertEqual(args["service_account_info"], _SA_INFO)
         self.assertEqual(args["locations"], ["us-central1", "europe-west1"])
 
-    # ── Optional locations ───────────────────────────────────────────
+    # ── Missing required locations ───────────────────────────────────
 
-    def test_locations_absent_defaults_to_empty_list(self):
-        args = _resolve(
-            {
-                "project_id": "my-project",
-                "service_account_info": _SA_INFO,
-            }
-        )
-        self.assertEqual(args["project_id"], "my-project")
-        self.assertEqual(args["service_account_info"], _SA_INFO)
-        self.assertEqual(args["locations"], [])
+    def test_locations_absent_raises(self):
+        with self.assertRaises(Exception):
+            _resolve(
+                {
+                    "project_id": "my-project",
+                    "service_account_info": _SA_INFO,
+                }
+            )
 
     # ── DC pre-shaped credentials (connect_args wrapper) ─────────────
 

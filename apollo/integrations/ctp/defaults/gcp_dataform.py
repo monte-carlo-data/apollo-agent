@@ -1,4 +1,4 @@
-from typing import NotRequired, Required, TypedDict
+from typing import Required, TypedDict
 
 from apollo.integrations.ctp.models import CtpConfig, MapperConfig
 from apollo.integrations.ctp.registry import CtpRegistry
@@ -9,7 +9,7 @@ class GcpDataformClientArgs(TypedDict):
 
     project_id: Required[str]
     service_account_info: Required[dict]
-    locations: NotRequired[list[str]]
+    locations: Required[list[str]]
 
 
 GCP_DATAFORM_CREDENTIALS_SCHEMA = {
@@ -20,7 +20,7 @@ GCP_DATAFORM_CREDENTIALS_SCHEMA = {
         "schema": {
             "project_id": {"type": "string", "required": True, "empty": False},
             "service_account_info": {"type": "dict", "required": True},
-            "locations": {"type": "list", "required": False},
+            "locations": {"type": "list", "required": True, "empty": False},
         },
     },
 }
@@ -35,7 +35,7 @@ GCP_DATAFORM_DEFAULT_CTP = CtpConfig(
         field_map={
             "project_id": "{{ raw.project_id }}",
             "service_account_info": "{{ raw.service_account_info }}",
-            "locations": "{{ raw.locations | default([]) }}",
+            "locations": "{{ raw.locations }}",
         },
     ),
 )
