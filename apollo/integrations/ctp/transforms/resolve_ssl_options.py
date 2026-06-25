@@ -1,5 +1,3 @@
-import hashlib
-
 from apollo.integrations.ctp.errors import CtpPipelineError
 from apollo.integrations.ctp.models import PipelineState, TransformStep
 from apollo.integrations.ctp.template import TemplateEngine
@@ -52,14 +50,7 @@ class ResolveSslOptionsTransform(Transform):
             and ssl_options.ca_data
             and not ssl_options.disabled
         ):
-            ca_bytes = (
-                ssl_options.ca_data
-                if isinstance(ssl_options.ca_data, bytes)
-                else ssl_options.ca_data.encode()
-            )
-            content_hash = hashlib.sha256(ca_bytes).hexdigest()[:12]
-            cert_path = f"/tmp/{content_hash}_ssl_ca.pem"
-            ssl_options.write_ca_data_to_temp_file(cert_path, upsert=True)
+            cert_path = ssl_options.write_ca_data_to_temp_file(suffix="_ssl_ca.pem")
             # Record the path so the proxy client can delete it on close.
             state.temp_files.append(cert_path)
             state.derived[step.output["ca_path"]] = cert_path

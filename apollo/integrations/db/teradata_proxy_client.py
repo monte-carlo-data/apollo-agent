@@ -1,4 +1,3 @@
-import hashlib
 from typing import (
     Any,
     Dict,
@@ -35,18 +34,11 @@ class TeradataProxyClient(BaseDbProxyClient):
             connect_args["encryptdata"] = "true"
 
             # Path to PEM file that contains Certificate Authority (CA) certificates.
-            # Use the hashed host name in the temp file name to distinguish between
-            # connections if there are multiple teradata connections using SSL through
-            # this agent.
-            hashed_host = hashlib.sha256(connect_args.get("host").encode()).hexdigest()[
-                :12
-            ]
-            ca_path = ssl_options.write_ca_data_to_temp_file(
-                f"/tmp/{hashed_host}_teradata_ca.pem", upsert=True
-            )
+            # Write the CA to a unique temp file and register it for deletion on
+            # close (legacy top-level ssl_options path; the CTP path registers via
+            # the factory).
+            ca_path = ssl_options.write_ca_data_to_temp_file(suffix="_teradata_ca.pem")
             connect_args["sslca"] = ca_path
-            # Delete the CA temp file when the client is closed (legacy
-            # top-level ssl_options path; the CTP path registers via the factory).
             self.register_temp_files([ca_path])
 
             # Teradatasql has 2 port connection parameters depending on

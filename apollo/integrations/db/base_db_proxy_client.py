@@ -66,9 +66,8 @@ class BaseDbProxyClient(BaseProxyClient, ABC):
     def _process_description(cls, description: List) -> List:
         return [AgentSerializer.serialize(v) for v in description]
 
-    @classmethod
     def get_cert_path(
-        cls,
+        self,
         platform: str,
         remote_location: str,
         retrieval_mechanism: str = "url",
@@ -86,4 +85,7 @@ class BaseDbProxyClient(BaseProxyClient, ABC):
             except BaseStorageClient.NotFoundError as exc:
                 logger.warning("Certificate not found in storage bucket", exc_info=exc)
                 return None
+        # Register the downloaded cert so it is deleted when the client is closed
+        # (covers all callers — e.g. Presto, MySQL — in one place).
+        self.register_temp_files([download_path])
         return download_path
