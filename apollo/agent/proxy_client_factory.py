@@ -388,6 +388,16 @@ def _get_proxy_client_custom_etl(
     return CustomEtlProxyClient(credentials=credentials, connector_dir=connector_dir)
 
 
+def _get_proxy_client_gcp_dataform(
+    credentials: Optional[Dict], **kwargs  # type: ignore
+) -> BaseProxyClient:
+    from apollo.integrations.gcp_dataform.gcp_dataform_proxy_client import (
+        GcpDataformProxyClient,
+    )
+
+    return GcpDataformProxyClient(credentials=credentials)
+
+
 def _get_proxy_client_microsoft_fabric(
     credentials: Optional[Dict], platform: str, **kwargs  # type: ignore
 ) -> BaseProxyClient:
@@ -447,6 +457,7 @@ _CLIENT_FACTORY_MAPPING = {
     # MuleSoft-specific op through the same client instance.
     "mulesoft": _get_proxy_client_mulesoft,
     "fivetran": _get_proxy_client_http,
+    "gcp-dataform": _get_proxy_client_gcp_dataform,
 }
 
 

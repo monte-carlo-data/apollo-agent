@@ -55,6 +55,11 @@ backwards compatibility with older DC versions; Fabric requires a dict (CTP path
 `HttpProxyClient` via `_get_proxy_client_http`. No ODBC string is involved; the pipeline
 emits `token`, `auth_type`, and `ssl_verify` directly.
 
+**GCP SDK connectors** — GCP Dataform (`gcp-dataform` connection type) is CTP-enrolled with a
+dedicated `GcpDataformProxyClient`. The CTP config in `defaults/gcp_dataform.py` maps
+`project_id`, `service_account_info`, and an optional `locations` list; the proxy client handles
+SA credential construction and exposes Dataform API calls as serialized-dict methods.
+
 ## Security note
 
 Jinja2 templates are sandboxed (see `template.py`). Do not use `Environment()` directly —
