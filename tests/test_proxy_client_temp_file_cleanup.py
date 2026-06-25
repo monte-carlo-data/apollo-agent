@@ -41,6 +41,43 @@ class TestBaseProxyClientTempFileCleanup(TestCase):
             os.path.exists(path), "temp credential file should be deleted on close"
         )
 
+    def test_close_logs_removal_count(self):
+        # A positive log signal so cleanup can be confirmed in production logs.
+        p1, p2 = _write_temp(), _write_temp()
+        client = _StubProxyClient()
+        client.register_temp_files([p1, p2])
+
+        with self.assertLogs(
+            "apollo.integrations.base_proxy_client", level="INFO"
+        ) as cm:
+            client.close()
+        self.assertTrue(
+            any("Removed 2 registered temp credential file(s)" in m for m in cm.output),
+            cm.output,
+        )
+
+    def test_close_logs_only_actually_removed_count(self):
+        # A registered path that's already gone must not inflate the count —
+        # the log reports real unlinks, not registrations.
+        real = _write_temp()
+        client = _StubProxyClient()
+        client.register_temp_files([real, real + ".never-created"])
+
+        with self.assertLogs(
+            "apollo.integrations.base_proxy_client", level="INFO"
+        ) as cm:
+            client.close()
+        self.assertTrue(
+            any("Removed 1 registered temp credential file(s)" in m for m in cm.output),
+            cm.output,
+        )
+
+    def test_close_with_no_temp_files_logs_nothing(self):
+        # No noise on the common path (clients with no registered temp files).
+        client = _StubProxyClient()
+        with self.assertNoLogs("apollo.integrations.base_proxy_client", level="INFO"):
+            client.close()
+
     def test_close_with_no_registered_files_is_noop(self):
         # Clients constructed outside the factory never call register_temp_files;
         # close() must not blow up on the missing attribute.

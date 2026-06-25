@@ -65,15 +65,24 @@ class BaseProxyClient(ABC):
     def _remove_temp_files(self) -> None:
         # getattr default guards subclasses whose __init__ never called
         # register_temp_files (e.g. clients constructed outside the factory).
+        removed = 0
         for path in getattr(self, "_temp_files", []):
             try:
                 os.unlink(path)
+                removed += 1
             except FileNotFoundError:
-                # Already gone — deterministic-path writers (resolve_ssl_options)
-                # can share a path across clients; treat double-removal as fine.
+                # Already gone — e.g. a double close, or the same path registered
+                # more than once on this client; treat removal as idempotent.
                 pass
             except OSError:
                 logger.warning("Failed to remove temp credential file", exc_info=True)
+        if removed:
+            # Positive signal that credential temp files were actually deleted on
+            # close (count of real unlinks — the mkstemp names carry no useful info).
+            logger.info(
+                "Removed %d registered temp credential file(s) on client close",
+                removed,
+            )
         self._temp_files = []
 
     def get_error_type(self, error: Exception) -> Optional[str]:
