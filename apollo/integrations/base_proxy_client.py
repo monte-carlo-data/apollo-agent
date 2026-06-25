@@ -65,21 +65,15 @@ class BaseProxyClient(ABC):
     def _remove_temp_files(self) -> None:
         # getattr default guards subclasses whose __init__ never called
         # register_temp_files (e.g. clients constructed outside the factory).
-        removed = 0
         for path in getattr(self, "_temp_files", []):
             try:
                 os.unlink(path)
-                removed += 1
             except FileNotFoundError:
                 # Already gone — e.g. a double close, or the same path registered
                 # more than once on this client; treat removal as idempotent.
                 pass
             except OSError:
                 logger.warning("Failed to remove temp credential file", exc_info=True)
-        if removed:
-            # Wording avoids log-redaction trigger words (credential/key/auth/...)
-            # that would blank the whole line — see AgentRedactUtilities.
-            logger.info("Removed %d temporary file(s) on connection close", removed)
         self._temp_files = []
 
     def get_error_type(self, error: Exception) -> Optional[str]:
