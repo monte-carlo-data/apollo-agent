@@ -52,7 +52,10 @@ class TestBaseProxyClientTempFileCleanup(TestCase):
         ) as cm:
             client.close()
         self.assertTrue(
-            any("Removed 2 registered temp credential file(s)" in m for m in cm.output),
+            any(
+                "Removed 2 temporary file(s) on connection close" in m
+                for m in cm.output
+            ),
             cm.output,
         )
 
@@ -68,8 +71,24 @@ class TestBaseProxyClientTempFileCleanup(TestCase):
         ) as cm:
             client.close()
         self.assertTrue(
-            any("Removed 1 registered temp credential file(s)" in m for m in cm.output),
+            any(
+                "Removed 1 temporary file(s) on connection close" in m
+                for m in cm.output
+            ),
             cm.output,
+        )
+
+    def test_cleanup_log_message_survives_redaction(self):
+        # The agent's log redaction replaces an entire message with "__redacted__"
+        # if it contains credential/key/auth/secret/token/password. The cleanup
+        # log must not trip it, or the confirmation signal is unusable in prod.
+        from apollo.common.agent.redact import AgentRedactUtilities
+        from apollo.common.agent.constants import ATTRIBUTE_VALUE_REDACTED
+
+        message = "Removed 3 temporary file(s) on connection close"
+        self.assertEqual(message, AgentRedactUtilities.standard_redact(message))
+        self.assertNotEqual(
+            ATTRIBUTE_VALUE_REDACTED, AgentRedactUtilities.standard_redact(message)
         )
 
     def test_close_with_no_temp_files_logs_nothing(self):

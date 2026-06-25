@@ -77,12 +77,9 @@ class BaseProxyClient(ABC):
             except OSError:
                 logger.warning("Failed to remove temp credential file", exc_info=True)
         if removed:
-            # Positive signal that credential temp files were actually deleted on
-            # close (count of real unlinks — the mkstemp names carry no useful info).
-            logger.info(
-                "Removed %d registered temp credential file(s) on client close",
-                removed,
-            )
+            # Wording avoids log-redaction trigger words (credential/key/auth/...)
+            # that would blank the whole line — see AgentRedactUtilities.
+            logger.info("Removed %d temporary file(s) on connection close", removed)
         self._temp_files = []
 
     def get_error_type(self, error: Exception) -> Optional[str]:
