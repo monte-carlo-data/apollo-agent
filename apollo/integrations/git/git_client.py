@@ -3,6 +3,8 @@ import logging
 import os
 import re
 import shutil
+import tempfile
+import uuid
 from dataclasses import dataclass
 from itertools import chain
 from pathlib import Path
@@ -34,10 +36,6 @@ class GitCloneClient:
       and logs a warning.
     """
 
-    # Only /tmp is writable in lambda.
-    _REPO_DIR = Path("/tmp/repo")
-    _KEY_FILE = Path("/tmp/mcd_rsa")
-
     GIT_TYPE = {"ssh": "SSH", "https": "HTTPS"}
 
     def __init__(self, credentials: Dict, **kwargs):  # type: ignore
@@ -48,6 +46,15 @@ class GitCloneClient:
         self._ssh_key = base64.b64decode(creds.get("ssh_key", ""))
         self._ssl_ca_path: str | None = creds.get("ssl_ca_path")
         self._ssl_skip_verification = bool(creds.get("ssl_skip_verification"))
+
+        # Unique per-client paths (only /tmp is writable in lambda). A fixed path
+        # would collide when git operations run concurrently — possible on
+        # long-lived runtimes (EKS/hermes, Azure) even if not on Lambda/Cloud Run —
+        # letting one request overwrite/delete another's repo or SSH key mid-clone.
+        # The repo dir name is unguessable and created by `git clone`; the SSH key
+        # file is created per-write via mkstemp (see write_key).
+        self._repo_dir = Path(tempfile.gettempdir()) / f"mcd_repo_{uuid.uuid4().hex}"
+        self._key_file: Path | None = None
 
         if self._token:
             # remove the scheme if it was included so the token can be inserted before the host
@@ -74,16 +81,16 @@ class GitCloneClient:
             self.delete_key()
 
     def delete_repo_dir(self):
-        """Delete a directory if it exists."""
-        if self._REPO_DIR.exists():
-            logger.info(f"Delete repo dir: {self._REPO_DIR}")
-            shutil.rmtree(self._REPO_DIR)
+        """Delete the repo directory if it exists."""
+        if self._repo_dir.exists():
+            logger.info(f"Delete repo dir: {self._repo_dir}")
+            shutil.rmtree(self._repo_dir)
 
     def delete_key(self):
         """Delete the SSH private key file if it exists."""
-        if self._KEY_FILE.exists():
-            logger.info(f"Delete key file: {self._KEY_FILE}")
-            self._KEY_FILE.unlink()
+        if self._key_file and self._key_file.exists():
+            logger.info(f"Delete key file: {self._key_file}")
+            self._key_file.unlink()
 
     @staticmethod
     def git_version() -> Dict:
@@ -116,11 +123,11 @@ class GitCloneClient:
         a generator to avoid loading the content of all files into memory.
         """
         logger.info(f'Read files with extensions: {",".join(file_extensions)}')
-        globs = [self._REPO_DIR.rglob(f"*.{ext}") for ext in file_extensions]
+        globs = [self._repo_dir.rglob(f"*.{ext}") for ext in file_extensions]
         for file in chain(*globs):  # globs are generators, need to be chained.
             if file.is_file():
                 original_name = str(
-                    file.relative_to(self._REPO_DIR)
+                    file.relative_to(self._repo_dir)
                 )  # Drop local dir from file name.
                 yield GitFileData(
                     original_name, file.read_text(errors="replace")
@@ -140,7 +147,7 @@ class GitCloneClient:
             url = f"https://{self._username}:{self._token}@{self._repo_url}"
         # Use depth 1 to bring only the latest revision.
         ssl_config = self._build_ssl_config_args()
-        git_params = [*ssl_config, "clone", "--depth", "1", url, str(self._REPO_DIR)]
+        git_params = [*ssl_config, "clone", "--depth", "1", url, str(self._repo_dir)]
         try:
             git.exec_command(*git_params)  # type: ignore[attr-defined]
         except git.exceptions.GitExecutionError as e:  # type: ignore[attr-defined]
@@ -170,14 +177,20 @@ class GitCloneClient:
         return replaced_text
 
     def write_key(self):
-        """Write SSH key to a file, overwriting it if file exists."""
+        """Write the SSH key to a fresh, uniquely-named 0o600 temp file.
+
+        ``mkstemp`` creates the file owner-only and with an unguessable name, so
+        it won't follow a pre-planted symlink and won't collide with a concurrent
+        clone's key. The path is stored on the instance for ``_ssh_git_clone`` and
+        ``delete_key``.
+        """
         if self._ssh_key:
-            if self._KEY_FILE.exists():
-                logger.info(f"Key already exists: {self._KEY_FILE}, overwrite it")
-                self._KEY_FILE.chmod(0o600)
-            logger.info(f"Write key to file: {self._KEY_FILE}")
-            self._KEY_FILE.write_bytes(self._ssh_key)
-            self._KEY_FILE.chmod(0o400)
+            fd, path = tempfile.mkstemp(prefix="mcd_rsa_")
+            os.close(fd)
+            self._key_file = Path(path)
+            logger.info(f"Write key to file: {self._key_file}")
+            self._key_file.write_bytes(self._ssh_key)
+            self._key_file.chmod(0o400)
 
     def _ssh_git_clone(self):
         """
@@ -194,12 +207,12 @@ class GitCloneClient:
                 "-o StrictHostKeyChecking=no",  # We do not know all the possible hosts, so do not check
                 "-o UserKnownHostsFile=/dev/null",  # Do not write known_hosts
                 "-o GlobalKnownHostsFile=/dev/null",  # Do not write known_hosts
-                f"-i {self._KEY_FILE}",  # Use this key
+                f"-i {self._key_file}",  # Use this key
             ]
         )
         env = {**os.environ, **{"GIT_SSH_COMMAND": f"ssh {ssh_options}"}}
         # Use depth 1 to bring only the latest revision.
-        git_params = ["clone", "--depth", "1", self._repo_url, str(self._REPO_DIR)]
+        git_params = ["clone", "--depth", "1", self._repo_url, str(self._repo_dir)]
         git.exec_command(*git_params, env=env)  # type: ignore[attr-defined]
 
     @property
