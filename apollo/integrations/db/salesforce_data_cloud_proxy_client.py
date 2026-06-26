@@ -1,5 +1,6 @@
 import http.client
 import logging
+import re
 from dataclasses import dataclass
 from typing import Any, NoReturn
 
@@ -117,24 +118,26 @@ def _classify_exchange_status(status: int | None) -> str:
     return "other"
 
 
-import re as _re
-
-_ACCESS_TOKEN_PATTERN = _re.compile(r"('access_token'\s*:\s*)'[^']*'")
+_SENSITIVE_VALUE_PATTERN = re.compile(
+    r"(['\"](?:access_token|refresh_token|id_token|signature)['\"]\s*:\s*)['\"][^'\"]*['\"]"
+)
 
 
 def _redact_body(body: str | None) -> str | None:
     """
-    Redact access_token values from a captured a360/token response body string
-    before including it in error messages or log records.
+    Redact sensitive token values from a captured a360/token response body
+    string before including it in error messages or log records.
 
-    The body is stored as str(response.json()), so token values appear as
-    Python string literals: 'access_token': 'eyJ...'. Redacting prevents
-    accidental credential exposure when an unrelated error fires after a
-    successful token exchange.
+    The body may be stored as str(response.json()) (token values appear as
+    Python string literals: 'access_token': 'eyJ...') or as raw response.text
+    (double-quoted JSON: "access_token": "eyJ..."). Both single- and
+    double-quoted forms of access_token / refresh_token / id_token / signature
+    are masked. Redacting prevents accidental credential exposure when an
+    unrelated error fires after a successful token exchange.
     """
     if body is None:
         return None
-    return _ACCESS_TOKEN_PATTERN.sub(r"\1'[REDACTED]'", body)
+    return _SENSITIVE_VALUE_PATTERN.sub(r"\1'[REDACTED]'", body)
 
 
 def _attach_capturing_session(
@@ -498,42 +501,7 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
         )
 
         # 1. Mint a core OAuth token via the client-credentials grant.
-        token_url = f"https://{domain}/services/oauth2/token"
-        token_response = session.post(
-            token_url,
-            data={
-                "grant_type": "client_credentials",
-                "client_id": self._credentials.client_id,
-                "client_secret": self._credentials.client_secret,
-            },
-            timeout=_DISCOVERY_REQUEST_TIMEOUT_SECONDS,
-        )
-        if token_response.status_code != 200:
-            body = _redact_body(session.last_exchange_body)
-            status = session.last_exchange_status
-            logger.warning(
-                "Salesforce Data Cloud: OAuth token mint failed during dataspace discovery",
-                extra={
-                    "exchange_status_code": status,
-                    "exchange_error_type": _classify_exchange_status(status),
-                    "exchange_response_body": body,
-                },
-            )
-            detail = f" (Salesforce response: {body})" if body else ""
-            raise RuntimeError(
-                f"Salesforce Data Cloud dataspace discovery: OAuth token mint "
-                f"failed with code {token_response.status_code}{detail}"
-            )
-
-        try:
-            access_token = token_response.json()["access_token"]
-        except (ValueError, KeyError) as e:
-            body = _redact_body(session.last_exchange_body)
-            raise RuntimeError(
-                f"Salesforce Data Cloud dataspace discovery: OAuth response missing "
-                f"access_token (HTTP {token_response.status_code}, "
-                f"Salesforce response: {body})"
-            ) from e
+        access_token = self._mint_core_token(session)
 
         # 2. Issue SOQL query for the Dataspace SObject; follow nextRecordsUrl pagination.
         dataspaces: list[str] = []
@@ -600,6 +568,147 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
             },
         )
         return dataspaces
+
+    def _mint_core_token(self, session: _CapturingSession) -> str:
+        """
+        Mint a short-lived core OAuth token via the Salesforce client-credentials
+        grant (``POST /services/oauth2/token`` on the org's My Domain) and return
+        the access token.
+
+        This token authenticates Salesforce **core REST** calls
+        (``/services/data/...``) as the connected app's run-as user. The
+        ``salesforcecdpconnector`` library mints its own token internally for Data
+        Cloud query traffic but does not expose that flow for arbitrary core REST
+        calls, so dataspace discovery (:meth:`list_dataspaces`) and generic SSOT
+        reads (:meth:`ssot_get`) mint their own token here.
+
+        ``session`` is a :class:`_CapturingSession` so the caller can surface the
+        redacted response body on failure. Raises ``RuntimeError`` (``code NNN``
+        format) on a non-200 response or a payload missing ``access_token``. The
+        token itself is never logged.
+        """
+        domain = self._credentials.domain
+        token_url = f"https://{domain}/services/oauth2/token"
+        token_response = session.post(
+            token_url,
+            data={
+                "grant_type": "client_credentials",
+                "client_id": self._credentials.client_id,
+                "client_secret": self._credentials.client_secret,
+            },
+            timeout=_DISCOVERY_REQUEST_TIMEOUT_SECONDS,
+        )
+        if token_response.status_code != 200:
+            body = _redact_body(session.last_exchange_body)
+            status = session.last_exchange_status
+            logger.warning(
+                "Salesforce Data Cloud: OAuth core token mint failed",
+                extra={
+                    "exchange_status_code": status,
+                    "exchange_error_type": _classify_exchange_status(status),
+                    "exchange_response_body": body,
+                },
+            )
+            detail = f" (Salesforce response: {body})" if body else ""
+            raise RuntimeError(
+                f"Salesforce Data Cloud: OAuth core token mint failed with code "
+                f"{token_response.status_code}{detail}"
+            )
+        try:
+            return token_response.json()["access_token"]
+        except (ValueError, KeyError) as e:
+            body = _redact_body(session.last_exchange_body)
+            raise RuntimeError(
+                f"Salesforce Data Cloud: OAuth response missing access_token "
+                f"(HTTP {token_response.status_code}, Salesforce response: {body})"
+            ) from e
+
+    def ssot_get(self, path: str) -> dict | list:
+        """
+        Issue an authenticated GET against a Salesforce **core REST** path on the
+        connection's My Domain and return the parsed JSON body.
+
+        The body is returned as-is from ``response.json()`` — usually a JSON
+        object (``dict``), but occasionally a top-level JSON list for some core
+        REST endpoints.
+
+        This is the generic primitive the data-collector uses to read the
+        Salesforce SSOT metadata endpoints
+        (``/services/data/{version}/ssot/*`` — data streams, catalogs, schemas,
+        ...). The data-collector supplies the path to append; the agent owns
+        building the URL from the connection's credentials and authenticating the
+        call, so the customer's token never leaves the agent — only the JSON body
+        is returned.
+
+        Authentication mirrors :meth:`list_dataspaces`: a short-lived core token
+        is minted via the client-credentials grant (:meth:`_mint_core_token`) and
+        sent as a Bearer credential. SSOT endpoints are core REST on the My Domain
+        authenticated with the **core token** — not the Data Cloud query token
+        obtained via the a360 exchange.
+
+        ``path`` must be a relative path beginning with ``/`` (e.g.
+        ``/services/data/v62.0/ssot/data-streams``). Absolute URLs and
+        protocol-relative values (carrying a scheme or host) are rejected so the
+        minted token is only ever sent to the connection's own My Domain.
+
+        Raises ``ValueError`` for an unsafe ``path`` and ``RuntimeError``
+        (``code NNN`` format) on a non-200 or non-JSON response, with the
+        response body redacted before it is surfaced.
+        """
+        if (
+            not isinstance(path, str)
+            or not path.startswith("/")
+            or path.startswith("//")
+            or "://" in path
+        ):
+            raise ValueError(
+                f"Salesforce Data Cloud ssot_get: path must be a relative path "
+                f"beginning with '/' (no scheme or host), got: {path!r}"
+            )
+
+        domain = self._credentials.domain
+        session = _CapturingSession()
+
+        logger.info(
+            "Salesforce Data Cloud: SSOT GET "
+            f"(domain={domain}, path={path}, "
+            f"client_id={self._credentials.client_id[:8]}...)",
+            extra={"ssot_path": path},
+        )
+
+        access_token = self._mint_core_token(session)
+
+        response = session.get(
+            f"https://{domain}{path}",
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=_DISCOVERY_REQUEST_TIMEOUT_SECONDS,
+        )
+        if response.status_code != 200:
+            body = _redact_body(session.last_exchange_body)
+            status = session.last_exchange_status
+            logger.warning(
+                "Salesforce Data Cloud: SSOT GET failed",
+                extra={
+                    "ssot_path": path,
+                    "exchange_status_code": status,
+                    "exchange_error_type": _classify_exchange_status(status),
+                    "exchange_response_body": body,
+                },
+            )
+            detail = f" (Salesforce response: {body})" if body else ""
+            raise RuntimeError(
+                f"Salesforce Data Cloud SSOT GET {path} failed with code "
+                f"{response.status_code}{detail}"
+            )
+
+        try:
+            return response.json()
+        except ValueError as e:
+            body = _redact_body(session.last_exchange_body)
+            raise RuntimeError(
+                f"Salesforce Data Cloud SSOT GET {path}: non-JSON response "
+                f"(HTTP {response.status_code}, Salesforce response: {body})"
+            ) from e
 
     def _serialize_table(self, table: GenieTable) -> dict:
         fields: list[Field] = table.fields
