@@ -372,6 +372,32 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
             except SalesforceCDPError as e:
                 body = _redact_body(capturing.last_exchange_body if capturing else None)
                 status = capturing.last_exchange_status if capturing else None
+                # The CDP library raises SalesforceCDPError for BOTH the a360 token exchange AND
+                # the subsequent getAllMetadata query. A post-exchange metadata-query failure
+                # (the token was obtained, then e.g. a transient DEADLINE_EXCEEDED) must NOT be
+                # reported as a token-exchange / permission problem — that sends triage down the
+                # wrong path (YET-1631).
+                err_text = str(e)
+                is_metadata_query_failure = (
+                    "executing metadata query" in err_text.lower()
+                    or "getallmetadata" in err_text.lower()
+                )
+                if is_metadata_query_failure:
+                    logger.warning(
+                        "Salesforce Data Cloud: metadata query failed for dataspace '%s' "
+                        "(token exchange succeeded)",
+                        dataspace,
+                        extra={
+                            "dataspace": dataspace,
+                            "exchange_status_code": status,
+                            "metadata_query_error": err_text[:500],
+                            "exchange_response_body": body,
+                        },
+                    )
+                    detail = f" (Salesforce response: {body})" if body else ""
+                    raise RuntimeError(
+                        f"Metadata query failed for dataspace '{dataspace}': {e}{detail}"
+                    ) from e
                 logger.warning(
                     "Salesforce Data Cloud: a360/token exchange failed for dataspace '%s'",
                     dataspace,
