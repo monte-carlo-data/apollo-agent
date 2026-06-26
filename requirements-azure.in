@@ -4,7 +4,7 @@ azure-functions-durable==1.2.9
 azure-mgmt-resource==23.0.1
 azure-monitor-opentelemetry==1.8.8  # <1.4 pulls opentelemetry-instrumentation 0.46b0, which imports pkg_resources and crashes on py3.13; newer uses importlib.metadata
 azure-monitor-query==1.2.1
-aiohttp==3.13.3
+aiohttp==3.14.1  # clears aiohttp CVEs flagged on latest-azure; azure-only dep (transitive via azure-functions-durable)
 deprecated==1.2.18 # Added VULN-620
 opentelemetry-api==1.40.0 # VULN-620; exact pin MUST equal requirements-cloudrun.in's opentelemetry-api pin (tests/linter install cloudrun+azure together); also the version azure-monitor-opentelemetry resolves to
 viztracer==0.17.1 # Added VULN-620
