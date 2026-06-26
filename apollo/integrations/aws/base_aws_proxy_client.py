@@ -64,16 +64,15 @@ class BaseAwsProxyClient(BaseProxyClient):
             )
         else:
             session = boto3.Session(region_name=aws_region)
-        return session.client(
-            service_type,
-            verify=(
-                ssl_config.write_ca_data_to_temp_file(
-                    f"/tmp/{service_type}_ca_bundle.pem", upsert=True
-                )
-                if ssl_config.ca_data
-                else None
-            ),
-        )
+        ca_bundle_path = None
+        if ssl_config.ca_data:
+            # Write the CA bundle to a unique temp file and register it for
+            # deletion when the client is closed.
+            ca_bundle_path = ssl_config.write_ca_data_to_temp_file(
+                suffix="_ca_bundle.pem"
+            )
+            self.register_temp_files([ca_bundle_path])
+        return session.client(service_type, verify=ca_bundle_path)
 
     @staticmethod
     def _assume_role(

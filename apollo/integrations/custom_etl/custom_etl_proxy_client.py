@@ -244,7 +244,7 @@ class CustomEtlProxyClient(BaseProxyClient):
             }
         return result
 
-    def close(self):
+    def _close_client(self):
         try:
             self._connector.close_connection()
             logger.info("Closed custom ETL connector connection")

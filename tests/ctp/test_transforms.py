@@ -44,6 +44,8 @@ class TestTmpFileWriteTransform(TestCase):
         self.assertTrue(os.path.exists(path))
         with open(path) as f:
             self.assertEqual("CERT_CONTENT", f.read())
+        # Path is recorded for cleanup on client close.
+        self.assertEqual([path], state.temp_files)
         os.unlink(path)
 
     def test_output_key_written_to_derived(self):
@@ -449,6 +451,8 @@ class TestWriteIniFileTransform(TestCase):
         self.assertIn("Looker", config)
         self.assertEqual("https://looker.example.com", config["Looker"]["base_url"])
         self.assertEqual("cid", config["Looker"]["client_id"])
+        # Path is recorded for cleanup on client close.
+        self.assertEqual([path], state.temp_files)
         os.unlink(path)
 
     def test_output_path_stored_in_derived(self):

@@ -82,12 +82,17 @@ class CtpRegistry:
         credentials: dict[str, Any],
         ctp_config: dict[str, Any],
         context: dict[str, Any] | None = None,
+        temp_files: list[str] | None = None,
     ) -> dict[str, Any]:
         """Resolve credentials using a caller-supplied CTP config dict.
 
         The TypedDict schema from the registered default for connection_type is
         injected into the custom config's mapper so the output contract is preserved.
         Follows the same connect_args unwrap-and-run path as resolve().
+
+        ``temp_files`` is an optional out-param: any filesystem paths the
+        pipeline materializes (cert/key/ini temp files) are appended to it so
+        the caller can delete them when the proxy client is closed.
         """
         _ensure_initialized()
         config = CtpConfig.from_dict(ctp_config)
@@ -106,7 +111,7 @@ class CtpRegistry:
             return credentials
         return {
             _ATTR_CONNECT_ARGS: CtpPipeline().execute(
-                config, pipeline_input, context=context or {}
+                config, pipeline_input, context=context or {}, temp_files=temp_files
             )
         }
 
@@ -116,6 +121,7 @@ class CtpRegistry:
         connection_type: str,
         credentials: dict[str, Any],
         context: dict[str, Any] | None = None,
+        temp_files: list[str] | None = None,
     ) -> dict[str, Any]:
         """
         Run the registered CTP pipeline for connection_type and return
@@ -124,6 +130,10 @@ class CtpRegistry:
         is unwrapped and run through the pipeline — both flat and pre-shaped
         credentials follow the same transform path.
         Raises CtpPipelineError if connection_type is not registered.
+
+        ``temp_files`` is an optional out-param: any filesystem paths the
+        pipeline materializes (cert/key/ini temp files) are appended to it so
+        the caller can delete them when the proxy client is closed.
         """
         _ensure_initialized()
         config = cls.get(connection_type)
@@ -137,7 +147,7 @@ class CtpRegistry:
             return credentials
         return {
             _ATTR_CONNECT_ARGS: CtpPipeline().execute(
-                config, pipeline_input, context=context or {}
+                config, pipeline_input, context=context or {}, temp_files=temp_files
             )
         }
 
