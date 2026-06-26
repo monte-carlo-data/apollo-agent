@@ -534,58 +534,70 @@ class ProxyClientFactory:
         # files). Handed to the constructed client so it can delete them on
         # close — see BaseProxyClient.register_temp_files.
         temp_files: List[str] = []
-        if ctp_config is not None and credentials:
-            credentials = CtpRegistry.resolve_custom(
-                connection_type,
-                credentials,
-                ctp_config,
-                context={"platform": platform},
-                temp_files=temp_files,
-            )
-        elif credentials and CtpRegistry.get(connection_type):
-            credentials = CtpRegistry.resolve(
-                connection_type,
-                credentials,
-                context={"platform": platform},
-                temp_files=temp_files,
-            )
-        factory_method = _CLIENT_FACTORY_MAPPING.get(connection_type)
-        if factory_method:
-            client = factory_method(credentials, platform=platform)
-            client.register_temp_files(temp_files)
-            return client
-
-        # Check custom connectors before raising an error (opt-in via env var)
-        if os.getenv("MCD_CUSTOM_CONNECTORS_ENABLED", "false").lower() == "true":
-            from apollo.integrations.custom.custom_connector_loader import (
-                get_custom_connector_registry,
-            )
-
-            custom_registry = get_custom_connector_registry()
-            connector_dir = custom_registry.get(connection_type)
-            if connector_dir:
-                client = _get_proxy_client_custom(
-                    credentials, connector_dir=connector_dir
+        try:
+            if ctp_config is not None and credentials:
+                credentials = CtpRegistry.resolve_custom(
+                    connection_type,
+                    credentials,
+                    ctp_config,
+                    context={"platform": platform},
+                    temp_files=temp_files,
                 )
+            elif credentials and CtpRegistry.get(connection_type):
+                credentials = CtpRegistry.resolve(
+                    connection_type,
+                    credentials,
+                    context={"platform": platform},
+                    temp_files=temp_files,
+                )
+            factory_method = _CLIENT_FACTORY_MAPPING.get(connection_type)
+            if factory_method:
+                client = factory_method(credentials, platform=platform)
                 client.register_temp_files(temp_files)
                 return client
 
-            from apollo.integrations.custom_etl.custom_etl_connector_loader import (
-                get_custom_etl_connector_registry,
-            )
-
-            custom_etl_registry = get_custom_etl_connector_registry()
-            connector_dir = custom_etl_registry.get(connection_type)
-            if connector_dir:
-                client = _get_proxy_client_custom_etl(
-                    credentials, connector_dir=connector_dir
+            # Check custom connectors before raising an error (opt-in via env var)
+            if os.getenv("MCD_CUSTOM_CONNECTORS_ENABLED", "false").lower() == "true":
+                from apollo.integrations.custom.custom_connector_loader import (
+                    get_custom_connector_registry,
                 )
-                client.register_temp_files(temp_files)
-                return client
 
-        raise AgentError(
-            f"Connection type not supported by this agent: {connection_type}"
-        )
+                custom_registry = get_custom_connector_registry()
+                connector_dir = custom_registry.get(connection_type)
+                if connector_dir:
+                    client = _get_proxy_client_custom(
+                        credentials, connector_dir=connector_dir
+                    )
+                    client.register_temp_files(temp_files)
+                    return client
+
+                from apollo.integrations.custom_etl.custom_etl_connector_loader import (
+                    get_custom_etl_connector_registry,
+                )
+
+                custom_etl_registry = get_custom_etl_connector_registry()
+                connector_dir = custom_etl_registry.get(connection_type)
+                if connector_dir:
+                    client = _get_proxy_client_custom_etl(
+                        credentials, connector_dir=connector_dir
+                    )
+                    client.register_temp_files(temp_files)
+                    return client
+
+            raise AgentError(
+                f"Connection type not supported by this agent: {connection_type}"
+            )
+        except BaseException:
+            # Construction failed after the CTP pipeline materialized cert/key/ini
+            # files but before they were registered on a client, so nothing else
+            # will delete them — unlink here so a failed connect doesn't leak the
+            # credential files for the container lifetime.
+            for path in temp_files:
+                try:
+                    os.unlink(path)
+                except OSError:
+                    pass
+            raise
 
     @staticmethod
     def _get_cache_key(connection_type: str, credentials: Optional[Dict]) -> str:
