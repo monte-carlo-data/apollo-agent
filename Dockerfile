@@ -223,7 +223,10 @@ RUN pip install --no-cache-dir \
     --target=/home/site/wwwroot/.python_packages/lib/site-packages \
     -r /requirements.txt -r /requirements-azure.txt \
     && chown -R mcdagent:mcdagent /home/site/wwwroot/.python_packages \
-    && rm -rf /opt/python/3/_manifest
+    && rm -rf /opt/python/3/_manifest \
+    # Drop the SBOM the azure-functions-durable wheel bundles at the site-packages
+    # root: it lists stale versions that aren't installed, tripping scout false positives.
+    && rm -rf /home/site/wwwroot/.python_packages/lib/site-packages/_manifest
 
 COPY --chown=mcdagent:mcdagent apollo /home/site/wwwroot/apollo
 

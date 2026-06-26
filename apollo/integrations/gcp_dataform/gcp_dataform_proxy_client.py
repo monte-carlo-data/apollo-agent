@@ -17,8 +17,8 @@ from __future__ import annotations
 import logging
 from typing import Any, cast
 
-from google.cloud import dataform_v1
-from google.oauth2 import service_account
+from google.cloud import dataform_v1  # type: ignore[attr-defined]  # no type stubs
+from google.oauth2.service_account import Credentials  # type: ignore[import-untyped]
 
 from apollo.integrations.base_proxy_client import BaseProxyClient
 
@@ -37,6 +37,7 @@ class GcpDataformProxyClient(BaseProxyClient):
     Required connect_args:
         - ``project_id`` — GCP project ID
         - ``service_account_info`` — service account JSON key dict
+        - ``locations`` — list of GCP regions to operate in (e.g. ``["us-central1"]``)
     """
 
     def __init__(
@@ -44,17 +45,17 @@ class GcpDataformProxyClient(BaseProxyClient):
         credentials: dict | None = None,
         **kwargs: Any,
     ):
-        connect_args = (credentials or {}).get("connect_args", credentials or {})
+        connect_args = (credentials or {}).get("connect_args") or {}
 
         self._project_id: str = connect_args.get("project_id", "")
-        self._locations: list[str] = connect_args.get("locations", [])
+        self._locations: list[str] = connect_args.get("locations") or []
 
         sa_info = connect_args.get("service_account_info")
         if not sa_info:
             raise ValueError(
                 "GCP Dataform requires 'service_account_info' in credentials"
             )
-        creds = service_account.Credentials.from_service_account_info(
+        creds = Credentials.from_service_account_info(
             sa_info,
             scopes=_SCOPES,
         )
@@ -65,18 +66,13 @@ class GcpDataformProxyClient(BaseProxyClient):
         return self._client
 
     def get_connection_metadata(self) -> dict[str, Any]:
-        """Return non-secret metadata extracted from the resolved credentials.
-
-        Called by the DC to obtain ``project_id`` and ``locations`` when
-        self-hosted credentials are in use and the DC cannot read them
-        directly from the connection credentials.
-        """
+        """Return non-secret metadata extracted from the resolved credentials."""
         return {
             "project_id": self._project_id,
             "locations": self._locations,
         }
 
-    # -- Individual SDK operations --------------------------------------------
+    # -- List operations ------------------------------------------------------
 
     def list_repositories(self, parent: str) -> list[dict]:
         return [
@@ -96,13 +92,17 @@ class GcpDataformProxyClient(BaseProxyClient):
             for i in self._client.list_workflow_invocations(parent=parent)
         ]
 
-    def list_compilation_results(self, parent: str) -> list[dict]:
-        return [
-            cast(dict, type(c).to_dict(c))
-            for c in self._client.list_compilation_results(parent=parent)
-        ]
+    # -- Get operations -------------------------------------------------------
+
+    def get_release_config(self, name: str) -> dict:
+        """Get a single release config by resource name."""
+        result = self._client.get_release_config(name=name)
+        return cast(dict, type(result).to_dict(result))
+
+    # -- Query operations -----------------------------------------------------
 
     def query_compilation_result_actions(self, name: str) -> list[dict]:
+        """Query actions from a compilation result."""
         request = dataform_v1.QueryCompilationResultActionsRequest(name=name)
         return [
             cast(dict, type(a).to_dict(a))
@@ -110,15 +110,20 @@ class GcpDataformProxyClient(BaseProxyClient):
         ]
 
     def query_workflow_invocation_actions(self, name: str) -> list[dict]:
+        """Query action-level run details for a workflow invocation."""
         request = dataform_v1.QueryWorkflowInvocationActionsRequest(name=name)
         return [
             cast(dict, type(a).to_dict(a))
             for a in self._client.query_workflow_invocation_actions(request=request)
         ]
 
-    def test_connection(self, project_id: str, locations: list[str]) -> dict:
-        for location in locations:
-            parent = f"projects/{project_id}/locations/{location}"
+    # -- Misc -----------------------------------------------------------------
+
+    def test_connection(self) -> dict:
+        if not self._locations:
+            raise ValueError("At least one location is required to test connection")
+        for location in self._locations:
+            parent = f"projects/{self._project_id}/locations/{location}"
             repos = list(self._client.list_repositories(parent=parent))
             logger.info(
                 "Dataform test_connection: found %d repos in %s",
@@ -126,6 +131,3 @@ class GcpDataformProxyClient(BaseProxyClient):
                 location,
             )
         return {"success": True}
-
-    def _close_client(self) -> None:
-        pass
