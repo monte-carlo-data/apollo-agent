@@ -68,8 +68,9 @@ class TestStarburstEnterpriseCtp(TestCase):
             self.assertEqual(_CA_PEM, f.read())
         os.unlink(cert_path)
 
-    def test_resolve_flat_ssl_ca_data_is_deterministic(self):
-        """Same CA content always resolves to the same file path."""
+    def test_resolve_flat_ssl_ca_data_is_unique_per_call(self):
+        """Each resolve writes its own CA file, so one client's cleanup can't
+        delete a file still in use by another client with the same CA content."""
         creds = {
             "host": "h",
             "port": "8443",
@@ -79,5 +80,6 @@ class TestStarburstEnterpriseCtp(TestCase):
         }
         path1 = CtpPipeline().execute(STARBURST_ENTERPRISE_DEFAULT_CTP, creds)["verify"]
         path2 = CtpPipeline().execute(STARBURST_ENTERPRISE_DEFAULT_CTP, creds)["verify"]
-        self.assertEqual(path1, path2)
+        self.assertNotEqual(path1, path2)
         os.unlink(path1)
+        os.unlink(path2)

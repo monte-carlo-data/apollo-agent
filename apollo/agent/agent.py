@@ -727,15 +727,21 @@ class Agent:
             except Exception:  # noqa
                 return AgentUtils.agent_response_for_last_exception(client=client)
             finally:
-                if (response is None or response.is_error) and not operation.skip_cache:
-                    # discard clients that raised exceptions, clients like Redshift keep failing
-                    # after an error
+                # A custom ctp_config also bypasses the cache (see
+                # get_proxy_client), so such clients are never cached and must be
+                # closed here just like skip_cache ones — otherwise the temp
+                # credential files they registered linger until __del__/GC.
+                non_cached = operation.skip_cache or ctp_config is not None
+                if client and non_cached:
+                    # make sure non-cached clients are closed (also deletes any
+                    # registered temp files), on both the success and error paths
+                    client.close()
+                elif response is None or response.is_error:
+                    # discard cached clients that raised exceptions, clients like
+                    # Redshift keep failing after an error
                     ProxyClientFactory.dispose_proxy_client(
                         connection_type, credentials, operation.skip_cache
                     )
-                elif client and operation.skip_cache:
-                    # make sure non-cached clients are closed
-                    client.close()
 
     def _execute_client_operation(
         self,
