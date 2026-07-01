@@ -64,3 +64,18 @@ SA credential construction and exposes Dataform API calls as serialized-dict met
 
 Jinja2 templates are sandboxed (see `template.py`). Do not use `Environment()` directly —
 always go through the pipeline so the sandbox is enforced.
+
+## Temp-file cleanup
+
+Transforms that materialize a file on disk (cert/key/ini — e.g. `tmp_file_write`,
+`write_ini_file`, `resolve_ssl_options`) **must** append the path to `state.temp_files`.
+The pipeline surfaces this list via the optional `temp_files` out-param on
+`CtpRegistry.resolve()` / `resolve_custom()` (and `CtpPipeline.execute()`); the proxy client
+factory passes it to the constructed client via `BaseProxyClient.register_temp_files()`, which
+deletes the files when the client is closed. If you add a transform that writes a file and forget
+to append its path, the file persists for the container lifetime — the credential-leak class of
+bug this mechanism exists to prevent. Prefer a unique path per file (`mkstemp`) over a
+deterministic one so one client's cleanup can't delete a file still in use by another.
+
+When calling `CtpRegistry.resolve()` directly (outside the factory — e.g. in a test), pass a
+`temp_files=[]` list and clean those paths up yourself, or the materialized files will leak.
