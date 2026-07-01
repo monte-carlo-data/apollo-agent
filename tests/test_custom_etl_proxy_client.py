@@ -1,7 +1,7 @@
 import json
 import os
 import tempfile
-from datetime import timedelta
+from datetime import datetime
 from unittest import TestCase
 from unittest.mock import patch, MagicMock
 
@@ -16,6 +16,13 @@ from apollo.integrations.custom_etl.custom_etl_proxy_client import (
     _apply_status_mapping,
     _serialize,
 )
+
+# Pinned run-collection window (YET-1690): the DC threads ISO-8601 UTC strings on
+# the wire; the proxy deserializes them to tz-aware datetimes for fetch_run_details.
+_WIN_START = "2026-06-22T08:00:00+00:00"
+_WIN_END = "2026-06-22T09:10:00+00:00"
+_WIN_START_DT = datetime.fromisoformat(_WIN_START)
+_WIN_END_DT = datetime.fromisoformat(_WIN_END)
 
 
 class _FakeModel:
@@ -62,7 +69,9 @@ class Connector:
     def fetch_metadata(self, limit=1000, offset=0):
         return []
 
-    def fetch_run_details(self, run_ids=None, lookback=None, limit=100, offset=0):
+    def fetch_run_details(
+        self, run_ids=None, window_start=None, window_end=None, limit=100, offset=0
+    ):
         return []
 """
     with open(os.path.join(connector_dir, "connector.py"), "w") as f:
@@ -662,11 +671,14 @@ class TestCustomEtlProxyClient(TestCase):
             credentials={"connect_args": {}},
             connector_dir="/opt/custom-etl-connectors/adf",
         )
-        result = client.fetch_etl_runs(lookback_min=1440, limit=100, offset=0)
+        result = client.fetch_etl_runs(
+            window_start=_WIN_START, window_end=_WIN_END, limit=100, offset=0
+        )
 
         self._mock_connector.fetch_run_details.assert_called_once_with(
             run_ids=None,
-            lookback=timedelta(minutes=1440),
+            window_start=_WIN_START_DT,
+            window_end=_WIN_END_DT,
             limit=100,
             offset=0,
         )
@@ -695,7 +707,8 @@ class TestCustomEtlProxyClient(TestCase):
             connector_dir="/opt/custom-etl-connectors/adf",
         )
         result = client.fetch_etl_runs(
-            lookback_min=720,
+            window_start=_WIN_START,
+            window_end=_WIN_END,
             job_run_ids=["run-1"],
             limit=50,
             offset=10,
@@ -703,7 +716,8 @@ class TestCustomEtlProxyClient(TestCase):
 
         self._mock_connector.fetch_run_details.assert_called_once_with(
             run_ids=["run-1"],
-            lookback=timedelta(minutes=720),
+            window_start=_WIN_START_DT,
+            window_end=_WIN_END_DT,
             limit=50,
             offset=10,
         )
@@ -730,7 +744,8 @@ class TestCustomEtlProxyClient(TestCase):
             connector_dir="/opt/custom-etl-connectors/adf",
         )
         result = client.fetch_etl_runs(
-            lookback_min=1440,
+            window_start=_WIN_START,
+            window_end=_WIN_END,
             job_ids=["job-1"],
             limit=100,
             offset=0,
@@ -755,7 +770,9 @@ class TestCustomEtlProxyClient(TestCase):
             credentials={"connect_args": {}},
             connector_dir="/opt/custom-etl-connectors/adf",
         )
-        result = client.fetch_etl_runs(lookback_min=1440, limit=100, offset=0)
+        result = client.fetch_etl_runs(
+            window_start=_WIN_START, window_end=_WIN_END, limit=100, offset=0
+        )
 
         self.assertEqual(result, {"all_results": []})
 
@@ -1258,7 +1275,7 @@ class TestFetchEtlRunsStatusMapping(TestCase):
             {"job_source_id": "j1", "run_source_id": "r1", "status": "Succeeded"},
         ]
         client = self._create_client({})
-        result = client.fetch_etl_runs(lookback_min=60)
+        result = client.fetch_etl_runs(window_start=_WIN_START, window_end=_WIN_END)
 
         run = result["all_results"][0]
         self.assertEqual(run["status"], "Succeeded")
@@ -1272,7 +1289,7 @@ class TestFetchEtlRunsStatusMapping(TestCase):
         ]
         manifest = {"run_status_mapping": {"Succeeded": "success", "Failed": "failed"}}
         client = self._create_client(manifest)
-        result = client.fetch_etl_runs(lookback_min=60)
+        result = client.fetch_etl_runs(window_start=_WIN_START, window_end=_WIN_END)
 
         self.assertEqual(result["all_results"][0]["status"], "success")
         self.assertEqual(result["all_results"][0]["raw_status"], "Succeeded")
@@ -1300,7 +1317,7 @@ class TestFetchEtlRunsStatusMapping(TestCase):
             "task_run_status_mapping": {"Completed": "success"},
         }
         client = self._create_client(manifest)
-        result = client.fetch_etl_runs(lookback_min=60)
+        result = client.fetch_etl_runs(window_start=_WIN_START, window_end=_WIN_END)
 
         run = result["all_results"][0]
         self.assertEqual(run["status"], "success")
@@ -1322,7 +1339,7 @@ class TestFetchEtlRunsStatusMapping(TestCase):
         ]
         manifest = {"run_status_mapping": {"Failed": "failed"}}
         client = self._create_client(manifest)
-        result = client.fetch_etl_runs(lookback_min=60)
+        result = client.fetch_etl_runs(window_start=_WIN_START, window_end=_WIN_END)
 
         task = result["all_results"][0]["task_runs"][0]
         self.assertEqual(task["status"], "failed")
