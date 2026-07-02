@@ -1,6 +1,7 @@
 import http.client
 import logging
 import re
+import urllib.parse
 from dataclasses import dataclass
 from typing import Any, NoReturn
 
@@ -612,9 +613,9 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
         reads (:meth:`ssot_get`) mint their own token here.
 
         ``session`` is a :class:`_CapturingSession` so the caller can surface the
-        redacted response body on failure. Raises ``RuntimeError`` (``code NNN``
-        format) on a non-200 response or a payload missing ``access_token``. The
-        token itself is never logged.
+        redacted response body on failure. Raises ``RuntimeError`` carrying
+        ``code NNN`` on a non-200 response, and ``HTTP NNN`` on a 200 payload
+        missing ``access_token``. The token itself is never logged.
         """
         domain = self._credentials.domain
         token_url = f"https://{domain}/services/oauth2/token"
@@ -676,33 +677,43 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
         obtained via the a360 exchange.
 
         ``path`` must be a relative path beginning with ``/`` (e.g.
-        ``/services/data/v62.0/ssot/data-streams``). Absolute URLs and
-        protocol-relative values (carrying a scheme or host) are rejected so the
-        minted token is only ever sent to the connection's own My Domain.
+        ``/services/data/v62.0/ssot/data-streams``). Values carrying a scheme or
+        host (absolute or protocol-relative URLs) are rejected so the minted
+        token is only ever sent to the connection's own My Domain. Rejection is
+        based on the parsed URL structure, so a query string that merely embeds
+        a URL (e.g. a pagination cursor) is allowed.
 
-        Raises ``ValueError`` for an unsafe ``path`` and ``RuntimeError``
-        (``code NNN`` format) on a non-200 or non-JSON response, with the
-        response body redacted before it is surfaced.
+        Raises ``ValueError`` for an unsafe ``path``; ``RuntimeError`` carrying
+        ``code NNN`` on a non-200 response and ``HTTP NNN`` on a non-JSON 200
+        response, with the response body redacted before it is surfaced.
         """
+        try:
+            split = urllib.parse.urlsplit(path) if isinstance(path, str) else None
+        except ValueError:
+            split = None
         if (
-            not isinstance(path, str)
-            or not path.startswith("/")
-            or path.startswith("//")
-            or "://" in path
+            split is None
+            or split.scheme
+            or split.netloc
+            or not split.path.startswith("/")
         ):
             raise ValueError(
                 f"Salesforce Data Cloud ssot_get: path must be a relative path "
                 f"beginning with '/' (no scheme or host), got: {path!r}"
             )
+        # Query-string values (pagination cursors, filters) may be sensitive —
+        # logs and error messages only ever carry the path component.
+        log_path = split.path
+        has_query = bool(split.query)
 
         domain = self._credentials.domain
         session = _CapturingSession()
 
         logger.info(
             "Salesforce Data Cloud: SSOT GET "
-            f"(domain={domain}, path={path}, "
+            f"(domain={domain}, path={log_path}, has_query={has_query}, "
             f"client_id={self._credentials.client_id[:8]}...)",
-            extra={"ssot_path": path},
+            extra={"ssot_path": log_path, "ssot_has_query": has_query},
         )
 
         access_token = self._mint_core_token(session)
@@ -718,7 +729,8 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
             logger.warning(
                 "Salesforce Data Cloud: SSOT GET failed",
                 extra={
-                    "ssot_path": path,
+                    "ssot_path": log_path,
+                    "ssot_has_query": has_query,
                     "exchange_status_code": status,
                     "exchange_error_type": _classify_exchange_status(status),
                     "exchange_response_body": body,
@@ -726,7 +738,7 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
             )
             detail = f" (Salesforce response: {body})" if body else ""
             raise RuntimeError(
-                f"Salesforce Data Cloud SSOT GET {path} failed with code "
+                f"Salesforce Data Cloud SSOT GET {log_path} failed with code "
                 f"{response.status_code}{detail}"
             )
 
@@ -735,7 +747,7 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
         except ValueError as e:
             body = _redact_body(session.last_exchange_body)
             raise RuntimeError(
-                f"Salesforce Data Cloud SSOT GET {path}: non-JSON response "
+                f"Salesforce Data Cloud SSOT GET {log_path}: non-JSON response "
                 f"(HTTP {response.status_code}, Salesforce response: {body})"
             ) from e
 
