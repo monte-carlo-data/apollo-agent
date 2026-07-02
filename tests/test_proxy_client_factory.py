@@ -79,6 +79,57 @@ class ProxyClientFactoryTests(TestCase):
             ]
         )
 
+    @patch.object(Agent, "_execute_client_operation")
+    @patch.object(ProxyClientFactory, "_create_proxy_client")
+    def test_ctp_config_client_closed_even_when_not_skip_cache(
+        self, mock_create_client, mock_execute
+    ):
+        # A custom ctp_config bypasses the cache, so the client is never cached
+        # and must be closed in the finally even when skip_cache is False —
+        # otherwise the temp files it registered linger until __del__/GC.
+        mock_execute.return_value = AgentResponse({}, 200)
+        client = SampleProxyClient()
+        mock_create_client.return_value = client
+
+        agent = Agent(LoggingUtils())
+        agent.platform_provider = AwsPlatformProvider()  # caching platform
+        operation = AgentCommands(trace_id="123", commands=[])  # skip_cache=False
+
+        with patch.object(client, "close") as mock_close:
+            agent.execute_operation(
+                connection_type="test_type",
+                operation_name="test_operation",
+                operation_dict=operation.to_dict(),
+                credentials=None,
+                ctp_config={"mapper": {"field_map": {}}},
+            )
+
+        mock_close.assert_called_once()
+
+    @patch("apollo.integrations.db.postgres_proxy_client.psycopg2.connect")
+    def test_temp_files_cleaned_up_when_construction_fails(self, mock_connect):
+        # If the pipeline materializes a CA file but the client constructor then
+        # raises, nothing else would delete it — the factory must unlink it.
+        import glob
+        import os
+
+        mock_connect.side_effect = RuntimeError("connect boom")
+        creds = {
+            "host": "h",
+            "port": 5432,
+            "database": "db",
+            "user": "u",
+            "password": "p",
+            "ssl_options": {
+                "ca_data": "-----BEGIN CERTIFICATE-----\nX\n-----END CERTIFICATE-----"
+            },
+        }
+        before = set(glob.glob("/tmp/*_ssl_ca.pem"))
+        with self.assertRaises(RuntimeError):
+            ProxyClientFactory._create_proxy_client("postgres", creds, platform="test")
+        after = set(glob.glob("/tmp/*_ssl_ca.pem"))
+        self.assertEqual(before, after, "construction failure leaked a CA temp file")
+
 
 class TestGetNativeConnectionTypes(TestCase):
     def test_returns_sorted_list(self):

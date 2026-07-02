@@ -229,7 +229,7 @@ class CustomProxyClient(BaseProxyClient):
             "rowcount": rowcount,
         }
 
-    def close(self):
+    def _close_client(self):
         try:
             self._connector.close_connection()
             logger.info("Closed custom connector connection")

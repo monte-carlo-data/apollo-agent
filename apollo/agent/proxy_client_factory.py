@@ -4,7 +4,7 @@ import logging
 import os
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional, Dict
+from typing import List, Optional, Dict
 
 from apollo.common.agent.env_vars import CLIENT_CACHE_EXPIRATION_SECONDS_ENV_VAR
 from apollo.common.agent.models import AgentError
@@ -388,6 +388,16 @@ def _get_proxy_client_custom_etl(
     return CustomEtlProxyClient(credentials=credentials, connector_dir=connector_dir)
 
 
+def _get_proxy_client_gcp_dataform(
+    credentials: Optional[Dict], **kwargs  # type: ignore
+) -> BaseProxyClient:
+    from apollo.integrations.gcp_dataform.gcp_dataform_proxy_client import (
+        GcpDataformProxyClient,
+    )
+
+    return GcpDataformProxyClient(credentials=credentials)
+
+
 def _get_proxy_client_microsoft_fabric(
     credentials: Optional[Dict], platform: str, **kwargs  # type: ignore
 ) -> BaseProxyClient:
@@ -447,6 +457,7 @@ _CLIENT_FACTORY_MAPPING = {
     # MuleSoft-specific op through the same client instance.
     "mulesoft": _get_proxy_client_mulesoft,
     "fivetran": _get_proxy_client_http,
+    "gcp-dataform": _get_proxy_client_gcp_dataform,
 }
 
 
@@ -530,45 +541,74 @@ class ProxyClientFactory:
     ) -> BaseProxyClient:
         if credentials:
             credentials = decode_dictionary(credentials)
-        if ctp_config is not None and credentials:
-            credentials = CtpRegistry.resolve_custom(
-                connection_type, credentials, ctp_config, context={"platform": platform}
-            )
-        elif credentials and CtpRegistry.get(connection_type):
-            credentials = CtpRegistry.resolve(
-                connection_type, credentials, context={"platform": platform}
-            )
-        factory_method = _CLIENT_FACTORY_MAPPING.get(connection_type)
-        if factory_method:
-            return factory_method(credentials, platform=platform)
+        # Filesystem paths the CTP pipeline materializes (cert/key/ini temp
+        # files). Handed to the constructed client so it can delete them on
+        # close — see BaseProxyClient.register_temp_files.
+        temp_files: List[str] = []
+        try:
+            if ctp_config is not None and credentials:
+                credentials = CtpRegistry.resolve_custom(
+                    connection_type,
+                    credentials,
+                    ctp_config,
+                    context={"platform": platform},
+                    temp_files=temp_files,
+                )
+            elif credentials and CtpRegistry.get(connection_type):
+                credentials = CtpRegistry.resolve(
+                    connection_type,
+                    credentials,
+                    context={"platform": platform},
+                    temp_files=temp_files,
+                )
+            factory_method = _CLIENT_FACTORY_MAPPING.get(connection_type)
+            if factory_method:
+                client = factory_method(credentials, platform=platform)
+                client.register_temp_files(temp_files)
+                return client
 
-        # Check custom connectors before raising an error (opt-in via env var)
-        if os.getenv("MCD_CUSTOM_CONNECTORS_ENABLED", "false").lower() == "true":
-            from apollo.integrations.custom.custom_connector_loader import (
-                get_custom_connector_registry,
-            )
-
-            custom_registry = get_custom_connector_registry()
-            connector_dir = custom_registry.get(connection_type)
-            if connector_dir:
-                return _get_proxy_client_custom(
-                    credentials, connector_dir=connector_dir
+            # Check custom connectors before raising an error (opt-in via env var)
+            if os.getenv("MCD_CUSTOM_CONNECTORS_ENABLED", "false").lower() == "true":
+                from apollo.integrations.custom.custom_connector_loader import (
+                    get_custom_connector_registry,
                 )
 
-            from apollo.integrations.custom_etl.custom_etl_connector_loader import (
-                get_custom_etl_connector_registry,
-            )
+                custom_registry = get_custom_connector_registry()
+                connector_dir = custom_registry.get(connection_type)
+                if connector_dir:
+                    client = _get_proxy_client_custom(
+                        credentials, connector_dir=connector_dir
+                    )
+                    client.register_temp_files(temp_files)
+                    return client
 
-            custom_etl_registry = get_custom_etl_connector_registry()
-            connector_dir = custom_etl_registry.get(connection_type)
-            if connector_dir:
-                return _get_proxy_client_custom_etl(
-                    credentials, connector_dir=connector_dir
+                from apollo.integrations.custom_etl.custom_etl_connector_loader import (
+                    get_custom_etl_connector_registry,
                 )
 
-        raise AgentError(
-            f"Connection type not supported by this agent: {connection_type}"
-        )
+                custom_etl_registry = get_custom_etl_connector_registry()
+                connector_dir = custom_etl_registry.get(connection_type)
+                if connector_dir:
+                    client = _get_proxy_client_custom_etl(
+                        credentials, connector_dir=connector_dir
+                    )
+                    client.register_temp_files(temp_files)
+                    return client
+
+            raise AgentError(
+                f"Connection type not supported by this agent: {connection_type}"
+            )
+        except BaseException:
+            # Construction failed after the CTP pipeline materialized cert/key/ini
+            # files but before they were registered on a client, so nothing else
+            # will delete them — unlink here so a failed connect doesn't leak the
+            # credential files for the container lifetime.
+            for path in temp_files:
+                try:
+                    os.unlink(path)
+                except OSError:
+                    pass
+            raise
 
     @staticmethod
     def _get_cache_key(connection_type: str, credentials: Optional[Dict]) -> str:

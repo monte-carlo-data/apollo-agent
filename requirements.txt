@@ -110,6 +110,7 @@ google-api-core==2.19.1
     # via
     #   google-api-python-client
     #   google-cloud-core
+    #   google-cloud-dataform
     #   google-cloud-secret-manager
     #   google-cloud-storage
 google-api-python-client==2.176.0
@@ -121,12 +122,15 @@ google-auth==2.30.0
     #   google-api-python-client
     #   google-auth-httplib2
     #   google-cloud-core
+    #   google-cloud-dataform
     #   google-cloud-secret-manager
     #   google-cloud-storage
 google-auth-httplib2==0.2.0
     # via google-api-python-client
 google-cloud-core==2.4.1
     # via google-cloud-storage
+google-cloud-dataform==0.6.2
+    # via -r requirements.in
 google-cloud-secret-manager==2.25.0
     # via -r requirements.in
 google-cloud-storage==2.19.0
@@ -144,7 +148,9 @@ googleapis-common-protos==1.63.2
     #   grpc-google-iam-v1
     #   grpcio-status
 grpc-google-iam-v1==0.14.3
-    # via google-cloud-secret-manager
+    # via
+    #   google-cloud-dataform
+    #   google-cloud-secret-manager
 grpcio==1.76.0
     # via
     #   google-api-core
@@ -253,11 +259,13 @@ presto-python-client==0.8.3
 proto-plus==1.28.0
     # via
     #   google-api-core
+    #   google-cloud-dataform
     #   google-cloud-secret-manager
 protobuf==5.29.6
     # via
     #   -r requirements.in
     #   google-api-core
+    #   google-cloud-dataform
     #   google-cloud-secret-manager
     #   googleapis-common-protos
     #   grpc-google-iam-v1

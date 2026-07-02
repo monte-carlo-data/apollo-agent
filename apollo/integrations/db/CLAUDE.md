@@ -29,8 +29,22 @@ These are shared via `TSqlBaseDbProxyClient` in `tsql_base_db_proxy_client.py`, 
 
 ### Connection lifecycle
 
-Connections are opened in `__init__` and closed in `__del__` (via `BaseDbProxyClient.close`).
+Connections are opened in `__init__` and closed in `__del__` (via `BaseProxyClient.close`).
 The `wrapped_client` property exposes the underlying connection/client for the agent framework.
+
+To release the connection, override **`_close_client()`** — not `close()`. `BaseProxyClient.close()`
+is a template method that runs `_close_client()` and then deletes any temp credential files
+registered via `register_temp_files` (in a `finally`, so cleanup runs even if the connection
+teardown raises). Overriding `close()` directly silently skips that cleanup.
+
+### Credential temp files
+
+If `__init__` (or a helper like `get_cert_path`) materializes a cert/key/CA file on disk, register
+its path with `self.register_temp_files([path])` so it is deleted when the client closes — otherwise
+the file persists for the container lifetime. `get_cert_path` already registers what it downloads;
+clients that write their own CA file (db2, teradata) register it explicitly. Prefer a unique path
+per client (e.g. `SslOptions.write_ca_data_to_temp_file`, which uses `mkstemp`) rather than a
+deterministic one, so closing one client cannot delete a file still in use by another.
 
 ### Non-pyodbc clients
 

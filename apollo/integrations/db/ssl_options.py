@@ -87,19 +87,29 @@ class SslOptions:
 
         return ssl_context
 
-    def write_ca_data_to_temp_file(self, temp_cert_path: str, upsert: bool) -> str:
+    def write_ca_data_to_temp_file(self, suffix: str = "_ca.pem") -> str:
         """
-        Some clients require CA data be passed as a path to a file.
-        This method writes the ca_data to the provided path, can optionally
-        upsert what is already there.
+        Some clients require CA data be passed as a path to a file. Write ca_data
+        to a freshly-created temp file and return its path.
+
+        ``mkstemp`` always creates the file with owner-only (0o600) permissions
+        regardless of umask, and returns a unique path. The unique path (rather
+        than a deterministic one derived from the host/CA hash) is deliberate:
+        each client gets its own CA file, so closing or evicting one client can
+        never delete a CA file still in use by another client that happens to use
+        the same CA data. The caller is responsible for registering the returned
+        path via ``register_temp_files`` so it is deleted on close.
         """
-        if os.path.isfile(temp_cert_path) and not upsert:
-            raise ValueError("File already exists at this path.")
         if not self.ca_data:
             raise ValueError("No CA data to write to file.")
-        with open(temp_cert_path, "w") as temp_cert_file:
-            temp_cert_file.write(self.ca_data)
-        return temp_cert_path
+        fd, path = tempfile.mkstemp(suffix=suffix)
+        try:
+            with os.fdopen(fd, "w") as cert_file:
+                cert_file.write(self.ca_data)
+        except BaseException:
+            os.unlink(path)
+            raise
+        return path
 
     def _set_cert_and_key_to_context(self, ssl_context: ssl.SSLContext) -> None:
         """Check if temp file exists, if not create it from certificate or key data."""

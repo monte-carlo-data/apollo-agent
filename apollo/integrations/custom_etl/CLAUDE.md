@@ -84,7 +84,7 @@ The `connector.py` module must define a `Connector` class with:
 - `setup_connection()` — establish connection using credentials
 - `close_connection()` — clean up resources
 - `fetch_metadata(limit, offset)` → `List[EtlAsset]`
-- `fetch_run_details(run_ids, lookback, limit, offset)` → `List[EtlRunEvent]`
+- `fetch_run_details(run_ids, window_start, window_end, limit, offset)` → `List[EtlRunEvent]` — `window_start`/`window_end` are the pinned collection window (tz-aware `datetime`s; the proxy parses them from the ISO-8601 UTC wire strings) the connector filters against, `window_start <= t < window_end` (YET-1690)
 
 ## How it differs from custom (warehouse) connectors
 

@@ -1,8 +1,5 @@
-import hashlib
 from typing import Any
 import logging
-import os
-import tempfile
 
 import ibm_db
 import ibm_db_dbi
@@ -35,13 +32,12 @@ class Db2ProxyClient(BaseDbProxyClient):
         ssl_options = SslOptions(**(credentials.get("ssl_options") or {}))
 
         if ssl_options.ca_data and not ssl_options.disabled:
-            # DB2 requires SSLServerCertificate to point to a certificate file
-            # Create a temporary file for the CA certificate
-            host_hash = hashlib.sha256(
-                connect_args.get("hostname", "temp").encode()
-            ).hexdigest()[:12]
-            cert_file = f"/tmp/{host_hash}_db2_ca.pem"
-            ssl_options.write_ca_data_to_temp_file(cert_file, upsert=True)
+            # DB2 requires SSLServerCertificate to point to a certificate file.
+            # Write the CA to a unique temp file and register it for deletion on
+            # close (legacy top-level ssl_options path; the CTP path registers via
+            # the factory).
+            cert_file = ssl_options.write_ca_data_to_temp_file(suffix="_db2_ca.pem")
+            self.register_temp_files([cert_file])
 
             connect_args["Security"] = "SSL"
             connect_args["SSLServerCertificate"] = cert_file
