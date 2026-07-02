@@ -1357,6 +1357,55 @@ class SalesforceDataCloudProxyClientTests(TestCase):
         )
         self.assertIn("limit=100", ssot_call.request.url)
 
+    def test_ssot_get_allows_url_valued_query_param(self):
+        """The path guard must reject values by their URL *structure* (scheme or
+        host present), not by substring — a relative path whose query string
+        merely embeds a URL (e.g. a pagination cursor) is safe and allowed."""
+        path_with_url_cursor = (
+            "/services/data/v62.0/ssot/data-streams"
+            "?next=https://api.salesforce.com/cursor/abc"
+        )
+        self.mock_responses.add_callback(
+            method=responses.GET,
+            url=self._SSOT_URL,
+            callback=Mock(return_value=(200, {}, json.dumps({"dataStreams": []}))),
+        )
+
+        response = self.agent.execute_operation(
+            connection_type="salesforce-data-cloud",
+            operation_name="test_ssot_get_url_valued_query",
+            operation_dict=self._ssot_get_operation(path_with_url_cursor),
+            credentials=self.credentials,
+        )
+
+        self.assertFalse(response.is_error, msg=str(response.result))
+
+    def test_ssot_get_does_not_log_query_string_values(self):
+        """Query-string values (pagination cursors, filters) may carry sensitive
+        data — logs must only include the path component, never the query."""
+        path_with_query = (
+            "/services/data/v62.0/ssot/data-streams?cursor=sensitive-cursor-value"
+        )
+        self.mock_responses.add_callback(
+            method=responses.GET,
+            url=self._SSOT_URL,
+            callback=Mock(return_value=(200, {}, json.dumps({"dataStreams": []}))),
+        )
+
+        with self.assertLogs(self._PROXY_CLIENT_LOGGER, level="INFO") as logs:
+            response = self.agent.execute_operation(
+                connection_type="salesforce-data-cloud",
+                operation_name="test_ssot_get_query_not_logged",
+                operation_dict=self._ssot_get_operation(path_with_query),
+                credentials=self.credentials,
+            )
+
+        self.assertFalse(response.is_error, msg=str(response.result))
+        log_text = "\n".join(logs.output)
+        for record in logs.records:
+            self.assertNotIn("sensitive-cursor-value", str(record.__dict__))
+        self.assertNotIn("sensitive-cursor-value", log_text)
+
     def test_ssot_get_non_json_200_raises_runtime_error(self):
         """A 200 response whose body is not JSON surfaces as a RuntimeError that
         names the failure (`non-JSON`) rather than letting the ValueError from
