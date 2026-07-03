@@ -1,5 +1,5 @@
 import datetime
-import hashlib
+import os
 from copy import copy
 from typing import (
     Iterable,
@@ -52,18 +52,27 @@ class TeradataClientTests(TestCase):
             _ATTR_CONNECT_ARGS: ctp_connect_args,
             "ssl_options": {"ca_data": "cert-string-here"},
         }
-        TeradataProxyClient(credentials)
+        client = TeradataProxyClient(credentials)
 
-        expected_connection_parameters = {
-            "host": "www.example.com",
-            "user": "u",
-            "password": "p",
-            "https_port": 3306,
-            "sslmode": "VERIFY-FULL",
-            "encryptdata": "true",
-            "sslca": f"/tmp/{hashlib.sha256('www.example.com'.encode()).hexdigest()[:12]}_teradata_ca.pem",
-        }
-        mock_connect.assert_called_with(**expected_connection_parameters)
+        kwargs = dict(mock_connect.call_args.kwargs)
+        # sslca is now a unique temp-file path (not a deterministic host hash),
+        # suffixed for identification — each client owns its own CA file.
+        sslca = kwargs.pop("sslca")
+        self.assertTrue(sslca.endswith("_teradata_ca.pem"))
+        self.assertEqual(
+            {
+                "host": "www.example.com",
+                "user": "u",
+                "password": "p",
+                "https_port": 3306,
+                "sslmode": "VERIFY-FULL",
+                "encryptdata": "true",
+            },
+            kwargs,
+        )
+        # The CA temp file is registered so it is deleted when the client closes.
+        self.assertEqual([sslca], client._temp_files)
+        os.unlink(sslca)
 
     @patch("teradatasql.connect")
     def test_query(self, mock_connect):

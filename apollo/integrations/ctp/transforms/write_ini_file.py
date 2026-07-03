@@ -63,6 +63,8 @@ class WriteIniFileTransform(Transform):
                 f.write(f"{key}={value}\n")
 
         os.chmod(f.name, 0o600)
+        # Record the path so the proxy client can delete it on close.
+        state.temp_files.append(f.name)
         state.derived[output_key] = f.name
 
 
