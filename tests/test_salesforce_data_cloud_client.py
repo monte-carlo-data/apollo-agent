@@ -350,6 +350,40 @@ class SalesforceDataCloudProxyClientTests(TestCase):
         # Should see a clear token exchange error
         self.assertIn("Token exchange failed", error_message)
 
+    def test_list_tables_metadata_query_failure_not_labeled_token_exchange(self):
+        """A post-token-exchange getAllMetadata failure (e.g. a transient DEADLINE_EXCEEDED) is
+        reported as a metadata-query error, NOT 'Token exchange failed ... verify permission'
+        (YET-1631) — the token exchange succeeded; only the metadata query failed."""
+        from salesforcecdpconnector.exceptions import Error as SalesforceCDPError
+
+        metadata_err = SalesforceCDPError(
+            "Failed executing metadata query in server : status=500, message="
+            "TranslationMetadataHelper.getAllMetadata Error fetching data source entities - "
+            "DEADLINE_EXCEEDED: CallOptions deadline exceeded after 9.9s"
+        )
+        operation = {
+            "trace_id": "test-trace-id",
+            "skip_cache": True,
+            "commands": [{"method": "list_tables", "kwargs": {"dataspace": "default"}}],
+        }
+        with patch(
+            "apollo.integrations.db.salesforce_data_cloud_proxy_client."
+            "SalesforceDataCloudConnection.list_tables",
+            side_effect=metadata_err,
+        ):
+            response = self.agent.execute_operation(
+                connection_type="salesforce-data-cloud",
+                operation_name="test_metadata_query_failure",
+                operation_dict=operation,
+                credentials=self.credentials,
+            )
+
+        self.assertTrue(response.is_error)
+        msg = str(response.result)
+        self.assertIn("Metadata query failed for dataspace 'default'", msg)
+        self.assertNotIn("Token exchange failed", msg)
+        self.assertNotIn("verify the dataspace name", msg)
+
     def test_list_tables_with_invalid_dataspace_raises_clear_error_clean_path(self):
         """
         Older versions of salesforce-cdp-connector raise KeyError('access_token') when the
