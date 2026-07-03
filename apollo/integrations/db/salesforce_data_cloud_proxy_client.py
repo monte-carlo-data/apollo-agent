@@ -385,11 +385,16 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
                 # reported as a token-exchange / permission problem — that sends triage down the
                 # wrong path (YET-1631).
                 err_text = str(e)
+                err_text_lower = err_text.lower()
                 is_metadata_query_failure = (
-                    "executing metadata query" in err_text.lower()
-                    or "getallmetadata" in err_text.lower()
+                    "executing metadata query" in err_text_lower
+                    or "getallmetadata" in err_text_lower
                 )
                 if is_metadata_query_failure:
+                    # The token exchange succeeded, so the captured `body` is the token-exchange
+                    # response — NOT the metadata-query response. Don't append it to this message
+                    # (it would misrepresent what the body is); it's still logged below as
+                    # `exchange_response_body`, where the label is accurate.
                     logger.warning(
                         "Salesforce Data Cloud: metadata query failed for dataspace '%s' "
                         "(token exchange succeeded)",
@@ -401,9 +406,8 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
                             "exchange_response_body": body,
                         },
                     )
-                    detail = f" (Salesforce response: {body})" if body else ""
                     raise RuntimeError(
-                        f"Metadata query failed for dataspace '{dataspace}': {e}{detail}"
+                        f"Metadata query failed for dataspace '{dataspace}': {e}"
                     ) from e
                 logger.warning(
                     "Salesforce Data Cloud: a360/token exchange failed for dataspace '%s'",
