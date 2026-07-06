@@ -210,6 +210,60 @@ def test_salesforce_crm_no_variant_fails(client):
     assert "connect_args" in payload["errors"]
 
 
+def test_redshift_password_variant(client):
+    # Monte Carlo-managed / username+password auth.
+    payload = _post_validate(
+        client,
+        "redshift",
+        {
+            "connect_args": {
+                "host": "cluster.abc.eu-west-1.redshift.amazonaws.com",
+                "port": "5439",
+                "dbname": "analytics",
+                "user": "mc_user",
+                "password": "pwd",
+            }
+        },
+    )
+    assert payload["valid"] is True
+    assert payload["connection_type"] == "redshift"
+    assert payload["errors"] == {}
+
+
+def test_redshift_federated_variant_no_password(client):
+    # IAM-federated (Connection Auth Rules): no static password — the agent
+    # mints temporary credentials via GetClusterCredentials. Uses db_name
+    # (the documented key) rather than dbname. This is the SUP-532 shape that
+    # previously failed validation.
+    payload = _post_validate(
+        client,
+        "redshift",
+        {
+            "connect_args": {
+                "host": "cluster.abc.eu-west-1.redshift.amazonaws.com",
+                "port": "5439",
+                "db_name": "analytics",
+                "cluster_identifier": "mc-cluster",
+                "db_user": "mc_user",
+                "aws_region": "eu-west-1",
+            }
+        },
+    )
+    assert payload["valid"] is True
+    assert payload["errors"] == {}
+
+
+def test_redshift_no_auth_variant_fails(client):
+    # Neither a password nor the federated fields — matches no variant.
+    payload = _post_validate(
+        client,
+        "redshift",
+        {"connect_args": {"host": "cluster.abc.eu-west-1.redshift.amazonaws.com"}},
+    )
+    assert payload["valid"] is False
+    assert "connect_args" in payload["errors"]
+
+
 # -- custom connector tests ------------------------------------------------
 
 
