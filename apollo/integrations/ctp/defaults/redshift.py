@@ -1,4 +1,4 @@
-from typing import Any, NotRequired, Required, TypedDict
+from typing import NotRequired, Required, TypedDict
 
 from apollo.credentials.schema.common import SSL_OPTIONS_FIELD
 from apollo.integrations.ctp.models import CtpConfig, MapperConfig, TransformStep
@@ -28,27 +28,66 @@ class RedshiftClientArgs(TypedDict):
     keepalives_count: NotRequired[int]
 
 
-# Redshift self-hosted credentials schema. Docs require all five fields but
-# the CTP defaults `port` to 5439 and `user` to "awsuser"; the validator
-# matches the more forgiving code shape and only requires host/dbname/password.
-# Port is documented as a string ("5439") but the connector accepts both
-# string and integer; we accept either to avoid spurious type errors.
+# Connection fields shared by both Redshift auth modes. Spread into each
+# ``oneof_schema`` variant below so each variant is a complete,
+# independently-valid schema (a requirement for ``oneof_schema``).
+#
+# db-name: the mapper reads ``db_name`` first, falling back to ``dbname`` /
+# ``database`` (see mapper field_map below). All three are accepted as optional
+# aliases so a secret authored with any spelling passes; a genuinely missing
+# database name surfaces at connect time rather than as a schema error (avoids
+# rejecting existing ``dbname``-keyed secrets while accepting the documented
+# ``db_name``). ``port`` is documented as a string ("5439") but the connector
+# accepts both string and integer; CTP defaults to 5439.
+_REDSHIFT_COMMON_CONNECT_ARGS = {
+    "host": {"type": "string", "required": True, "empty": False},
+    "db_name": {"type": "string"},
+    "dbname": {"type": "string"},
+    "database": {"type": "string"},
+    "user": {"type": "string"},  # CTP defaults to "awsuser"
+    "port": {"type": ["string", "integer"]},
+    "connect_timeout": {"type": "integer"},
+    "query_timeout_in_seconds": {"type": "integer"},
+    "ssl_mode": {"type": "string"},
+}
+
+# Redshift self-hosted credentials schema. Two auth modes, expressed as
+# ``oneof_schema`` variants (see snowflake.py for the canonical pattern):
+#   1. Monte Carlo-managed / password auth: username + static password.
+#   2. IAM-federated auth (Connection Auth Rules): the agent mints temporary
+#      credentials via GetClusterCredentials, so there is NO static password —
+#      the secret carries cluster_identifier / db_user / aws_region instead
+#      (consumed by the resolve_redshift_credentials transform in the custom
+#      CTP config). Requiring `password` here previously forced federated
+#      customers to add a dummy password. See SUP-532.
+# Cerberus picks the matching variant; zero matches (no auth field) or more
+# than one (ambiguous) fails with a diagnostic listing every candidate.
 REDSHIFT_CREDENTIALS_SCHEMA = {
     "connect_args": {
         "type": "dict",
         "required": True,
-        "schema": {
-            "host": {"type": "string", "required": True, "empty": False},
-            "dbname": {"type": "string", "required": True, "empty": False},
-            "user": {"type": "string"},  # CTP defaults to "awsuser"
-            "password": {"type": "string", "required": True, "empty": False},
-            # Port is documented as a string ("5439"); the connector
-            # accepts both; CTP defaults to 5439.
-            "port": {"type": ["string", "integer"]},
-            "connect_timeout": {"type": "integer"},
-            "query_timeout_in_seconds": {"type": "integer"},
-            "ssl_mode": {"type": "string"},
-        },
+        "oneof_schema": [
+            # Password auth.
+            {
+                **_REDSHIFT_COMMON_CONNECT_ARGS,
+                "password": {"type": "string", "required": True, "empty": False},
+            },
+            # IAM-federated auth (GetClusterCredentials). No static password;
+            # temporary DbUser/DbPassword are resolved at connect time.
+            {
+                **_REDSHIFT_COMMON_CONNECT_ARGS,
+                "cluster_identifier": {
+                    "type": "string",
+                    "required": True,
+                    "empty": False,
+                },
+                "db_user": {"type": "string", "required": True, "empty": False},
+                "aws_region": {"type": "string", "required": True, "empty": False},
+                "assumable_role": {"type": "string"},
+                "external_id": {"type": "string"},
+                "duration_seconds": {"type": ["string", "integer"]},
+            },
+        ],
     },
     "ssl_options": SSL_OPTIONS_FIELD,
     # Top-level autocommit per docs example.
