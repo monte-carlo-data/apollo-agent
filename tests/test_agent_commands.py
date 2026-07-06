@@ -1,11 +1,16 @@
+import logging
 from unittest import TestCase
 from unittest.mock import create_autospec, call
 
 from apollo.agent.agent import Agent
+from apollo.agent.evaluation_utils import AgentEvaluationUtils
 from apollo.agent.log_context import AgentLogContext
 from apollo.agent.logging_utils import LoggingUtils
-from apollo.common.agent.models import AgentCommands
+from apollo.common.agent.constants import CONTEXT_VAR_CLIENT
+from apollo.common.agent.models import AgentCommand, AgentCommands
 from tests.sample_proxy_client import SampleProxyClient
+
+_EVALUATION_LOGGER = "apollo.agent.evaluation_utils"
 
 
 class AgentCommandsTests(TestCase):
@@ -144,3 +149,43 @@ class AgentCommandsTests(TestCase):
                 call({}),
             ]
         )
+
+
+class _SecretRaisingClient(SampleProxyClient):
+    _SECRET = "presigned-url-token-super-secret"
+
+    def download_bytes(self, *args, **kwargs):
+        raise ValueError(f"oversized payload {self._SECRET}")
+
+
+class AgentCommandFailureLoggingTests(TestCase):
+    def test_method_resolution_failure_logs_error_with_stable_message(self):
+        with self.assertLogs(_EVALUATION_LOGGER, level=logging.ERROR) as captured:
+            with self.assertRaises(AttributeError):
+                AgentEvaluationUtils._resolve_method(
+                    SampleProxyClient(), "does_not_exist"
+                )
+
+        self.assertEqual(1, len(captured.records))
+        record = captured.records[0]
+        self.assertEqual(logging.ERROR, record.levelno)
+        self.assertIn("Failed to resolve method", record.getMessage())
+        self.assertIn("does_not_exist", record.getMessage())
+
+    def test_method_invocation_failure_logs_error_without_leaking_exception(self):
+        client = _SecretRaisingClient()
+        context = {CONTEXT_VAR_CLIENT: client}
+        command = AgentCommand.from_dict({"method": "download_bytes"})
+
+        with self.assertLogs(_EVALUATION_LOGGER, level=logging.ERROR) as captured:
+            with self.assertRaises(ValueError):
+                AgentEvaluationUtils._execute_single_command(command, context)
+
+        self.assertEqual(1, len(captured.records))
+        record = captured.records[0]
+        self.assertEqual(logging.ERROR, record.levelno)
+        self.assertIsNotNone(record.exc_info)
+        message = record.getMessage()
+        self.assertIn("download_bytes", message)
+        self.assertIn("ValueError", message)
+        self.assertNotIn(_SecretRaisingClient._SECRET, message)
