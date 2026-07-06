@@ -10,6 +10,10 @@ class RedshiftClientArgs(TypedDict):
     port: Required[int]
     dbname: Required[str]
     user: Required[str]
+    # Present for password auth. For IAM-federated auth the secret carries no
+    # static password — it's supplied at connect time by the auth-rule's
+    # resolve_redshift_credentials step (minted via GetClusterCredentials) and
+    # merged into these client args before the connector runs. See SUP-532.
     password: Required[str]
     # SSL
     sslmode: NotRequired[str]

@@ -264,6 +264,94 @@ def test_redshift_no_auth_variant_fails(client):
     assert "connect_args" in payload["errors"]
 
 
+def test_redshift_ambiguous_both_variants_fails(client):
+    # A secret carrying BOTH a static password and the federated fields matches
+    # both oneof_schema variants — cerberus rejects it as ambiguous rather than
+    # silently picking one. Pins the invariant documented on the schema.
+    payload = _post_validate(
+        client,
+        "redshift",
+        {
+            "connect_args": {
+                "host": "cluster.abc.eu-west-1.redshift.amazonaws.com",
+                "port": "5439",
+                "db_name": "analytics",
+                "password": "pwd",
+                "cluster_identifier": "mc-cluster",
+                "db_user": "mc_user",
+                "aws_region": "eu-west-1",
+            }
+        },
+    )
+    assert payload["valid"] is False
+    assert "connect_args" in payload["errors"]
+
+
+@pytest.mark.parametrize("db_key", ["db_name", "dbname", "database"])
+def test_redshift_db_name_aliases_password_variant(client, db_key):
+    # All three db-name aliases are accepted in the password variant.
+    payload = _post_validate(
+        client,
+        "redshift",
+        {
+            "connect_args": {
+                "host": "cluster.abc.eu-west-1.redshift.amazonaws.com",
+                "port": "5439",
+                db_key: "analytics",
+                "user": "mc_user",
+                "password": "pwd",
+            }
+        },
+    )
+    assert payload["valid"] is True
+    assert payload["errors"] == {}
+
+
+@pytest.mark.parametrize("db_key", ["db_name", "dbname", "database"])
+def test_redshift_db_name_aliases_federated_variant(client, db_key):
+    # All three db-name aliases are accepted in the federated variant too.
+    payload = _post_validate(
+        client,
+        "redshift",
+        {
+            "connect_args": {
+                "host": "cluster.abc.eu-west-1.redshift.amazonaws.com",
+                "port": "5439",
+                db_key: "analytics",
+                "cluster_identifier": "mc-cluster",
+                "db_user": "mc_user",
+                "aws_region": "eu-west-1",
+            }
+        },
+    )
+    assert payload["valid"] is True
+    assert payload["errors"] == {}
+
+
+def test_redshift_federated_variant_optional_fields(client):
+    # The optional IAM-role fields on the federated variant validate and don't
+    # trip the schema (guards against a field-name typo in the schema).
+    payload = _post_validate(
+        client,
+        "redshift",
+        {
+            "connect_args": {
+                "host": "cluster.abc.eu-west-1.redshift.amazonaws.com",
+                "port": "5439",
+                "db_name": "analytics",
+                "cluster_identifier": "mc-cluster",
+                "db_user": "mc_user",
+                "aws_region": "eu-west-1",
+                "assumable_role": "arn:aws:iam::123456789012:role/mc-redshift",
+                "external_id": "ext-123",
+                "duration_seconds": 3600,
+            }
+        },
+    )
+    assert payload["valid"] is True
+    assert payload["errors"] == {}
+
+
 # -- custom connector tests ------------------------------------------------
 
 
