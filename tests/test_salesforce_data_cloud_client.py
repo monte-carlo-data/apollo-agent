@@ -4,6 +4,7 @@ import uuid
 from unittest import TestCase
 from unittest.mock import Mock, patch
 
+import requests
 import responses
 import urllib3.exceptions
 
@@ -308,6 +309,96 @@ class SalesforceDataCloudProxyClientTests(TestCase):
         for i, (key, value) in enumerate(self.data_response["metadata"].items()):
             self.assertEqual(result["description"][i][0], key)
             self.assertEqual(result["description"][i][1], value["type"])
+
+    def test_query_token_exchange_failure_surfaces_status_and_body(self):
+        """
+        Old-DC-path query connections (core_token present) must surface the captured
+        a360/token exchange HTTP status and response body instead of only the generic
+        "Token exchange failed..." message (YET-1790). The library swallows the
+        exchange failure (``except Exception: pass``) before falling into
+        ``_renew_token``, so the detail must come from the ``_CapturingSession``
+        attached to the connection's authentication_helper.
+        """
+        self.mock_responses.remove(
+            responses.POST, "https://test.salesforce.com/services/a360/token"
+        )
+        self.mock_responses.add(
+            method=responses.POST,
+            url="https://test.salesforce.com/services/a360/token",
+            status=400,
+            body=json.dumps(
+                {"error": "invalid_request", "error_description": "dataspace not found"}
+            ),
+        )
+        # Model the size-collection dispatch: dataspace-scoped query credentials.
+        self.credentials["connect_args"]["dataspace"] = "csg"
+
+        operation = {
+            "trace_id": "test-trace-id",
+            "skip_cache": True,
+            "commands": [
+                {"method": "cursor", "store": "_cursor"},
+                {
+                    "args": ["SELECT COUNT(*) FROM t__dll"],
+                    "method": "execute",
+                    "target": "_cursor",
+                },
+            ],
+        }
+
+        response = self.agent.execute_operation(
+            connection_type="salesforce-data-cloud",
+            operation_name="test_query_token_exchange_failure",
+            operation_dict=operation,
+            credentials=self.credentials,
+        )
+
+        self.assertTrue(response.is_error)
+        msg = str(response.result)
+        self.assertIn("Token exchange failed", msg)
+        self.assertIn("HTTP 400", msg)
+        self.assertIn("dataspace not found", msg)
+
+    def test_query_token_exchange_failure_without_response_stays_generic(self):
+        """
+        When the a360 exchange fails without an HTTP response (e.g. the connection
+        drops), there is nothing to capture — the query-path error must stay the
+        generic message without a bogus "HTTP None" suffix.
+        """
+        self.mock_responses.remove(
+            responses.POST, "https://test.salesforce.com/services/a360/token"
+        )
+        self.mock_responses.add(
+            method=responses.POST,
+            url="https://test.salesforce.com/services/a360/token",
+            body=requests.exceptions.ConnectionError("connection dropped"),
+        )
+
+        operation = {
+            "trace_id": "test-trace-id",
+            "skip_cache": True,
+            "commands": [
+                {"method": "cursor", "store": "_cursor"},
+                {
+                    "args": ["SELECT COUNT(*) FROM t__dll"],
+                    "method": "execute",
+                    "target": "_cursor",
+                },
+            ],
+        }
+
+        response = self.agent.execute_operation(
+            connection_type="salesforce-data-cloud",
+            operation_name="test_query_token_exchange_failure_no_response",
+            operation_dict=operation,
+            credentials=self.credentials,
+        )
+
+        self.assertTrue(response.is_error)
+        msg = str(response.result)
+        self.assertIn("Token exchange failed", msg)
+        self.assertNotIn("HTTP", msg)
+        self.assertNotIn("Salesforce response", msg)
 
     def test_list_tables_with_invalid_dataspace_raises_clear_error(self):
         """
