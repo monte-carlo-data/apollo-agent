@@ -224,9 +224,34 @@ class SalesforceDataCloudConnection(SalesforceCDPConnection):
                 dataspace=dataspace,
             )
 
+            # The library swallows the a360 exchange failure (`except Exception:
+            # pass` in _get_token) before falling into _renew_token, so by the
+            # time raise_on_renewal fires the real HTTP status/body is gone.
+            # Capture the exchange traffic so the error and log carry the actual
+            # Salesforce rejection (YET-1790).
+            capturing = _attach_capturing_session(self)
+
             def raise_on_renewal(*args: Any, **kwargs: Any) -> NoReturn:
+                status = capturing.last_exchange_status if capturing else None
+                body = _redact_body(capturing.last_exchange_body if capturing else None)
+                logger.warning(
+                    "Salesforce Data Cloud: a360/token exchange failed (core-token path)",
+                    extra={
+                        "dataspace": dataspace,
+                        "exchange_status_code": status,
+                        "exchange_error_type": _classify_exchange_status(status),
+                        "exchange_response_body": body,
+                    },
+                )
+                if status is None:
+                    detail = ""
+                elif body:
+                    detail = f" (HTTP {status}, Salesforce response: {body})"
+                else:
+                    detail = f" (HTTP {status})"
                 raise Exception(
-                    "Token exchange failed. The access token may have expired or the dataspace may not exist."
+                    "Token exchange failed. The access token may have expired "
+                    f"or the dataspace may not exist.{detail}"
                 )
 
             if (
