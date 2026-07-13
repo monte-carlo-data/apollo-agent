@@ -149,7 +149,7 @@ class OracleProxyClient(BaseDbProxyClient):
             oracledb.init_oracle_client()
             # Prefix with the "oracle" connection type so log searches by
             # connection type match (case-sensitive platforms miss "OracleDB").
-            logger.info("oracle: OracleDB thick mode initialized")
+            logger.info("oracle: thick mode initialized")
 
         # Handle SSL options for Oracle connections. Thick mode does not support
         # ssl_context (thin mode only), so they are mutually exclusive.
