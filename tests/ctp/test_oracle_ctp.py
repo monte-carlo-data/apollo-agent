@@ -34,3 +34,28 @@ class TestOracleCtp(TestCase):
             },
         )
         self.assertEqual(5, result["expire_time"])
+
+    def test_thick_mode_absent_by_default(self):
+        result = CtpPipeline().execute(
+            ORACLE_DEFAULT_CTP,
+            {
+                "dsn": "db.example.com:1521/ORCL",
+                "user": "admin",
+                "password": "secret",
+            },
+        )
+        self.assertNotIn("thick_mode", result)
+
+    def test_thick_mode_preserved_as_bool(self):
+        result = CtpPipeline().execute(
+            ORACLE_DEFAULT_CTP,
+            {
+                "dsn": "db.example.com:1521/ORCL",
+                "user": "admin",
+                "password": "secret",
+                "thick_mode": True,
+            },
+        )
+        # NativeEnvironment keeps the bool a bool — critical, since a "False"
+        # string would be truthy and silently force thick mode on.
+        self.assertIs(True, result["thick_mode"])

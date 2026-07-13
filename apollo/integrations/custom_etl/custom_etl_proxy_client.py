@@ -1,6 +1,6 @@
 import dataclasses
 import logging
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
@@ -146,7 +146,8 @@ class CustomEtlProxyClient(BaseProxyClient):
 
     def fetch_etl_runs(
         self,
-        lookback_min: int,
+        window_start: str,
+        window_end: str,
         job_ids: Optional[List[str]] = None,
         job_run_ids: Optional[List[str]] = None,
         limit: int = 1000,
@@ -154,11 +155,16 @@ class CustomEtlProxyClient(BaseProxyClient):
     ) -> Dict[str, Any]:
         """Fetch ETL run events from the connector.
 
-        Translates the DC-facing parameters into the connector's
-        ``fetch_run_details`` interface: ``lookback_min`` becomes a
-        ``timedelta``, ``job_run_ids`` maps to ``run_ids``.  When
-        ``job_ids`` is provided, results are post-filtered to include
-        only runs whose ``job_source_id`` is in the set.
+        ``window_start``/``window_end`` are the pinned run-collection window
+        (YET-1690). They arrive as ISO-8601 UTC strings (the wire is JSON, which
+        has no datetime type) and are deserialized here into tz-aware ``datetime``
+        objects for the connector's ``fetch_run_details``, which filters
+        ``window_start <= t < window_end`` against those fixed bounds — the pin is
+        what stops the window sliding across paginated invocations. The
+        data-collector owns and validates the wire format, so this is a plain
+        parse, not re-validation.  ``job_run_ids`` maps to ``run_ids``.  When
+        ``job_ids`` is provided, results are post-filtered to include only runs
+        whose ``job_source_id`` is in the set.
 
         When the manifest declares ``run_status_mapping``, vendor statuses
         are normalized post-fetch: the original vendor value is preserved
@@ -167,10 +173,10 @@ class CustomEtlProxyClient(BaseProxyClient):
         Option A (agent-side normalization) — diverges from native
         integrations which normalize in the monolith.
         """
-        lookback = timedelta(minutes=lookback_min)
         runs = self._connector.fetch_run_details(
             run_ids=job_run_ids,
-            lookback=lookback,
+            window_start=datetime.fromisoformat(window_start),
+            window_end=datetime.fromisoformat(window_end),
             limit=limit,
             offset=offset,
         )

@@ -55,6 +55,12 @@ class OracleClientArgs(TypedDict):
     driver_name: NotRequired[str]
     connection_id_prefix: NotRequired[str]
     debug_jdwp: NotRequired[str]  # "host=<host>;port=<port>"
+    # Thick mode — NOT an oracledb.connect() kwarg. Flags that the connection
+    # must initialise the Oracle Instant Client (thick mode). The proxy client
+    # pops this before calling connect() and calls oracledb.init_oracle_client().
+    # Required by Oracle EBS (19c), whose password_case_sensitive=false setups
+    # the pure-Python thin mode cannot authenticate against. See YET-1780.
+    thick_mode: NotRequired[bool]
 
 
 # Oracle self-hosted credentials schema. The customer supplies a pre-built
@@ -85,6 +91,7 @@ ORACLE_DEFAULT_CTP = CtpConfig(
             "user": "{{ raw.user | default(none) }}",
             "password": "{{ raw.password | default(none) }}",
             "expire_time": "{{ raw.expire_time | default(none) }}",
+            "thick_mode": "{{ raw.thick_mode | default(none) }}",
         },
     ),
     # Keep-alive every minute; required for AWS PrivateLink connections.

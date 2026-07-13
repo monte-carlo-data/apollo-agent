@@ -125,9 +125,28 @@ class OracleProxyClient(BaseDbProxyClient):
                 1  # enable keep-alive and send packets every minute
             )
 
-        # Handle SSL options for Oracle connections
+        # Thick mode is not an oracledb.connect() kwarg — it's a process-global
+        # switch enabled via init_oracle_client(). Pop it before connect().
+        # The Oracle Instant Client native libraries must be present on the
+        # image (see Dockerfile); the OS loader finds them via ldconfig.
+        thick_mode = bool(connect_args.pop("thick_mode", False))
+        if thick_mode:
+            # init_oracle_client() is process-wide and can only run once; guard
+            # so repeated connections in the same worker don't re-initialise.
+            if oracledb.is_thin_mode():
+                oracledb.init_oracle_client()
+                logger.info("OracleDB thick mode initialized")
+
+        # Handle SSL options for Oracle connections. Thick mode does not support
+        # ssl_context (thin mode only), so they are mutually exclusive.
         ssl_options = SslOptions(**(credentials.get("ssl_options") or {}))
-        if ssl_context := create_oracle_ssl_context(ssl_options):
+        if thick_mode:
+            if not ssl_options.disabled and ssl_options.ca_data:
+                logger.warning(
+                    "Oracle SSL via ssl_context is only supported in thin mode; "
+                    "ignoring ssl_options because thick mode is enabled"
+                )
+        elif ssl_context := create_oracle_ssl_context(ssl_options):
             connect_args["ssl_context"] = ssl_context
             logger.info("Oracle SSL context created")
 
