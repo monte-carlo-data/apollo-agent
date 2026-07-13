@@ -17,8 +17,17 @@ from apollo.agent.utils import AgentUtils
 from apollo.integrations.db.base_db_proxy_client import BaseDbProxyClient, SslOptions
 
 _ATTR_CONNECT_ARGS = "connect_args"
+# Agent-level thick-mode switch. Thick mode (Oracle Instant Client) is a
+# process-global, one-way setting that cannot coexist with thin connections in
+# the same process, so it is configured per-agent via this env var rather than
+# per-connection. Enable it only on an agent dedicated to thick-mode Oracle.
+_ENV_VAR_THICK_MODE = "MCD_ORACLE_THICK_MODE"
 
 logger = logging.getLogger(__name__)
+
+
+def _thick_mode_enabled() -> bool:
+    return os.getenv(_ENV_VAR_THICK_MODE, "false").strip().lower() == "true"
 
 
 def create_oracle_ssl_context(ssl_options: SslOptions) -> ssl.SSLContext | None:
@@ -125,17 +134,20 @@ class OracleProxyClient(BaseDbProxyClient):
                 1  # enable keep-alive and send packets every minute
             )
 
-        # Thick mode is not an oracledb.connect() kwarg — it's a process-global
-        # switch enabled via init_oracle_client(). Pop it before connect().
-        # The Oracle Instant Client native libraries must be present on the
-        # image (see Dockerfile); the OS loader finds them via ldconfig.
-        thick_mode = bool(connect_args.pop("thick_mode", False))
-        if thick_mode:
-            # init_oracle_client() is process-wide and can only run once; guard
-            # so repeated connections in the same worker don't re-initialise.
-            if oracledb.is_thin_mode():
-                oracledb.init_oracle_client()
-                logger.info("OracleDB thick mode initialized")
+        # Thick mode (Oracle Instant Client) is a process-global, one-way switch
+        # enabled via init_oracle_client(). It cannot coexist with thin
+        # connections in the same process — once a thin connection exists,
+        # enabling thick raises DPY-2019 — so it is an AGENT-LEVEL setting
+        # (MCD_ORACLE_THICK_MODE), not per-connection. Enable it only on an agent
+        # dedicated to thick-mode Oracle (e.g. an Oracle EBS agent). The Instant
+        # Client native libraries must be present on the image (see Dockerfile);
+        # the OS loader finds them via ldconfig.
+        thick_mode = _thick_mode_enabled()
+        if thick_mode and oracledb.is_thin_mode():
+            # Runs once per process, on the first Oracle connection. is_thin_mode()
+            # flips to False after a successful init, so later connections skip it.
+            oracledb.init_oracle_client()
+            logger.info("OracleDB thick mode initialized")
 
         # Handle SSL options for Oracle connections. Thick mode does not support
         # ssl_context (thin mode only), so they are mutually exclusive.
