@@ -1,3 +1,11 @@
+# Oracle Instant Client (Basic) — provides the native libraries oracledb needs
+# for "thick" mode, required by Oracle EBS (19c) whose password_case_sensitive
+# =false setups the pure-Python thin mode cannot authenticate against (YET-1780).
+# x86_64 only: the CircleCI buildx builds are single-arch (amd64); an arm64 build
+# would need the linux.arm64 zip instead.
+ARG ORACLE_IC_ZIP=instantclient-basic-linux.x64-23.8.0.25.04.zip
+ARG ORACLE_IC_URL=https://download.oracle.com/otn_software/linux/instantclient/2380000
+
 # system-base — system-level dependencies only (apt packages, no venv).
 # Published as `<version>-system-base` so downstream consumers (e.g. hermes-agent)
 # can build their own venv against the same native libs without inheriting
@@ -30,6 +38,20 @@ RUN chmod a+r /etc/apt/keyrings/microsoft.gpg
 RUN echo "deb [arch=amd64,arm64 signed-by=/etc/apt/keyrings/microsoft.gpg] https://packages.microsoft.com/debian/12/prod bookworm main" > /etc/apt/sources.list.d/mssql-release.list
 RUN apt-get update
 RUN ACCEPT_EULA=Y apt-get install -y msodbcsql17 unixodbc unixodbc-dev
+
+# Oracle Instant Client for oracledb thick mode (see note above the first FROM).
+# libaio is a runtime dependency of the client libraries; ldconfig registers the
+# extracted .so files so oracledb.init_oracle_client() finds them with no lib_dir.
+ARG ORACLE_IC_ZIP
+ARG ORACLE_IC_URL
+RUN apt-get install -y --no-install-recommends libaio1 unzip \
+    && mkdir -p /opt/oracle \
+    && curl -fsSLo /tmp/${ORACLE_IC_ZIP} ${ORACLE_IC_URL}/${ORACLE_IC_ZIP} \
+    && unzip -q /tmp/${ORACLE_IC_ZIP} -d /opt/oracle \
+    && rm /tmp/${ORACLE_IC_ZIP} \
+    && ln -s /opt/oracle/instantclient_* /opt/oracle/instantclient \
+    && echo /opt/oracle/instantclient > /etc/ld.so.conf.d/oracle-instantclient.conf \
+    && ldconfig
 
 # clean up all unused libraries
 RUN apt-get autoremove -y && apt-get clean && rm -rf /var/lib/apt/lists/*
@@ -147,6 +169,20 @@ RUN curl https://packages.microsoft.com/config/rhel/7/prod.repo \
     | tee /etc/yum.repos.d/mssql-release.repo
 RUN ACCEPT_EULA=Y dnf install -y msodbcsql17
 
+# Oracle Instant Client for oracledb thick mode (see note above the first FROM).
+# libaio is a runtime dependency of the client libraries; ldconfig registers the
+# extracted .so files so oracledb.init_oracle_client() finds them with no lib_dir.
+ARG ORACLE_IC_ZIP
+ARG ORACLE_IC_URL
+RUN dnf -y install libaio unzip \
+    && mkdir -p /opt/oracle \
+    && curl -fsSLo /tmp/${ORACLE_IC_ZIP} ${ORACLE_IC_URL}/${ORACLE_IC_ZIP} \
+    && unzip -q /tmp/${ORACLE_IC_ZIP} -d /opt/oracle \
+    && rm /tmp/${ORACLE_IC_ZIP} \
+    && ln -s /opt/oracle/instantclient_* /opt/oracle/instantclient \
+    && echo /opt/oracle/instantclient > /etc/ld.so.conf.d/oracle-instantclient.conf \
+    && ldconfig
+
 # VULN-464
 RUN rm -rf /var/lib/rpm/rpmdb.sqlite*
 
@@ -204,6 +240,20 @@ RUN apt-mark hold msodbcsql17 odbcinst odbcinst1debian2 unixodbc unixodbc-dev \
 
 # openssh-client required by git client
 RUN apt-get install -y openssh-client
+
+# Oracle Instant Client for oracledb thick mode (see note above the first FROM).
+# libaio is a runtime dependency of the client libraries; ldconfig registers the
+# extracted .so files so oracledb.init_oracle_client() finds them with no lib_dir.
+ARG ORACLE_IC_ZIP
+ARG ORACLE_IC_URL
+RUN apt-get install -y --no-install-recommends libaio1 unzip curl \
+    && mkdir -p /opt/oracle \
+    && curl -fsSLo /tmp/${ORACLE_IC_ZIP} ${ORACLE_IC_URL}/${ORACLE_IC_ZIP} \
+    && unzip -q /tmp/${ORACLE_IC_ZIP} -d /opt/oracle \
+    && rm /tmp/${ORACLE_IC_ZIP} \
+    && ln -s /opt/oracle/instantclient_* /opt/oracle/instantclient \
+    && echo /opt/oracle/instantclient > /etc/ld.so.conf.d/oracle-instantclient.conf \
+    && ldconfig
 
 # clean up all unused libraries
 RUN apt-get autoremove -y && apt-get clean && rm -rf /var/lib/apt/lists/*
