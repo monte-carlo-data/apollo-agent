@@ -513,8 +513,26 @@ class Agent:
         logger.info("Update complete", extra=log_payload)
         return update_result
 
-    @staticmethod
-    def _env_dictionary() -> Dict:
+    # Substrings (case-insensitive) that mark an env var NAME as sensitive, so it
+    # is never surfaced in health info (which is sent to the MCD SaaS). Broader
+    # than agent-common's LocalConfig._is_sensitive (secret/password only) on
+    # purpose: "key"/"token"/"credential" also catch e.g. MCD_STORAGE_ACCESS_KEY,
+    # which the curated HEALTH_ENV_VARS allowlist deliberately excludes.
+    _SENSITIVE_ENV_VAR_NAME_SUBSTRINGS = (
+        "secret",
+        "password",
+        "token",
+        "key",
+        "credential",
+    )
+
+    @classmethod
+    def _is_sensitive_env_var(cls, name: str) -> bool:
+        name_lower = name.lower()
+        return any(s in name_lower for s in cls._SENSITIVE_ENV_VAR_NAME_SUBSTRINGS)
+
+    @classmethod
+    def _env_dictionary(cls) -> Dict:
         env: Dict[str, Optional[str]] = {
             "PYTHON_SYS_VERSION": sys.version,
             "CPU_COUNT": str(os.cpu_count()),
@@ -524,6 +542,19 @@ class Agent:
                 env_var: os.getenv(env_var)
                 for env_var in HEALTH_ENV_VARS
                 if os.getenv(env_var)
+            }
+        )
+        # Also surface any MCD_-prefixed env var not already covered by the
+        # allowlist, as long as its name doesn't look sensitive. Lets new
+        # operational toggles (e.g. MCD_ORACLE_THICK_MODE) show up in health
+        # without having to extend HEALTH_ENV_VARS in agent-base each time.
+        env.update(
+            {
+                key: value
+                for key, value in os.environ.items()
+                if key.startswith("MCD_")
+                and key not in env
+                and not cls._is_sensitive_env_var(key)
             }
         )
         return env
