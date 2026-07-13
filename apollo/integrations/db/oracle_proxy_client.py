@@ -147,7 +147,9 @@ class OracleProxyClient(BaseDbProxyClient):
             # Runs once per process, on the first Oracle connection. is_thin_mode()
             # flips to False after a successful init, so later connections skip it.
             oracledb.init_oracle_client()
-            logger.info("OracleDB thick mode initialized")
+            # Prefix with the "oracle" connection type so log searches by
+            # connection type match (case-sensitive platforms miss "OracleDB").
+            logger.info("oracle: OracleDB thick mode initialized")
 
         # Handle SSL options for Oracle connections. Thick mode does not support
         # ssl_context (thin mode only), so they are mutually exclusive.
