@@ -520,7 +520,7 @@ class Agent:
     # which the curated HEALTH_ENV_VARS allowlist deliberately excludes.
     _SENSITIVE_ENV_VAR_NAME_SUBSTRINGS = (
         "secret",
-        "password",
+        "pass",  # password, passwd, passphrase
         "token",
         "key",
         "credential",
