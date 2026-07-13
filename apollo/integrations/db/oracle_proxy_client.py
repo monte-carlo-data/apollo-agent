@@ -125,17 +125,24 @@ class OracleProxyClient(BaseDbProxyClient):
                 1  # enable keep-alive and send packets every minute
             )
 
-        # Thick mode is not an oracledb.connect() kwarg — it's a process-global
-        # switch enabled via init_oracle_client(). Pop it before connect().
-        # The Oracle Instant Client native libraries must be present on the
-        # image (see Dockerfile); the OS loader finds them via ldconfig.
+        # Thick mode is not an oracledb.connect() kwarg — it's a process-global,
+        # one-way switch enabled via init_oracle_client(). Pop it before connect().
+        # The Oracle Instant Client native libraries must be present on the image
+        # (see Dockerfile); the OS loader finds them via ldconfig.
+        #
+        # Because the switch is per-process, thin and thick Oracle connections
+        # CANNOT coexist in one agent worker: once a thin connection has been
+        # created, init_oracle_client() raises DPY-2019. Thick mode therefore
+        # requires a DEDICATED agent that only ever serves thick Oracle
+        # connections (e.g. Trimble's self-hosted agent for Oracle EBS). On a
+        # shared agent that also serves thin Oracle, DPY-2019 surfaces by design.
         thick_mode = bool(connect_args.pop("thick_mode", False))
-        if thick_mode:
-            # init_oracle_client() is process-wide and can only run once; guard
-            # so repeated connections in the same worker don't re-initialise.
-            if oracledb.is_thin_mode():
-                oracledb.init_oracle_client()
-                logger.info("OracleDB thick mode initialized")
+        if thick_mode and oracledb.is_thin_mode():
+            # is_thin_mode() stays True until init succeeds, so this also covers
+            # the case where a prior thin connection poisoned the worker: init
+            # then raises DPY-2019, which we let propagate as a clear error.
+            oracledb.init_oracle_client()
+            logger.info("OracleDB thick mode initialized")
 
         # Handle SSL options for Oracle connections. Thick mode does not support
         # ssl_context (thin mode only), so they are mutually exclusive.
