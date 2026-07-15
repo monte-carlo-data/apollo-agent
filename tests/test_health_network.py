@@ -1,3 +1,4 @@
+import json
 import os
 import socket
 import sys
@@ -79,6 +80,22 @@ class HealthNetworkTests(TestCase):
         self.assertNotIn("MCD_DB_PASSWORD", env)
         # Non-MCD_ vars are not swept in.
         self.assertNotIn("NON_MCD_VAR", env)
+
+    @patch.dict(
+        os.environ,
+        {
+            "MCD_ADDITIONAL_ENV_VARS": (
+                '{"MCD_ORACLE_THICK_MODE":"true","MCD_API_TOKEN":"t0ken"}'
+            )
+        },
+    )
+    def test_env_dictionary_redacts_secrets_inside_additional_env_vars_blob(self):
+        env = Agent._env_dictionary()
+        # The blob is surfaced (diagnostics) but sensitive-named entries inside
+        # it are redacted, since the per-key filter can't see into the blob.
+        blob = json.loads(env["MCD_ADDITIONAL_ENV_VARS"])
+        self.assertEqual("true", blob["MCD_ORACLE_THICK_MODE"])
+        self.assertEqual("__redacted__", blob["MCD_API_TOKEN"])
 
     def test_param_validations(self):
         response = self._agent.validate_telnet_connection(
