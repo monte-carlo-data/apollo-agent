@@ -17,6 +17,12 @@ from apollo.agent.settings import VERSION
 from apollo.agent.utils import AgentUtils
 from apollo.credentials.factory import CredentialsFactory
 from apollo.integrations.ctp.validator import validate_ctp_config
+from apollo.agent.additional_env_vars import apply_additional_env_vars
+
+# Inject IaC-provided env vars (MCD_ADDITIONAL_ENV_VARS) before anything reads
+# configuration. Imported by the aws and cloudrun interfaces too, so this covers
+# them; the azure interface calls it separately.
+apply_additional_env_vars()
 
 app = Flask(__name__)
 Compress(app)
