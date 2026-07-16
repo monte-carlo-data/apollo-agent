@@ -1,8 +1,6 @@
-# Oracle Instant Client (Basic) — provides the native libraries oracledb needs
-# for "thick" mode, required by Oracle EBS (19c) whose password_case_sensitive
-# =false setups the pure-Python thin mode cannot authenticate against (YET-1780).
-# x86_64 only: the CircleCI buildx builds are single-arch (amd64); an arm64 build
-# would need the linux.arm64 zip instead.
+# Oracle Instant Client (Basic) — native libraries oracledb needs for "thick"
+# mode, which some Oracle configurations require (e.g. servers that only expose
+# the legacy password verifier that thin mode can't authenticate with).
 ARG ORACLE_IC_ZIP=instantclient-basic-linux.x64-23.8.0.25.04.zip
 ARG ORACLE_IC_URL=https://download.oracle.com/otn_software/linux/instantclient/2380000
 
@@ -39,11 +37,9 @@ RUN echo "deb [arch=amd64,arm64 signed-by=/etc/apt/keyrings/microsoft.gpg] https
 RUN apt-get update
 RUN ACCEPT_EULA=Y apt-get install -y msodbcsql17 unixodbc unixodbc-dev
 
-# Oracle Instant Client for oracledb thick mode (see note above the first FROM).
-# libaio is a runtime dependency; on Debian trixie the 64-bit-time_t transition
-# renamed libaio1 -> libaio1t64 and ships libaio.so.1t64, so add the libaio.so.1
-# symlink the Oracle libraries link against. ldconfig then registers everything
-# so oracledb.init_oracle_client() finds it with no lib_dir.
+# Oracle Instant Client for thick mode. libaio is a runtime dependency; on Debian
+# trixie the time_t transition renamed libaio1 -> libaio1t64 (shipping
+# libaio.so.1t64), so add the libaio.so.1 symlink the Oracle libs link against.
 ARG ORACLE_IC_ZIP
 ARG ORACLE_IC_URL
 RUN apt-get install -y --no-install-recommends unzip \
@@ -175,14 +171,9 @@ RUN curl https://packages.microsoft.com/config/rhel/7/prod.repo \
     | tee /etc/yum.repos.d/mssql-release.repo
 RUN ACCEPT_EULA=Y dnf install -y msodbcsql17
 
-# Oracle Instant Client for oracledb thick mode (see note above the first FROM).
-# libaio is a runtime dependency of the client libraries; ldconfig registers the
-# extracted .so files so oracledb.init_oracle_client() finds them with no lib_dir.
+# Oracle Instant Client for thick mode.
 ARG ORACLE_IC_ZIP
 ARG ORACLE_IC_URL
-# The Lambda base ships ldconfig at /sbin but does not put /sbin on PATH, so call
-# it by full path (also valid on Debian). AL2023's libaio provides libaio.so.1
-# directly, so no compat symlink is needed here (unlike Debian trixie).
 RUN dnf -y install libaio unzip \
     && mkdir -p /opt/oracle \
     && curl -fsSLo /tmp/${ORACLE_IC_ZIP} ${ORACLE_IC_URL}/${ORACLE_IC_ZIP} \
@@ -250,11 +241,9 @@ RUN apt-mark hold msodbcsql17 odbcinst odbcinst1debian2 unixodbc unixodbc-dev \
 # openssh-client required by git client
 RUN apt-get install -y openssh-client
 
-# Oracle Instant Client for oracledb thick mode (see note above the first FROM).
-# libaio is a runtime dependency; on Debian trixie the 64-bit-time_t transition
-# renamed libaio1 -> libaio1t64 and ships libaio.so.1t64, so add the libaio.so.1
-# symlink the Oracle libraries link against. ldconfig then registers everything
-# so oracledb.init_oracle_client() finds it with no lib_dir.
+# Oracle Instant Client for thick mode. libaio is a runtime dependency; on Debian
+# trixie the time_t transition renamed libaio1 -> libaio1t64 (shipping
+# libaio.so.1t64), so add the libaio.so.1 symlink the Oracle libs link against.
 ARG ORACLE_IC_ZIP
 ARG ORACLE_IC_URL
 RUN apt-get install -y --no-install-recommends unzip curl \
