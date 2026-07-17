@@ -39,10 +39,9 @@ log_context.install()
 
 formatter = JsonLogFormatter()
 root_logger = logging.getLogger()
-# AWS Lambda pre-installs a root log handler during bootstrap, which makes the
-# basicConfig() above a no-op (it only configures when the root has no handlers)
-# and leaves the root level at Lambda's WARNING default — dropping our INFO logs.
-# Set the level explicitly so INFO/DEBUG are emitted under Lambda too.
+# AWS Lambda pre-installs a root log handler, making basicConfig() above a no-op
+# (it only configures when there are no handlers). Set the level explicitly so
+# our INFO/DEBUG logs aren't dropped under Lambda's WARNING default.
 root_logger.setLevel(log_level)
 for h in root_logger.handlers:
     h.setFormatter(formatter)
