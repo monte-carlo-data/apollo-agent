@@ -391,30 +391,23 @@ class OracleThickModeTests(TestCase):
     @patch("oracledb.connect")
     @patch("oracledb.init_oracle_client")
     @patch("oracledb.is_thin_mode", return_value=True)
-    @patch("apollo.integrations.db.oracle_proxy_client.create_oracle_ssl_context")
-    def test_thick_mode_ignores_ssl_context(
-        self,
-        mock_create_ssl_context: Mock,
-        _mock_thin: Mock,
-        _mock_init: Mock,
-        mock_connect: Mock,
+    def test_thick_mode_with_ssl_raises(
+        self, _mock_thin: Mock, _mock_init: Mock, mock_connect: Mock
     ) -> None:
-        """Thick mode is mutually exclusive with ssl_context (thin-mode only)."""
-        mock_connect.return_value = self._mock_connection
+        """Thick mode + ssl_options is unsupported (thin-only) — fail rather than
+        silently connect without the requested SSL."""
+        with self.assertRaises(ValueError):
+            OracleProxyClient(
+                {
+                    "connect_args": dict(_ORACLE_DB_CREDENTIALS),
+                    "ssl_options": {
+                        "ca_data": "-----BEGIN CERTIFICATE-----\nX\n-----END CERTIFICATE-----",
+                        "disabled": False,
+                    },
+                }
+            )
 
-        OracleProxyClient(
-            {
-                "connect_args": dict(_ORACLE_DB_CREDENTIALS),
-                "ssl_options": {
-                    "ca_data": "-----BEGIN CERTIFICATE-----\nX\n-----END CERTIFICATE-----",
-                    "disabled": False,
-                },
-            }
-        )
-
-        # ssl_context is never built and never passed to connect() in thick mode.
-        mock_create_ssl_context.assert_not_called()
-        self.assertNotIn("ssl_context", mock_connect.call_args[1])
+        mock_connect.assert_not_called()
 
 
 class CreateOracleSslContextTests(TestCase):

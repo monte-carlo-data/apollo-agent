@@ -145,14 +145,14 @@ class OracleProxyClient(BaseDbProxyClient):
             oracledb.init_oracle_client()
             logger.info("oracle: thick mode initialized")
 
-        # Handle SSL options for Oracle connections. Thick mode does not support
-        # ssl_context (thin mode only), so they are mutually exclusive.
+        # Thick mode does not support ssl_context (thin mode only). Fail loudly
+        # rather than silently connecting without the requested SSL.
         ssl_options = SslOptions(**(credentials.get("ssl_options") or {}))
         if thick_mode:
             if not ssl_options.disabled and ssl_options.ca_data:
-                logger.warning(
-                    "Oracle SSL via ssl_context is only supported in thin mode; "
-                    "ignoring ssl_options because thick mode is enabled"
+                raise ValueError(
+                    "Oracle SSL via ssl_context is not supported in thick mode; "
+                    "disable thick mode or remove ssl_options"
                 )
         elif ssl_context := create_oracle_ssl_context(ssl_options):
             connect_args["ssl_context"] = ssl_context
