@@ -17,8 +17,17 @@ from apollo.agent.utils import AgentUtils
 from apollo.integrations.db.base_db_proxy_client import BaseDbProxyClient, SslOptions
 
 _ATTR_CONNECT_ARGS = "connect_args"
+# Agent-level thick-mode switch. Thick mode (Oracle Instant Client) is a
+# process-global, one-way setting that cannot coexist with thin connections in
+# the same process, so it is configured per-agent via this env var rather than
+# per-connection. Enable it only on an agent dedicated to thick-mode Oracle.
+_ENV_VAR_THICK_MODE = "MCD_ORACLE_THICK_MODE"
 
 logger = logging.getLogger(__name__)
+
+
+def _thick_mode_enabled() -> bool:
+    return os.getenv(_ENV_VAR_THICK_MODE, "false").strip().lower() == "true"
 
 
 def create_oracle_ssl_context(ssl_options: SslOptions) -> ssl.SSLContext | None:
@@ -125,9 +134,27 @@ class OracleProxyClient(BaseDbProxyClient):
                 1  # enable keep-alive and send packets every minute
             )
 
-        # Handle SSL options for Oracle connections
+        # Thick mode (Oracle Instant Client) is process-global and one-way: once a
+        # thin connection exists it can't be enabled (DPY-2019). So it's an
+        # agent-level env var, not per-connection — enable it only on a dedicated
+        # thick-mode Oracle agent.
+        thick_mode = _thick_mode_enabled()
+        if thick_mode and oracledb.is_thin_mode():
+            # Runs once per process, on the first Oracle connection. is_thin_mode()
+            # flips to False after a successful init, so later connections skip it.
+            oracledb.init_oracle_client()
+            logger.info("oracle: thick mode initialized")
+
+        # Thick mode does not support ssl_context (thin mode only). Fail loudly
+        # rather than silently connecting without the requested SSL.
         ssl_options = SslOptions(**(credentials.get("ssl_options") or {}))
-        if ssl_context := create_oracle_ssl_context(ssl_options):
+        if thick_mode:
+            if not ssl_options.disabled and ssl_options.ca_data:
+                raise ValueError(
+                    "Oracle SSL via ssl_context is not supported in thick mode; "
+                    "disable thick mode or remove ssl_options"
+                )
+        elif ssl_context := create_oracle_ssl_context(ssl_options):
             connect_args["ssl_context"] = ssl_context
             logger.info("Oracle SSL context created")
 

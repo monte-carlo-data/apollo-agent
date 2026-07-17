@@ -26,9 +26,10 @@ from apollo.interfaces.generic.log_context import BaseLogContext
 logging.setLoggerClass(ExtraLogger)
 
 is_debug = os.getenv(DEBUG_ENV_VAR, "false").lower() == "true"
+log_level = logging.DEBUG if is_debug else logging.INFO
 logging.basicConfig(
     stream=sys.stdout,
-    level=logging.DEBUG if is_debug else logging.INFO,
+    level=log_level,
     format="[%(asctime)s] %(levelname)s:%(name)s: %(message)s",
     datefmt="%Y-%m-%dT%H:%M:%SZ",
 )
@@ -38,6 +39,10 @@ log_context.install()
 
 formatter = JsonLogFormatter()
 root_logger = logging.getLogger()
+# AWS Lambda pre-installs a root log handler, making basicConfig() above a no-op
+# (it only configures when there are no handlers). Set the level explicitly so
+# our INFO/DEBUG logs aren't dropped under Lambda's WARNING default.
+root_logger.setLevel(log_level)
 for h in root_logger.handlers:
     h.setFormatter(formatter)
 

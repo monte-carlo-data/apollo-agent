@@ -1,3 +1,4 @@
+import json
 import os
 import socket
 import sys
@@ -54,6 +55,47 @@ class HealthNetworkTests(TestCase):
         self.assertTrue("extra" in health_info)
         self.assertTrue("outbound_ip_address" in health_info["extra"])
         self.assertEqual(ip_address, health_info["extra"]["outbound_ip_address"])
+
+    @patch.dict(
+        os.environ,
+        {
+            "MCD_ORACLE_THICK_MODE": "true",
+            "MCD_CUSTOM_TOGGLE": "on",
+            "MCD_SOME_SECRET": "shh",
+            "MCD_STORAGE_ACCESS_KEY": "AKIAEXAMPLE",
+            "MCD_API_TOKEN": "t0ken",
+            "MCD_DB_PASSWORD": "pw",
+            "NON_MCD_VAR": "x",
+        },
+    )
+    def test_env_dictionary_includes_non_sensitive_mcd_vars(self):
+        env = Agent._env_dictionary()
+        # Non-sensitive MCD_ vars are surfaced without touching HEALTH_ENV_VARS.
+        self.assertEqual("true", env["MCD_ORACLE_THICK_MODE"])
+        self.assertEqual("on", env["MCD_CUSTOM_TOGGLE"])
+        # Sensitive-looking names (secret/password/token/key/credential) excluded.
+        self.assertNotIn("MCD_SOME_SECRET", env)
+        self.assertNotIn("MCD_STORAGE_ACCESS_KEY", env)  # caught by "key"
+        self.assertNotIn("MCD_API_TOKEN", env)
+        self.assertNotIn("MCD_DB_PASSWORD", env)
+        # Non-MCD_ vars are not swept in.
+        self.assertNotIn("NON_MCD_VAR", env)
+
+    @patch.dict(
+        os.environ,
+        {
+            "MCD_ADDITIONAL_ENV_VARS": (
+                '{"MCD_ORACLE_THICK_MODE":"true","MCD_API_TOKEN":"t0ken"}'
+            )
+        },
+    )
+    def test_env_dictionary_redacts_secrets_inside_additional_env_vars_blob(self):
+        env = Agent._env_dictionary()
+        # The blob is surfaced (diagnostics) but sensitive-named entries inside
+        # it are redacted, since the per-key filter can't see into the blob.
+        blob = json.loads(env["MCD_ADDITIONAL_ENV_VARS"])
+        self.assertEqual("true", blob["MCD_ORACLE_THICK_MODE"])
+        self.assertEqual("__redacted__", blob["MCD_API_TOKEN"])
 
     def test_param_validations(self):
         response = self._agent.validate_telnet_connection(

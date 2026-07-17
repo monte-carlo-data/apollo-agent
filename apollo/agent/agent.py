@@ -15,6 +15,11 @@ from apollo.common.agent.env_vars import (
     PRE_SIGNED_URL_RESPONSE_EXPIRATION_SECONDS_ENV_VAR,
     MCD_AWS_CA_BUNDLE_SECRET_NAME_ENV_VAR,
 )
+from apollo.agent.additional_env_vars import (
+    ADDITIONAL_ENV_VARS_ENV_VAR,
+    is_sensitive_env_var_name,
+    sanitized_blob_for_health,
+)
 from apollo.agent.evaluation_utils import AgentEvaluationUtils
 from apollo.agent.platform import AgentPlatformProvider
 from apollo.agent.log_context import AgentLogContext
@@ -513,8 +518,8 @@ class Agent:
         logger.info("Update complete", extra=log_payload)
         return update_result
 
-    @staticmethod
-    def _env_dictionary() -> Dict:
+    @classmethod
+    def _env_dictionary(cls) -> Dict:
         env: Dict[str, Optional[str]] = {
             "PYTHON_SYS_VERSION": sys.version,
             "CPU_COUNT": str(os.cpu_count()),
@@ -526,6 +531,25 @@ class Agent:
                 if os.getenv(env_var)
             }
         )
+        # Also surface any MCD_-prefixed env var not already covered by the
+        # allowlist, as long as its name doesn't look sensitive. Lets new
+        # operational toggles (e.g. MCD_ORACLE_THICK_MODE) show up in health
+        # without having to extend HEALTH_ENV_VARS in agent-base each time.
+        env.update(
+            {
+                key: value
+                for key, value in os.environ.items()
+                if key.startswith("MCD_")
+                and key not in env
+                and not is_sensitive_env_var_name(key)
+            }
+        )
+        # The additional-env-vars blob is a single non-sensitive-named var, so the
+        # per-key filter above can't protect secrets nested inside it — redact
+        # sensitive-named entries within it before returning.
+        blob = env.get(ADDITIONAL_ENV_VARS_ENV_VAR)
+        if blob:
+            env[ADDITIONAL_ENV_VARS_ENV_VAR] = sanitized_blob_for_health(blob)
         return env
 
     def validate_self_hosted_credentials(

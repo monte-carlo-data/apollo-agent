@@ -340,6 +340,76 @@ class OracleDbClientTests(TestCase):
         self.assertEqual(client.wrapped_client, self._mock_connection)
 
 
+class OracleThickModeTests(TestCase):
+    """Thick mode is enabled process-wide via the MCD_ORACLE_THICK_MODE env var."""
+
+    def setUp(self) -> None:
+        self._mock_connection = Mock()
+
+    @patch.dict("os.environ", {"MCD_ORACLE_THICK_MODE": "true"})
+    @patch("oracledb.connect")
+    @patch("oracledb.init_oracle_client")
+    @patch("oracledb.is_thin_mode", return_value=True)
+    def test_thick_mode_initializes_client(
+        self, _mock_thin: Mock, mock_init: Mock, mock_connect: Mock
+    ) -> None:
+        mock_connect.return_value = self._mock_connection
+
+        client = OracleProxyClient({"connect_args": dict(_ORACLE_DB_CREDENTIALS)})
+
+        mock_init.assert_called_once_with()
+        self.assertEqual(client.wrapped_client, self._mock_connection)
+
+    @patch.dict("os.environ", {"MCD_ORACLE_THICK_MODE": "true"})
+    @patch("oracledb.connect")
+    @patch("oracledb.init_oracle_client")
+    @patch("oracledb.is_thin_mode", return_value=False)
+    def test_thick_mode_skips_init_when_already_thick(
+        self, _mock_thin: Mock, mock_init: Mock, mock_connect: Mock
+    ) -> None:
+        """init_oracle_client() is process-global; only initialize once."""
+        mock_connect.return_value = self._mock_connection
+
+        OracleProxyClient({"connect_args": dict(_ORACLE_DB_CREDENTIALS)})
+
+        mock_init.assert_not_called()
+
+    @patch.dict("os.environ", {}, clear=True)
+    @patch("oracledb.connect")
+    @patch("oracledb.init_oracle_client")
+    def test_thin_mode_does_not_initialize_client(
+        self, mock_init: Mock, mock_connect: Mock
+    ) -> None:
+        """Without the env var, thick mode is never initialized."""
+        mock_connect.return_value = self._mock_connection
+
+        OracleProxyClient({"connect_args": dict(_ORACLE_DB_CREDENTIALS)})
+
+        mock_init.assert_not_called()
+
+    @patch.dict("os.environ", {"MCD_ORACLE_THICK_MODE": "true"})
+    @patch("oracledb.connect")
+    @patch("oracledb.init_oracle_client")
+    @patch("oracledb.is_thin_mode", return_value=True)
+    def test_thick_mode_with_ssl_raises(
+        self, _mock_thin: Mock, _mock_init: Mock, mock_connect: Mock
+    ) -> None:
+        """Thick mode + ssl_options is unsupported (thin-only) — fail rather than
+        silently connect without the requested SSL."""
+        with self.assertRaises(ValueError):
+            OracleProxyClient(
+                {
+                    "connect_args": dict(_ORACLE_DB_CREDENTIALS),
+                    "ssl_options": {
+                        "ca_data": "-----BEGIN CERTIFICATE-----\nX\n-----END CERTIFICATE-----",
+                        "disabled": False,
+                    },
+                }
+            )
+
+        mock_connect.assert_not_called()
+
+
 class CreateOracleSslContextTests(TestCase):
     """Tests for the create_oracle_ssl_context function"""
 
