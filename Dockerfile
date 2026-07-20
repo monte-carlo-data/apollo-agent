@@ -259,8 +259,31 @@ RUN apt-get install -y --no-install-recommends unzip curl \
     && echo /opt/oracle/instantclient > /etc/ld.so.conf.d/oracle-instantclient.conf \
     && ldconfig
 
+# Purge the X11/GTK + cups/tiff/nss surface the MS azure-functions base drags in
+# but the data-collector agent never uses. These packages carry a large block of
+# unfixed ("wont-fix") Debian HIGH/CRITICAL CVEs (libcups2, libnss3, libtiff6, and
+# the X11/GTK stack); `apt-get upgrade` can't clear wont-fix CVEs, so
+# the only lever is to remove the vulnerable surface from the image entirely. Runs
+# AFTER the ODBC/oracle installs and the security `apt-get upgrade` above so it
+# can't strip anything they need.
+#
+# NOTE: the core perl stack (perl / perl-modules-5.36 / libperl5.36) is deliberately
+# NOT purged — `git`, installed above for the agent-base git+https dependency and
+# Looker view collection, hard-depends on `perl`, so purging it would remove git and
+# break the pip install. Only libx11-protocol-perl (an unused LWP/X11 perl module) is
+# dropped from the perl side.
+#
+# No --allow-remove-essential: if apt would have to remove an Essential package to
+# satisfy the purge, it aborts and the build fails loudly rather than shipping a
+# broken image. --auto-remove sweeps the now-orphaned dependency cascade in one pass.
+#
 # clean up all unused libraries
-RUN apt-get autoremove -y && apt-get clean && rm -rf /var/lib/apt/lists/*
+RUN apt-get purge -y --auto-remove \
+        xvfb xserver-common x11-common x11-utils x11-xkb-utils x11-xserver-utils \
+        libxext6 libxft2 libxi6 libxinerama1 libxpm4 libxrender1 libxrender-dev \
+        libx11-6 libx11-data libx11-dev libx11-xcb1 libx11-protocol-perl x11proto-dev xauth \
+        libcups2 libtiff6 libnss3 \
+    && apt-get autoremove -y && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # delete this file that includes an old golang version (including vulns) and is not used
 RUN rm -rf /opt/startupcmdgen/
