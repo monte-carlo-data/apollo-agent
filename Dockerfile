@@ -4,6 +4,29 @@
 ARG ORACLE_IC_ZIP=instantclient-basic-linux.x64-23.8.0.25.04.zip
 ARG ORACLE_IC_URL=https://download.oracle.com/otn_software/linux/instantclient/2380000
 
+# Oracle wallet tooling (orapki) for thick-mode TLS. Thick mode validates the
+# server certificate against an Oracle wallet (cwallet.sso), and only Oracle's
+# orapki tool can produce one that is trusted — a Python-built PKCS#12 is opened
+# but never honored as a trust anchor. orapki is a Java tool, so build a stripped,
+# minimal JRE (java.base + java.naming + jdk.crypto.ec) and fetch the oraclepki
+# jars once here, then copy the ~55MB result into each runtime stage. Built on
+# Amazon Linux 2023 (glibc 2.34 — the oldest of our runtime bases) so the runtime
+# is forward-compatible with the newer-glibc Debian stages. osdt_core/osdt_cert
+# are not published at the Instant Client version, so they are pinned separately.
+ARG ORACLE_PKI_VERSION=23.8.0.25.04
+ARG ORACLE_OSDT_VERSION=21.11.0.0
+FROM amazoncorretto:21-al2023 AS oracle-pki-builder
+ARG ORACLE_PKI_VERSION
+ARG ORACLE_OSDT_VERSION
+RUN dnf install -y binutils \
+    && jlink --add-modules java.base,java.naming,jdk.crypto.ec \
+         --strip-debug --no-header-files --no-man-pages --output /opt/oracle-pki/jre \
+    && mkdir -p /opt/oracle-pki/lib \
+    && M=https://repo1.maven.org/maven2/com/oracle/database/security \
+    && curl -fsSLo /opt/oracle-pki/lib/oraclepki.jar $M/oraclepki/${ORACLE_PKI_VERSION}/oraclepki-${ORACLE_PKI_VERSION}.jar \
+    && curl -fsSLo /opt/oracle-pki/lib/osdt_core.jar $M/osdt_core/${ORACLE_OSDT_VERSION}/osdt_core-${ORACLE_OSDT_VERSION}.jar \
+    && curl -fsSLo /opt/oracle-pki/lib/osdt_cert.jar $M/osdt_cert/${ORACLE_OSDT_VERSION}/osdt_cert-${ORACLE_OSDT_VERSION}.jar
+
 # system-base — system-level dependencies only (apt packages, no venv).
 # Published as `<version>-system-base` so downstream consumers (e.g. hermes-agent)
 # can build their own venv against the same native libs without inheriting
@@ -54,6 +77,9 @@ RUN apt-get install -y --no-install-recommends unzip \
     && ln -s /opt/oracle/instantclient_* /opt/oracle/instantclient \
     && echo /opt/oracle/instantclient > /etc/ld.so.conf.d/oracle-instantclient.conf \
     && ldconfig
+
+# orapki + minimal JRE for building thick-mode TLS wallets (see oracle-pki-builder).
+COPY --from=oracle-pki-builder /opt/oracle-pki /opt/oracle-pki
 
 # clean up all unused libraries
 RUN apt-get autoremove -y && apt-get clean && rm -rf /var/lib/apt/lists/*
@@ -183,6 +209,9 @@ RUN dnf -y install libaio unzip \
     && echo /opt/oracle/instantclient > /etc/ld.so.conf.d/oracle-instantclient.conf \
     && /sbin/ldconfig
 
+# orapki + minimal JRE for building thick-mode TLS wallets (see oracle-pki-builder).
+COPY --from=oracle-pki-builder /opt/oracle-pki /opt/oracle-pki
+
 # VULN-464
 RUN rm -rf /var/lib/rpm/rpmdb.sqlite*
 
@@ -258,6 +287,9 @@ RUN apt-get install -y --no-install-recommends unzip curl \
     && ln -s /opt/oracle/instantclient_* /opt/oracle/instantclient \
     && echo /opt/oracle/instantclient > /etc/ld.so.conf.d/oracle-instantclient.conf \
     && ldconfig
+
+# orapki + minimal JRE for building thick-mode TLS wallets (see oracle-pki-builder).
+COPY --from=oracle-pki-builder /opt/oracle-pki /opt/oracle-pki
 
 # clean up all unused libraries
 RUN apt-get autoremove -y && apt-get clean && rm -rf /var/lib/apt/lists/*
