@@ -1,13 +1,12 @@
 import urllib.parse
 from typing import Dict, List, Optional
 
+import requests
 import snowflake.connector
-from requests import HTTPError
 from snowflake.connector.errors import DatabaseError, ProgrammingError
 
 from apollo.common.agent.models import AgentExecuteSqlQueryResponse
 from apollo.integrations.db.base_db_proxy_client import BaseDbProxyClient
-from apollo.integrations.http.http_proxy_client import HttpProxyClient
 
 _ATTR_CONNECT_ARGS = "connect_args"
 
@@ -103,6 +102,7 @@ class SnowflakeProxyClient(BaseDbProxyClient):
             or split.scheme
             or split.netloc
             or not path.startswith("/")
+            or path.startswith("//")
             or "\r" in path
             or "\n" in path
         ):
@@ -120,22 +120,27 @@ class SnowflakeProxyClient(BaseDbProxyClient):
                 "connection may use an auth mode without a session token"
             )
 
-        url = f"{server_url}{path}"
-        try:
-            response = HttpProxyClient(None).do_request(
-                url=url,
-                http_method=method,
-                payload=body,
-                additional_headers={"Authorization": f'Snowflake Token="{token}"'},
-                timeout=timeout,
-                response_format="json",
-            )
-        except HTTPError as exc:
-            status_code = exc.response.status_code if exc.response is not None else None
-            text = exc.response.text if exc.response is not None else str(exc)
-            # Defensive: the token lives only in the request header, never the
-            # response body, but redact it if it ever appears.
-            text = text.replace(token, "***")[:10_000]
-            return {"status_code": status_code, "error": text}
+        response = requests.request(
+            method,
+            f"{server_url}{path}",
+            json=body,
+            headers={"Authorization": f'Snowflake Token="{token}"'},
+            timeout=timeout,
+        )
 
-        return {"status_code": 200, "response": response}
+        def _redact(text: str) -> str:
+            # The token lives only in the request header, never the response
+            # body; redact defensively anyway and cap length.
+            return text.replace(token, "***")[:10_000]
+
+        if response.status_code // 100 != 2:
+            return {
+                "status_code": response.status_code,
+                "error": _redact(response.text),
+            }
+
+        try:
+            payload = response.json()
+        except ValueError:
+            payload = response.text
+        return {"status_code": response.status_code, "response": payload}
