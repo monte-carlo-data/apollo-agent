@@ -1,10 +1,13 @@
+import urllib.parse
 from typing import Dict, List, Optional
 
 import snowflake.connector
+from requests import HTTPError
 from snowflake.connector.errors import DatabaseError, ProgrammingError
 
 from apollo.common.agent.models import AgentExecuteSqlQueryResponse
 from apollo.integrations.db.base_db_proxy_client import BaseDbProxyClient
+from apollo.integrations.http.http_proxy_client import HttpProxyClient
 
 _ATTR_CONNECT_ARGS = "connect_args"
 
@@ -74,3 +77,65 @@ class SnowflakeProxyClient(BaseDbProxyClient):
                 rows=results,
                 is_partial=is_partial,
             )
+
+    def execute_rest_request(
+        self,
+        method: str,
+        path: str,
+        body: Optional[Dict] = None,
+        timeout: Optional[int] = None,
+    ) -> Dict:
+        """Execute one authenticated REST request against this connection's own
+        Snowflake account, reusing the live connector session's token, and
+        return the parsed JSON.
+
+        JSON only. ``path`` must be relative (begin with ``/``, no scheme or
+        host) so the session token is only ever sent to the connection's own
+        Snowflake host. The token is never returned, logged, or echoed in an
+        error. Mirrors ``SalesforceDataCloudProxyClient.ssot_get``.
+        """
+        try:
+            split = urllib.parse.urlsplit(path) if isinstance(path, str) else None
+        except ValueError:
+            split = None
+        if (
+            split is None
+            or split.scheme
+            or split.netloc
+            or not path.startswith("/")
+            or "\r" in path
+            or "\n" in path
+        ):
+            raise ValueError(
+                f"execute_rest_request: path must be a relative path beginning "
+                f"with '/' (no scheme or host), got: {path!r}"
+            )
+
+        rest = getattr(self._connection, "rest", None)
+        token = getattr(rest, "token", None)
+        server_url = getattr(rest, "server_url", None)
+        if not token or not server_url:
+            raise ValueError(
+                "execute_rest_request: no active Snowflake session token; the "
+                "connection may use an auth mode without a session token"
+            )
+
+        url = f"{server_url}{path}"
+        try:
+            response = HttpProxyClient(None).do_request(
+                url=url,
+                http_method=method,
+                payload=body,
+                additional_headers={"Authorization": f'Snowflake Token="{token}"'},
+                timeout=timeout,
+                response_format="json",
+            )
+        except HTTPError as exc:
+            status_code = exc.response.status_code if exc.response is not None else None
+            text = exc.response.text if exc.response is not None else str(exc)
+            # Defensive: the token lives only in the request header, never the
+            # response body, but redact it if it ever appears.
+            text = text.replace(token, "***")[:10_000]
+            return {"status_code": status_code, "error": text}
+
+        return {"status_code": 200, "response": response}
