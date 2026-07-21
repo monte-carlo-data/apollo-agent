@@ -236,6 +236,30 @@ class OracleDbClientTests(TestCase):
 
     @patch("oracledb.connect")
     @patch("apollo.integrations.db.oracle_proxy_client.create_oracle_ssl_context")
+    def test_ssl_options_inside_connect_args_is_popped(
+        self, mock_create_ssl_context: Mock, mock_connect: Mock
+    ) -> None:
+        """The CTP delivers ssl_options inside connect_args. It must drive SSL and
+        be removed before oracledb.connect (it is not an oracledb.connect arg)."""
+        mock_create_ssl_context.return_value = MagicMock(spec=ssl.SSLContext)
+        mock_connect.return_value = self._mock_connection
+
+        OracleProxyClient(
+            {
+                "connect_args": {
+                    **_ORACLE_DB_CREDENTIALS,
+                    "ssl_options": {"ca_data": "CA_FROM_CTP"},
+                }
+            }
+        )
+
+        mock_create_ssl_context.assert_called_once()
+        self.assertEqual(mock_create_ssl_context.call_args[0][0].ca_data, "CA_FROM_CTP")
+        call_kwargs = mock_connect.call_args[1]
+        self.assertNotIn("ssl_options", call_kwargs)  # popped, not sent to connect
+
+    @patch("oracledb.connect")
+    @patch("apollo.integrations.db.oracle_proxy_client.create_oracle_ssl_context")
     def test_connect_with_ssl_mtls(
         self, mock_create_ssl_context: Mock, mock_connect: Mock
     ) -> None:
@@ -475,26 +499,47 @@ class OracleThickModeTests(TestCase):
     @patch("oracledb.connect")
     @patch("oracledb.init_oracle_client")
     @patch("oracledb.is_thin_mode", return_value=False)
-    def test_thick_tls_warns_when_later_ca_differs(
+    def test_thick_tls_raises_when_later_ca_differs(
         self, _mock_thin: Mock, mock_init: Mock, mock_connect: Mock
     ) -> None:
         """Thick trust is frozen after the first connection; a later connection
-        with a different CA is warned about rather than silently ignored."""
+        with a different CA can't be applied — fail loudly, not silent ORA-29024."""
         mock_connect.return_value = self._mock_connection
         oracle_client_config._thick_wallet_dir = "/tmp/established_wallet"
         oracle_client_config._thick_ca_fingerprint = "established-fingerprint"
 
-        with self.assertLogs(
-            "apollo.integrations.db.oracle_client_config", level="WARNING"
-        ) as logs:
+        with self.assertRaises(RuntimeError) as ctx:
             OracleProxyClient(
                 {
                     "connect_args": dict(_ORACLE_DB_CREDENTIALS),
                     "ssl_options": {"ca_data": "a-different-ca"},
                 }
             )
+        self.assertIn("different SSL CA", str(ctx.exception))
         mock_init.assert_not_called()  # already initialized
-        self.assertTrue(any("differing CA" in line for line in logs.output))
+        mock_connect.assert_not_called()  # never connects with unappliable trust
+
+    @patch.dict("os.environ", {"MCD_ORACLE_THICK_MODE": "true"})
+    @patch("oracledb.connect")
+    @patch("oracledb.init_oracle_client")
+    @patch("oracledb.is_thin_mode", return_value=False)
+    def test_thick_tls_raises_when_process_inited_without_tls(
+        self, _mock_thin: Mock, mock_init: Mock, mock_connect: Mock
+    ) -> None:
+        """An SSL connection arriving after the process was initialized without a
+        wallet (e.g. a prior non-SSL connection warmed the container) can't have
+        trust applied — fail loudly."""
+        mock_connect.return_value = self._mock_connection
+        # setUp reset _thick_wallet_dir to None (inited without TLS).
+        with self.assertRaises(RuntimeError) as ctx:
+            OracleProxyClient(
+                {
+                    "connect_args": dict(_ORACLE_DB_CREDENTIALS),
+                    "ssl_options": {"ca_data": "some-ca"},
+                }
+            )
+        self.assertIn("without an SSL trust store", str(ctx.exception))
+        mock_connect.assert_not_called()
 
 
 class CreateOracleSslContextTests(TestCase):

@@ -292,9 +292,10 @@ def configure_thick_connection(ssl_options: SslOptions) -> None:
     On the FIRST Oracle connection this builds the wallet from ``ssl_options`` and
     writes ``sqlnet.ora`` BEFORE ``init_oracle_client`` — the ordering Oracle
     requires for the wallet subsystem to start with the trust store present.
-    Because Oracle caches the trust store after the first connection, later calls
-    do nothing but warn if a connection asks for a TLS config that differs from
-    the one already established (a thick agent supports a single TLS trust config).
+    Because Oracle's trust store is process-global and frozen at the first
+    ``init_oracle_client``, a later connection that needs TLS trust the process
+    can't apply (initialized without a wallet, or with a different CA) is rejected
+    with a clear error rather than failing later with a confusing ORA-29024.
 
     The caller runs ``oracledb.connect`` after this returns.
     """
@@ -316,28 +317,37 @@ def configure_thick_connection(ssl_options: SslOptions) -> None:
                 + ("; TLS wallet configured" if _thick_wallet_dir else "")
             )
         else:
-            _warn_on_tls_config_change(ssl_options)
+            _require_compatible_established_tls(ssl_options)
 
 
-def _warn_on_tls_config_change(ssl_options: SslOptions) -> None:
-    """Warn when a later connection wants a TLS config the process can't apply.
+def _require_compatible_established_tls(ssl_options: SslOptions) -> None:
+    """Reject a connection whose TLS trust the process can't apply.
 
-    Thick trust is frozen after the first connection, so a differing CA (or TLS
-    requested when the agent was initialized without it) is silently ineffective;
-    surface it rather than let it fail confusingly.
+    Thick-mode trust is process-global and fixed at the first
+    ``init_oracle_client``. If a TLS connection arrives after the process was
+    initialized without a wallet, or with a different CA, its trust cannot be
+    applied — fail loudly with actionable guidance instead of letting Oracle
+    fail later with ORA-29024 (certificate validation failure).
     """
     wants_tls = bool(not ssl_options.disabled and ssl_options.ca_data)
     if not wants_tls:
         return
     if _thick_wallet_dir is None:
-        logger.warning(
-            "oracle: thick mode was initialized without TLS by the first connection; "
-            "TLS trust cannot be added later in the same process"
+        raise RuntimeError(
+            "Oracle thick mode was already initialized in this agent process "
+            "without an SSL trust store, so this SSL connection cannot be "
+            "established — thick-mode TLS trust is process-global and fixed at "
+            "first use. Restart the agent so its first Oracle connection uses "
+            "this SSL configuration, or use a dedicated agent for this SSL "
+            "integration."
         )
-    elif _ca_fingerprint(ssl_options) != _thick_ca_fingerprint:
-        logger.warning(
-            "oracle: thick mode uses the TLS trust established by the first connection; "
-            "this connection's differing CA data is ignored"
+    if _ca_fingerprint(ssl_options) != _thick_ca_fingerprint:
+        raise RuntimeError(
+            "Oracle thick mode was already initialized in this agent process "
+            "with a different SSL CA. A thick-mode agent supports a single "
+            "Oracle TLS trust configuration (process-global). Restart the agent "
+            "so it initializes with this CA, or use a dedicated agent for this "
+            "integration."
         )
 
 
