@@ -42,7 +42,13 @@ class OracleProxyClient(BaseDbProxyClient):
                 1  # enable keep-alive and send packets every minute
             )
 
-        ssl_options = SslOptions(**(credentials.get("ssl_options") or {}))
+        # ssl_options can arrive two ways: inside connect_args (the CTP maps it
+        # there — it is NOT an oracledb.connect arg, so pop it out) or as a
+        # top-level sibling (direct construction / legacy pre-CTP path).
+        ssl_options_data = connect_args.pop("ssl_options", None) or credentials.get(
+            "ssl_options"
+        )
+        ssl_options = SslOptions(**(ssl_options_data or {}))
 
         # SSL differs by driver mode: thin uses a Python ssl.SSLContext; thick
         # (Oracle Instant Client) validates against an Oracle wallet configured in
