@@ -26,11 +26,12 @@ from apollo.common.agent.constants import (
     ATTRIBUTE_NAME_ERROR_TYPE,
 )
 from apollo.agent.logging_utils import LoggingUtils
-from apollo.integrations.db.oracle_proxy_client import (
-    OracleProxyClient,
+from apollo.integrations.db import oracle_client_config
+from apollo.integrations.db.oracle_client_config import (
     create_oracle_ssl_context,
     create_oracle_thick_wallet,
 )
+from apollo.integrations.db.oracle_proxy_client import OracleProxyClient
 from apollo.integrations.db.base_db_proxy_client import SslOptions
 
 _ORACLE_DB_CREDENTIALS = {
@@ -348,6 +349,10 @@ class OracleThickModeTests(TestCase):
 
     def setUp(self) -> None:
         self._mock_connection = Mock()
+        # Reset the process-wide thick-mode state so each test starts fresh.
+        oracle_client_config._thick_config_dir = None
+        oracle_client_config._thick_wallet_dir = None
+        oracle_client_config._thick_ca_fingerprint = None
 
     @patch.dict("os.environ", {"MCD_ORACLE_THICK_MODE": "true"})
     @patch("oracledb.connect")
@@ -396,18 +401,22 @@ class OracleThickModeTests(TestCase):
     @patch("oracledb.connect")
     @patch("oracledb.init_oracle_client")
     @patch("oracledb.is_thin_mode", return_value=True)
-    @patch("apollo.integrations.db.oracle_proxy_client.create_oracle_thick_wallet")
+    @patch("apollo.integrations.db.oracle_client_config._write_thick_sqlnet")
+    @patch("apollo.integrations.db.oracle_client_config.create_oracle_thick_wallet")
     def test_thick_mode_with_ssl_builds_wallet(
         self,
         mock_wallet: Mock,
+        mock_write_sqlnet: Mock,
         _mock_thin: Mock,
-        _mock_init: Mock,
+        mock_init: Mock,
         mock_connect: Mock,
     ) -> None:
-        """Thick mode + ssl_options builds a wallet and passes wallet params to
-        connect() (not ssl_context, which is thin-only)."""
+        """Thick mode + ssl_options builds the wallet and wires it via sqlnet.ora
+        WALLET_LOCATION before init_oracle_client — not the connect()
+        wallet_location param (thick ignores it for trust) and not ssl_context
+        (thin-only)."""
         mock_connect.return_value = self._mock_connection
-        mock_wallet.return_value = ("/tmp/mcd_oracle_wallet_test", "walletpw")
+        mock_wallet.return_value = "/tmp/mcd_oracle_wallet_test"
 
         OracleProxyClient(
             {
@@ -420,11 +429,72 @@ class OracleThickModeTests(TestCase):
         )
 
         mock_wallet.assert_called_once()
+        # Wallet wired through sqlnet.ora WALLET_LOCATION (positional args:
+        # config_dir, wallet_dir, verify_identity), written BEFORE init.
+        mock_write_sqlnet.assert_called_once()
+        args = mock_write_sqlnet.call_args.args
+        self.assertEqual(args[1], "/tmp/mcd_oracle_wallet_test")
+        self.assertTrue(args[2])  # verify_identity default True
+        mock_init.assert_called_once()
+        # Trust comes from sqlnet.ora, so connect gets no wallet/ssl params.
         kwargs = mock_connect.call_args[1]
-        self.assertEqual(kwargs["wallet_location"], "/tmp/mcd_oracle_wallet_test")
-        self.assertEqual(kwargs["wallet_password"], "walletpw")
-        self.assertTrue(kwargs["ssl_server_dn_match"])  # verify_identity default True
+        self.assertNotIn("wallet_location", kwargs)
+        self.assertNotIn("wallet_password", kwargs)
         self.assertNotIn("ssl_context", kwargs)  # ssl_context is thin-only
+
+    @patch.dict("os.environ", {"MCD_ORACLE_THICK_MODE": "true"})
+    @patch("oracledb.connect")
+    @patch("oracledb.is_thin_mode", return_value=True)
+    @patch(
+        "apollo.integrations.db.oracle_client_config.create_oracle_thick_wallet",
+        return_value="/tmp/mcd_oracle_wallet_test",
+    )
+    def test_thick_tls_wallet_written_before_init(
+        self, _mock_wallet: Mock, _mock_thin: Mock, mock_connect: Mock
+    ) -> None:
+        """The wallet + WALLET_LOCATION must be in sqlnet.ora BEFORE
+        init_oracle_client, or Oracle's wallet subsystem starts without trust."""
+        mock_connect.return_value = self._mock_connection
+        order: List[str] = []
+        with patch(
+            "apollo.integrations.db.oracle_client_config._write_thick_sqlnet",
+            side_effect=lambda *a, **k: order.append("sqlnet"),
+        ), patch(
+            "oracledb.init_oracle_client",
+            side_effect=lambda *a, **k: order.append("init"),
+        ):
+            OracleProxyClient(
+                {
+                    "connect_args": dict(_ORACLE_DB_CREDENTIALS),
+                    "ssl_options": {"ca_data": "ca"},
+                }
+            )
+        self.assertEqual(order, ["sqlnet", "init"])
+
+    @patch.dict("os.environ", {"MCD_ORACLE_THICK_MODE": "true"})
+    @patch("oracledb.connect")
+    @patch("oracledb.init_oracle_client")
+    @patch("oracledb.is_thin_mode", return_value=False)
+    def test_thick_tls_warns_when_later_ca_differs(
+        self, _mock_thin: Mock, mock_init: Mock, mock_connect: Mock
+    ) -> None:
+        """Thick trust is frozen after the first connection; a later connection
+        with a different CA is warned about rather than silently ignored."""
+        mock_connect.return_value = self._mock_connection
+        oracle_client_config._thick_wallet_dir = "/tmp/established_wallet"
+        oracle_client_config._thick_ca_fingerprint = "established-fingerprint"
+
+        with self.assertLogs(
+            "apollo.integrations.db.oracle_client_config", level="WARNING"
+        ) as logs:
+            OracleProxyClient(
+                {
+                    "connect_args": dict(_ORACLE_DB_CREDENTIALS),
+                    "ssl_options": {"ca_data": "a-different-ca"},
+                }
+            )
+        mock_init.assert_not_called()  # already initialized
+        self.assertTrue(any("differing CA" in line for line in logs.output))
 
 
 class CreateOracleSslContextTests(TestCase):
@@ -644,7 +714,9 @@ class OracleCtpCredentialSafetyTests(TestCase):
 
 
 class CreateOracleThickWalletTests(TestCase):
-    """Tests for create_oracle_thick_wallet (builds a PKCS#12 wallet from PEM)."""
+    """create_oracle_thick_wallet builds a cwallet.sso via orapki. orapki needs the
+    bundled JRE, so it is mocked here (asserting the orapki commands issued); the
+    real wallet build + TLS handshake is covered by the E2E rig against RDS."""
 
     @staticmethod
     def _self_signed(cn: str):
@@ -683,41 +755,59 @@ class CreateOracleThickWalletTests(TestCase):
             serialization.NoEncryption(),
         ).decode()
 
-    def _load_p12(self, wallet_dir: str, password: str):
-        from cryptography.hazmat.primitives.serialization import pkcs12
-
-        with open(os.path.join(wallet_dir, "ewallet.p12"), "rb") as f:
-            return pkcs12.load_key_and_certificates(f.read(), password.encode())
-
-    def test_returns_none_when_disabled_or_no_ca(self):
+    @patch("apollo.integrations.db.oracle_client_config._run_orapki")
+    def test_returns_none_when_disabled_or_no_ca(self, mock_orapki: Mock):
         self.assertIsNone(create_oracle_thick_wallet(SslOptions(disabled=True)))
         self.assertIsNone(create_oracle_thick_wallet(SslOptions(ca_data=None)))
+        mock_orapki.assert_not_called()
 
-    def test_one_way_wallet_contains_ca_no_client_key(self):
+    @patch("apollo.integrations.db.oracle_client_config._run_orapki")
+    def test_one_way_builds_auto_login_wallet_with_trusted_ca(self, mock_orapki: Mock):
         _, ca = self._self_signed("Test CA")
-        result = create_oracle_thick_wallet(SslOptions(ca_data=self._pem_cert(ca)))
-        self.assertIsNotNone(result)
-        wallet_dir, password = result
+        wallet_dir = create_oracle_thick_wallet(SslOptions(ca_data=self._pem_cert(ca)))
+        self.assertIsNotNone(wallet_dir)
         self.addCleanup(shutil.rmtree, wallet_dir, ignore_errors=True)
-        key, cert, cas = self._load_p12(wallet_dir, password)
-        self.assertIsNone(key)  # no client identity for one-way TLS
-        self.assertIsNone(cert)
-        self.assertEqual(len(cas), 1)  # the CA is a trust anchor
+        cmds = [c.args for c in mock_orapki.call_args_list]
+        # wallet created as auto-login (produces cwallet.sso, the only form thick trusts)
+        self.assertTrue(
+            any(a[:2] == ("wallet", "create") and "-auto_login" in a for a in cmds)
+        )
+        # CA added as a trusted certificate
+        self.assertTrue(
+            any(a[:2] == ("wallet", "add") and "-trusted_cert" in a for a in cmds)
+        )
+        # no client identity import for one-way TLS
+        self.assertFalse(any("import_pkcs12" in a for a in cmds))
 
-    def test_mtls_wallet_contains_client_key_and_cert(self):
+    @patch("apollo.integrations.db.oracle_client_config._run_orapki")
+    def test_mtls_imports_client_identity(self, mock_orapki: Mock):
         _, ca = self._self_signed("Test CA")
         cli_key, cli_cert = self._self_signed("client")
-        result = create_oracle_thick_wallet(
+        wallet_dir = create_oracle_thick_wallet(
             SslOptions(
                 ca_data=self._pem_cert(ca),
                 cert_data=self._pem_cert(cli_cert),
                 key_data=self._pem_key(cli_key),
             )
         )
-        self.assertIsNotNone(result)
-        wallet_dir, password = result
+        self.assertIsNotNone(wallet_dir)
         self.addCleanup(shutil.rmtree, wallet_dir, ignore_errors=True)
-        key, cert, cas = self._load_p12(wallet_dir, password)
-        self.assertIsNotNone(key)  # client key present (mTLS identity)
-        self.assertIsNotNone(cert)
-        self.assertEqual(len(cas), 1)
+        cmds = [c.args for c in mock_orapki.call_args_list]
+        self.assertTrue(any(a[:2] == ("wallet", "import_pkcs12") for a in cmds))
+
+    @patch("apollo.integrations.db.oracle_client_config._run_orapki")
+    def test_wallet_dir_removed_on_failure(self, mock_orapki: Mock):
+        captured: dict = {}
+
+        def boom(*args: str) -> None:
+            # first call is "wallet create -wallet <dir> ..."; record the dir
+            captured["dir"] = args[args.index("-wallet") + 1]
+            raise RuntimeError("orapki boom")
+
+        mock_orapki.side_effect = boom
+        _, ca = self._self_signed("Test CA")
+        with self.assertRaises(RuntimeError):
+            create_oracle_thick_wallet(SslOptions(ca_data=self._pem_cert(ca)))
+        # the partially-built wallet dir is cleaned up rather than left behind
+        self.assertTrue(captured.get("dir"))
+        self.assertFalse(os.path.exists(captured["dir"]))
