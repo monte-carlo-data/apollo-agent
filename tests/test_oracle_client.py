@@ -1,6 +1,8 @@
 import datetime
 import json
 import logging
+import os
+import shutil
 import ssl
 from typing import (
     Iterable,
@@ -27,6 +29,7 @@ from apollo.agent.logging_utils import LoggingUtils
 from apollo.integrations.db.oracle_proxy_client import (
     OracleProxyClient,
     create_oracle_ssl_context,
+    create_oracle_thick_wallet,
 )
 from apollo.integrations.db.base_db_proxy_client import SslOptions
 
@@ -357,7 +360,9 @@ class OracleThickModeTests(TestCase):
 
         client = OracleProxyClient({"connect_args": dict(_ORACLE_DB_CREDENTIALS)})
 
-        mock_init.assert_called_once_with()
+        mock_init.assert_called_once()
+        # config_dir carries the sqlnet.ora with SSL_CIPHER_SUITES for TLS.
+        self.assertIn("config_dir", mock_init.call_args.kwargs)
         self.assertEqual(client.wrapped_client, self._mock_connection)
 
     @patch.dict("os.environ", {"MCD_ORACLE_THICK_MODE": "true"})
@@ -391,23 +396,35 @@ class OracleThickModeTests(TestCase):
     @patch("oracledb.connect")
     @patch("oracledb.init_oracle_client")
     @patch("oracledb.is_thin_mode", return_value=True)
-    def test_thick_mode_with_ssl_raises(
-        self, _mock_thin: Mock, _mock_init: Mock, mock_connect: Mock
+    @patch("apollo.integrations.db.oracle_proxy_client.create_oracle_thick_wallet")
+    def test_thick_mode_with_ssl_builds_wallet(
+        self,
+        mock_wallet: Mock,
+        _mock_thin: Mock,
+        _mock_init: Mock,
+        mock_connect: Mock,
     ) -> None:
-        """Thick mode + ssl_options is unsupported (thin-only) — fail rather than
-        silently connect without the requested SSL."""
-        with self.assertRaises(ValueError):
-            OracleProxyClient(
-                {
-                    "connect_args": dict(_ORACLE_DB_CREDENTIALS),
-                    "ssl_options": {
-                        "ca_data": "-----BEGIN CERTIFICATE-----\nX\n-----END CERTIFICATE-----",
-                        "disabled": False,
-                    },
-                }
-            )
+        """Thick mode + ssl_options builds a wallet and passes wallet params to
+        connect() (not ssl_context, which is thin-only)."""
+        mock_connect.return_value = self._mock_connection
+        mock_wallet.return_value = ("/tmp/mcd_oracle_wallet_test", "walletpw")
 
-        mock_connect.assert_not_called()
+        OracleProxyClient(
+            {
+                "connect_args": dict(_ORACLE_DB_CREDENTIALS),
+                "ssl_options": {
+                    "ca_data": "-----BEGIN CERTIFICATE-----\nX\n-----END CERTIFICATE-----",
+                    "disabled": False,
+                },
+            }
+        )
+
+        mock_wallet.assert_called_once()
+        kwargs = mock_connect.call_args[1]
+        self.assertEqual(kwargs["wallet_location"], "/tmp/mcd_oracle_wallet_test")
+        self.assertEqual(kwargs["wallet_password"], "walletpw")
+        self.assertTrue(kwargs["ssl_server_dn_match"])  # verify_identity default True
+        self.assertNotIn("ssl_context", kwargs)  # ssl_context is thin-only
 
 
 class CreateOracleSslContextTests(TestCase):
@@ -624,3 +641,83 @@ class OracleCtpCredentialSafetyTests(TestCase):
         for record in self._log_records:
             output = formatter.format(record)
             self.assertNotIn(self._PASSWORD, output)
+
+
+class CreateOracleThickWalletTests(TestCase):
+    """Tests for create_oracle_thick_wallet (builds a PKCS#12 wallet from PEM)."""
+
+    @staticmethod
+    def _self_signed(cn: str):
+        from cryptography import x509
+        from cryptography.x509.oid import NameOID
+        from cryptography.hazmat.primitives import hashes
+        from cryptography.hazmat.primitives.asymmetric import rsa
+
+        key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, cn)])
+        cert = (
+            x509.CertificateBuilder()
+            .subject_name(name)
+            .issuer_name(name)
+            .public_key(key.public_key())
+            .serial_number(x509.random_serial_number())
+            .not_valid_before(datetime.datetime(2020, 1, 1))
+            .not_valid_after(datetime.datetime(2035, 1, 1))
+            .sign(key, hashes.SHA256())
+        )
+        return key, cert
+
+    @classmethod
+    def _pem_cert(cls, cert) -> str:
+        from cryptography.hazmat.primitives import serialization
+
+        return cert.public_bytes(serialization.Encoding.PEM).decode()
+
+    @classmethod
+    def _pem_key(cls, key) -> str:
+        from cryptography.hazmat.primitives import serialization
+
+        return key.private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.PKCS8,
+            serialization.NoEncryption(),
+        ).decode()
+
+    def _load_p12(self, wallet_dir: str, password: str):
+        from cryptography.hazmat.primitives.serialization import pkcs12
+
+        with open(os.path.join(wallet_dir, "ewallet.p12"), "rb") as f:
+            return pkcs12.load_key_and_certificates(f.read(), password.encode())
+
+    def test_returns_none_when_disabled_or_no_ca(self):
+        self.assertIsNone(create_oracle_thick_wallet(SslOptions(disabled=True)))
+        self.assertIsNone(create_oracle_thick_wallet(SslOptions(ca_data=None)))
+
+    def test_one_way_wallet_contains_ca_no_client_key(self):
+        _, ca = self._self_signed("Test CA")
+        result = create_oracle_thick_wallet(SslOptions(ca_data=self._pem_cert(ca)))
+        self.assertIsNotNone(result)
+        wallet_dir, password = result
+        self.addCleanup(shutil.rmtree, wallet_dir, ignore_errors=True)
+        key, cert, cas = self._load_p12(wallet_dir, password)
+        self.assertIsNone(key)  # no client identity for one-way TLS
+        self.assertIsNone(cert)
+        self.assertEqual(len(cas), 1)  # the CA is a trust anchor
+
+    def test_mtls_wallet_contains_client_key_and_cert(self):
+        _, ca = self._self_signed("Test CA")
+        cli_key, cli_cert = self._self_signed("client")
+        result = create_oracle_thick_wallet(
+            SslOptions(
+                ca_data=self._pem_cert(ca),
+                cert_data=self._pem_cert(cli_cert),
+                key_data=self._pem_key(cli_key),
+            )
+        )
+        self.assertIsNotNone(result)
+        wallet_dir, password = result
+        self.addCleanup(shutil.rmtree, wallet_dir, ignore_errors=True)
+        key, cert, cas = self._load_p12(wallet_dir, password)
+        self.assertIsNotNone(key)  # client key present (mTLS identity)
+        self.assertIsNotNone(cert)
+        self.assertEqual(len(cas), 1)
