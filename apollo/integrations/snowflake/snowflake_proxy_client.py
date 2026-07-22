@@ -1,5 +1,7 @@
+import urllib.parse
 from typing import Dict, List, Optional
 
+import requests
 import snowflake.connector
 from snowflake.connector.errors import DatabaseError, ProgrammingError
 
@@ -74,3 +76,71 @@ class SnowflakeProxyClient(BaseDbProxyClient):
                 rows=results,
                 is_partial=is_partial,
             )
+
+    def execute_rest_request(
+        self,
+        method: str,
+        path: str,
+        body: Optional[Dict] = None,
+        timeout: Optional[int] = None,
+    ) -> Dict:
+        """Execute one authenticated REST request against this connection's own
+        Snowflake account, reusing the live connector session's token, and
+        return the parsed JSON.
+
+        JSON only. ``path`` must be relative (begin with ``/``, no scheme or
+        host) so the session token is only ever sent to the connection's own
+        Snowflake host. The token is never returned, logged, or echoed in an
+        error. Mirrors ``SalesforceDataCloudProxyClient.ssot_get``.
+        """
+        try:
+            split = urllib.parse.urlsplit(path) if isinstance(path, str) else None
+        except ValueError:
+            split = None
+        if (
+            split is None
+            or split.scheme
+            or split.netloc
+            or not path.startswith("/")
+            or path.startswith("//")
+            or "\r" in path
+            or "\n" in path
+        ):
+            raise ValueError(
+                f"execute_rest_request: path must be a relative path beginning "
+                f"with '/' (no scheme or host), got: {path!r}"
+            )
+
+        rest = getattr(self._connection, "rest", None)
+        token = getattr(rest, "token", None)
+        server_url = getattr(rest, "server_url", None)
+        if not token or not server_url:
+            raise ValueError(
+                "execute_rest_request: no active Snowflake session token; the "
+                "connection may use an auth mode without a session token"
+            )
+
+        response = requests.request(
+            method,
+            f"{server_url}{path}",
+            json=body,
+            headers={"Authorization": f'Snowflake Token="{token}"'},
+            timeout=timeout,
+        )
+
+        def _redact(text: str) -> str:
+            # The token lives only in the request header, never the response
+            # body; redact defensively anyway and cap length.
+            return text.replace(token, "***")[:10_000]
+
+        if response.status_code // 100 != 2:
+            return {
+                "status_code": response.status_code,
+                "error": _redact(response.text),
+            }
+
+        try:
+            payload = response.json()
+        except ValueError:
+            payload = response.text
+        return {"status_code": response.status_code, "response": payload}
