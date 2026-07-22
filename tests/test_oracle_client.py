@@ -375,9 +375,7 @@ class OracleThickModeTests(TestCase):
     def setUp(self) -> None:
         self._mock_connection = Mock()
         # Reset the process-wide thick-mode state so each test starts fresh.
-        oracle_client_config._thick_config_dir = None
-        oracle_client_config._thick_wallet_dir = None
-        oracle_client_config._thick_tls_fingerprint = None
+        oracle_client_config._reset_for_testing()
 
     @patch.dict("os.environ", {"MCD_ORACLE_THICK_MODE": "true"})
     @patch("oracledb.connect")
@@ -553,6 +551,30 @@ class OracleThickModeTests(TestCase):
             )
         self.assertIn("different SSL configuration", str(ctx.exception))
         mock_connect.assert_not_called()
+
+    @patch.dict("os.environ", {"MCD_ORACLE_THICK_MODE": "true"})
+    @patch("oracledb.connect")
+    @patch("oracledb.init_oracle_client")
+    @patch("oracledb.is_thin_mode", return_value=False)
+    def test_thick_tls_reconnect_same_ca_succeeds(
+        self, _mock_thin: Mock, mock_init: Mock, mock_connect: Mock
+    ) -> None:
+        """The common case: a second TLS connection with the SAME CA reuses the
+        established wallet — no error, no re-init, and it connects."""
+        mock_connect.return_value = self._mock_connection
+        ssl_opts = {"ca_data": "CA"}
+        oracle_client_config._thick_wallet_dir = "/tmp/established_wallet"
+        oracle_client_config._thick_tls_fingerprint = (
+            oracle_client_config._tls_fingerprint(SslOptions(**ssl_opts))
+        )
+
+        client = OracleProxyClient(
+            {"connect_args": dict(_ORACLE_DB_CREDENTIALS), "ssl_options": ssl_opts}
+        )
+
+        mock_init.assert_not_called()  # trust already established, no re-init
+        mock_connect.assert_called_once()
+        self.assertEqual(client.wrapped_client, self._mock_connection)
 
     @patch.dict("os.environ", {"MCD_ORACLE_THICK_MODE": "true"})
     @patch("oracledb.connect")
@@ -860,6 +882,25 @@ class CreateOracleThickWalletTests(TestCase):
         self.assertFalse(any("import_pkcs12" in a for a in cmds))
 
     @patch("apollo.integrations.db.oracle_client_config._run_orapki")
+    def test_multi_ca_bundle_adds_each_cert(self, mock_orapki: Mock):
+        # A real CA bundle (e.g. AWS RDS) has multiple certs; each must be added
+        # as its own -trusted_cert with a distinct temp path.
+        _, ca1 = self._self_signed("Root CA")
+        _, ca2 = self._self_signed("Intermediate CA")
+        bundle = self._pem_cert(ca1) + self._pem_cert(ca2)
+        wallet_dir = create_oracle_thick_wallet(SslOptions(ca_data=bundle))
+        self.assertIsNotNone(wallet_dir)
+        self.addCleanup(shutil.rmtree, wallet_dir, ignore_errors=True)
+        add_calls = [
+            c.args
+            for c in mock_orapki.call_args_list
+            if c.args[:2] == ("wallet", "add") and "-trusted_cert" in c.args
+        ]
+        self.assertEqual(len(add_calls), 2)  # one add per cert in the bundle
+        cert_paths = [a[a.index("-cert") + 1] for a in add_calls]
+        self.assertEqual(len(set(cert_paths)), 2)  # distinct temp path per cert
+
+    @patch("apollo.integrations.db.oracle_client_config._run_orapki")
     def test_mtls_imports_client_identity(self, mock_orapki: Mock):
         _, ca = self._self_signed("Test CA")
         cli_key, cli_cert = self._self_signed("client")
@@ -898,9 +939,7 @@ class OracleClientConfigInternalsTests(TestCase):
     elsewhere (_run_orapki, _write_thick_sqlnet) and the init-failure cleanup."""
 
     def setUp(self) -> None:
-        oracle_client_config._thick_config_dir = None
-        oracle_client_config._thick_wallet_dir = None
-        oracle_client_config._thick_tls_fingerprint = None
+        oracle_client_config._reset_for_testing()
 
     @patch("apollo.integrations.db.oracle_client_config.subprocess.run")
     def test_run_orapki_builds_command_and_redacts_password_on_failure(

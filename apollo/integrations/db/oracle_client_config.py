@@ -106,6 +106,18 @@ def thick_mode_enabled() -> bool:
     return os.getenv(_ENV_VAR_THICK_MODE, "false").strip().lower() == "true"
 
 
+def _reset_for_testing() -> None:
+    """Reset the process-wide thick-mode state so tests start fresh.
+
+    Test-only — production never resets this (thick init is process-global and
+    one-way). Gives tests a single seam instead of poking each private global.
+    """
+    global _thick_config_dir, _thick_wallet_dir, _thick_tls_fingerprint
+    _thick_config_dir = None
+    _thick_wallet_dir = None
+    _thick_tls_fingerprint = None
+
+
 def _oracle_pki_home() -> str:
     return os.getenv(_ENV_VAR_ORACLE_PKI_HOME) or _DEFAULT_ORACLE_PKI_HOME
 
@@ -119,6 +131,11 @@ def _run_orapki(*args: str) -> None:
     ``-pkcs12pwd``) are scrubbed from orapki's stdout/stderr before they reach the
     exception — which propagates to logs AND the agent's API error response, where
     no keyword/entropy redaction would catch a bare CLI-flag value.
+
+    Accepted risk: orapki only takes the wallet password as a CLI argument, so it
+    is briefly visible via ``/proc/<pid>/cmdline`` for the subprocess lifetime. In
+    the agent's single-tenant-per-container deployment this is not a meaningful
+    exposure; there is no stdin/password-file alternative for orapki.
     """
     home = _oracle_pki_home()
     java_bin = os.path.join(home, "jre", "bin", "java")
