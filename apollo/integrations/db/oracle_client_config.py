@@ -228,6 +228,12 @@ def create_oracle_thick_wallet(ssl_options: SslOptions) -> Optional[str]:
     ``cert_data``/``key_data`` are present — imports the client identity for mTLS.
     Returns the wallet directory, or ``None`` when SSL is disabled / no CA data is
     provided. On failure the partially-built directory is removed.
+
+    Note: thick mode always validates the server certificate against the wallet
+    and has no equivalent of thin's ``skip_cert_verification``/``verify_cert`` — a
+    caller that sets those expecting to bypass or relax validation still gets full
+    CA-chain validation. Only ``verify_identity`` is honored (as
+    ``SSL_SERVER_DN_MATCH`` in ``sqlnet.ora``).
     """
     if ssl_options.disabled or not ssl_options.ca_data:
         return None
@@ -312,13 +318,23 @@ def _ensure_thick_config_dir() -> str:
 
 
 def _tls_fingerprint(ssl_options: SslOptions) -> Optional[str]:
-    """Fingerprint the full TLS material — CA trust plus client identity.
+    """Fingerprint everything baked into the process-global thick-mode config.
 
     Thick-mode trust is process-global and frozen at the first connection, so the
-    fingerprint must cover not just ``ca_data`` but the mTLS client identity
-    (``cert_data``/``key_data``/``key_password``) too; otherwise a later
-    same-CA-but-different-client-cert connection would silently reuse the first
-    connection's wallet identity instead of being rejected.
+    fingerprint must cover every per-connection input that gets baked in: the CA
+    trust (``ca_data``), the mTLS client identity (``cert_data``/``key_data``),
+    and ``verify_identity`` — which is written once into ``sqlnet.ora`` as
+    ``SSL_SERVER_DN_MATCH``. Otherwise a later connection asking for a different
+    value (e.g. the secure default ``verify_identity=True`` after a first
+    connection used ``False``) would silently reuse the looser established config
+    instead of being rejected. ``skip_cert_verification``/``verify_cert`` are NOT
+    included — thick mode ignores them (it always validates the CA chain), so a
+    differing value has no effect on the established config. The key passphrase is
+    excluded too — the cert/key already identify the client, and hashing a
+    password here would be misread as (weak) password storage.
+
+    This is a change-detection fingerprint, not password storage, so SHA-256 is
+    the appropriate choice.
     """
     if ssl_options.disabled or not ssl_options.ca_data:
         return None
@@ -328,7 +344,7 @@ def _tls_fingerprint(ssl_options: SslOptions) -> Optional[str]:
             ssl_options.ca_data,
             ssl_options.cert_data,
             ssl_options.key_data,
-            ssl_options.key_password,
+            f"verify_identity={ssl_options.verify_identity}",
         )
     )
     return hashlib.sha256(material.encode()).hexdigest()

@@ -580,6 +580,36 @@ class OracleThickModeTests(TestCase):
     @patch("oracledb.connect")
     @patch("oracledb.init_oracle_client")
     @patch("oracledb.is_thin_mode", return_value=False)
+    def test_thick_tls_raises_when_verify_identity_differs_same_ca(
+        self, _mock_thin: Mock, mock_init: Mock, mock_connect: Mock
+    ) -> None:
+        """verify_identity is frozen process-wide as SSL_SERVER_DN_MATCH. A later
+        connection with the SAME CA but a stricter verify_identity must fail loud,
+        not silently reuse the looser established config."""
+        mock_connect.return_value = self._mock_connection
+        oracle_client_config._thick_wallet_dir = "/tmp/established_wallet"
+        # Established with verify_identity=False (SSL_SERVER_DN_MATCH=FALSE).
+        oracle_client_config._thick_tls_fingerprint = (
+            oracle_client_config._tls_fingerprint(
+                SslOptions(ca_data="CA", verify_identity=False)
+            )
+        )
+
+        # Same CA, but now the secure default verify_identity=True — must reject.
+        with self.assertRaises(RuntimeError) as ctx:
+            OracleProxyClient(
+                {
+                    "connect_args": dict(_ORACLE_DB_CREDENTIALS),
+                    "ssl_options": {"ca_data": "CA", "verify_identity": True},
+                }
+            )
+        self.assertIn("different SSL configuration", str(ctx.exception))
+        mock_connect.assert_not_called()
+
+    @patch.dict("os.environ", {"MCD_ORACLE_THICK_MODE": "true"})
+    @patch("oracledb.connect")
+    @patch("oracledb.init_oracle_client")
+    @patch("oracledb.is_thin_mode", return_value=False)
     def test_thick_tls_raises_when_process_inited_without_tls(
         self, _mock_thin: Mock, mock_init: Mock, mock_connect: Mock
     ) -> None:
