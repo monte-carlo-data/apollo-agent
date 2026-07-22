@@ -97,11 +97,25 @@ logger = logging.getLogger(__name__)
 _thick_lock = threading.Lock()
 _thick_config_dir: Optional[str] = None  # holds sqlnet.ora (passed to init)
 _thick_wallet_dir: Optional[str] = None  # the single TLS wallet, or None if no TLS
-_thick_ca_fingerprint: Optional[str] = None  # sha256 of the established ca_data
+# sha256 of the established TLS material (CA + client identity), so a later
+# connection needing a different CA *or* client certificate is detected.
+_thick_tls_fingerprint: Optional[str] = None
 
 
 def thick_mode_enabled() -> bool:
     return os.getenv(_ENV_VAR_THICK_MODE, "false").strip().lower() == "true"
+
+
+def _reset_for_testing() -> None:
+    """Reset the process-wide thick-mode state so tests start fresh.
+
+    Test-only — production never resets this (thick init is process-global and
+    one-way). Gives tests a single seam instead of poking each private global.
+    """
+    global _thick_config_dir, _thick_wallet_dir, _thick_tls_fingerprint
+    _thick_config_dir = None
+    _thick_wallet_dir = None
+    _thick_tls_fingerprint = None
 
 
 def _oracle_pki_home() -> str:
@@ -112,9 +126,16 @@ def _run_orapki(*args: str) -> None:
     """Run an ``orapki`` wallet command via the bundled minimal JRE.
 
     ``args`` are the orapki arguments (e.g. ``"wallet", "create", ...``). Raises
-    ``RuntimeError`` with orapki's output on failure. The command line (which
-    includes ``-pwd``) is deliberately kept out of the exception message so the
-    wallet password never lands in logs.
+    ``RuntimeError`` with orapki's output on failure. The command line itself is
+    kept out of the message, and any password values we passed (``-pwd`` /
+    ``-pkcs12pwd``) are scrubbed from orapki's stdout/stderr before they reach the
+    exception — which propagates to logs AND the agent's API error response, where
+    no keyword/entropy redaction would catch a bare CLI-flag value.
+
+    Accepted risk: orapki only takes the wallet password as a CLI argument, so it
+    is briefly visible via ``/proc/<pid>/cmdline`` for the subprocess lifetime. In
+    the agent's single-tenant-per-container deployment this is not a meaningful
+    exposure; there is no stdin/password-file alternative for orapki.
     """
     home = _oracle_pki_home()
     java_bin = os.path.join(home, "jre", "bin", "java")
@@ -125,9 +146,19 @@ def _run_orapki(*args: str) -> None:
         text=True,
     )
     if result.returncode != 0:
+        output = f"{result.stdout.strip()} {result.stderr.strip()}"
+        # orapki can echo its own argv (including the password flags) back in
+        # usage/error output; redact the secret values we passed.
+        secrets_to_scrub = [
+            args[i + 1]
+            for i, arg in enumerate(args)
+            if arg in ("-pwd", "-pkcs12pwd") and i + 1 < len(args)
+        ]
+        for secret in secrets_to_scrub:
+            if secret:
+                output = output.replace(secret, "__redacted__")
         raise RuntimeError(
-            "orapki wallet command failed "
-            f"(exit {result.returncode}): {result.stdout.strip()} {result.stderr.strip()}"
+            f"orapki wallet command failed (exit {result.returncode}): {output}"
         )
 
 
@@ -280,10 +311,27 @@ def _ensure_thick_config_dir() -> str:
     return _thick_config_dir
 
 
-def _ca_fingerprint(ssl_options: SslOptions) -> Optional[str]:
+def _tls_fingerprint(ssl_options: SslOptions) -> Optional[str]:
+    """Fingerprint the full TLS material — CA trust plus client identity.
+
+    Thick-mode trust is process-global and frozen at the first connection, so the
+    fingerprint must cover not just ``ca_data`` but the mTLS client identity
+    (``cert_data``/``key_data``/``key_password``) too; otherwise a later
+    same-CA-but-different-client-cert connection would silently reuse the first
+    connection's wallet identity instead of being rejected.
+    """
     if ssl_options.disabled or not ssl_options.ca_data:
         return None
-    return hashlib.sha256(ssl_options.ca_data.encode()).hexdigest()
+    material = "\0".join(
+        part or ""
+        for part in (
+            ssl_options.ca_data,
+            ssl_options.cert_data,
+            ssl_options.key_data,
+            ssl_options.key_password,
+        )
+    )
+    return hashlib.sha256(material.encode()).hexdigest()
 
 
 def configure_thick_connection(ssl_options: SslOptions) -> None:
@@ -299,19 +347,28 @@ def configure_thick_connection(ssl_options: SslOptions) -> None:
 
     The caller runs ``oracledb.connect`` after this returns.
     """
-    global _thick_wallet_dir, _thick_ca_fingerprint
+    global _thick_wallet_dir, _thick_tls_fingerprint
     with _thick_lock:
         config_dir = _ensure_thick_config_dir()
         if oracledb.is_thin_mode():
             # First Oracle connection in this process. Build the wallet + write
             # WALLET_LOCATION before init so trust is present when the wallet
             # subsystem starts; is_thin_mode() flips to False after init.
-            _thick_wallet_dir = create_oracle_thick_wallet(ssl_options)
-            _thick_ca_fingerprint = _ca_fingerprint(ssl_options)
-            _write_thick_sqlnet(
-                config_dir, _thick_wallet_dir, ssl_options.verify_identity
-            )
-            oracledb.init_oracle_client(config_dir=config_dir)
+            wallet_dir = create_oracle_thick_wallet(ssl_options)
+            try:
+                _write_thick_sqlnet(config_dir, wallet_dir, ssl_options.verify_identity)
+                oracledb.init_oracle_client(config_dir=config_dir)
+            except BaseException:
+                # sqlnet write or init failed after the wallet was built. Since
+                # is_thin_mode() stays True, the next attempt would rebuild and
+                # orphan this dir (holding the CA and, for mTLS, the client key);
+                # drop it now and leave the globals unset so a retry starts clean.
+                if wallet_dir:
+                    shutil.rmtree(wallet_dir, ignore_errors=True)
+                raise
+            # Commit the process-wide state only once init has succeeded.
+            _thick_wallet_dir = wallet_dir
+            _thick_tls_fingerprint = _tls_fingerprint(ssl_options)
             logger.info(
                 "oracle: thick mode initialized"
                 + ("; TLS wallet configured" if _thick_wallet_dir else "")
@@ -325,9 +382,10 @@ def _require_compatible_established_tls(ssl_options: SslOptions) -> None:
 
     Thick-mode trust is process-global and fixed at the first
     ``init_oracle_client``. If a TLS connection arrives after the process was
-    initialized without a wallet, or with a different CA, its trust cannot be
-    applied — fail loudly with actionable guidance instead of letting Oracle
-    fail later with ORA-29024 (certificate validation failure).
+    initialized without a wallet, or with a different CA or client certificate,
+    its trust/identity cannot be applied — fail loudly with actionable guidance
+    instead of letting Oracle fail later with ORA-29024 (certificate validation
+    failure) or silently authenticating with the wrong client identity.
     """
     wants_tls = bool(not ssl_options.disabled and ssl_options.ca_data)
     if not wants_tls:
@@ -341,13 +399,13 @@ def _require_compatible_established_tls(ssl_options: SslOptions) -> None:
             "this SSL configuration, or use a dedicated agent for this SSL "
             "integration."
         )
-    if _ca_fingerprint(ssl_options) != _thick_ca_fingerprint:
+    if _tls_fingerprint(ssl_options) != _thick_tls_fingerprint:
         raise RuntimeError(
             "Oracle thick mode was already initialized in this agent process "
-            "with a different SSL CA. A thick-mode agent supports a single "
-            "Oracle TLS trust configuration (process-global). Restart the agent "
-            "so it initializes with this CA, or use a dedicated agent for this "
-            "integration."
+            "with a different SSL configuration (CA certificate or client "
+            "certificate). A thick-mode agent supports a single Oracle TLS "
+            "configuration (process-global). Restart the agent so it initializes "
+            "with this configuration, or use a dedicated agent for this integration."
         )
 
 

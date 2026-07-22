@@ -44,10 +44,12 @@ class OracleProxyClient(BaseDbProxyClient):
 
         # ssl_options can arrive two ways: inside connect_args (the CTP maps it
         # there — it is NOT an oracledb.connect arg, so pop it out) or as a
-        # top-level sibling (direct construction / legacy pre-CTP path).
-        ssl_options_data = connect_args.pop("ssl_options", None) or credentials.get(
-            "ssl_options"
-        )
+        # top-level sibling (direct construction / legacy pre-CTP path). Use an
+        # explicit None check (not `or`) so an explicitly-empty connect_args
+        # ssl_options isn't silently overridden by the top-level sibling.
+        ssl_options_data = connect_args.pop("ssl_options", None)
+        if ssl_options_data is None:
+            ssl_options_data = credentials.get("ssl_options")
         ssl_options = SslOptions(**(ssl_options_data or {}))
 
         # SSL differs by driver mode: thin uses a Python ssl.SSLContext; thick
