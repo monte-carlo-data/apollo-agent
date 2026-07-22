@@ -312,13 +312,18 @@ def _ensure_thick_config_dir() -> str:
 
 
 def _tls_fingerprint(ssl_options: SslOptions) -> Optional[str]:
-    """Fingerprint the full TLS material — CA trust plus client identity.
+    """Fingerprint the TLS material — CA trust plus client identity.
 
     Thick-mode trust is process-global and frozen at the first connection, so the
     fingerprint must cover not just ``ca_data`` but the mTLS client identity
-    (``cert_data``/``key_data``/``key_password``) too; otherwise a later
+    (``cert_data``/``key_data``) too; otherwise a later
     same-CA-but-different-client-cert connection would silently reuse the first
-    connection's wallet identity instead of being rejected.
+    connection's wallet identity instead of being rejected. The key passphrase is
+    intentionally excluded — the cert/key already identify the client, and hashing
+    a password here would be misread as (weak) password storage.
+
+    This is a change-detection fingerprint, not password storage, so SHA-256 is
+    the appropriate choice.
     """
     if ssl_options.disabled or not ssl_options.ca_data:
         return None
@@ -328,7 +333,6 @@ def _tls_fingerprint(ssl_options: SslOptions) -> Optional[str]:
             ssl_options.ca_data,
             ssl_options.cert_data,
             ssl_options.key_data,
-            ssl_options.key_password,
         )
     )
     return hashlib.sha256(material.encode()).hexdigest()
