@@ -60,6 +60,16 @@ dedicated `GcpDataformProxyClient`. The CTP config in `defaults/gcp_dataform.py`
 `project_id`, `service_account_info`, and an optional `locations` list; the proxy client handles
 SA credential construction and exposes Dataform API calls as serialized-dict methods.
 
+**Oracle** (`oracle` connection type) — CTP config in `defaults/oracle.py` maps the scalar
+connection fields (`dsn`/`user`/`password`/`expire_time`) and additionally passes the whole nested
+`ssl_options` block through **unchanged**: `"ssl_options": "{{ raw.ssl_options | default(none) }}"`.
+This is the reference for the **nested-dict passthrough pattern** — when a proxy client needs a
+structured credential sub-object (not flat scalars), map it through as a single template
+expression. The sandboxed `NativeEnvironment` (see `template.py`) preserves it as a `dict` rather
+than stringifying it. `OracleProxyClient` then pops `ssl_options` out of `connect_args` (it is not
+an `oracledb.connect` arg) and builds the thin `ssl.SSLContext` / thick wallet from it — the
+resolution can't happen in the CTP because it depends on runtime/process state (thin vs thick).
+
 ## Security note
 
 Jinja2 templates are sandboxed (see `template.py`). Do not use `Environment()` directly —
