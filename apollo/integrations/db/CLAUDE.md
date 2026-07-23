@@ -46,6 +46,13 @@ clients that write their own CA file (db2, teradata) register it explicitly. Pre
 per client (e.g. `SslOptions.write_ca_data_to_temp_file`, which uses `mkstemp`) rather than a
 deterministic one, so closing one client cannot delete a file still in use by another.
 
+**Exception — Oracle thick mode.** `oracle_client_config.py`'s thick-mode TLS wallet and
+`sqlnet.ora` config dir are **process-global** (built once, cached in module state, reused by every
+connection) and are intentionally **not** registered via `register_temp_files`. Oracle Instant
+Client freezes its trust store at the first `init_oracle_client`, so the wallet must outlive any
+single client — per-client cleanup would delete a wallet still needed by later connections. See the
+`oracle_client_config` module docstring for the full rationale.
+
 ### Non-pyodbc clients
 
 Most other clients (postgres, mysql, bigquery, etc.) wrap their own driver's connection object.
