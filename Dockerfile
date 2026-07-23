@@ -1,15 +1,44 @@
+# Oracle Instant Client (Basic) — native libraries oracledb needs for "thick"
+# mode, which some Oracle configurations require (e.g. servers that only expose
+# the legacy password verifier that thin mode can't authenticate with).
+ARG ORACLE_IC_ZIP=instantclient-basic-linux.x64-23.8.0.25.04.zip
+ARG ORACLE_IC_URL=https://download.oracle.com/otn_software/linux/instantclient/2380000
+
+# Oracle wallet tooling (orapki) for thick-mode TLS. Thick mode validates the
+# server certificate against an Oracle wallet (cwallet.sso), and only Oracle's
+# orapki tool can produce one that is trusted — a Python-built PKCS#12 is opened
+# but never honored as a trust anchor. orapki is a Java tool, so build a stripped,
+# minimal JRE (java.base + java.naming + jdk.crypto.ec) and fetch the oraclepki
+# jars once here, then copy the ~55MB result into each runtime stage. Built on
+# Amazon Linux 2023 (glibc 2.34 — the oldest of our runtime bases) so the runtime
+# is forward-compatible with the newer-glibc Debian stages. osdt_core/osdt_cert
+# are not published at the Instant Client version, so they are pinned separately.
+ARG ORACLE_PKI_VERSION=23.8.0.25.04
+ARG ORACLE_OSDT_VERSION=21.11.0.0
+FROM amazoncorretto:21-al2023 AS oracle-pki-builder
+ARG ORACLE_PKI_VERSION
+ARG ORACLE_OSDT_VERSION
+RUN dnf install -y binutils \
+    && jlink --add-modules java.base,java.naming,jdk.crypto.ec \
+         --strip-debug --no-header-files --no-man-pages --output /opt/oracle-pki/jre \
+    && mkdir -p /opt/oracle-pki/lib \
+    && M=https://repo1.maven.org/maven2/com/oracle/database/security \
+    && curl -fsSLo /opt/oracle-pki/lib/oraclepki.jar $M/oraclepki/${ORACLE_PKI_VERSION}/oraclepki-${ORACLE_PKI_VERSION}.jar \
+    && curl -fsSLo /opt/oracle-pki/lib/osdt_core.jar $M/osdt_core/${ORACLE_OSDT_VERSION}/osdt_core-${ORACLE_OSDT_VERSION}.jar \
+    && curl -fsSLo /opt/oracle-pki/lib/osdt_cert.jar $M/osdt_cert/${ORACLE_OSDT_VERSION}/osdt_cert-${ORACLE_OSDT_VERSION}.jar
+
 # system-base — system-level dependencies only (apt packages, no venv).
 # Published as `<version>-system-base` so downstream consumers (e.g. hermes-agent)
 # can build their own venv against the same native libs without inheriting
 # apollo's pip-installed dependencies.
-FROM python:3.12-slim AS system-base
+FROM python:3.13.14-slim AS system-base
 
 ENV APP_HOME=/app
 WORKDIR $APP_HOME
 
 # Refresh apt index and upgrade base-image packages so OS-level security fixes
 # (glibc, openssh, nghttp2, etc.) land on every rebuild rather than waiting for
-# the upstream python:3.12-slim tag to be republished.
+# the upstream python:3.13.14-slim tag to be republished.
 RUN apt-get update && apt-get upgrade -y
 # install git as we need it for the direct oscrypto dependency
 # this is a temporary workaround and it should be removed once we update oscrypto to 1.3.1+
@@ -30,6 +59,27 @@ RUN chmod a+r /etc/apt/keyrings/microsoft.gpg
 RUN echo "deb [arch=amd64,arm64 signed-by=/etc/apt/keyrings/microsoft.gpg] https://packages.microsoft.com/debian/12/prod bookworm main" > /etc/apt/sources.list.d/mssql-release.list
 RUN apt-get update
 RUN ACCEPT_EULA=Y apt-get install -y msodbcsql17 unixodbc unixodbc-dev
+
+# Oracle Instant Client for thick mode. libaio is a runtime dependency; on Debian
+# trixie the time_t transition renamed libaio1 -> libaio1t64 (shipping
+# libaio.so.1t64), so add the libaio.so.1 symlink the Oracle libs link against.
+ARG ORACLE_IC_ZIP
+ARG ORACLE_IC_URL
+RUN apt-get install -y --no-install-recommends unzip \
+    && (apt-get install -y --no-install-recommends libaio1t64 \
+        || apt-get install -y --no-install-recommends libaio1) \
+    && if [ ! -e /usr/lib/x86_64-linux-gnu/libaio.so.1 ]; then \
+         ln -s libaio.so.1t64 /usr/lib/x86_64-linux-gnu/libaio.so.1; fi \
+    && mkdir -p /opt/oracle \
+    && curl -fsSLo /tmp/${ORACLE_IC_ZIP} ${ORACLE_IC_URL}/${ORACLE_IC_ZIP} \
+    && unzip -q /tmp/${ORACLE_IC_ZIP} -d /opt/oracle \
+    && rm /tmp/${ORACLE_IC_ZIP} \
+    && ln -s /opt/oracle/instantclient_* /opt/oracle/instantclient \
+    && echo /opt/oracle/instantclient > /etc/ld.so.conf.d/oracle-instantclient.conf \
+    && ldconfig
+
+# orapki + minimal JRE for building thick-mode TLS wallets (see oracle-pki-builder).
+COPY --from=oracle-pki-builder /opt/oracle-pki /opt/oracle-pki
 
 # clean up all unused libraries
 RUN apt-get autoremove -y && apt-get clean && rm -rf /var/lib/apt/lists/*
@@ -108,7 +158,7 @@ RUN . $VENV_DIR/bin/activate && pip install --no-cache-dir -r requirements-cloud
 CMD . $VENV_DIR/bin/activate && \
     gunicorn --timeout 930 --bind :$PORT apollo.interfaces.cloudrun.main:app
 
-FROM public.ecr.aws/lambda/python:3.12 AS lambda-builder
+FROM public.ecr.aws/lambda/python:3.13 AS lambda-builder
 
 RUN dnf update -y
 # install git as we need it for the direct oscrypto dependency
@@ -122,7 +172,7 @@ RUN pip install --no-cache-dir --target "${LAMBDA_TASK_ROOT}" \
     -r requirements.txt \
     -r requirements-lambda.txt
 
-FROM public.ecr.aws/lambda/python:3.12 AS lambda
+FROM public.ecr.aws/lambda/python:3.13 AS lambda
 
 # Create non-root user up front so the cross-stage COPY below can use --chown
 # and so the final container runs as mcdagent. The Amazon Linux 2023 minimal
@@ -147,6 +197,21 @@ RUN curl https://packages.microsoft.com/config/rhel/7/prod.repo \
     | tee /etc/yum.repos.d/mssql-release.repo
 RUN ACCEPT_EULA=Y dnf install -y msodbcsql17
 
+# Oracle Instant Client for thick mode.
+ARG ORACLE_IC_ZIP
+ARG ORACLE_IC_URL
+RUN dnf -y install libaio unzip \
+    && mkdir -p /opt/oracle \
+    && curl -fsSLo /tmp/${ORACLE_IC_ZIP} ${ORACLE_IC_URL}/${ORACLE_IC_ZIP} \
+    && unzip -q /tmp/${ORACLE_IC_ZIP} -d /opt/oracle \
+    && rm /tmp/${ORACLE_IC_ZIP} \
+    && ln -s /opt/oracle/instantclient_* /opt/oracle/instantclient \
+    && echo /opt/oracle/instantclient > /etc/ld.so.conf.d/oracle-instantclient.conf \
+    && /sbin/ldconfig
+
+# orapki + minimal JRE for building thick-mode TLS wallets (see oracle-pki-builder).
+COPY --from=oracle-pki-builder /opt/oracle-pki /opt/oracle-pki
+
 # VULN-464
 RUN rm -rf /var/lib/rpm/rpmdb.sqlite*
 
@@ -162,16 +227,25 @@ USER mcdagent
 
 CMD [ "apollo.interfaces.lambda_function.handler.lambda_handler" ]
 
-FROM mcr.microsoft.com/azure-functions/python:4-python3.12 AS azure
+FROM mcr.microsoft.com/azure-functions/python:4-python3.13 AS azure
 
 ENV AzureWebJobsScriptRoot=/home/site/wwwroot \
     AzureFunctionsJobHost__Logging__Console__IsEnabled=true
 
 # Register mcdagent early so COPY --chown below lands files mcdagent-owned
 # without a later `chown -R` layer.
+#
+# /home/data and /home/LogFiles must be mcdagent-owned too. With
+# WEBSITES_ENABLE_APP_SERVICE_STORAGE=false (our deployments) /home is the
+# root-owned local container layer, so a non-root host process gets EACCES
+# writing the two sentinel files it maintains there: the secrets sentinel
+# under /home/data/Functions/secrets (fails host startup) and the debug
+# sentinel under /home/LogFiles/Application/Functions/Host (logged error).
+# Pre-create and chown both so the host can write them.
 RUN groupadd --gid 1000 mcdagent \
     && useradd --uid 1000 --gid mcdagent --no-create-home --home-dir /home/site/wwwroot --shell /usr/sbin/nologin mcdagent \
-    && chown mcdagent:mcdagent /home/site/wwwroot
+    && mkdir -p /home/data /home/LogFiles \
+    && chown mcdagent:mcdagent /home/site/wwwroot /home/data /home/LogFiles
 
 RUN apt-get update
 RUN apt-get install -y --no-install-recommends git
@@ -179,7 +253,7 @@ RUN apt-get install -y --no-install-recommends git
 RUN apt-get install -y --no-install-recommends libcrypt1
 
 # Azure database clients and sql-server uses pyodbc which requires unixODBC and 'ODBC Driver 17
-# for SQL Server' Microsoft's python 3.12 base image comes with msodbcsql18 but we are expecting to
+# for SQL Server' Microsoft's python 3.13 base image comes with msodbcsql18 but we are expecting to
 # use the msodbcsql17 driver so need to install specific versions of some libraries and allow Docker
 # to downgrade some pre-installed packages.
 RUN apt-get update
@@ -196,6 +270,27 @@ RUN apt-mark hold msodbcsql17 odbcinst odbcinst1debian2 unixodbc unixodbc-dev \
 # openssh-client required by git client
 RUN apt-get install -y openssh-client
 
+# Oracle Instant Client for thick mode. libaio is a runtime dependency; on Debian
+# trixie the time_t transition renamed libaio1 -> libaio1t64 (shipping
+# libaio.so.1t64), so add the libaio.so.1 symlink the Oracle libs link against.
+ARG ORACLE_IC_ZIP
+ARG ORACLE_IC_URL
+RUN apt-get install -y --no-install-recommends unzip curl \
+    && (apt-get install -y --no-install-recommends libaio1t64 \
+        || apt-get install -y --no-install-recommends libaio1) \
+    && if [ ! -e /usr/lib/x86_64-linux-gnu/libaio.so.1 ]; then \
+         ln -s libaio.so.1t64 /usr/lib/x86_64-linux-gnu/libaio.so.1; fi \
+    && mkdir -p /opt/oracle \
+    && curl -fsSLo /tmp/${ORACLE_IC_ZIP} ${ORACLE_IC_URL}/${ORACLE_IC_ZIP} \
+    && unzip -q /tmp/${ORACLE_IC_ZIP} -d /opt/oracle \
+    && rm /tmp/${ORACLE_IC_ZIP} \
+    && ln -s /opt/oracle/instantclient_* /opt/oracle/instantclient \
+    && echo /opt/oracle/instantclient > /etc/ld.so.conf.d/oracle-instantclient.conf \
+    && ldconfig
+
+# orapki + minimal JRE for building thick-mode TLS wallets (see oracle-pki-builder).
+COPY --from=oracle-pki-builder /opt/oracle-pki /opt/oracle-pki
+
 # clean up all unused libraries
 RUN apt-get autoremove -y && apt-get clean && rm -rf /var/lib/apt/lists/*
 
@@ -204,8 +299,20 @@ RUN rm -rf /opt/startupcmdgen/
 
 COPY requirements.txt /
 COPY requirements-azure.txt /
-RUN pip install --no-cache-dir -r /requirements.txt -r /requirements-azure.txt && rm -rf /opt/python/3/_manifest
-RUN pip install --no-cache-dir -U setuptools==80.10.2  # INC-265 - opentelemetry requires pkg_resources that was removed in setuptools 81
+# Azure Functions host puts BOTH wwwroot (app code) and .python_packages/lib/site-packages (deps) on
+# sys.path — these two roots must stay separate; consolidating them would silently break imports.
+# Install deps into the Functions app-package dir (not system site-packages) so the
+# host's dependency isolation keeps them off the worker's sys.path. Otherwise our
+# protobuf and the worker's bundled protobuf co-load and SIGSEGV the worker on py3.13.
+# No setuptools/pkg_resources needed (opentelemetry moved off it; remaining users guard the import).
+RUN pip install --no-cache-dir \
+    --target=/home/site/wwwroot/.python_packages/lib/site-packages \
+    -r /requirements.txt -r /requirements-azure.txt \
+    && chown -R mcdagent:mcdagent /home/site/wwwroot/.python_packages \
+    && rm -rf /opt/python/3/_manifest \
+    # Drop the SBOM the azure-functions-durable wheel bundles at the site-packages
+    # root: it lists stale versions that aren't installed, tripping scout false positives.
+    && rm -rf /home/site/wwwroot/.python_packages/lib/site-packages/_manifest
 
 COPY --chown=mcdagent:mcdagent apollo /home/site/wwwroot/apollo
 

@@ -4,6 +4,7 @@ import uuid
 from unittest import TestCase
 from unittest.mock import Mock, patch
 
+import requests
 import responses
 import urllib3.exceptions
 
@@ -309,6 +310,96 @@ class SalesforceDataCloudProxyClientTests(TestCase):
             self.assertEqual(result["description"][i][0], key)
             self.assertEqual(result["description"][i][1], value["type"])
 
+    def test_query_token_exchange_failure_surfaces_status_and_body(self):
+        """
+        Old-DC-path query connections (core_token present) must surface the captured
+        a360/token exchange HTTP status and response body instead of only the generic
+        "Token exchange failed..." message (YET-1790). The library swallows the
+        exchange failure (``except Exception: pass``) before falling into
+        ``_renew_token``, so the detail must come from the ``_CapturingSession``
+        attached to the connection's authentication_helper.
+        """
+        self.mock_responses.remove(
+            responses.POST, "https://test.salesforce.com/services/a360/token"
+        )
+        self.mock_responses.add(
+            method=responses.POST,
+            url="https://test.salesforce.com/services/a360/token",
+            status=400,
+            body=json.dumps(
+                {"error": "invalid_request", "error_description": "dataspace not found"}
+            ),
+        )
+        # Model the size-collection dispatch: dataspace-scoped query credentials.
+        self.credentials["connect_args"]["dataspace"] = "csg"
+
+        operation = {
+            "trace_id": "test-trace-id",
+            "skip_cache": True,
+            "commands": [
+                {"method": "cursor", "store": "_cursor"},
+                {
+                    "args": ["SELECT COUNT(*) FROM t__dll"],
+                    "method": "execute",
+                    "target": "_cursor",
+                },
+            ],
+        }
+
+        response = self.agent.execute_operation(
+            connection_type="salesforce-data-cloud",
+            operation_name="test_query_token_exchange_failure",
+            operation_dict=operation,
+            credentials=self.credentials,
+        )
+
+        self.assertTrue(response.is_error)
+        msg = str(response.result)
+        self.assertIn("Token exchange failed", msg)
+        self.assertIn("HTTP 400", msg)
+        self.assertIn("dataspace not found", msg)
+
+    def test_query_token_exchange_failure_without_response_stays_generic(self):
+        """
+        When the a360 exchange fails without an HTTP response (e.g. the connection
+        drops), there is nothing to capture — the query-path error must stay the
+        generic message without a bogus "HTTP None" suffix.
+        """
+        self.mock_responses.remove(
+            responses.POST, "https://test.salesforce.com/services/a360/token"
+        )
+        self.mock_responses.add(
+            method=responses.POST,
+            url="https://test.salesforce.com/services/a360/token",
+            body=requests.exceptions.ConnectionError("connection dropped"),
+        )
+
+        operation = {
+            "trace_id": "test-trace-id",
+            "skip_cache": True,
+            "commands": [
+                {"method": "cursor", "store": "_cursor"},
+                {
+                    "args": ["SELECT COUNT(*) FROM t__dll"],
+                    "method": "execute",
+                    "target": "_cursor",
+                },
+            ],
+        }
+
+        response = self.agent.execute_operation(
+            connection_type="salesforce-data-cloud",
+            operation_name="test_query_token_exchange_failure_no_response",
+            operation_dict=operation,
+            credentials=self.credentials,
+        )
+
+        self.assertTrue(response.is_error)
+        msg = str(response.result)
+        self.assertIn("Token exchange failed", msg)
+        self.assertNotIn("HTTP", msg)
+        self.assertNotIn("Salesforce response", msg)
+
     def test_list_tables_with_invalid_dataspace_raises_clear_error(self):
         """
         When the dataspace token exchange fails (e.g. dataspace doesn't exist), the error should
@@ -349,6 +440,40 @@ class SalesforceDataCloudProxyClientTests(TestCase):
         self.assertNotIn("Token Renewal failed", error_message)
         # Should see a clear token exchange error
         self.assertIn("Token exchange failed", error_message)
+
+    def test_list_tables_metadata_query_failure_not_labeled_token_exchange(self):
+        """A post-token-exchange getAllMetadata failure (e.g. a transient DEADLINE_EXCEEDED) is
+        reported as a metadata-query error, NOT 'Token exchange failed ... verify permission'
+        (YET-1631) — the token exchange succeeded; only the metadata query failed."""
+        from salesforcecdpconnector.exceptions import Error as SalesforceCDPError
+
+        metadata_err = SalesforceCDPError(
+            "Failed executing metadata query in server : status=500, message="
+            "TranslationMetadataHelper.getAllMetadata Error fetching data source entities - "
+            "DEADLINE_EXCEEDED: CallOptions deadline exceeded after 9.9s"
+        )
+        operation = {
+            "trace_id": "test-trace-id",
+            "skip_cache": True,
+            "commands": [{"method": "list_tables", "kwargs": {"dataspace": "default"}}],
+        }
+        with patch(
+            "apollo.integrations.db.salesforce_data_cloud_proxy_client."
+            "SalesforceDataCloudConnection.list_tables",
+            side_effect=metadata_err,
+        ):
+            response = self.agent.execute_operation(
+                connection_type="salesforce-data-cloud",
+                operation_name="test_metadata_query_failure",
+                operation_dict=operation,
+                credentials=self.credentials,
+            )
+
+        self.assertTrue(response.is_error)
+        msg = str(response.result)
+        self.assertIn("Metadata query failed for dataspace 'default'", msg)
+        self.assertNotIn("Token exchange failed", msg)
+        self.assertNotIn("verify the dataspace name", msg)
 
     def test_list_tables_with_invalid_dataspace_raises_clear_error_clean_path(self):
         """
@@ -544,6 +669,46 @@ class SalesforceDataCloudProxyClientTests(TestCase):
         # HTTP status and body must both appear in the error message
         self.assertIn("HTTP 200", error_message)
         self.assertIn("invalid_dataspace", error_message)
+
+    def test_client_credentials_flow_does_not_revoke_core_token(self):
+        """YET-1546: on the client-credentials (no core_token) path, the freshly minted
+        core token must NOT be revoked after the a360 exchange. Salesforce reuses one
+        platform session per connected app, so revoking it invalidates the session the
+        data-collector reuses for its /ssot/* + SOAP metadata calls (INVALID_SESSION_ID).
+        """
+        revoke_callback = Mock(return_value=(200, {}, ""))
+        self.mock_responses.remove(
+            responses.POST, "https://test.salesforce.com/services/oauth2/revoke"
+        )
+        self.mock_responses.add_callback(
+            method=responses.POST,
+            url="https://test.salesforce.com/services/oauth2/revoke",
+            callback=revoke_callback,
+        )
+
+        operation = {
+            "trace_id": "test-trace-id",
+            "skip_cache": True,
+            "commands": [
+                {"method": "list_tables", "kwargs": {"dataspace": "UnifiedKnowledge"}}
+            ],
+        }
+        credentials = {**self.credentials}
+        credentials["connect_args"] = {
+            k: v
+            for k, v in self.credentials["connect_args"].items()
+            if k != "core_token"
+        }
+
+        response = self.agent.execute_operation(
+            connection_type="salesforce-data-cloud",
+            operation_name="test_no_revoke_client_creds",
+            operation_dict=operation,
+            credentials=credentials,
+        )
+
+        self.assertFalse(response.is_error)
+        revoke_callback.assert_not_called()
 
     def test_classify_exchange_status(self):
         """_classify_exchange_status returns the right label for each HTTP status family."""
@@ -1176,6 +1341,267 @@ class SalesforceDataCloudProxyClientTests(TestCase):
             rate_limited_records,
             f"expected a rate_limited classification in logs; got {logs.output}",
         )
+
+    # -- Generic SSOT reads (YET-1615) -----------------------------------------------
+
+    _SSOT_PATH = "/services/data/v62.0/ssot/data-streams"
+    _SSOT_URL = "https://test.salesforce.com/services/data/v62.0/ssot/data-streams"
+
+    def _ssot_get_operation(self, path: str) -> dict:
+        return {
+            "trace_id": "test-trace-id",
+            "skip_cache": True,
+            "commands": [{"method": "ssot_get", "kwargs": {"path": path}}],
+        }
+
+    def test_ssot_get_returns_json_and_uses_minted_core_token(self):
+        """ssot_get mints a client-credentials core token and GETs the My Domain
+        core REST path with it as a Bearer credential, returning the parsed JSON.
+        The minted token is never returned to the caller (the data-collector)."""
+        ssot_body = {
+            "dataStreams": [
+                {"name": "Web_Engagement", "totalRecords": 42},
+                {"name": "Email_Engagement", "totalRecords": 7},
+            ],
+            "totalSize": 2,
+        }
+        self.mock_responses.add_callback(
+            method=responses.GET,
+            url=self._SSOT_URL,
+            callback=Mock(return_value=(200, {}, json.dumps(ssot_body))),
+        )
+
+        response = self.agent.execute_operation(
+            connection_type="salesforce-data-cloud",
+            operation_name="test_ssot_get",
+            operation_dict=self._ssot_get_operation(self._SSOT_PATH),
+            credentials=self.credentials,
+        )
+
+        self.assertFalse(response.is_error, msg=str(response.result))
+        self.assertEqual(response.result[ATTRIBUTE_NAME_RESULT], ssot_body)
+
+        # A core token was minted via the client-credentials grant.
+        self.client_credentials_token_endpoint.assert_called()
+
+        # The /ssot GET carried the minted core token as a Bearer credential ...
+        ssot_call = next(
+            c
+            for c in self.mock_responses.calls
+            if "/ssot/data-streams" in c.request.url
+        )
+        self.assertEqual(
+            ssot_call.request.headers["Authorization"],
+            f"Bearer {self.client_credentials_token}",
+        )
+        # ... and the token never leaks back to the caller in the result.
+        self.assertNotIn(self.client_credentials_token, json.dumps(response.result))
+
+    def test_ssot_get_rejects_absolute_url(self):
+        """ssot_get must only ever target the connection's own My Domain. An
+        absolute URL (or any value carrying a scheme/host) is rejected before a
+        token is minted, so the customer's credential is never sent elsewhere."""
+        response = self.agent.execute_operation(
+            connection_type="salesforce-data-cloud",
+            operation_name="test_ssot_get_absolute_url",
+            operation_dict=self._ssot_get_operation("https://evil.example.com/steal"),
+            credentials=self.credentials,
+        )
+
+        self.assertTrue(response.is_error)
+        # The guard fired before any network call (a network attempt would surface
+        # a connection error, not this message).
+        self.assertIn("must be a relative path", str(response.result))
+
+    def test_ssot_get_rejects_protocol_relative_url(self):
+        """A protocol-relative value (`//host/...`) is also rejected — it would
+        otherwise resolve to a different host."""
+        response = self.agent.execute_operation(
+            connection_type="salesforce-data-cloud",
+            operation_name="test_ssot_get_protocol_relative",
+            operation_dict=self._ssot_get_operation("//evil.example.com/steal"),
+            credentials=self.credentials,
+        )
+
+        self.assertTrue(response.is_error)
+        self.assertIn("must be a relative path", str(response.result))
+
+    def test_ssot_get_http_error_surfaces_status_and_redacts_body(self):
+        """A non-200 from the SSOT endpoint surfaces as a RuntimeError carrying
+        `code NNN` (so the data-collector can extract the HTTP status), with the
+        Salesforce error body included and any access_token redacted."""
+        self.mock_responses.add_callback(
+            method=responses.GET,
+            url=self._SSOT_URL,
+            callback=Mock(
+                return_value=(
+                    404,
+                    {},
+                    json.dumps(
+                        [{"errorCode": "NOT_FOUND", "message": "no such resource"}]
+                    ),
+                )
+            ),
+        )
+
+        response = self.agent.execute_operation(
+            connection_type="salesforce-data-cloud",
+            operation_name="test_ssot_get_http_error",
+            operation_dict=self._ssot_get_operation(self._SSOT_PATH),
+            credentials=self.credentials,
+        )
+
+        self.assertTrue(response.is_error)
+        message = str(response.result)
+        self.assertIn("code 404", message)
+        self.assertIn("NOT_FOUND", message)
+
+    def test_ssot_get_forwards_query_string(self):
+        """A path carrying a query string (`?limit=100`) is allowed by the guard
+        and forwarded to Salesforce verbatim — `responses` matches on the base
+        URL, so assert the actual request URL preserved the query string."""
+        path_with_query = "/services/data/v62.0/ssot/data-streams?limit=100"
+        self.mock_responses.add_callback(
+            method=responses.GET,
+            url=self._SSOT_URL,
+            callback=Mock(return_value=(200, {}, json.dumps({"dataStreams": []}))),
+        )
+
+        response = self.agent.execute_operation(
+            connection_type="salesforce-data-cloud",
+            operation_name="test_ssot_get_query_string",
+            operation_dict=self._ssot_get_operation(path_with_query),
+            credentials=self.credentials,
+        )
+
+        self.assertFalse(response.is_error, msg=str(response.result))
+        ssot_call = next(
+            c
+            for c in self.mock_responses.calls
+            if "/ssot/data-streams" in c.request.url
+        )
+        self.assertIn("limit=100", ssot_call.request.url)
+
+    def test_ssot_get_allows_url_valued_query_param(self):
+        """The path guard must reject values by their URL *structure* (scheme or
+        host present), not by substring — a relative path whose query string
+        merely embeds a URL (e.g. a pagination cursor) is safe and allowed."""
+        path_with_url_cursor = (
+            "/services/data/v62.0/ssot/data-streams"
+            "?next=https://api.salesforce.com/cursor/abc"
+        )
+        self.mock_responses.add_callback(
+            method=responses.GET,
+            url=self._SSOT_URL,
+            callback=Mock(return_value=(200, {}, json.dumps({"dataStreams": []}))),
+        )
+
+        response = self.agent.execute_operation(
+            connection_type="salesforce-data-cloud",
+            operation_name="test_ssot_get_url_valued_query",
+            operation_dict=self._ssot_get_operation(path_with_url_cursor),
+            credentials=self.credentials,
+        )
+
+        self.assertFalse(response.is_error, msg=str(response.result))
+
+    def test_ssot_get_does_not_log_query_string_values(self):
+        """Query-string values (pagination cursors, filters) may carry sensitive
+        data — logs must only include the path component, never the query."""
+        path_with_query = (
+            "/services/data/v62.0/ssot/data-streams?cursor=sensitive-cursor-value"
+        )
+        self.mock_responses.add_callback(
+            method=responses.GET,
+            url=self._SSOT_URL,
+            callback=Mock(return_value=(200, {}, json.dumps({"dataStreams": []}))),
+        )
+
+        with self.assertLogs(self._PROXY_CLIENT_LOGGER, level="INFO") as logs:
+            response = self.agent.execute_operation(
+                connection_type="salesforce-data-cloud",
+                operation_name="test_ssot_get_query_not_logged",
+                operation_dict=self._ssot_get_operation(path_with_query),
+                credentials=self.credentials,
+            )
+
+        self.assertFalse(response.is_error, msg=str(response.result))
+        log_text = "\n".join(logs.output)
+        for record in logs.records:
+            self.assertNotIn("sensitive-cursor-value", str(record.__dict__))
+        self.assertNotIn("sensitive-cursor-value", log_text)
+
+    def test_ssot_get_non_json_200_raises_runtime_error(self):
+        """A 200 response whose body is not JSON surfaces as a RuntimeError that
+        names the failure (`non-JSON`) rather than letting the ValueError from
+        response.json() propagate raw."""
+        self.mock_responses.add_callback(
+            method=responses.GET,
+            url=self._SSOT_URL,
+            callback=Mock(return_value=(200, {}, "<html>not json</html>")),
+        )
+
+        response = self.agent.execute_operation(
+            connection_type="salesforce-data-cloud",
+            operation_name="test_ssot_get_non_json",
+            operation_dict=self._ssot_get_operation(self._SSOT_PATH),
+            credentials=self.credentials,
+        )
+
+        self.assertTrue(response.is_error)
+        self.assertIn("non-JSON", str(response.result))
+
+    def test_ssot_get_http_error_redacts_token_in_body(self):
+        """A non-200 whose body embeds a token has the token redacted before the
+        body is surfaced — `[REDACTED]` appears and the raw token does not."""
+        self.mock_responses.add_callback(
+            method=responses.GET,
+            url=self._SSOT_URL,
+            callback=Mock(
+                return_value=(
+                    403,
+                    {},
+                    json.dumps(
+                        [{"errorCode": "X", "access_token": "secret-should-redact"}]
+                    ),
+                )
+            ),
+        )
+
+        response = self.agent.execute_operation(
+            connection_type="salesforce-data-cloud",
+            operation_name="test_ssot_get_redacts_token",
+            operation_dict=self._ssot_get_operation(self._SSOT_PATH),
+            credentials=self.credentials,
+        )
+
+        self.assertTrue(response.is_error)
+        message = str(response.result)
+        self.assertIn("[REDACTED]", message)
+        self.assertNotIn("secret-should-redact", message)
+
+    def test_redact_body_masks_sensitive_keys(self):
+        """`_redact_body` masks double-quoted access_token / id_token values (the
+        raw response.text form) while leaving non-sensitive fields intact."""
+        from apollo.integrations.db.salesforce_data_cloud_proxy_client import (
+            _redact_body,
+        )
+
+        body = json.dumps(
+            {
+                "access_token": "secret-access",
+                "id_token": "secret-id",
+                "instance_url": "https://test.salesforce.com",
+            }
+        )
+        redacted = _redact_body(body)
+        self.assertIsNotNone(redacted)
+        self.assertNotIn("secret-access", redacted)
+        self.assertNotIn("secret-id", redacted)
+        self.assertIn("[REDACTED]", redacted)
+        # Non-sensitive fields are preserved.
+        self.assertIn("instance_url", redacted)
+        self.assertIn("https://test.salesforce.com", redacted)
 
 
 class SalesforceDataCloudRetryTests(TestCase):

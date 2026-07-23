@@ -42,8 +42,8 @@ setup(
         "Natural Language :: English",
         "Topic :: Software Development :: Build Tools",
         "License :: OSI Approved :: Apache Software License",
-        "Programming Language :: Python :: 3.12",
+        "Programming Language :: Python :: 3.13",
     ],
-    python_requires=">=3.12",
+    python_requires=">=3.13",
     setup_requires=["setuptools", "setuptools_scm"],
 )

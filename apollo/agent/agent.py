@@ -15,6 +15,11 @@ from apollo.common.agent.env_vars import (
     PRE_SIGNED_URL_RESPONSE_EXPIRATION_SECONDS_ENV_VAR,
     MCD_AWS_CA_BUNDLE_SECRET_NAME_ENV_VAR,
 )
+from apollo.agent.additional_env_vars import (
+    ADDITIONAL_ENV_VARS_ENV_VAR,
+    is_sensitive_env_var_name,
+    sanitized_blob_for_health,
+)
 from apollo.agent.evaluation_utils import AgentEvaluationUtils
 from apollo.agent.platform import AgentPlatformProvider
 from apollo.agent.log_context import AgentLogContext
@@ -37,6 +42,10 @@ from apollo.common.agent.models import (
 from apollo.agent.proxy_client_factory import ProxyClientFactory
 from apollo.agent.settings import VERSION, BUILD_NUMBER
 from apollo.agent.updater import AgentUpdater
+from apollo.agent.upgrade_validation import (
+    get_configured_allowed_repos,
+    validate_upgrade_image,
+)
 from apollo.agent.utils import AgentUtils
 from apollo.credentials.factory import (
     CredentialsFactory,
@@ -197,7 +206,12 @@ class Agent:
         trace_id: Optional[str] = None,
     ) -> AgentResponse:
         """
-        Checks if telnet connection is usable.
+        Checks if a telnet connection is usable.
+
+        Retired validation: `telnetlib` was removed from the Python stdlib in 3.13
+        (PEP 594). The endpoint is kept for frontend compatibility but now maps to
+        the TCP-open check (see `ValidateNetwork.validate_tcp_open_connection`).
+
         :param host: Host to check, will raise `BadRequestError` if None.
         :param port_str: Port to check as a string containing the numeric port value, will raise `BadRequestError`
             if None or non-numeric.
@@ -321,6 +335,10 @@ class Agent:
         parameters.
         This method checks if there's an agent updater installed in `agent.updater` property and that
         the env var `MCD_AGENT_IS_REMOTE_UPGRADABLE` is set to `true`.
+        When an image is specified it must pass `validate_upgrade_image`: it has to come from the same
+        registry/namespace as the currently running image (widenable via `MCD_AGENT_UPGRADE_ALLOWED_REPOS`)
+        and must not be older than the running version. This prevents the upgrade path from being used to
+        deploy arbitrary or downgraded images.
         The returned response is a dictionary returned by the agent updater implementation.
         """
         with self._inject_log_context("update", trace_id):
@@ -397,7 +415,7 @@ class Agent:
     def get_supported_connector_types(self, trace_id: Optional[str]) -> AgentResponse:
         """
         Returns the connector types this agent supports, split into
-        native (built-in) and custom categories.
+        native (built-in), custom, and custom_etl categories.
         """
         with self._inject_log_context("get_supported_connector_types", trace_id):
             try:
@@ -408,12 +426,16 @@ class Agent:
                 from apollo.integrations.custom.custom_proxy_client import (
                     CustomProxyClient,
                 )
+                from apollo.integrations.custom_etl.custom_etl_proxy_client import (
+                    CustomEtlProxyClient,
+                )
 
                 return AgentUtils.agent_ok_response(
                     {
                         "connector_types": {
                             "native": get_native_connection_types(),
                             "custom": CustomProxyClient.get_custom_connector_types(),
+                            "custom_etl": CustomEtlProxyClient.get_custom_etl_connector_types(),
                         }
                     },
                     trace_id,
@@ -426,7 +448,7 @@ class Agent:
     def get_connection_manifests(self, trace_id: Optional[str]) -> AgentResponse:
         """
         Returns manifests, capabilities, and templates for all custom
-        connectors installed on this agent.
+        connectors (warehouse and ETL) installed on this agent.
         """
         with self._inject_log_context("get_connection_manifests", trace_id):
             try:
@@ -434,8 +456,12 @@ class Agent:
                 from apollo.integrations.custom.custom_proxy_client import (
                     CustomProxyClient,
                 )
+                from apollo.integrations.custom_etl.custom_etl_proxy_client import (
+                    CustomEtlProxyClient,
+                )
 
                 manifests = CustomProxyClient.get_connection_manifests()
+                manifests.update(CustomEtlProxyClient.get_connection_manifests())
                 return AgentUtils.agent_ok_response(manifests, trace_id)
             except Exception:  # noqa
                 return AgentUtils.agent_response_for_last_exception(
@@ -458,6 +484,14 @@ class Agent:
         upgradable = os.getenv(IS_REMOTE_UPGRADABLE_ENV_VAR, "false").lower() == "true"
         if not upgradable:
             raise AgentConfigurationError("Remote upgrades are disabled for this agent")
+
+        if image:
+            validate_upgrade_image(
+                image=image,
+                current_image=updater.get_current_image(),
+                current_version=VERSION,
+                extra_allowed_repos=get_configured_allowed_repos(),
+            )
 
         log_payload = self._logging_utils.build_extra(
             trace_id=trace_id,
@@ -483,8 +517,8 @@ class Agent:
         logger.info("Update complete", extra=log_payload)
         return update_result
 
-    @staticmethod
-    def _env_dictionary() -> Dict:
+    @classmethod
+    def _env_dictionary(cls) -> Dict:
         env: Dict[str, Optional[str]] = {
             "PYTHON_SYS_VERSION": sys.version,
             "CPU_COUNT": str(os.cpu_count()),
@@ -496,6 +530,25 @@ class Agent:
                 if os.getenv(env_var)
             }
         )
+        # Also surface any MCD_-prefixed env var not already covered by the
+        # allowlist, as long as its name doesn't look sensitive. Lets new
+        # operational toggles (e.g. MCD_ORACLE_THICK_MODE) show up in health
+        # without having to extend HEALTH_ENV_VARS in agent-base each time.
+        env.update(
+            {
+                key: value
+                for key, value in os.environ.items()
+                if key.startswith("MCD_")
+                and key not in env
+                and not is_sensitive_env_var_name(key)
+            }
+        )
+        # The additional-env-vars blob is a single non-sensitive-named var, so the
+        # per-key filter above can't protect secrets nested inside it — redact
+        # sensitive-named entries within it before returning.
+        blob = env.get(ADDITIONAL_ENV_VARS_ENV_VAR)
+        if blob:
+            env[ADDITIONAL_ENV_VARS_ENV_VAR] = sanitized_blob_for_health(blob)
         return env
 
     def validate_self_hosted_credentials(
@@ -653,15 +706,21 @@ class Agent:
             except Exception:  # noqa
                 return AgentUtils.agent_response_for_last_exception(client=client)
             finally:
-                if (response is None or response.is_error) and not operation.skip_cache:
-                    # discard clients that raised exceptions, clients like Redshift keep failing
-                    # after an error
+                # A custom ctp_config also bypasses the cache (see
+                # get_proxy_client), so such clients are never cached and must be
+                # closed here just like skip_cache ones — otherwise the temp
+                # credential files they registered linger until __del__/GC.
+                non_cached = operation.skip_cache or ctp_config is not None
+                if client and non_cached:
+                    # make sure non-cached clients are closed (also deletes any
+                    # registered temp files), on both the success and error paths
+                    client.close()
+                elif response is None or response.is_error:
+                    # discard cached clients that raised exceptions, clients like
+                    # Redshift keep failing after an error
                     ProxyClientFactory.dispose_proxy_client(
                         connection_type, credentials, operation.skip_cache
                     )
-                elif client and operation.skip_cache:
-                    # make sure non-cached clients are closed
-                    client.close()
 
     def _execute_client_operation(
         self,

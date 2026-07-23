@@ -28,6 +28,10 @@ class OracleClientArgs(TypedDict):
     ssl_server_dn_match: NotRequired[bool]  # default True
     ssl_server_cert_dn: NotRequired[str]
     ssl_version: NotRequired[Any]  # ssl.TLSVersion
+    # The full SslOptions block, passed through to OracleProxyClient which builds
+    # the thin ssl_context / thick wallet from it. NOT an oracledb.connect arg —
+    # the proxy client pops it from connect_args before calling connect().
+    ssl_options: NotRequired[Any]
     # Network
     tcp_connect_timeout: NotRequired[float]  # default 20.0 seconds
     https_proxy: NotRequired[str]
@@ -85,6 +89,11 @@ ORACLE_DEFAULT_CTP = CtpConfig(
             "user": "{{ raw.user | default(none) }}",
             "password": "{{ raw.password | default(none) }}",
             "expire_time": "{{ raw.expire_time | default(none) }}",
+            # Pass the SslOptions block through so OracleProxyClient can build the
+            # thin ssl_context / thick wallet. NativeEnvironment preserves the dict
+            # (it is not stringified). Without this the CTP drops ssl_options and
+            # SSL connections silently connect without trust (ORA-29024).
+            "ssl_options": "{{ raw.ssl_options | default(none) }}",
         },
     ),
     # Keep-alive every minute; required for AWS PrivateLink connections.

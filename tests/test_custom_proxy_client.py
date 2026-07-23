@@ -584,6 +584,31 @@ class TestGetConnectionManifests(TestCase):
 
             self.assertEqual(result, {})
 
+    def test_strips_credentials_schema_from_manifest(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            connector_dir = os.path.join(tmp_dir, "db1")
+            os.makedirs(connector_dir, exist_ok=True)
+            manifest = {
+                "connection_type": "custom-connector-aaa",
+                "connection_name": "db1",
+                "credentials_schema": {"connect_args": {"type": "dict"}},
+            }
+            with open(os.path.join(connector_dir, "manifest.json"), "w") as f:
+                json.dump(manifest, f)
+
+            with patch(
+                "apollo.integrations.custom.custom_connector_loader._CUSTOM_CONNECTORS_BASE_PATH",
+                tmp_dir,
+            ), patch(
+                "apollo.integrations.custom.custom_connector_loader._custom_connector_registry",
+                None,
+            ):
+                result = CustomProxyClient.get_connection_manifests()
+
+            aaa = result["custom-connector-aaa"]
+            self.assertNotIn("credentials_schema", aaa["manifest"])
+            self.assertEqual(aaa["manifest"]["connection_type"], "custom-connector-aaa")
+
     def test_handles_missing_templates(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             _create_mock_connector_dir(
@@ -609,10 +634,14 @@ class TestGetConnectionManifests(TestCase):
 
 class TestAgentGetConnectionManifests(TestCase):
     @patch(
+        "apollo.integrations.custom_etl.custom_etl_proxy_client.get_custom_etl_connector_registry",
+        return_value={},
+    )
+    @patch(
         "apollo.integrations.custom.custom_proxy_client.get_custom_connector_registry",
         return_value={},
     )
-    def test_returns_ok_response(self, _mock_registry):
+    def test_returns_ok_response(self, _mock_registry, _mock_etl_registry):
         agent = Agent(None)
         response = agent.get_connection_manifests(trace_id="test-trace")
 
@@ -690,10 +719,14 @@ class TestGetCustomConnectorTypes(TestCase):
 
 class TestAgentGetSupportedConnectorTypes(TestCase):
     @patch(
+        "apollo.integrations.custom_etl.custom_etl_proxy_client.get_custom_etl_connector_registry",
+        return_value={},
+    )
+    @patch(
         "apollo.integrations.custom.custom_proxy_client.get_custom_connector_registry",
         return_value={},
     )
-    def test_returns_native_and_custom(self, _mock_registry):
+    def test_returns_native_and_custom(self, _mock_registry, _mock_etl_registry):
         agent = Agent(None)
         response = agent.get_supported_connector_types(trace_id="test-trace")
 
@@ -703,6 +736,7 @@ class TestAgentGetSupportedConnectorTypes(TestCase):
         self.assertIn("connector_types", result)
         self.assertIn("native", result["connector_types"])
         self.assertIn("custom", result["connector_types"])
+        self.assertIn("custom_etl", result["connector_types"])
         # native should contain known built-in types
         native = result["connector_types"]["native"]
         self.assertIn("bigquery", native)
@@ -710,8 +744,9 @@ class TestAgentGetSupportedConnectorTypes(TestCase):
         self.assertIn("postgres", native)
         # native list should be sorted
         self.assertEqual(native, sorted(native))
-        # custom is empty because registry is mocked empty
+        # custom and custom_etl are empty because registries are mocked empty
         self.assertEqual(result["connector_types"]["custom"], [])
+        self.assertEqual(result["connector_types"]["custom_etl"], [])
         self.assertEqual(response.trace_id, "test-trace")
 
     @patch(

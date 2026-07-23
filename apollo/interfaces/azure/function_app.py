@@ -14,6 +14,11 @@ from apollo.common.agent.env_vars import (
     ORCHESTRATION_ACTIVITY_TIMEOUT_DEFAULT_VALUE,
 )
 from apollo.interfaces.azure.log_context import AzureLogContext
+from apollo.agent.additional_env_vars import apply_additional_env_vars
+
+# Inject IaC-provided env vars (MCD_ADDITIONAL_ENV_VARS) before anything reads
+# configuration (the generic interface does the same for the other platforms).
+apply_additional_env_vars()
 
 # remove default handlers to prevent duplicate log messages
 # https://learn.microsoft.com/en-us/python/api/overview/azure/monitor-opentelemetry-readme?view=azure-python#logging-issues

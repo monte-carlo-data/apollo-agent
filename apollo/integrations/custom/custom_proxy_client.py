@@ -185,8 +185,10 @@ class CustomProxyClient(BaseProxyClient):
         registry = get_custom_connector_registry()
         result: Dict[str, Dict[str, Any]] = {}
         for connection_type, connector_dir in registry.items():
+            manifest = load_manifest(connector_dir)
+            manifest.pop("credentials_schema", None)
             result[connection_type] = {
-                "manifest": load_manifest(connector_dir),
+                "manifest": manifest,
                 "templates": load_templates(connector_dir),
             }
         return result
@@ -227,7 +229,7 @@ class CustomProxyClient(BaseProxyClient):
             "rowcount": rowcount,
         }
 
-    def close(self):
+    def _close_client(self):
         try:
             self._connector.close_connection()
             logger.info("Closed custom connector connection")

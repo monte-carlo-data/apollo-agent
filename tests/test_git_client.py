@@ -47,7 +47,7 @@ class GitTests(TestCase):
             "--depth",
             "1",
             "git@github.com:gh_account/repo.git",
-            "/tmp/repo",
+            str(client.wrapped_client._repo_dir),
             env=ANY,
         )
 
@@ -73,7 +73,7 @@ class GitTests(TestCase):
             "--depth",
             "1",
             "https://oauth2:TOKEN@github.com/gh_account/repo.git",
-            "/tmp/repo",
+            str(client._repo_dir),
         )
 
     @patch("apollo.integrations.git.git_client.git")
@@ -95,7 +95,7 @@ class GitTests(TestCase):
             "--depth",
             "1",
             "https://oauth2:TOKEN@self-managed.example.com/grp/repo.git",
-            "/tmp/repo",
+            str(client._repo_dir),
         )
 
     @patch("apollo.integrations.git.git_client.git")
@@ -116,7 +116,7 @@ class GitTests(TestCase):
             "--depth",
             "1",
             "https://oauth2:TOKEN@github.com/gh_account/repo.git",
-            "/tmp/repo",
+            str(client._repo_dir),
         )
 
     @patch("apollo.integrations.git.git_client.git")
@@ -139,7 +139,7 @@ class GitTests(TestCase):
             "--depth",
             "1",
             "https://oauth2:TOKEN@self-managed.example.com/grp/repo.git",
-            "/tmp/repo",
+            str(client._repo_dir),
         )
 
     @patch("apollo.integrations.git.git_client.git")
@@ -162,7 +162,7 @@ class GitTests(TestCase):
             "--depth",
             "1",
             "https://oauth2:TOKEN@self-managed.example.com/grp/repo.git",
-            "/tmp/repo",
+            str(client._repo_dir),
         )
 
     @patch("apollo.integrations.git.git_client.git")
@@ -176,17 +176,62 @@ class GitTests(TestCase):
                 "ssl_skip_verification": True,
             }
         )
-        with patch.object(client, "_KEY_FILE"):
+        try:
             client.write_key()
             client._ssh_git_clone()
-        git_mock.exec_command.assert_called_with(
-            "clone",
-            "--depth",
-            "1",
-            "git@github.com:gh_account/repo.git",
-            "/tmp/repo",
-            env=ANY,
+            git_mock.exec_command.assert_called_with(
+                "clone",
+                "--depth",
+                "1",
+                "git@github.com:gh_account/repo.git",
+                str(client._repo_dir),
+                env=ANY,
+            )
+        finally:
+            client.delete_key()
+
+    @patch.object(GitCloneClient, "git_clone")
+    @patch.object(GitCloneClient, "delete_repo_dir")
+    def test_ssh_key_deleted_after_get_files(self, _delete_repo, _git_clone):
+        """write_key creates a real key file; the get_files finally must delete it."""
+        client = GitCloneClient(
+            credentials={
+                "repo_url": "git@github.com:gh_account/repo.git",
+                "ssh_key": base64.b64encode(b"SSH TEST KEY"),
+            }
         )
+        with patch.object(
+            client, "read_files", return_value=[GitFileData("a.txt", "x")]
+        ):
+            list(client.get_files(["txt"]))
+
+        self.assertIsNotNone(client._key_file)
+        self.assertFalse(
+            client._key_file.exists(),
+            "SSH key file should be deleted after get_files",
+        )
+
+    @patch.object(GitCloneClient, "git_clone")
+    @patch.object(GitCloneClient, "delete_repo_dir")
+    def test_ssh_key_deleted_even_when_read_fails(self, _delete_repo, _git_clone):
+        """Cleanup runs in a finally, so an error mid-clone still removes the key."""
+        client = GitCloneClient(
+            credentials={
+                "repo_url": "git@github.com:gh_account/repo.git",
+                "ssh_key": base64.b64encode(b"SSH TEST KEY"),
+            }
+        )
+
+        def _boom(_exts):
+            raise RuntimeError("read failed")
+            yield  # pragma: no cover - makes this a generator
+
+        with patch.object(client, "read_files", side_effect=_boom):
+            with self.assertRaises(RuntimeError):
+                list(client.get_files(["txt"]))
+
+        self.assertIsNotNone(client._key_file)
+        self.assertFalse(client._key_file.exists())
 
     @patch("apollo.integrations.git.git_client.git")
     def test_git_version(self, git_mock):

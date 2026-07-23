@@ -1,7 +1,7 @@
+import json
 import os
 import socket
 import sys
-from telnetlib import Telnet
 from unittest import TestCase
 from unittest.mock import patch, create_autospec, Mock
 
@@ -13,7 +13,6 @@ from apollo.common.agent.constants import (
 )
 from apollo.agent.logging_utils import LoggingUtils
 from apollo.agent.utils import AgentUtils
-from apollo.validators.validate_network import _DEFAULT_TIMEOUT_SECS
 from tests.platform_provider import TestPlatformProvider
 
 
@@ -57,6 +56,47 @@ class HealthNetworkTests(TestCase):
         self.assertTrue("outbound_ip_address" in health_info["extra"])
         self.assertEqual(ip_address, health_info["extra"]["outbound_ip_address"])
 
+    @patch.dict(
+        os.environ,
+        {
+            "MCD_ORACLE_THICK_MODE": "true",
+            "MCD_CUSTOM_TOGGLE": "on",
+            "MCD_SOME_SECRET": "shh",
+            "MCD_STORAGE_ACCESS_KEY": "AKIAEXAMPLE",
+            "MCD_API_TOKEN": "t0ken",
+            "MCD_DB_PASSWORD": "pw",
+            "NON_MCD_VAR": "x",
+        },
+    )
+    def test_env_dictionary_includes_non_sensitive_mcd_vars(self):
+        env = Agent._env_dictionary()
+        # Non-sensitive MCD_ vars are surfaced without touching HEALTH_ENV_VARS.
+        self.assertEqual("true", env["MCD_ORACLE_THICK_MODE"])
+        self.assertEqual("on", env["MCD_CUSTOM_TOGGLE"])
+        # Sensitive-looking names (secret/password/token/key/credential) excluded.
+        self.assertNotIn("MCD_SOME_SECRET", env)
+        self.assertNotIn("MCD_STORAGE_ACCESS_KEY", env)  # caught by "key"
+        self.assertNotIn("MCD_API_TOKEN", env)
+        self.assertNotIn("MCD_DB_PASSWORD", env)
+        # Non-MCD_ vars are not swept in.
+        self.assertNotIn("NON_MCD_VAR", env)
+
+    @patch.dict(
+        os.environ,
+        {
+            "MCD_ADDITIONAL_ENV_VARS": (
+                '{"MCD_ORACLE_THICK_MODE":"true","MCD_API_TOKEN":"t0ken"}'
+            )
+        },
+    )
+    def test_env_dictionary_redacts_secrets_inside_additional_env_vars_blob(self):
+        env = Agent._env_dictionary()
+        # The blob is surfaced (diagnostics) but sensitive-named entries inside
+        # it are redacted, since the per-key filter can't see into the blob.
+        blob = json.loads(env["MCD_ADDITIONAL_ENV_VARS"])
+        self.assertEqual("true", blob["MCD_ORACLE_THICK_MODE"])
+        self.assertEqual("__redacted__", blob["MCD_API_TOKEN"])
+
     def test_param_validations(self):
         response = self._agent.validate_telnet_connection(
             None, None, None, trace_id="1234"
@@ -82,17 +122,21 @@ class HealthNetworkTests(TestCase):
             response.result.get(ATTRIBUTE_NAME_ERROR),
         )
 
+    # Tests use a public IP literal so assert_safe_destination short-circuits
+    # without hitting DNS. `localhost` is now rejected by the SSRF guard —
+    # covered by dedicated regression tests further down.
+
     @patch("socket.socket")
     def test_tcp_open_success(self, mock_socket):
         mock_socket = mock_socket.return_value
         mock_socket.connect_ex.return_value = 0
         response = self._agent.validate_tcp_open_connection(
-            "localhost", "123", None, trace_id="1234"
+            "93.184.216.34", "123", None, trace_id="1234"
         )
         self.assertEqual("1234", response.result.get(ATTRIBUTE_NAME_TRACE_ID))
         self.assertIsNone(response.result.get(ATTRIBUTE_NAME_ERROR))
         self.assertEqual(
-            "Port 123 is open on localhost",
+            "Port 123 is open on 93.184.216.34",
             response.result.get(ATTRIBUTE_NAME_RESULT).get("message"),
         )
 
@@ -100,43 +144,135 @@ class HealthNetworkTests(TestCase):
     def test_tcp_open_failure(self, mock_socket):
         mock_socket = mock_socket.return_value
         mock_socket.connect_ex.return_value = 1
-        response = self._agent.validate_tcp_open_connection("localhost", "123", None)
+        response = self._agent.validate_tcp_open_connection(
+            "93.184.216.34", "123", None
+        )
         self.assertEqual(
-            "Port 123 is closed on localhost.",
+            "Port 123 is closed on 93.184.216.34.",
             response.result.get(ATTRIBUTE_NAME_ERROR),
         )
 
-    @patch("apollo.validators.validate_network.Telnet")
-    def test_telnet_success(self, mock_telnet):
-        response = self._agent.validate_telnet_connection("localhost", "123", None)
+    # `telnetlib` was removed from the Python stdlib in 3.13 (PEP 594). The
+    # retired telnet check is kept for frontend compatibility but now maps to
+    # the TCP-open validation, so its responses match TCP-open's.
+
+    @patch("socket.socket")
+    def test_telnet_maps_to_tcp_open_success(self, mock_socket):
+        mock_socket = mock_socket.return_value
+        mock_socket.connect_ex.return_value = 0
+        response = self._agent.validate_telnet_connection("93.184.216.34", "123", None)
         self.assertIsNone(response.result.get(ATTRIBUTE_NAME_ERROR))
         self.assertEqual(
-            "Telnet connection for localhost:123 is usable.",
+            "Port 123 is open on 93.184.216.34",
             response.result.get(ATTRIBUTE_NAME_RESULT).get("message"),
         )
 
-    @patch("apollo.validators.validate_network.Telnet")
-    def test_telnet_timeout(self, mock_telnet):
-        mock_telnet.side_effect = socket.timeout
-
-        response = self._agent.validate_telnet_connection("localhost", "123", "11")
-        mock_telnet.assert_called_with("localhost", 123, 11)
+    @patch("socket.socket")
+    def test_telnet_maps_to_tcp_open_closed(self, mock_socket):
+        mock_socket = mock_socket.return_value
+        mock_socket.connect_ex.return_value = 1
+        response = self._agent.validate_telnet_connection("93.184.216.34", "123", None)
         self.assertEqual(
-            "Socket timeout for localhost:123. Connection unusable.",
+            "Port 123 is closed on 93.184.216.34.",
             response.result.get(ATTRIBUTE_NAME_ERROR),
         )
 
-    @patch("apollo.validators.validate_network.Telnet")
-    def test_telnet_read_failed(self, mock_telnet):
-        mock_session = create_autospec(Telnet)
-        mock_telnet.return_value.__enter__.return_value = mock_session
-        mock_session.read_very_eager.side_effect = EOFError
+    @patch("socket.socket")
+    def test_telnet_maps_to_tcp_open_timeout(self, mock_socket):
+        mock_socket = mock_socket.return_value
+        mock_socket.connect_ex.side_effect = socket.timeout
+        response = self._agent.validate_telnet_connection("93.184.216.34", "123", None)
+        self.assertIsNotNone(response.result.get(ATTRIBUTE_NAME_ERROR))
 
-        response = self._agent.validate_telnet_connection("localhost", "123", None)
-        mock_telnet.assert_called_with("localhost", 123, _DEFAULT_TIMEOUT_SECS)
-        self.assertEqual(
-            "Telnet connection for localhost:123 is unusable.",
-            response.result.get(ATTRIBUTE_NAME_ERROR),
+    # --- TOCTOU regression tests ------------------------------------------
+
+    @patch("apollo.validators.validate_network.socket.socket")
+    @patch("apollo.integrations.http.url_safety.socket.getaddrinfo")
+    def test_tcp_open_resolves_once_no_toctou(self, mock_gai, mock_socket_cls):
+        """Regression: TCP validator must resolve DNS once (via assert_safe_destination)
+        and connect by IP, not re-resolve. Mock getaddrinfo to return a public IP;
+        assert connect_ex was called with that IP, not with the hostname."""
+        mock_gai.return_value = [
+            (socket.AF_INET, socket.SOCK_STREAM, 0, "", ("93.184.216.34", 80)),
+        ]
+        mock_sock = mock_socket_cls.return_value
+        mock_sock.connect_ex.return_value = 0
+
+        response = self._agent.validate_tcp_open_connection(
+            "example.com", "80", None, trace_id=None
+        )
+
+        # getaddrinfo called once (by assert_safe_destination); connect_ex called
+        # with the resolved IP literal, not the hostname.
+        self.assertEqual(mock_gai.call_count, 1)
+        mock_sock.connect_ex.assert_called_once_with(("93.184.216.34", 80))
+        self.assertIsNone(response.result.get(ATTRIBUTE_NAME_ERROR))
+
+    @patch("apollo.validators.validate_network.socket.socket")
+    @patch("apollo.integrations.http.url_safety.socket.getaddrinfo")
+    def test_telnet_resolves_once_no_toctou(self, mock_gai, mock_socket_cls):
+        """Regression: the telnet endpoint now maps to TCP-open, which must
+        resolve DNS once (via assert_safe_destination) and connect by IP, not
+        re-resolve. Assert connect_ex was called with the resolved IP."""
+        mock_gai.return_value = [
+            (socket.AF_INET, socket.SOCK_STREAM, 0, "", ("93.184.216.34", 23)),
+        ]
+        mock_sock = mock_socket_cls.return_value
+        mock_sock.connect_ex.return_value = 0
+
+        response = self._agent.validate_telnet_connection(
+            "example.com", "23", None, trace_id=None
+        )
+
+        self.assertEqual(mock_gai.call_count, 1)
+        mock_sock.connect_ex.assert_called_once_with(("93.184.216.34", 23))
+        self.assertIsNone(response.result.get(ATTRIBUTE_NAME_ERROR))
+
+    # --- SSRF guard regression tests --------------------------------------
+
+    def test_tcp_open_rejects_metadata_ip(self):
+        """The SSRF guard refuses to probe cloud metadata services even via
+        the troubleshooting endpoint."""
+        response = self._agent.validate_tcp_open_connection(
+            "169.254.169.254", "80", None
+        )
+        self.assertIn(
+            "blocked address",
+            response.result.get(ATTRIBUTE_NAME_ERROR) or "",
+        )
+
+    def test_tcp_open_rejects_localhost(self):
+        response = self._agent.validate_tcp_open_connection("localhost", "80", None)
+        self.assertIn(
+            "localhost",
+            response.result.get(ATTRIBUTE_NAME_ERROR) or "",
+        )
+
+    def test_telnet_rejects_metadata_ip(self):
+        response = self._agent.validate_telnet_connection("169.254.169.254", "80", None)
+        self.assertIn(
+            "blocked address",
+            response.result.get(ATTRIBUTE_NAME_ERROR) or "",
+        )
+
+    def test_telnet_rejects_localhost(self):
+        """F4: SSRF guard symmetry — Telnet mirrors TCP's localhost rejection."""
+        response = self._agent.validate_telnet_connection("localhost", "80", None)
+        self.assertIn(
+            "localhost",
+            response.result.get(ATTRIBUTE_NAME_ERROR) or "",
+        )
+
+    def test_http_rejects_metadata_ip(self):
+        """The HTTP troubleshooting endpoint must not be a way to fetch
+        IMDS credentials. The SSRF guard fires at the TCP layer and the
+        error is surfaced as a ConnectionFailedError."""
+        response = self._agent.validate_http_connection(
+            "http://169.254.169.254/latest/meta-data/", "true", None, trace_id=None
+        )
+        self.assertIn(
+            "blocked address",
+            response.result.get(ATTRIBUTE_NAME_ERROR) or "",
         )
 
     @patch("apollo.validators.validate_network.socket.getaddrinfo")
@@ -152,13 +288,13 @@ class HealthNetworkTests(TestCase):
             response.result.get(ATTRIBUTE_NAME_RESULT).get("message"),
         )
 
-    @patch("requests.get")
-    def test_http_connection(self, get_mock):
+    @patch("apollo.validators.validate_network.safe_request")
+    def test_http_connection(self, safe_request_mock):
         response_mock = Mock()
         response_mock.status_code = 200
         response_mock.reason = "OK"
         response_mock.content = b"foo"
-        get_mock.return_value = response_mock
+        safe_request_mock.return_value = response_mock
         response = self._agent.validate_http_connection(
             "https://foo.bar", "true", None, trace_id=None
         )

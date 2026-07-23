@@ -32,8 +32,9 @@ class TmpFileWriteTransform(Transform):
             os.unlink(path)
             raise
 
-        # TODO: temp files are not cleaned up after the connection closes;
-        # a cleanup protocol tied to the proxy client lifecycle is needed
+        # Record the path so the proxy client can delete it on close — the
+        # pipeline has no handle to the (not-yet-constructed) client itself.
+        state.temp_files.append(path)
         state.derived[output_key] = path
 
 

@@ -1,3 +1,4 @@
+import os
 from unittest import TestCase
 from unittest.mock import Mock, patch
 
@@ -35,6 +36,28 @@ class TestBaseAwsProxyClientCredentialRouting(TestCase):
         GlueProxyClient(None)
 
         mock_session.assert_called_once_with(region_name=None)
+
+    @patch("apollo.integrations.aws.base_aws_proxy_client.boto3.Session")
+    @patch.object(BaseAwsProxyClient, "_assume_role")
+    def test_ca_data_registers_and_cleans_up_temp_file(
+        self, mock_assume_role, mock_session
+    ):
+        mock_assume_role.return_value = AwsSession("KEY", "SECRET", "TOKEN")
+        mock_session.return_value = Mock()
+
+        creds = {
+            **_CREDS,
+            "ssl_options": {"ca_data": "-----BEGIN CERTIFICATE-----\nX\n"},
+        }
+        client = GlueProxyClient({"connect_args": creds})
+
+        self.assertEqual(1, len(client._temp_files))
+        ca_path = client._temp_files[0]
+        self.assertTrue(ca_path.endswith("_ca_bundle.pem"))
+        self.assertTrue(os.path.exists(ca_path))
+
+        client.close()
+        self.assertFalse(os.path.exists(ca_path))
 
 
 class TestSecretsManagerProxyClientCredentialRouting(TestCase):

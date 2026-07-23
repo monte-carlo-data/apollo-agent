@@ -208,3 +208,191 @@ def test_salesforce_crm_no_variant_fails(client):
     # cerberus's oneof_schema flags the dict — every candidate variant is
     # listed under the connect_args error so the customer can see the choices.
     assert "connect_args" in payload["errors"]
+
+
+def test_redshift_password_variant(client):
+    # Monte Carlo-managed / username+password auth.
+    payload = _post_validate(
+        client,
+        "redshift",
+        {
+            "connect_args": {
+                "host": "cluster.abc.eu-west-1.redshift.amazonaws.com",
+                "port": "5439",
+                "dbname": "analytics",
+                "user": "mc_user",
+                "password": "pwd",
+            }
+        },
+    )
+    assert payload["valid"] is True
+    assert payload["connection_type"] == "redshift"
+    assert payload["errors"] == {}
+
+
+def test_redshift_federated_variant_no_password(client):
+    # IAM-federated (Connection Auth Rules): no static password — the agent
+    # mints temporary credentials via GetClusterCredentials. Uses db_name
+    # (the documented key) rather than dbname. This is the SUP-532 shape that
+    # previously failed validation.
+    payload = _post_validate(
+        client,
+        "redshift",
+        {
+            "connect_args": {
+                "host": "cluster.abc.eu-west-1.redshift.amazonaws.com",
+                "port": "5439",
+                "db_name": "analytics",
+                "cluster_identifier": "mc-cluster",
+                "db_user": "mc_user",
+                "aws_region": "eu-west-1",
+            }
+        },
+    )
+    assert payload["valid"] is True
+    assert payload["errors"] == {}
+
+
+def test_redshift_no_auth_variant_fails(client):
+    # Neither a password nor the federated fields — matches no variant.
+    payload = _post_validate(
+        client,
+        "redshift",
+        {"connect_args": {"host": "cluster.abc.eu-west-1.redshift.amazonaws.com"}},
+    )
+    assert payload["valid"] is False
+    assert "connect_args" in payload["errors"]
+
+
+def test_redshift_ambiguous_both_variants_fails(client):
+    # A secret carrying BOTH a static password and the federated fields matches
+    # both oneof_schema variants — cerberus rejects it as ambiguous rather than
+    # silently picking one. Pins the invariant documented on the schema.
+    payload = _post_validate(
+        client,
+        "redshift",
+        {
+            "connect_args": {
+                "host": "cluster.abc.eu-west-1.redshift.amazonaws.com",
+                "port": "5439",
+                "db_name": "analytics",
+                "password": "pwd",
+                "cluster_identifier": "mc-cluster",
+                "db_user": "mc_user",
+                "aws_region": "eu-west-1",
+            }
+        },
+    )
+    assert payload["valid"] is False
+    assert "connect_args" in payload["errors"]
+
+
+@pytest.mark.parametrize("db_key", ["db_name", "dbname", "database"])
+def test_redshift_db_name_aliases_password_variant(client, db_key):
+    # All three db-name aliases are accepted in the password variant.
+    payload = _post_validate(
+        client,
+        "redshift",
+        {
+            "connect_args": {
+                "host": "cluster.abc.eu-west-1.redshift.amazonaws.com",
+                "port": "5439",
+                db_key: "analytics",
+                "user": "mc_user",
+                "password": "pwd",
+            }
+        },
+    )
+    assert payload["valid"] is True
+    assert payload["errors"] == {}
+
+
+@pytest.mark.parametrize("db_key", ["db_name", "dbname", "database"])
+def test_redshift_db_name_aliases_federated_variant(client, db_key):
+    # All three db-name aliases are accepted in the federated variant too.
+    payload = _post_validate(
+        client,
+        "redshift",
+        {
+            "connect_args": {
+                "host": "cluster.abc.eu-west-1.redshift.amazonaws.com",
+                "port": "5439",
+                db_key: "analytics",
+                "cluster_identifier": "mc-cluster",
+                "db_user": "mc_user",
+                "aws_region": "eu-west-1",
+            }
+        },
+    )
+    assert payload["valid"] is True
+    assert payload["errors"] == {}
+
+
+def test_redshift_federated_variant_optional_fields(client):
+    # The optional IAM-role fields on the federated variant validate and don't
+    # trip the schema (guards against a field-name typo in the schema).
+    payload = _post_validate(
+        client,
+        "redshift",
+        {
+            "connect_args": {
+                "host": "cluster.abc.eu-west-1.redshift.amazonaws.com",
+                "port": "5439",
+                "db_name": "analytics",
+                "cluster_identifier": "mc-cluster",
+                "db_user": "mc_user",
+                "aws_region": "eu-west-1",
+                "assumable_role": "arn:aws:iam::123456789012:role/mc-redshift",
+                "external_id": "ext-123",
+                "duration_seconds": 3600,
+            }
+        },
+    )
+    assert payload["valid"] is True
+    assert payload["errors"] == {}
+
+
+# -- custom connector tests ------------------------------------------------
+
+
+def _custom_connector_schema() -> dict[str, Any]:
+    """Schema returned by the platform for a hypothetical custom connector."""
+    return {
+        "connect_args": {
+            "type": "dict",
+            "required": True,
+            "schema": {
+                "host": {"type": "string", "required": True},
+                "port": {"type": "integer", "required": True},
+            },
+        }
+    }
+
+
+def test_custom_connector_valid_credentials(client):
+    with patch(
+        "apollo.agent.agent.get_credentials_schema_for_connection_type",
+        return_value=_custom_connector_schema(),
+    ):
+        payload = _post_validate(
+            client,
+            "custom-connector-abc1234",
+            {"connect_args": {"host": "db.example.com", "port": 5432}},
+        )
+    assert payload["valid"] is True
+    assert payload["connection_type"] == "custom-connector-abc1234"
+    assert payload["errors"] == {}
+
+
+def test_custom_connector_invalid_credentials(client):
+    with patch(
+        "apollo.agent.agent.get_credentials_schema_for_connection_type",
+        return_value=_custom_connector_schema(),
+    ):
+        payload = _post_validate(
+            client,
+            "custom-connector-abc1234",
+            {"connect_args": {"host": "db.example.com"}},
+        )
+    assert payload["valid"] is False
+    assert "connect_args" in payload["errors"]

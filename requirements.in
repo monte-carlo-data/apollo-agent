@@ -9,15 +9,16 @@ brotli==1.2.0  # Upgrade transient dependency of flask-compress to address SEC-1
 cachetools==5.3.3  # Runtime dep for apollo/credentials/external_credentials_cache.py; pinned here so it shows up in install_requires for downstream consumers
 cerberus>=1.3.5
 clickhouse-connect==0.8.18
-cryptography>=46.0.5  # CVE-2026-26007
-databricks-sql-connector==4.0.0
+cryptography>=48.0.1  # CVE-2026-26007; >=48.0.1 for GHSA-537c-gmf6-5ccf (bundled OpenSSL OOB read, fixed in 48.0.1)
+databricks-sql-connector==4.2.5  # highest 4.x compatible with impyla's thrift==0.16.0 pin (4.2.6+ require thrift>=0.22.0); 4.0.0 also capped numpy<2.0.0, which blocked the Python 3.13 numpy 2 bump
 databricks-sdk==0.39.0
-duckdb==1.1.0
+duckdb==1.5.3  # pinned to the exact version MotherDuck's server-side extension supports (it rejects both <1.5.3 and >1.5.3, e.g. 1.5.4)
 flask==2.3.3
 flask-compress==1.14
 google-api-python-client==2.176.0  # Upgraded in VULN-620
+google-cloud-dataform==0.6.2
 google-cloud-secret-manager==2.25.0
-google-cloud-storage==2.10.0
+google-cloud-storage==2.19.0  # 2.10.0 shipped a legacy setuptools namespace (nspkg.pth + namespace_packages.txt for `google`), which corrupts the `google` namespace under Python 3.13 and crashes the Azure Functions worker (KeyError: 'google'). 2.19.0 uses native PEP 420 namespaces.
 gunicorn==26.0.0  # VULN-1117/YET-1356: request-smuggling & header-framing hardening (AIKIDO-2026-10742); stricter RFC 9112/9110 parsing. Default sync/gthread workers unaffected by the eventlet-worker removal.
 hdbcli==2.18.27
 ibm-db==3.2.7
@@ -26,19 +27,19 @@ lxml>=6.1.0  # CVE-2026-41066 (XXE)
 lambda-git==0.1.1
 looker-sdk==24.2.0
 msal==1.36.0  # allow cryptography>=46.0.5 (CVE-2026-26007); 1.31.0 capped cryptography<46
-numpy<2.0.0  # prevent "numpy.dtype size changed" errors: https://github.com/numpy/numpy/issues/26710
+numpy>=2.1.0  # numpy 2 required for Python 3.13: cp313 wheels first shipped in 2.1.0. The old "numpy.dtype size changed" ABI risk (https://github.com/numpy/numpy/issues/26710) is moot once every native dep is built against numpy 2.
 oracledb>=2.4.1
 orjson>=3.11.6  # CVE-2025-67221: recursion DoS in orjson.dumps thru 3.11.4
 presto-python-client==0.8.3
 trino==0.336.0
 protobuf==5.29.6
-psycopg2-binary==2.9.9
+psycopg2-binary==2.9.12  # latest 2.9.x; bumped from 2.9.9 which had no Python 3.13 (cp313) wheels
 pyarrow==23.0.1  # CVE-2026-25087 (Python bindings unaffected per GHSA-rgxp-2hwp-jwgg, but Trivy/Scout flag <23.0.1)
 pyasn1>=0.6.3  # CVE-2026-30922 (uncontrolled recursion), CVE-2026-23490
 pycryptodome>=3.21.0
-pyjwt>=2.12.0  # CVE-2026-32597
+pyjwt>=2.13.0  # CVE-2026-32597, CVE-2026-48526
 PyMySQL>=1.1.1
-pyodbc==5.0.1
+pyodbc==5.3.0  # latest 5.x; bumped from 5.0.1 which had no Python 3.13 (cp313) wheels
 pyOpenSSL>=26.0.0  # CVE-2026-27459 (buffer overflow)
 retry2==0.9.5
 salesforce-cdp-connector==1.0.19  # For Salesforce Data Cloud integration (YET-615: dataspace= support)
@@ -49,8 +50,16 @@ tableauserverclient==0.25 ; python_version < "3.10"
 tableauserverclient==0.38 ; python_version >= "3.10"
 urllib3~=2.7  # CVE-2026-44431, CVE-2026-44432
 
-teradatasql>=20.0.0.60  # 20.0.0.60 bumps embedded golang.org/x/crypto 0.47.0->0.52.0 (closes CVE-2026-39829/-39830/-39831/-39832/-39833/-39834/-42508/-46595/-46597) and golang.org/x/net 0.49.0->0.54.0 (closes CVE-2026-33814); Go stdlib still 1.26.3. Still bundled at vulnerable versions: x/net 0.54.0 (CVE-2026-39821 needs >=0.55.0) + thrift 0.22.0 (CVE-2026-41602 needs >=0.23.0), pending upstream
-oscrypto @ git+https://github.com/wbond/oscrypto@master
+teradatasql>=20.0.0.61  # 20.0.0.61 resolves the last teradata-bundled HIGH/CRITICAL from the daily scan: drops the standalone golang.org/x/net (was 0.54.0, CVE-2026-39821) and github.com/apache/thrift (was 0.22.0, CVE-2026-41602 — module now entirely absent from the .so) deps, and bumps the Go toolchain 1.26.3->1.26.4 (closes stdlib CVE-2026-42504); golang.org/x/crypto stays 0.52.0. Verified by extracting the wheel and diffing teradatasql.arm.fips.so build info
 
 impyla==0.22.0
 werkzeug==3.1.0
+
+# Transitive native deps forced up to their lowest Python 3.13 (cp313) wheel
+# release. At their previous resolved versions these had no cp313 wheel, so the
+# slim image would build lz4 from source (fails: no compiler) and silently drop
+# google-crc32c/markupsafe to their pure-python fallbacks (losing the native
+# acceleration the 3.12 image shipped).
+google-crc32c>=1.7.0
+lz4>=4.4.3
+markupsafe>=3.0.0

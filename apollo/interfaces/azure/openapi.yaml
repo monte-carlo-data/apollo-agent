@@ -435,29 +435,24 @@ paths:
   # Synchronous agent operations
   # ---------------------------------------------------------------------------
 
-  /api/v1/agent/execute/storage/{operation_name}:
+  /api/v1/agent/execute/{connection_type}/{operation_name}:
     post:
-      summary: Execute a synchronous storage agent operation
+      summary: Execute a synchronous agent operation
       description: >
-        Executes a storage agent operation synchronously and returns the result in
-        the same response.
+        Executes an agent operation synchronously and returns the result in the same
+        response.
 
-        On Azure, agent operations are normally run asynchronously via Azure Durable
-        Functions (see `POST /async/api/v1/agent/execute/{connection_type}/{operation_name}`)
-        because they can exceed the 4 minute Azure Functions execution limit. Storage
-        operations are the exception: they are short-lived and are always invoked
-        synchronously, so `storage` is the only connection type served by this route.
+        On Azure, long-running operations are normally run asynchronously via Azure
+        Durable Functions (see
+        `POST /async/api/v1/agent/execute/{connection_type}/{operation_name}`) because
+        they can exceed the 4 minute Azure Functions execution limit. Short-lived
+        operations — `storage` operations and lightweight checks such as
+        `validate_connection` — are invoked synchronously through this route, which
+        accepts any connection type.
       tags: [Agent Operations]
       parameters:
-        - name: operation_name
-          in: path
-          required: true
-          description: >
-            Name of the operation, used for logging only. The actual commands are
-            defined in the `operation` body field.
-          schema:
-            type: string
-            example: is_bucket_private
+        - $ref: "#/components/parameters/connection_type_path"
+        - $ref: "#/components/parameters/operation_name_path"
       requestBody:
         required: true
         content:
@@ -476,11 +471,141 @@ paths:
                     args: []
       responses:
         "200":
-          description: The result of the storage operation.
+          description: The result of the operation.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/AgentOperationResponse"
+
+  /api/v1/agent/execute_script/{connection_type}:
+    post:
+      summary: Execute a synchronous agent script
+      description: >
+        Executes a Python script against a connection of the given type. The script
+        must define a `run` function that receives the connection client and an agent
+        context, plus optional keyword arguments supplied in the request body.
+      tags: [Agent Operations]
+      parameters:
+        - $ref: "#/components/parameters/connection_type_path"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExecuteScriptRequest"
+      responses:
+        "200":
+          description: The result of the script execution.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentOperationResponse"
+
+  /api/v1/self-hosted-credentials/validate/{connection_type}:
+    post:
+      summary: Validate self-hosted credentials
+      description: >
+        Validates self-hosted credentials for the given connection type. Fetches the
+        secret from the customer's secret store (AWS Secrets Manager, GCP Secret
+        Manager, Azure Key Vault, env var or file) and runs a schema check. Inline
+        passthrough credentials are rejected with HTTP 400.
+      tags: [Agent Operations]
+      parameters:
+        - $ref: "#/components/parameters/connection_type_path"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ValidateSelfHostedCredentialsRequest"
+      responses:
+        "200":
+          description: Validation result. `valid` is true when `errors` is empty.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidateSelfHostedCredentialsResponse"
+        "400":
+          description: >
+            The request body was malformed, the connection type does not support
+            self-hosted credentials validation, or the agent failed to fetch / decode
+            the credentials from the customer's secret store.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentErrorResponse"
+
+  /api/v1/ctp/validate/{connection_type}:
+    post:
+      summary: Validate a custom CTP config
+      description: >
+        Performs structural validation of a custom Credential Transform Pipeline (CTP)
+        config: deserialization, transform-type existence, Jinja2 template syntax and
+        required key coverage. Does not execute the pipeline or create a proxy client.
+      tags: [Agent Operations]
+      parameters:
+        - $ref: "#/components/parameters/connection_type_path"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CtpValidateRequest"
+      responses:
+        "200":
+          description: Validation result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CtpValidateResponse"
+        "400":
+          description: Invalid or missing request body.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CtpValidateResponse"
+
+  /api/v1/agent/connectors/types:
+    post:
+      summary: Get supported connector types
+      description: >
+        Returns all connector types this agent supports, split into native (built-in)
+        and custom categories. Used during agent registration to validate supported
+        connectors without a full manifest extraction.
+      tags: [Agent Operations]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TraceIdRequest"
+      responses:
+        "200":
+          description: Native and custom connector types supported by this agent.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SupportedConnectorTypesResponse"
+
+  /api/v1/agent/custom-connectors/manifests:
+    post:
+      summary: Get custom connector manifests
+      description: >
+        Returns manifests, capabilities and templates for all custom connectors
+        installed on this agent. Used for discovery when the caller does not yet know
+        which custom connectors are available.
+      tags: [Agent Operations]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TraceIdRequest"
+      responses:
+        "200":
+          description: Connection manifests for all custom connectors on this agent.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectionManifestsResponse"
 
   # ---------------------------------------------------------------------------
   # Azure Durable Functions – async operations
@@ -498,26 +623,8 @@ paths:
         it is not automatically retried by the Durable Functions framework.
       tags: [Azure Async Operations]
       parameters:
-        - name: connection_type
-          in: path
-          required: true
-          description: >
-            The integration type. One of: `bigquery`, `databricks`, `http`, `storage`,
-            `looker`, `git`, `redshift`, `postgres`, `sql-server`, `snowflake`, `mysql`,
-            `oracle`, `teradata`, `azure-dedicated-sql-pool`, `azure-sql-database`,
-            `tableau`, `sap-hana`, `power-bi`.
-          schema:
-            type: string
-            example: snowflake
-        - name: operation_name
-          in: path
-          required: true
-          description: >
-            Name of the operation, used for logging only. The actual commands are
-            defined in the `operation` body field.
-          schema:
-            type: string
-            example: execute_query
+        - $ref: "#/components/parameters/connection_type_path"
+        - $ref: "#/components/parameters/operation_name_path"
       requestBody:
         required: true
         content:
@@ -638,6 +745,30 @@ components:
         type: string
         example: "324986b4-b185-4187-b4af-b0c2cd60f7a0"
 
+    connection_type_path:
+      name: connection_type
+      in: path
+      required: true
+      description: >
+        The integration type. One of: `bigquery`, `databricks`, `http`, `storage`,
+        `looker`, `git`, `redshift`, `postgres`, `sql-server`, `snowflake`, `mysql`,
+        `oracle`, `teradata`, `azure-dedicated-sql-pool`, `azure-sql-database`,
+        `tableau`, `sap-hana`, `power-bi`. Custom connector types are also accepted.
+      schema:
+        type: string
+        example: snowflake
+
+    operation_name_path:
+      name: operation_name
+      in: path
+      required: true
+      description: >
+        Name of the operation, used for logging only. The actual commands are
+        defined in the `operation` body field.
+      schema:
+        type: string
+        example: execute_query
+
     host_query_required:
       name: host
       in: query
@@ -731,6 +862,120 @@ components:
         __mcd_result__:
           - ["database_1"]
           - ["database_2"]
+
+    AgentErrorResponse:
+      type: object
+      description: Standard agent error envelope returned when a request fails.
+      properties:
+        __mcd_error__:
+          type: string
+          description: Error message.
+        __mcd_exception__:
+          type: string
+          description: Additional exception detail (present only on failure).
+        __mcd_stack_trace__:
+          type: array
+          description: Stack trace frames (present only on failure).
+          items:
+            type: string
+      example:
+        __mcd_error__: "Request body must be a JSON object"
+
+    ValidateSelfHostedCredentialsResponse:
+      type: object
+      properties:
+        __mcd_result__:
+          type: object
+          properties:
+            valid:
+              type: boolean
+              description: True when `errors` is empty.
+            connection_type:
+              type: string
+            errors:
+              type: object
+              description: >
+                Cerberus-style validation errors. Empty when `valid` is true. May
+                include a `__variants__` key when one-of auth groups fail.
+              additionalProperties: {}
+        __mcd_trace_id__:
+          type: string
+          description: Echo of the supplied trace_id.
+      example:
+        __mcd_result__:
+          valid: false
+          connection_type: snowflake
+          errors:
+            connect_args:
+              - account: ["required field"]
+            __variants__:
+              - "At least one of these field groups must be fully present: ..."
+        __mcd_trace_id__: "324986b4-b185-4187-b4af-b0c2cd60f7a0"
+
+    CtpValidateResponse:
+      type: object
+      description: >
+        Structural validation result for a custom CTP config. Not wrapped in the
+        `__mcd_result__` envelope.
+      properties:
+        valid:
+          type: boolean
+        errors:
+          type: array
+          items:
+            type: string
+        warnings:
+          type: array
+          items:
+            type: string
+      required: [valid]
+      example:
+        valid: false
+        errors:
+          - "Unknown transform type: foo"
+        warnings: []
+
+    SupportedConnectorTypesResponse:
+      type: object
+      properties:
+        __mcd_result__:
+          type: object
+          properties:
+            connector_types:
+              type: object
+              properties:
+                native:
+                  type: array
+                  items:
+                    type: string
+                custom:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                      name:
+                        type: string
+      example:
+        __mcd_result__:
+          connector_types:
+            native:
+              - bigquery
+              - snowflake
+            custom:
+              - type: acme-crm
+                name: Acme CRM
+
+    ConnectionManifestsResponse:
+      type: object
+      description: >
+        Manifests, capabilities and templates for all custom connectors installed on
+        this agent. The shape of `__mcd_result__` depends on the installed connectors.
+      properties:
+        __mcd_result__:
+          type: object
+          additionalProperties: {}
 
     NetworkTestResponse:
       type: object
@@ -1048,6 +1293,85 @@ components:
               description: Ordered list of commands to execute.
               items:
                 $ref: "#/components/schemas/Command"
+
+    TraceIdRequest:
+      type: object
+      description: Minimal request body carrying only an optional trace ID.
+      properties:
+        trace_id:
+          type: string
+          description: Optional trace ID echoed back in the response.
+          example: "324986b4-b185-4187-b4af-b0c2cd60f7a0"
+
+    ExecuteScriptRequest:
+      type: object
+      description: Request body for executing an agent script.
+      properties:
+        credentials:
+          type: object
+          description: Authentication information for establishing the connection.
+          additionalProperties: {}
+        operation:
+          type: object
+          description: The script to execute.
+          properties:
+            trace_id:
+              type: string
+              description: Optional trace ID for log correlation.
+              example: "324986b4-b185-4187-b4af-b0c2cd60f7a0"
+            script:
+              type: string
+              description: >
+                Source of the Python script to execute. Must define a `run`
+                function that receives the connection client and an agent context.
+            kwargs:
+              type: object
+              description: Keyword arguments passed to the script's `run` function.
+              additionalProperties: {}
+      example:
+        credentials:
+          connect_args:
+            user: user_name
+            password: password
+            account: account
+            warehouse: warehouse
+        operation:
+          trace_id: "324986b4-b185-4187-b4af-b0c2cd60f7a0"
+          script: |
+            def run(connection, context, sql_query):
+                cursor = connection.cursor()
+                cursor.execute(sql_query)
+                return cursor.fetchall()
+          kwargs:
+            sql_query: "select database_name from snowflake.information_schema.databases"
+
+    ValidateSelfHostedCredentialsRequest:
+      type: object
+      description: >
+        Request body for validating self-hosted credentials. The `credentials`
+        envelope must include a `self_hosted_credentials_type` key (one of
+        `aws_secrets_manager`, `gcp_secret_manager`, `azure_key_vault`, `env_var`,
+        `file`) plus that store's identifier fields. Inline passthrough credentials
+        are rejected with HTTP 400.
+      properties:
+        credentials:
+          type: object
+          description: Self-hosted credentials envelope.
+          additionalProperties: {}
+        trace_id:
+          type: string
+          description: Optional trace ID echoed back in the response.
+          example: "324986b4-b185-4187-b4af-b0c2cd60f7a0"
+      required: [credentials]
+
+    CtpValidateRequest:
+      type: object
+      properties:
+        ctp_config:
+          type: object
+          description: The CTP config to validate (name, steps, mapper).
+          additionalProperties: {}
+      required: [ctp_config]
 
     TestHealthRequest:
       type: object

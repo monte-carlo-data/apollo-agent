@@ -62,6 +62,8 @@ class GlueTests(TestCase):
 
         GlueProxyClient({"connect_args": _GLUE_CREDENTIALS_WITH_CERT})
 
-        mock_session_instance.client.assert_called_once_with(
-            "glue", verify="/tmp/glue_ca_bundle.pem"
-        )
+        mock_session_instance.client.assert_called_once()
+        args, kwargs = mock_session_instance.client.call_args
+        self.assertEqual(("glue",), args)
+        # verify is now a unique temp-file path (per-client), suffixed for identification.
+        self.assertTrue(kwargs["verify"].endswith("_ca_bundle.pem"))

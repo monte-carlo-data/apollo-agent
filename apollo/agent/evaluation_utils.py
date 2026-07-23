@@ -109,10 +109,12 @@ class AgentEvaluationUtils:
                 )
             except Exception as ex:
                 duration_s = time.monotonic() - t0
-                logger.info(
-                    f"Command failed, method={command.method}, "
-                    f"target={type(target).__name__}, duration_s={duration_s:.3f}, "
-                    f"error={ex}"
+                logger.exception(
+                    "Command failed, method=%s, target=%s, duration_s=%.3f, error_type=%s",
+                    command.method,
+                    type(target).__name__,
+                    duration_s,
+                    type(ex).__name__,
                 )
                 raise
             duration_s = time.monotonic() - t0
@@ -141,6 +143,7 @@ class AgentEvaluationUtils:
             client = getattr(target, "wrapped_client")
             if hasattr(client, method_name):
                 return getattr(client, method_name)
+        logger.error("Failed to resolve method %s", method_name)
         raise AttributeError(f"Failed to resolve method {method_name}")
 
     @classmethod
