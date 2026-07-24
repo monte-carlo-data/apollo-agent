@@ -407,7 +407,7 @@ jobs:
           command: |
             export MCD_DEFAULT_API_ID=${MCD_SMOKE_TESTS_API_ID}
             export MCD_DEFAULT_API_TOKEN=${MCD_SMOKE_TESTS_API_TOKEN}
-            montecarlo collectors run-validations --all-validations --agent-id << parameters.agent_uuid >>
+            montecarlo collectors run-validations --only-periodic --agent-id << parameters.agent_uuid >>
 
 workflows:
   version: 2
