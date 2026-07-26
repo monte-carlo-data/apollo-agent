@@ -237,6 +237,37 @@ class OracleDbClientTests(TestCase):
 
     @patch("oracledb.connect")
     @patch("apollo.integrations.db.oracle_proxy_client.create_oracle_ssl_context")
+    def test_ssl_server_dn_match_follows_verify_identity(
+        self, mock_create_ssl_context: Mock, mock_connect: Mock
+    ) -> None:
+        """oracledb thin mode does its own server-DN/hostname match via the
+        ``ssl_server_dn_match`` connect arg (default True), independent of the
+        SSLContext's ``check_hostname``. ``verify_identity`` /
+        ``skip_cert_verification`` must drive it, otherwise turning off
+        "verify identity" cannot disable the DPY-6006 hostname-mismatch check."""
+        mock_create_ssl_context.return_value = MagicMock(spec=ssl.SSLContext)
+        mock_connect.return_value = self._mock_connection
+        ca_cert_data = "-----BEGIN CERTIFICATE-----\nCA\n-----END CERTIFICATE-----"
+
+        cases = [
+            ({"ca_data": ca_cert_data}, True),  # verify_identity defaults to True
+            ({"ca_data": ca_cert_data, "verify_identity": False}, False),
+            ({"ca_data": ca_cert_data, "skip_cert_verification": True}, False),
+        ]
+        for ssl_options, expected in cases:
+            with self.subTest(ssl_options=ssl_options):
+                mock_connect.reset_mock()
+                OracleProxyClient(
+                    {
+                        "connect_args": _ORACLE_DB_CREDENTIALS,
+                        "ssl_options": ssl_options,
+                    }
+                )
+                call_kwargs = mock_connect.call_args[1]
+                self.assertEqual(call_kwargs.get("ssl_server_dn_match"), expected)
+
+    @patch("oracledb.connect")
+    @patch("apollo.integrations.db.oracle_proxy_client.create_oracle_ssl_context")
     def test_ssl_options_inside_connect_args_is_popped(
         self, mock_create_ssl_context: Mock, mock_connect: Mock
     ) -> None:

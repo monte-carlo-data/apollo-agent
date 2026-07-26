@@ -60,6 +60,11 @@ class OracleProxyClient(BaseDbProxyClient):
             oracle_client_config.configure_thick_connection(ssl_options)
         elif ssl_context := create_oracle_ssl_context(ssl_options):
             connect_args["ssl_context"] = ssl_context
+            # oracledb thin does its own DN/hostname match via ssl_server_dn_match
+            # (default True), separate from ssl_context.check_hostname; mirror the flag.
+            connect_args["ssl_server_dn_match"] = (
+                not ssl_options.skip_cert_verification and ssl_options.verify_identity
+            )
 
         self._connection = oracledb.connect(**connect_args)  # type: ignore
 
