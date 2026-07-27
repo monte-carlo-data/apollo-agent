@@ -1,4 +1,4 @@
-import urllib.parse
+import json
 from typing import Dict, List, Optional
 
 import requests
@@ -7,6 +7,7 @@ from snowflake.connector.errors import DatabaseError, ProgrammingError
 
 from apollo.common.agent.models import AgentExecuteSqlQueryResponse
 from apollo.integrations.db.base_db_proxy_client import BaseDbProxyClient
+from apollo.integrations.http.relative_path import validate_relative_rest_path
 
 _ATTR_CONNECT_ARGS = "connect_args"
 
@@ -85,31 +86,23 @@ class SnowflakeProxyClient(BaseDbProxyClient):
         timeout: Optional[int] = None,
     ) -> Dict:
         """Execute one authenticated REST request against this connection's own
-        Snowflake account, reusing the live connector session's token, and
-        return the parsed JSON.
+        Snowflake account, reusing the live connector session's token.
 
-        JSON only. ``path`` must be relative (begin with ``/``, no scheme or
-        host) so the session token is only ever sent to the connection's own
-        Snowflake host. The token is never returned, logged, or echoed in an
-        error. Mirrors ``SalesforceDataCloudProxyClient.ssot_get``.
+        Returns ``{"status_code": int, "response": <JSON-parsed body, or the
+        raw body text when it isn't valid JSON>}`` on a 2xx response, or
+        ``{"status_code": int, "error": <body text truncated to 10,000
+        chars>}`` otherwise. The session token is scrubbed from every
+        returned body (it is sent only in the request's ``Authorization``
+        header) — the non-2xx body is capped at 10,000 chars since it's
+        error/diagnostic text, but the 2xx body is not, since the primary
+        production payload is a Cortex SSE stream returned as plain text
+        that can legitimately exceed that size.
+
+        ``path`` must be relative (begin with ``/``, no scheme or host) so
+        the session token is only ever sent to the connection's own
+        Snowflake host. Mirrors ``SalesforceDataCloudProxyClient.ssot_get``.
         """
-        try:
-            split = urllib.parse.urlsplit(path) if isinstance(path, str) else None
-        except ValueError:
-            split = None
-        if (
-            split is None
-            or split.scheme
-            or split.netloc
-            or not path.startswith("/")
-            or path.startswith("//")
-            or "\r" in path
-            or "\n" in path
-        ):
-            raise ValueError(
-                f"execute_rest_request: path must be a relative path beginning "
-                f"with '/' (no scheme or host), got: {path!r}"
-            )
+        validate_relative_rest_path(path)
 
         rest = getattr(self._connection, "rest", None)
         token = getattr(rest, "token", None)
@@ -128,19 +121,16 @@ class SnowflakeProxyClient(BaseDbProxyClient):
             timeout=timeout,
         )
 
-        def _redact(text: str) -> str:
-            # The token lives only in the request header, never the response
-            # body; redact defensively anyway and cap length.
-            return text.replace(token, "***")[:10_000]
+        # The token lives only in the request header, never the response
+        # body; redact defensively anyway, uniformly, before branching on
+        # status code.
+        text = response.text.replace(token, "***")
 
         if response.status_code // 100 != 2:
-            return {
-                "status_code": response.status_code,
-                "error": _redact(response.text),
-            }
+            return {"status_code": response.status_code, "error": text[:10_000]}
 
         try:
-            payload = response.json()
+            payload = json.loads(text)
         except ValueError:
-            payload = response.text
+            payload = text
         return {"status_code": response.status_code, "response": payload}
