@@ -12,11 +12,18 @@ operation) supply an already-authenticated storage client and a key template.
 
 Contract notes (see the AO-914 master plan, contracts C1/C4):
 
-- **Batching:** a file is flushed when adding the next fragment would cross
-  ``flush_bytes`` (pre-add check), so no output file exceeds
-  ``max(flush_bytes, largest_single_fragment)``. A single fragment larger than
-  the threshold ships alone, never truncated. The residual buffer is flushed
-  when the iterator is exhausted; an empty buffer never produces a file.
+- **Batching:** a flush can trigger two ways. Pre-add: adding the next
+  fragment would cross ``flush_bytes``, so the buffer is flushed first and the
+  new fragment starts the next file. Post-add: the fragment just appended
+  brings the buffer to ``flush_bytes`` or beyond, so the file is flushed
+  immediately rather than waiting for another fragment. Together these keep
+  each output file close to ``max(flush_bytes, largest_single_fragment)`` — an
+  approximate bound, not an exact one: the written payload is a re-serialized
+  compact merge, and JSON number round-tripping (e.g. ``1e5`` becoming
+  ``100000.0``) can inflate it by a few bytes per scientific-notation numeric
+  field. A single fragment larger than the threshold ships alone, never
+  truncated. The residual buffer is flushed when the iterator is exhausted; an
+  empty buffer never produces a file.
 - **Keys:** ``key_template`` is filled via ``key_template.format(seq=N)`` with
   ``seq`` 0-based and incremented once per file; the canonical template uses
   ``{seq:04d}`` (pinned in C1) but the module is format-agnostic. The template
@@ -31,9 +38,11 @@ Contract notes (see the AO-914 master plan, contracts C1/C4):
   error lists them, same as-passed namespace as ``Manifest.files``); a retry
   with the same deterministic key template overwrites them. Errors never carry
   fragment content — fragments may hold prompt/completion text and exceptions
-  flow to logs and error reporting. Wrapped transform exceptions are
-  referenced by type only; the chained ``__cause__`` of a transform failure is
-  the caller's content-hygiene responsibility.
+  flow to logs and error reporting. Transform exceptions are referenced by
+  type only and are not chained (``raise ... from None``), so a transform's
+  own exception message — which may embed fragment content — never reaches
+  ``__cause__``; the JSON-parse path applies the same treatment for the same
+  reason.
 - **Memory:** peak usage is a small multiple of ``flush_bytes`` (parsed object
   trees plus the merged output string at flush time) and is unbounded by a
   single oversized fragment. Fragments are consumed lazily from the iterator;
@@ -104,8 +113,10 @@ def write_otlp_files(
     :param storage: destination client; only ``write(key, payload)`` is used.
     :param key_template: object-key template with a ``{seq}`` placeholder
         (canonically ``{seq:04d}``), relative to the client's namespace.
-    :param flush_bytes: buffered-bytes threshold that triggers a flush
-        (pre-add check; see module docstring for the file-size bound).
+    :param flush_bytes: buffered-bytes threshold that triggers a flush, both
+        pre-add (adding the next fragment would cross it) and post-add (the
+        fragment just appended reaches or exceeds it); see module docstring
+        for the file-size bound.
     :param transform: optional per-fragment rewrite applied to the raw string
         before parsing; ``None`` means identity.
     :return: a :class:`Manifest` of files written and stream statistics.
@@ -142,11 +153,23 @@ def write_otlp_files(
             try:
                 raw_fragment = transform(raw_fragment)
             except Exception as exc:
+                # Deliberately not chained: a transform's own exception
+                # message may embed fragment content (e.g. prompt/completion
+                # text). The exception type is already captured in the detail
+                # string, so no diagnostic value is lost by breaking the
+                # chain.
                 raise OtlpFragmentError(
                     index,
                     f"transform raised {type(exc).__name__}",
                     list(files),
-                ) from exc
+                ) from None
+
+        if not isinstance(raw_fragment, str):
+            raise OtlpFragmentError(
+                index,
+                f"fragment is {type(raw_fragment).__name__}, expected str",
+                list(files),
+            )
 
         try:
             document = json.loads(raw_fragment)
