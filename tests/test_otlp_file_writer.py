@@ -302,8 +302,25 @@ class TestWriteOtlpFiles(TestCase):
         self.assertIn("ValueError", str(ctx.exception))
         self.assertNotIn(secret, str(ctx.exception))
         self.assertNotIn(secret, repr(vars(ctx.exception)))
-        # Chained for the caller; its content hygiene is the caller's concern.
-        self.assertIsInstance(ctx.exception.__cause__, ValueError)
+        # Deliberately not chained: the transform's own exception may embed
+        # fragment content, so it must never reach __cause__.
+        self.assertIsNone(ctx.exception.__cause__)
+
+    def test_transform_returning_non_string_fails_fast(self):
+        def returns_none(fragment: str) -> str:
+            return None
+
+        good = _make_fragment(["s1"])
+        with self.assertRaises(OtlpFragmentError) as ctx:
+            write_otlp_files(
+                iter([good]), self.storage, _KEY_TEMPLATE, transform=returns_none
+            )
+
+        self.assertEqual(0, ctx.exception.fragment_index)
+        self.storage.write.assert_not_called()
+        self.assertEqual([], ctx.exception.keys_written)
+        # Content-free: names the wrong type, never fragment content.
+        self.assertIn("NoneType", ctx.exception.detail)
 
     def test_transform_is_applied_per_fragment(self):
         def rename_spans(fragment: str) -> str:
@@ -361,6 +378,148 @@ class TestWriteOtlpFiles(TestCase):
         # files == the exact keys passed to storage.write, in flush order,
         # final flush included.
         self.assertEqual(self._written_keys(), manifest.files)
+
+    def test_max_collected_ts_is_true_max_across_fragments(self):
+        fragments = [
+            _make_fragment(["s1"], collected_ts="2026-07-27T00:00:09Z"),
+            _make_fragment(["s2"], collected_ts="2026-07-27T00:00:01Z"),
+            _make_fragment(["s3"]),  # no collected_ts attribute at all
+        ]
+
+        manifest = write_otlp_files(iter(fragments), self.storage, _KEY_TEMPLATE)
+
+        # A "last non-null wins" regression would report 00:00:01Z (fragment 2)
+        # since it's the last fragment carrying an actual value.
+        self.assertEqual("2026-07-27T00:00:09Z", manifest.max_collected_ts)
+
+    def test_max_collected_ts_across_spans_within_a_fragment(self):
+        # Built directly (bypassing _make_fragment, which pins one ts for all
+        # spans) so two spans in the same fragment carry different timestamps.
+        fragment = json.dumps(
+            {
+                "resourceSpans": [
+                    {
+                        "scopeSpans": [
+                            {
+                                "spans": [
+                                    {
+                                        "name": "span-low",
+                                        "attributes": [
+                                            {
+                                                "key": "montecarlo.collected_ts",
+                                                "value": {
+                                                    "stringValue": "2026-07-27T00:00:01Z"
+                                                },
+                                            }
+                                        ],
+                                    },
+                                    {
+                                        "name": "span-high",
+                                        "attributes": [
+                                            {
+                                                "key": "montecarlo.collected_ts",
+                                                "value": {
+                                                    "stringValue": "2026-07-27T00:00:09Z"
+                                                },
+                                            }
+                                        ],
+                                    },
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            }
+        )
+
+        manifest = write_otlp_files(iter([fragment]), self.storage, _KEY_TEMPLATE)
+
+        self.assertEqual(2, manifest.span_count)
+        self.assertEqual("2026-07-27T00:00:09Z", manifest.max_collected_ts)
+
+    def test_malformed_nested_levels_are_skipped_not_fatal(self):
+        # Top-level resourceSpans is a well-formed list (so the envelope check
+        # in write_otlp_files passes); nested levels below it are malformed in
+        # several distinct ways that _collect_span_stats/_list_of_dicts must
+        # tolerate rather than crash on.
+        fragment = json.dumps(
+            {
+                "resourceSpans": [
+                    # scopeSpans is not a list at all: skipped, 0 spans.
+                    {"scopeSpans": "not-a-list"},
+                    # scopeSpan present but its spans is null: skipped, 0 spans.
+                    {"scopeSpans": [{"spans": None}]},
+                    # Span itself is well-formed (counted), but its attributes
+                    # is a dict instead of a list: attributes are unreachable,
+                    # not fatal.
+                    {
+                        "scopeSpans": [
+                            {
+                                "spans": [
+                                    {
+                                        "name": "malformed-attributes",
+                                        "attributes": {"key": "not-a-list-entry"},
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    # Span is well-formed (counted), but its collected_ts
+                    # attribute's value is a bare string instead of the
+                    # expected {"stringValue": ...} dict: that attribute is
+                    # skipped, so this high timestamp must NOT win.
+                    {
+                        "scopeSpans": [
+                            {
+                                "spans": [
+                                    {
+                                        "name": "malformed-value",
+                                        "attributes": [
+                                            {
+                                                "key": "montecarlo.collected_ts",
+                                                "value": "2026-07-27T00:00:09Z",
+                                            }
+                                        ],
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    # One fully well-formed span, to prove counting still works.
+                    {
+                        "scopeSpans": [
+                            {
+                                "spans": [
+                                    {
+                                        "name": "well-formed",
+                                        "attributes": [
+                                            {
+                                                "key": "montecarlo.collected_ts",
+                                                "value": {
+                                                    "stringValue": "2026-07-27T00:00:05Z"
+                                                },
+                                            }
+                                        ],
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                ]
+            }
+        )
+
+        manifest = write_otlp_files(iter([fragment]), self.storage, _KEY_TEMPLATE)
+
+        self.storage.write.assert_called_once()
+        self.assertEqual(1, len(manifest.files))
+        # Only the three dict-shaped spans count; the two resourceSpans
+        # entries with malformed nesting above the span level (non-list
+        # scopeSpans, null spans) contribute nothing rather than raising.
+        self.assertEqual(3, manifest.span_count)
+        # The malformed-value attribute's timestamp is ignored; only the
+        # well-formed span's timestamp is reflected.
+        self.assertEqual("2026-07-27T00:00:05Z", manifest.max_collected_ts)
 
     def test_fragments_are_consumed_lazily(self):
         fragment = _make_fragment(["s1"], padding=100)
