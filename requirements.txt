@@ -68,8 +68,9 @@ charset-normalizer==3.3.2
     # via
     #   requests
     #   snowflake-connector-python
-click==8.1.7
+click==8.4.2
     # via
+    #   -r requirements.in
     #   flask
     #   presto-python-client
 clickhouse-connect==0.8.18
@@ -164,8 +165,9 @@ gunicorn==26.0.0
     # via -r requirements.in
 hdbcli==2.18.27
     # via -r requirements.in
-httplib2==0.22.0
+httplib2==0.32.0
     # via
+    #   -r requirements.in
     #   google-api-python-client
     #   google-auth-httplib2
 ibm-db==3.2.7
@@ -279,7 +281,7 @@ pyarrow==23.0.1
     # via
     #   -r requirements.in
     #   salesforce-cdp-connector
-pyasn1==0.6.3
+pyasn1==0.6.4
     # via
     #   -r requirements.in
     #   pyasn1-modules
