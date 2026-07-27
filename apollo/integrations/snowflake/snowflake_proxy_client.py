@@ -1,10 +1,13 @@
+import json
 from typing import Dict, List, Optional
 
+import requests
 import snowflake.connector
 from snowflake.connector.errors import DatabaseError, ProgrammingError
 
 from apollo.common.agent.models import AgentExecuteSqlQueryResponse
 from apollo.integrations.db.base_db_proxy_client import BaseDbProxyClient
+from apollo.integrations.http.relative_path import validate_relative_rest_path
 
 _ATTR_CONNECT_ARGS = "connect_args"
 
@@ -74,3 +77,60 @@ class SnowflakeProxyClient(BaseDbProxyClient):
                 rows=results,
                 is_partial=is_partial,
             )
+
+    def execute_rest_request(
+        self,
+        method: str,
+        path: str,
+        body: Optional[Dict] = None,
+        timeout: Optional[int] = None,
+    ) -> Dict:
+        """Execute one authenticated REST request against this connection's own
+        Snowflake account, reusing the live connector session's token.
+
+        Returns ``{"status_code": int, "response": <JSON-parsed body, or the
+        raw body text when it isn't valid JSON>}`` on a 2xx response, or
+        ``{"status_code": int, "error": <body text truncated to 10,000
+        chars>}`` otherwise. The session token is scrubbed from every
+        returned body (it is sent only in the request's ``Authorization``
+        header) — the non-2xx body is capped at 10,000 chars since it's
+        error/diagnostic text, but the 2xx body is not, since the primary
+        production payload is a Cortex SSE stream returned as plain text
+        that can legitimately exceed that size.
+
+        ``path`` must be relative (begin with ``/``, no scheme or host) so
+        the session token is only ever sent to the connection's own
+        Snowflake host. Mirrors ``SalesforceDataCloudProxyClient.ssot_get``.
+        """
+        validate_relative_rest_path(path)
+
+        rest = getattr(self._connection, "rest", None)
+        token = getattr(rest, "token", None)
+        server_url = getattr(rest, "server_url", None)
+        if not token or not server_url:
+            raise ValueError(
+                "execute_rest_request: no active Snowflake session token; the "
+                "connection may use an auth mode without a session token"
+            )
+
+        response = requests.request(
+            method,
+            f"{server_url}{path}",
+            json=body,
+            headers={"Authorization": f'Snowflake Token="{token}"'},
+            timeout=timeout,
+        )
+
+        # The token lives only in the request header, never the response
+        # body; redact defensively anyway, uniformly, before branching on
+        # status code.
+        text = response.text.replace(token, "***")
+
+        if response.status_code // 100 != 2:
+            return {"status_code": response.status_code, "error": text[:10_000]}
+
+        try:
+            payload = json.loads(text)
+        except ValueError:
+            payload = text
+        return {"status_code": response.status_code, "response": payload}
