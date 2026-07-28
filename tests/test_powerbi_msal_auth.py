@@ -142,6 +142,20 @@ class TestPowerBiTokenProviderRawCreds(TestCase):
         provider = PowerBiTokenProvider(_SP_ARGS)
         self.assertIsNone(provider.token_for_host("example.com"))
 
+    def test_none_host_gets_no_token(self):
+        # When the caller has no URL (urlparse(None).hostname is None), the `host or ""`
+        # guard maps to the empty string -> no scope -> no token, no minting.
+        provider = PowerBiTokenProvider(_SP_ARGS)
+        self.assertIsNone(provider.token_for_host(None))
+
+    def test_token_for_host_requires_normalized_host(self):
+        # token_for_host does an exact dict lookup; case/port normalization is the
+        # caller's responsibility (PowerBiProxyClient derives the host via
+        # urlparse().hostname). A non-normalized host string therefore misses and
+        # yields no token — pinning where normalization must happen.
+        provider = PowerBiTokenProvider(_SP_ARGS)
+        self.assertIsNone(provider.token_for_host("API.POWERBI.COM"))
+
     @patch("apollo.integrations.powerbi.msal_auth.msal.ConfidentialClientApplication")
     def test_token_cached_per_scope(self, mock_app_cls):
         mock_app = MagicMock()

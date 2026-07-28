@@ -103,6 +103,59 @@ class TestPowerBiClient(TestCase):
             headers={"Content-Type": "application/json"},
         )
 
+    # ── Host normalization: port and case must still resolve to the Power BI host ──
+
+    def test_powerbi_host_with_port_still_scoped(self):
+        # urlparse(url).hostname strips the port, so :443 still maps to api.powerbi.com.
+        url = "https://api.powerbi.com:443/v1.0/myorg/admin/dataflows"
+        mock_request, response = self._run(url, _PRESHAPED_CREDENTIALS)
+        mock_request.assert_called_with(
+            "GET",
+            url,
+            headers={
+                "Authorization": "Bearer test-bearer-token",
+                "Content-Type": "application/json",
+            },
+        )
+        self._assert_ok(response)
+
+    def test_powerbi_host_uppercase_still_scoped(self):
+        # urlparse(url).hostname lowercases the host, so a mixed-case host still matches.
+        url = "https://API.PowerBI.com/v1.0/myorg/admin/dataflows"
+        mock_request, response = self._run(url, _PRESHAPED_CREDENTIALS)
+        mock_request.assert_called_with(
+            "GET",
+            url,
+            headers={
+                "Authorization": "Bearer test-bearer-token",
+                "Content-Type": "application/json",
+            },
+        )
+        self._assert_ok(response)
+
+    # ── Malformed raw creds surface a clear error, not a silent 500 ──
+
+    def test_missing_client_secret_surfaces_clear_error(self):
+        # service_principal with no client_secret: the lazy mint inside _attach_auth_header
+        # must raise MsalAuthError, which surfaces as an agent error naming the missing
+        # field — and no HTTP request is ever made.
+        bad_creds = {
+            "auth_mode": "service_principal",
+            "client_id": "cid",
+            "tenant_id": "tid",
+        }
+        mock_response = create_autospec(Response)
+        with patch("requests.request", return_value=mock_response) as mock_request:
+            response = self._agent.execute_operation(
+                connection_type="power-bi",
+                operation_name="do_request",
+                operation_dict=_operation(_POWERBI_URL),
+                credentials=bad_creds,
+            )
+        mock_request.assert_not_called()
+        self.assertNotIn(ATTRIBUTE_NAME_RESULT, response.result)
+        self.assertIn("client_secret", str(response.result))
+
     # ── Raw creds, service principal: scope chosen by host ─────────────────────
 
     @patch(_MSAL_SP)
