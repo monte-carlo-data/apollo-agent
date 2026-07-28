@@ -618,9 +618,7 @@ def _make_msal_step(raw_keys, output_key="msal_token"):
 
 
 class TestResolveMsalTokenTransform(TestCase):
-    @patch(
-        "apollo.integrations.ctp.transforms.resolve_msal_token.msal.ConfidentialClientApplication"
-    )
+    @patch("apollo.integrations.powerbi.msal_auth.msal.ConfidentialClientApplication")
     def test_service_principal_stores_token(self, mock_app_cls):
         mock_app = MagicMock()
         mock_app.acquire_token_for_client.return_value = {"access_token": "tok_sp"}
@@ -630,9 +628,7 @@ class TestResolveMsalTokenTransform(TestCase):
         ResolveMsalTokenTransform().execute(_make_msal_step(_MSAL_SP_RAW), state)
         self.assertEqual("tok_sp", state.derived["msal_token"])
 
-    @patch(
-        "apollo.integrations.ctp.transforms.resolve_msal_token.msal.PublicClientApplication"
-    )
+    @patch("apollo.integrations.powerbi.msal_auth.msal.PublicClientApplication")
     def test_primary_user_stores_token(self, mock_app_cls):
         mock_app = MagicMock()
         mock_app.get_accounts.return_value = []
@@ -645,9 +641,7 @@ class TestResolveMsalTokenTransform(TestCase):
         ResolveMsalTokenTransform().execute(_make_msal_step(_MSAL_PU_RAW), state)
         self.assertEqual("tok_pu", state.derived["msal_token"])
 
-    @patch(
-        "apollo.integrations.ctp.transforms.resolve_msal_token.msal.PublicClientApplication"
-    )
+    @patch("apollo.integrations.powerbi.msal_auth.msal.PublicClientApplication")
     def test_primary_user_uses_cached_token(self, mock_app_cls):
         mock_app = MagicMock()
         mock_account = MagicMock()
@@ -660,9 +654,7 @@ class TestResolveMsalTokenTransform(TestCase):
         self.assertEqual("tok_cached", state.derived["msal_token"])
         mock_app.acquire_token_by_username_password.assert_not_called()
 
-    @patch(
-        "apollo.integrations.ctp.transforms.resolve_msal_token.msal.ConfidentialClientApplication"
-    )
+    @patch("apollo.integrations.powerbi.msal_auth.msal.ConfidentialClientApplication")
     def test_msal_error_raises_ctp_error(self, mock_app_cls):
         mock_app = MagicMock()
         mock_app.acquire_token_for_client.return_value = {
@@ -676,9 +668,7 @@ class TestResolveMsalTokenTransform(TestCase):
             ResolveMsalTokenTransform().execute(_make_msal_step(_MSAL_SP_RAW), state)
         self.assertIn("invalid_client", str(ctx.exception))
 
-    @patch(
-        "apollo.integrations.ctp.transforms.resolve_msal_token.msal.ConfidentialClientApplication"
-    )
+    @patch("apollo.integrations.powerbi.msal_auth.msal.ConfidentialClientApplication")
     def test_empty_response_raises_ctp_error(self, mock_app_cls):
         mock_app = MagicMock()
         mock_app.acquire_token_for_client.return_value = None
