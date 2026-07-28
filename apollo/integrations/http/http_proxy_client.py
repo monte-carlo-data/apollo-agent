@@ -115,7 +115,10 @@ class HttpProxyClient(BaseProxyClient):
             self._storage_client = get_storage_client(platform=self._platform)
         return self._storage_client
 
-    def _attach_auth_header(self, headers: Dict) -> None:
+    def _attach_auth_header(self, headers: Dict, url: Optional[str] = None) -> None:
+        # ``url`` lets subclasses select auth per destination host (see
+        # PowerBiProxyClient, which mints a different-scoped token per host). The
+        # base client authenticates the same way regardless of host, so it ignores it.
         if self._credentials and "token" in self._credentials:
             auth_header = self._credentials.get("auth_header", "Authorization")
             auth_value = self._credentials["token"]
@@ -190,7 +193,7 @@ class HttpProxyClient(BaseProxyClient):
             request_args["verify"] = self._ssl_verify
 
         headers = {**additional_headers} if additional_headers else {}
-        self._attach_auth_header(headers)
+        self._attach_auth_header(headers, url)
         if content_type:
             headers["Content-Type"] = content_type
         if user_agent:
@@ -258,7 +261,7 @@ class HttpProxyClient(BaseProxyClient):
         """
         headers = {**additional_headers} if additional_headers else {}
         if not no_auth:
-            self._attach_auth_header(headers)
+            self._attach_auth_header(headers, url)
 
         request_kwargs: Dict = {
             "timeout": timeout,
