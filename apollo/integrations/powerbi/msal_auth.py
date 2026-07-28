@@ -8,8 +8,8 @@ service-principal / primary-user credentials but *different* token audiences (sc
 
 A single minted token can only carry one audience, so the proxy client selects the scope per
 request by destination host and mints/caches a token per scope via :class:`PowerBiTokenProvider`.
-The scope-parameterized :func:`acquire_token` is shared with the ``resolve_msal_token`` CTP
-transform so the MSAL acquisition logic lives in exactly one place.
+The scope-parameterized :func:`acquire_token` is the single home for the MSAL acquisition logic
+(both auth modes, any Azure-AD audience).
 """
 
 from typing import Dict, List, Optional, Tuple
