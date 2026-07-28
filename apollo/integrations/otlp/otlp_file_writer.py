@@ -39,10 +39,12 @@ Contract notes (see the AO-914 master plan, contracts C1/C4):
   with the same deterministic key template overwrites them. Errors never carry
   fragment content — fragments may hold prompt/completion text and exceptions
   flow to logs and error reporting. Transform exceptions are referenced by
-  type only and are not chained (``raise ... from None``), so a transform's
-  own exception message — which may embed fragment content — never reaches
-  ``__cause__``; the JSON-parse path applies the same treatment for the same
-  reason.
+  type only, and the underlying exception is dropped inside the ``except``
+  handler so :class:`OtlpFragmentError` is raised outside it: this leaves both
+  ``__cause__`` and the implicit ``__context__`` as ``None``, so a transform's
+  own exception message — which may embed fragment content — is unreachable
+  through the exception chain. The JSON-parse path applies the same treatment
+  for the same reason (``JSONDecodeError.doc`` holds the full raw fragment).
 - **Memory:** peak usage is a small multiple of ``flush_bytes`` (parsed object
   trees plus the merged output string at flush time) and is unbounded by a
   single oversized fragment. Fragments are consumed lazily from the iterator;
@@ -150,19 +152,22 @@ def write_otlp_files(
 
     for index, raw_fragment in enumerate(fragments):
         if transform is not None:
+            transform_error: Optional[str] = None
             try:
                 raw_fragment = transform(raw_fragment)
             except Exception as exc:
-                # Deliberately not chained: a transform's own exception
-                # message may embed fragment content (e.g. prompt/completion
-                # text). The exception type is already captured in the detail
-                # string, so no diagnostic value is lost by breaking the
-                # chain.
-                raise OtlpFragmentError(
-                    index,
-                    f"transform raised {type(exc).__name__}",
-                    list(files),
-                ) from None
+                # Capture a content-free detail only. A transform's own
+                # exception message may embed fragment content (e.g.
+                # prompt/completion text), so the exception object itself must
+                # not survive this handler.
+                transform_error = f"transform raised {type(exc).__name__}"
+            if transform_error is not None:
+                # Raised outside the ``except`` block so Python leaves
+                # ``__context__`` as ``None``. ``from None`` alone would clear
+                # ``__cause__`` and set ``__suppress_context__``, but the
+                # implicit ``__context__`` chain would still reference the
+                # transform's exception — and thus its fragment-bearing message.
+                raise OtlpFragmentError(index, transform_error, list(files))
 
         if not isinstance(raw_fragment, str):
             raise OtlpFragmentError(
@@ -171,16 +176,21 @@ def write_otlp_files(
                 list(files),
             )
 
+        parse_error: Optional[str] = None
         try:
             document = json.loads(raw_fragment)
         except json.JSONDecodeError as exc:
-            # Deliberately not chained: JSONDecodeError retains the full
-            # document on its .doc attribute, which may hold prompt content.
-            raise OtlpFragmentError(
-                index,
-                f"invalid JSON: {exc.msg} at line {exc.lineno} column {exc.colno}",
-                list(files),
-            ) from None
+            # Capture position/message only. JSONDecodeError retains the full
+            # document on its ``.doc`` attribute (may hold prompt content), so
+            # the exception object itself must not survive this handler.
+            parse_error = (
+                f"invalid JSON: {exc.msg} at line {exc.lineno} column {exc.colno}"
+            )
+        if parse_error is not None:
+            # Raised outside the ``except`` block so ``__context__`` stays
+            # ``None`` and the fragment-bearing ``JSONDecodeError`` is not
+            # reachable through the implicit exception chain.
+            raise OtlpFragmentError(index, parse_error, list(files))
 
         resource_spans = (
             document.get(_RESOURCE_SPANS_KEY) if isinstance(document, dict) else None

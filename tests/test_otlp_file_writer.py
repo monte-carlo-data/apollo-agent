@@ -7,6 +7,7 @@ mocked; no cloud SDKs are involved.
 """
 
 import json
+import traceback
 from unittest import TestCase
 from unittest.mock import Mock
 
@@ -282,8 +283,17 @@ class TestWriteOtlpFiles(TestCase):
 
         self.assertNotIn(secret, str(ctx.exception))
         self.assertNotIn(secret, repr(vars(ctx.exception)))
-        # Not chained: JSONDecodeError retains the document on .doc.
+        # Not chained: JSONDecodeError retains the document on .doc, so neither
+        # __cause__ nor __context__ may reference it — a reporter walking the
+        # implicit context chain must not reach the raw fragment.
         self.assertIsNone(ctx.exception.__cause__)
+        self.assertIsNone(ctx.exception.__context__)
+        full_chain = "".join(
+            traceback.format_exception(
+                type(ctx.exception), ctx.exception, ctx.exception.__traceback__
+            )
+        )
+        self.assertNotIn(secret, full_chain)
 
     def test_transform_error_is_wrapped_without_its_message(self):
         secret = "SECRET-FRAGMENT-TEXT"
@@ -303,8 +313,16 @@ class TestWriteOtlpFiles(TestCase):
         self.assertNotIn(secret, str(ctx.exception))
         self.assertNotIn(secret, repr(vars(ctx.exception)))
         # Deliberately not chained: the transform's own exception may embed
-        # fragment content, so it must never reach __cause__.
+        # fragment content, so it must reach neither __cause__ nor __context__,
+        # and must not surface anywhere in the formatted traceback chain.
         self.assertIsNone(ctx.exception.__cause__)
+        self.assertIsNone(ctx.exception.__context__)
+        full_chain = "".join(
+            traceback.format_exception(
+                type(ctx.exception), ctx.exception, ctx.exception.__traceback__
+            )
+        )
+        self.assertNotIn(secret, full_chain)
 
     def test_transform_returning_non_string_fails_fast(self):
         def returns_none(fragment: str) -> str:
