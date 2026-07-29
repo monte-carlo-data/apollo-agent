@@ -1,5 +1,6 @@
 import http.client
 import json
+import logging
 import uuid
 from unittest import TestCase
 from unittest.mock import Mock, patch
@@ -1455,6 +1456,99 @@ class SalesforceDataCloudProxyClientTests(TestCase):
         message = str(response.result)
         self.assertIn("code 404", message)
         self.assertIn("NOT_FOUND", message)
+
+    def test_ssot_get_404_does_not_warn(self):
+        """A 404 is the expected, license-gated 'feature not present' response
+        Salesforce returns every collection cycle for orgs without the feature
+        behind the path (e.g. Data Governance tags, YET-1998). It must still
+        surface as `code 404` so the data-collector can branch on status and skip
+        silently, but it must NOT log at WARNING — otherwise every cycle spams the
+        agent logs ('no log spam' acceptance criterion)."""
+        self.mock_responses.add_callback(
+            method=responses.GET,
+            url=self._SSOT_URL,
+            callback=Mock(
+                return_value=(
+                    404,
+                    {},
+                    json.dumps(
+                        [{"errorCode": "NOT_FOUND", "message": "no such resource"}]
+                    ),
+                )
+            ),
+        )
+
+        with self.assertLogs(self._PROXY_CLIENT_LOGGER, level="DEBUG") as logs:
+            response = self.agent.execute_operation(
+                connection_type="salesforce-data-cloud",
+                operation_name="test_ssot_get_404_no_warn",
+                operation_dict=self._ssot_get_operation(self._SSOT_PATH),
+                credentials=self.credentials,
+            )
+
+        # Behavior preserved: the status is still surfaced for the collector.
+        self.assertTrue(response.is_error)
+        self.assertIn("code 404", str(response.result))
+
+        # The proxy client emitted no WARNING (or higher) record for the 404 ...
+        warning_records = [r for r in logs.records if r.levelno >= logging.WARNING]
+        self.assertFalse(
+            warning_records,
+            f"404 must not warn; got {[r.getMessage() for r in warning_records]}",
+        )
+        # ... and the 'SSOT GET failed' record was logged below WARNING.
+        failed_records = [
+            r for r in logs.records if "SSOT GET failed" in r.getMessage()
+        ]
+        self.assertTrue(
+            failed_records,
+            f"expected an 'SSOT GET failed' log record; got {logs.output}",
+        )
+        for record in failed_records:
+            self.assertLess(record.levelno, logging.WARNING)
+
+    def test_ssot_get_unexpected_5xx_still_warns(self):
+        """Only the license-gated 404 is demoted — a genuinely unexpected non-200
+        (a 5xx server error) still logs at WARNING and carries its Datadog
+        classification, so real failures stay visible."""
+        self.mock_responses.add_callback(
+            method=responses.GET,
+            url=self._SSOT_URL,
+            callback=Mock(
+                return_value=(
+                    503,
+                    {},
+                    json.dumps([{"errorCode": "SERVER_ERROR", "message": "boom"}]),
+                )
+            ),
+        )
+
+        with self.assertLogs(self._PROXY_CLIENT_LOGGER, level="WARNING") as logs:
+            response = self.agent.execute_operation(
+                connection_type="salesforce-data-cloud",
+                operation_name="test_ssot_get_5xx_warns",
+                operation_dict=self._ssot_get_operation(self._SSOT_PATH),
+                credentials=self.credentials,
+            )
+
+        self.assertTrue(response.is_error)
+        self.assertIn("code 503", str(response.result))
+        warning_failed = [
+            r
+            for r in logs.records
+            if "SSOT GET failed" in r.getMessage() and r.levelno >= logging.WARNING
+        ]
+        self.assertTrue(
+            warning_failed,
+            f"expected a WARNING 'SSOT GET failed' record; got {logs.output}",
+        )
+        self.assertTrue(
+            any(
+                getattr(r, "exchange_error_type", None) == "server_error"
+                for r in warning_failed
+            ),
+            "expected the 5xx warning to carry exchange_error_type=server_error",
+        )
 
     def test_ssot_get_forwards_query_string(self):
         """A path carrying a query string (`?limit=100`) is allowed by the guard
