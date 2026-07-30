@@ -2,6 +2,7 @@ import base64
 
 import requests
 
+from apollo.integrations.http.url_safety import safe_request
 from apollo.integrations.ctp.errors import CtpPipelineError
 from apollo.integrations.ctp.models import PipelineState, TransformStep
 from apollo.integrations.ctp.template import TemplateEngine
@@ -97,8 +98,12 @@ class OAuthTransform(Transform):
         }
 
         try:
-            response = requests.post(
-                token_endpoint, data=data, headers=headers, timeout=30
+            # SSRF guard: token_endpoint comes from customer connection config
+            # (template-rendered), so route through the SSRF-guarded request
+            # helper, which blocks cloud-metadata / loopback destinations while
+            # still allowing legitimate (incl. private/on-prem) IdP hosts.
+            response = safe_request(
+                "POST", token_endpoint, data=data, headers=headers, timeout=30
             )
             response.raise_for_status()
         except requests.HTTPError as exc:
