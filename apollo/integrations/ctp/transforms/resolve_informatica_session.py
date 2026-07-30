@@ -242,7 +242,9 @@ class ResolveInformaticaSessionTransform(Transform):
         so extraction is identical.
         """
         try:
-            response = requests.post(
+            # SSRF guard: base_url is templated from step.input (see _login_v2).
+            response = safe_request(
+                "POST",
                 f"{base_url}{_JWT_LOGIN_PATH}",
                 json={"orgId": org_id, "oauthToken": jwt_token},
                 timeout=_LOGIN_TIMEOUT,
