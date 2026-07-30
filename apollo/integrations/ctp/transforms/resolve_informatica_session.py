@@ -190,7 +190,9 @@ class ResolveInformaticaSessionTransform(Transform):
     ) -> tuple[str, str]:
         """POST /saas/public/core/v3/login → (api_base_url, session_id)."""
         try:
-            response = requests.post(
+            # SSRF guard: base_url is templated from step.input (see _login_v2).
+            response = safe_request(
+                "POST",
                 f"{base_url}{_V3_LOGIN_PATH}",
                 json={"username": username, "password": password},
                 timeout=_LOGIN_TIMEOUT,
