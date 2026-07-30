@@ -1,6 +1,5 @@
 # tests/ctp/test_power_bi_ctp.py
 from unittest import TestCase
-from unittest.mock import MagicMock, patch
 
 from apollo.integrations.ctp.defaults.power_bi import POWERBI_DEFAULT_CTP
 from apollo.integrations.ctp.pipeline import CtpPipeline
@@ -36,56 +35,39 @@ class TestPowerBiCtp(TestCase):
     def test_powerbi_registered(self):
         self.assertIsNotNone(CtpRegistry.get("power-bi"))
 
-    # ── Service principal flow ────────────────────────────────────────
-
-    def test_service_principal_token_stored(self):
-        mock_app = MagicMock()
-        mock_app.acquire_token_for_client.return_value = {
-            "access_token": "sp-token-xyz"
-        }
-        with patch("msal.ConfidentialClientApplication", return_value=mock_app):
-            args = _resolve(_sp_creds())
-        self.assertEqual("sp-token-xyz", args["token"])
-
     def test_auth_type_always_bearer(self):
-        mock_app = MagicMock()
-        mock_app.acquire_token_for_client.return_value = {"access_token": "tok"}
-        with patch("msal.ConfidentialClientApplication", return_value=mock_app):
-            args = _resolve(_sp_creds())
+        self.assertEqual("Bearer", _resolve(_sp_creds())["auth_type"])
+
+    # ── Raw-creds pass-through (agent mints the token per host, not the CTP) ──
+
+    def test_service_principal_params_passed_through(self):
+        args = _resolve(_sp_creds())
+        self.assertEqual("service_principal", args["auth_mode"])
+        self.assertEqual("app-client-id", args["client_id"])
+        self.assertEqual("tenant-uuid", args["tenant_id"])
+        self.assertEqual("app-secret", args["client_secret"])
+        # The CTP no longer mints a token — that happens per request in the proxy client.
+        self.assertNotIn("token", args)
+
+    def test_primary_user_params_passed_through(self):
+        args = _resolve(_pu_creds())
+        self.assertEqual("primary_user", args["auth_mode"])
+        self.assertEqual("app-client-id", args["client_id"])
+        self.assertEqual("tenant-uuid", args["tenant_id"])
+        self.assertEqual("user@example.com", args["username"])
+        self.assertEqual("userpass", args["password"])
+        self.assertNotIn("token", args)
+
+    def test_optional_fields_absent_are_dropped(self):
+        # A service-principal connection carries no username/password.
+        args = _resolve(_sp_creds())
+        self.assertNotIn("username", args)
+        self.assertNotIn("password", args)
+
+    # ── Legacy pre-shaped token path ─────────────────────────────────────────
+
+    def test_preshaped_token_passed_through(self):
+        args = _resolve({"token": "pre-minted-token"})
+        self.assertEqual("pre-minted-token", args["token"])
         self.assertEqual("Bearer", args["auth_type"])
-
-    # ── Primary user flow ─────────────────────────────────────────────
-
-    def test_primary_user_token_stored(self):
-        mock_app = MagicMock()
-        mock_app.get_accounts.return_value = []
-        mock_app.acquire_token_by_username_password.return_value = {
-            "access_token": "pu-token-abc"
-        }
-        with patch("msal.PublicClientApplication", return_value=mock_app):
-            args = _resolve(_pu_creds())
-        self.assertEqual("pu-token-abc", args["token"])
-
-    def test_primary_user_uses_cached_token(self):
-        mock_app = MagicMock()
-        mock_account = MagicMock()
-        mock_app.get_accounts.return_value = [mock_account]
-        mock_app.acquire_token_silent.return_value = {"access_token": "cached-token"}
-        with patch("msal.PublicClientApplication", return_value=mock_app):
-            args = _resolve(_pu_creds())
-        self.assertEqual("cached-token", args["token"])
-        mock_app.acquire_token_by_username_password.assert_not_called()
-
-    # ── Error handling ────────────────────────────────────────────────
-
-    def test_msal_error_raises(self):
-        from apollo.integrations.ctp.errors import CtpPipelineError
-
-        mock_app = MagicMock()
-        mock_app.acquire_token_for_client.return_value = {
-            "error": "invalid_client",
-            "error_description": "bad credentials",
-        }
-        with patch("msal.ConfidentialClientApplication", return_value=mock_app):
-            with self.assertRaises(CtpPipelineError):
-                _resolve(_sp_creds())
+        self.assertNotIn("auth_mode", args)

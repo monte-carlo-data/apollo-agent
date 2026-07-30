@@ -70,6 +70,20 @@ than stringifying it. `OracleProxyClient` then pops `ssl_options` out of `connec
 an `oracledb.connect` arg) and builds the thin `ssl.SSLContext` / thick wallet from it — the
 resolution can't happen in the CTP because it depends on runtime/process state (thin vs thick).
 
+**Power BI** (`power-bi` connection type) — the reference for the **deferred / host-scoped auth
+pattern**. Unlike every other enrolled connector, the CTP does *not* resolve a token: its config
+in `defaults/power_bi.py` has `steps=[]` and simply passes the raw MSAL credentials
+(`auth_mode` + `client_id`/`tenant_id`/`client_secret` or `username`/`password`) — or a legacy
+pre-shaped `token` — straight through to `connect_args`. Token acquisition happens *per request*
+in `PowerBiProxyClient` (`apollo/integrations/powerbi/`), which overrides
+`HttpProxyClient._attach_auth_header(headers, url)` and delegates to `PowerBiTokenProvider`
+(`apollo/integrations/powerbi/msal_auth.py`). The provider selects the MSAL scope by destination
+host — `api.powerbi.com` → the Power BI API scope, `api.fabric.microsoft.com` → the Microsoft
+Fabric scope, any other host → no token — minting and caching a token per scope. This is the
+precedent for connectors whose credential *audience* is only known at request time, not CTP time.
+(The generic `resolve_msal_token` transform that previously minted the Power BI token at CTP time
+was removed with this change; `msal_auth.acquire_token` is now the single home for the MSAL logic.)
+
 ## Security note
 
 Jinja2 templates are sandboxed (see `template.py`). Do not use `Environment()` directly —
