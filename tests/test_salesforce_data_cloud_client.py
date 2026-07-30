@@ -1490,13 +1490,10 @@ class SalesforceDataCloudProxyClientTests(TestCase):
         self.assertTrue(response.is_error)
         self.assertIn("code 404", str(response.result))
 
-        # The proxy client emitted no WARNING (or higher) record for the 404 ...
-        warning_records = [r for r in logs.records if r.levelno >= logging.WARNING]
-        self.assertFalse(
-            warning_records,
-            f"404 must not warn; got {[r.getMessage() for r in warning_records]}",
-        )
-        # ... and the 'SSOT GET failed' record was logged below WARNING.
+        # The 'SSOT GET failed' record for the 404 was logged below WARNING.
+        # We assert only on this record (not a blanket 'no WARNING anywhere'
+        # scan): a legitimate warning elsewhere in the path — e.g. token mint —
+        # must not fail this test.
         failed_records = [
             r for r in logs.records if "SSOT GET failed" in r.getMessage()
         ]

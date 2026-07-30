@@ -750,8 +750,10 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
             # the data-collector can branch on status and skip silently, but it
             # must NOT warn — orgs without the feature would otherwise spam a
             # warning every collection cycle. Genuinely unexpected non-200s
-            # (auth, rate limits, 5xx, ...) still warn.
-            log = logger.debug if response.status_code == 404 else logger.warning
+            # (auth, rate limits, 5xx, ...) still warn. Key the demotion off the
+            # same captured `status` reported in `extra` so the log level always
+            # matches the status we surface.
+            log = logger.debug if status == 404 else logger.warning
             log(
                 "Salesforce Data Cloud: SSOT GET failed",
                 extra={
