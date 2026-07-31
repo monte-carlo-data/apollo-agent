@@ -134,6 +134,30 @@ class TestTeradataCtp(TestCase):
         if os.path.exists(args.get("sslca", "")):
             os.unlink(args["sslca"])
 
+    def test_ssl_no_port_omits_https_port(self):
+        # SSL active (ca_data present, not disabled) but no port supplied.
+        # The SSL step must guard https_port the same way the mapper guards
+        # dbs_port, otherwise the StrictUndefined render raises
+        # UndefinedError: 'port' is undefined and validate_connection crashes.
+        pem = b"FAKE_CERT"
+        args = _resolve(
+            {
+                "host": "h",
+                "user": "u",
+                "password": "p",
+                "ssl_options": {"ca_data": pem},
+            }
+        )
+        # SSL is still active: CA file written and encryptdata set.
+        self.assertIn("sslca", args)
+        self.assertEqual("true", args["encryptdata"])
+        # No port supplied -> neither port key is emitted, so teradatasql
+        # falls back to its own SSL default instead of the agent crashing.
+        self.assertNotIn("https_port", args)
+        self.assertNotIn("dbs_port", args)
+        if os.path.exists(args.get("sslca", "")):
+            os.unlink(args["sslca"])
+
     # ── SSL — disabled flag ───────────────────────────────────────────
 
     def test_ssl_disabled_flag_skips_ssl_step(self):

@@ -84,7 +84,7 @@ TERADATA_DEFAULT_CTP = CtpConfig(
             field_map={
                 "sslca": "{{ derived.ssl_ca_path }}",
                 "encryptdata": "true",
-                "https_port": "{{ raw.port }}",
+                "https_port": "{{ raw.port | default(none) }}",
                 "dbs_port": "{{ none }}",  # suppress mapper's dbs_port
             },
         ),
