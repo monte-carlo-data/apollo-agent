@@ -158,6 +158,9 @@ class TestTeradataCtp(TestCase):
                 "ssl_options": {"ca_data": pem},
             }
         )
+        sslca_path = args.get("sslca")
+        if sslca_path:
+            self.addCleanup(lambda p=sslca_path: os.path.exists(p) and os.unlink(p))
         # SSL is still active: CA file written and encryptdata set.
         self.assertIn("sslca", args)
         self.assertEqual("true", args["encryptdata"])
@@ -165,8 +168,6 @@ class TestTeradataCtp(TestCase):
         # falls back to its own SSL default instead of the agent crashing.
         self.assertNotIn("https_port", args)
         self.assertNotIn("dbs_port", args)
-        if os.path.exists(args.get("sslca", "")):
-            os.unlink(args["sslca"])
 
     def test_ssl_dc_shaped_dbs_port_used_as_https_port(self):
         # Customer-reported case: data-collector supplies the port as
@@ -182,12 +183,13 @@ class TestTeradataCtp(TestCase):
                 "ssl_options": {"ca_data": pem},
             }
         )
+        sslca_path = args.get("sslca")
+        if sslca_path:
+            self.addCleanup(lambda p=sslca_path: os.path.exists(p) and os.unlink(p))
         self.assertEqual(1025, args["https_port"])
         self.assertNotIn("dbs_port", args)
         self.assertIn("sslca", args)
         self.assertEqual("true", args["encryptdata"])
-        if os.path.exists(args.get("sslca", "")):
-            os.unlink(args["sslca"])
 
     # ── SSL — disabled flag ───────────────────────────────────────────
 
