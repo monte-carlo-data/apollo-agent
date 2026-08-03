@@ -84,7 +84,7 @@ TERADATA_DEFAULT_CTP = CtpConfig(
             field_map={
                 "sslca": "{{ derived.ssl_ca_path }}",
                 "encryptdata": "true",
-                "https_port": "{{ raw.port }}",
+                "https_port": "{{ raw.port | default(raw.dbs_port) | default(none) }}",
                 "dbs_port": "{{ none }}",  # suppress mapper's dbs_port
             },
         ),
@@ -96,8 +96,10 @@ TERADATA_DEFAULT_CTP = CtpConfig(
             "host": "{{ raw.host }}",
             "user": "{{ raw.user }}",
             "password": "{{ raw.password }}",
-            # Plain-connection port; overridden to none by the SSL step when active
-            "dbs_port": "{{ raw.port | default(none) }}",
+            # Plain-connection port; overridden to none by the SSL step when active.
+            # Honor either `port` (flat credentials) or `dbs_port` (the shape the
+            # data-collector pre-sends inside connect_args).
+            "dbs_port": "{{ raw.port | default(raw.dbs_port) | default(none) }}",
             "request_timeout": "{{ raw.query_timeout_in_seconds | default(none) }}",
             "logon_timeout": "{{ raw.login_timeout_in_seconds | default(none) }}",
             # Protocol options — default values match DC's TeradataConnectionSettingsSchema
