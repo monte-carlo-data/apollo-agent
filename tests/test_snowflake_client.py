@@ -1,5 +1,6 @@
 import base64
 import datetime
+import json
 from typing import List, Any, Optional, Dict
 from unittest import TestCase
 from unittest.mock import Mock, call, patch
@@ -255,3 +256,221 @@ class SnowflakeClientTests(TestCase):
             }
         else:
             return value
+
+    @patch("apollo.integrations.snowflake.snowflake_proxy_client.requests.request")
+    @patch("snowflake.connector.connect")
+    def test_rest_request_json_success(self, mock_connect, mock_request):
+        mock_connect.return_value = self._mock_connection
+        self._mock_connection.rest.token = "tok-123"
+        self._mock_connection.rest.server_url = (
+            "https://acct.snowflakecomputing.com:443"
+        )
+        mock_request.return_value = Mock(
+            status_code=200, text=json.dumps({"databases": []})
+        )
+
+        response = self._agent.execute_operation(
+            "snowflake",
+            "run_rest_request",
+            {
+                "trace_id": "t1",
+                "skip_cache": True,
+                "commands": [
+                    {
+                        "method": "execute_rest_request",
+                        "kwargs": {
+                            "method": "GET",
+                            "path": "/api/v2/databases",
+                            "body": {"messages": []},
+                            "timeout": 60,
+                        },
+                    }
+                ],
+            },
+            {"connect_args": _SF_CREDENTIALS},
+        )
+        result = response.result.get(ATTRIBUTE_NAME_RESULT)
+        self.assertEqual(result, {"status_code": 200, "response": {"databases": []}})
+        args, kwargs = mock_request.call_args
+        self.assertEqual(args[0], "GET")
+        self.assertEqual(
+            args[1], "https://acct.snowflakecomputing.com:443/api/v2/databases"
+        )
+        self.assertEqual(
+            kwargs["headers"]["Authorization"], 'Snowflake Token="tok-123"'
+        )
+        self.assertEqual(kwargs["json"], {"messages": []})
+        self.assertEqual(kwargs["timeout"], 60)
+
+    @patch("apollo.integrations.snowflake.snowflake_proxy_client.requests.request")
+    @patch("snowflake.connector.connect")
+    def test_rest_request_2xx_non_json_body_is_token_redacted(
+        self, mock_connect, mock_request
+    ):
+        mock_connect.return_value = self._mock_connection
+        self._mock_connection.rest.token = "tok-123"
+        self._mock_connection.rest.server_url = (
+            "https://acct.snowflakecomputing.com:443"
+        )
+        mock_request.return_value = Mock(
+            status_code=200,
+            text='session Snowflake Token="tok-123" echoed back',
+            **{"json.side_effect": ValueError("not json")},
+        )
+
+        response = self._agent.execute_operation(
+            "snowflake",
+            "run_rest_request",
+            {
+                "trace_id": "t1",
+                "skip_cache": True,
+                "commands": [
+                    {
+                        "method": "execute_rest_request",
+                        "kwargs": {
+                            "method": "GET",
+                            "path": "/api/v2/databases",
+                            "body": None,
+                            "timeout": 60,
+                        },
+                    }
+                ],
+            },
+            {"connect_args": _SF_CREDENTIALS},
+        )
+        result = response.result.get(ATTRIBUTE_NAME_RESULT)
+        self.assertEqual(result["status_code"], 200)
+        self.assertNotIn("tok-123", result["response"])
+        self.assertIn("***", result["response"])
+
+    @patch("apollo.integrations.snowflake.snowflake_proxy_client.requests.request")
+    @patch("snowflake.connector.connect")
+    def test_rest_request_2xx_non_json_body_returns_plain_text(
+        self, mock_connect, mock_request
+    ):
+        mock_connect.return_value = self._mock_connection
+        self._mock_connection.rest.token = "tok-123"
+        self._mock_connection.rest.server_url = (
+            "https://acct.snowflakecomputing.com:443"
+        )
+        mock_request.return_value = Mock(
+            status_code=200,
+            text="plain text response",
+            **{"json.side_effect": ValueError("not json")},
+        )
+
+        response = self._agent.execute_operation(
+            "snowflake",
+            "run_rest_request",
+            {
+                "trace_id": "t1",
+                "skip_cache": True,
+                "commands": [
+                    {
+                        "method": "execute_rest_request",
+                        "kwargs": {
+                            "method": "GET",
+                            "path": "/api/v2/databases",
+                            "body": None,
+                            "timeout": 60,
+                        },
+                    }
+                ],
+            },
+            {"connect_args": _SF_CREDENTIALS},
+        )
+        result = response.result.get(ATTRIBUTE_NAME_RESULT)
+        self.assertEqual(
+            result, {"status_code": 200, "response": "plain text response"}
+        )
+
+    @patch("apollo.integrations.snowflake.snowflake_proxy_client.requests.request")
+    @patch("snowflake.connector.connect")
+    def test_rest_request_non_2xx_maps_to_error(self, mock_connect, mock_request):
+        mock_connect.return_value = self._mock_connection
+        self._mock_connection.rest.token = "tok-123"
+        self._mock_connection.rest.server_url = (
+            "https://acct.snowflakecomputing.com:443"
+        )
+        mock_request.return_value = Mock(
+            status_code=404,
+            text='auth denied for Snowflake Token="tok-123": agent not found',
+        )
+
+        response = self._agent.execute_operation(
+            "snowflake",
+            "run_rest_request",
+            {
+                "trace_id": "t1",
+                "skip_cache": True,
+                "commands": [
+                    {
+                        "method": "execute_rest_request",
+                        "kwargs": {"method": "POST", "path": "/api/v2/x", "body": {}},
+                    }
+                ],
+            },
+            {"connect_args": _SF_CREDENTIALS},
+        )
+        result = response.result.get(ATTRIBUTE_NAME_RESULT)
+        self.assertEqual(result["status_code"], 404)
+        self.assertIn("agent not found", result["error"])
+        self.assertNotIn("tok-123", result["error"])
+        self.assertIn("***", result["error"])
+
+    @patch("snowflake.connector.connect")
+    def test_rest_request_token_none_errors(self, mock_connect):
+        mock_connect.return_value = self._mock_connection
+        self._mock_connection.rest.token = None
+        response = self._agent.execute_operation(
+            "snowflake",
+            "run_rest_request",
+            {
+                "trace_id": "t1",
+                "skip_cache": True,
+                "commands": [
+                    {
+                        "method": "execute_rest_request",
+                        "kwargs": {"method": "GET", "path": "/api/v2/databases"},
+                    }
+                ],
+            },
+            {"connect_args": _SF_CREDENTIALS},
+        )
+        self.assertIsNotNone(response.result.get(ATTRIBUTE_NAME_ERROR))
+
+    @patch("apollo.integrations.snowflake.snowflake_proxy_client.requests.request")
+    @patch("snowflake.connector.connect")
+    def test_rest_request_rejects_unsafe_path(self, mock_connect, mock_request):
+        mock_connect.return_value = self._mock_connection
+        self._mock_connection.rest.token = "tok-123"
+        self._mock_connection.rest.server_url = (
+            "https://acct.snowflakecomputing.com:443"
+        )
+        for bad in (
+            "//evil.example.com/x",
+            "//",
+            "https://evil.example.com/x",
+            "/api\r\nHost: x",
+            "api/v2/x",
+            "",
+        ):
+            response = self._agent.execute_operation(
+                "snowflake",
+                "run_rest_request",
+                {
+                    "trace_id": "t1",
+                    "skip_cache": True,
+                    "commands": [
+                        {
+                            "method": "execute_rest_request",
+                            "kwargs": {"method": "GET", "path": bad},
+                        }
+                    ],
+                },
+                {"connect_args": _SF_CREDENTIALS},
+            )
+            self.assertIsNotNone(
+                response.result.get(ATTRIBUTE_NAME_ERROR), f"expected error for {bad!r}"
+            )
+        mock_request.assert_not_called()

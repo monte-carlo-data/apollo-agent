@@ -36,6 +36,16 @@ class TestTeradataCtp(TestCase):
         self.assertNotIn("dbs_port", args)
         self.assertNotIn("https_port", args)
 
+    def test_dc_shaped_dbs_port_maps_to_dbs_port(self):
+        # The data-collector sends the port pre-shaped as `dbs_port` inside
+        # connect_args; registry.py unwraps connect_args as `raw`, so `raw`
+        # carries `dbs_port` (not `port`). The template must honor that key.
+        args = _resolve(
+            {"host": "td.example.com", "user": "u", "password": "p", "dbs_port": 1025}
+        )
+        self.assertEqual(1025, args["dbs_port"])
+        self.assertNotIn("https_port", args)
+
     # ── Protocol option defaults ───────────────────────────────────────
 
     def test_tmode_defaults_to_TERA(self):
@@ -133,6 +143,53 @@ class TestTeradataCtp(TestCase):
         self.assertNotIn("dbs_port", args)
         if os.path.exists(args.get("sslca", "")):
             os.unlink(args["sslca"])
+
+    def test_ssl_no_port_omits_https_port(self):
+        # SSL active (ca_data present, not disabled) but no port supplied.
+        # The SSL step must guard https_port the same way the mapper guards
+        # dbs_port, otherwise the StrictUndefined render raises
+        # UndefinedError: 'port' is undefined and validate_connection crashes.
+        pem = b"FAKE_CERT"
+        args = _resolve(
+            {
+                "host": "h",
+                "user": "u",
+                "password": "p",
+                "ssl_options": {"ca_data": pem},
+            }
+        )
+        sslca_path = args.get("sslca")
+        if sslca_path:
+            self.addCleanup(lambda p=sslca_path: os.path.exists(p) and os.unlink(p))
+        # SSL is still active: CA file written and encryptdata set.
+        self.assertIn("sslca", args)
+        self.assertEqual("true", args["encryptdata"])
+        # No port supplied -> neither port key is emitted, so teradatasql
+        # falls back to its own SSL default instead of the agent crashing.
+        self.assertNotIn("https_port", args)
+        self.assertNotIn("dbs_port", args)
+
+    def test_ssl_dc_shaped_dbs_port_used_as_https_port(self):
+        # Customer-reported case: data-collector supplies the port as
+        # `dbs_port` (not `port`) AND SSL is active. The SSL step must pick
+        # up dbs_port as the https_port instead of silently dropping it.
+        pem = b"FAKE_CERT"
+        args = _resolve(
+            {
+                "host": "h",
+                "user": "u",
+                "password": "p",
+                "dbs_port": 1025,
+                "ssl_options": {"ca_data": pem},
+            }
+        )
+        sslca_path = args.get("sslca")
+        if sslca_path:
+            self.addCleanup(lambda p=sslca_path: os.path.exists(p) and os.unlink(p))
+        self.assertEqual(1025, args["https_port"])
+        self.assertNotIn("dbs_port", args)
+        self.assertIn("sslca", args)
+        self.assertEqual("true", args["encryptdata"])
 
     # ── SSL — disabled flag ───────────────────────────────────────────
 

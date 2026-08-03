@@ -15,6 +15,7 @@ from salesforcecdpconnector.exceptions import Error as SalesforceCDPError
 from salesforcecdpconnector.genie_table import GenieTable, Field
 
 from apollo.integrations.db.base_db_proxy_client import BaseDbProxyClient
+from apollo.integrations.http.relative_path import validate_relative_rest_path
 
 logger = logging.getLogger(__name__)
 
@@ -707,29 +708,17 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
 
         ``path`` must be a relative path beginning with ``/`` (e.g.
         ``/services/data/v62.0/ssot/data-streams``). Values carrying a scheme or
-        host (absolute or protocol-relative URLs) are rejected so the minted
-        token is only ever sent to the connection's own My Domain. Rejection is
-        based on the parsed URL structure, so a query string that merely embeds
-        a URL (e.g. a pagination cursor) is allowed.
+        host (absolute or protocol-relative URLs), or embedded CR/LF, are
+        rejected so the minted token is only ever sent to the connection's own
+        My Domain. Rejection is based on the parsed URL structure, so a query
+        string that merely embeds a URL (e.g. a pagination cursor) is allowed.
 
         Raises ``ValueError`` for an unsafe ``path``; ``RuntimeError`` carrying
         ``code NNN`` on a non-200 response and ``HTTP NNN`` on a non-JSON 200
         response, with the response body redacted before it is surfaced.
         """
-        try:
-            split = urllib.parse.urlsplit(path) if isinstance(path, str) else None
-        except ValueError:
-            split = None
-        if (
-            split is None
-            or split.scheme
-            or split.netloc
-            or not split.path.startswith("/")
-        ):
-            raise ValueError(
-                f"Salesforce Data Cloud ssot_get: path must be a relative path "
-                f"beginning with '/' (no scheme or host), got: {path!r}"
-            )
+        validate_relative_rest_path(path)
+        split = urllib.parse.urlsplit(path)
         # Query-string values (pagination cursors, filters) may be sensitive —
         # logs and error messages only ever carry the path component.
         log_path = split.path

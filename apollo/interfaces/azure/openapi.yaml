@@ -477,30 +477,6 @@ paths:
               schema:
                 $ref: "#/components/schemas/AgentOperationResponse"
 
-  /api/v1/agent/execute_script/{connection_type}:
-    post:
-      summary: Execute a synchronous agent script
-      description: >
-        Executes a Python script against a connection of the given type. The script
-        must define a `run` function that receives the connection client and an agent
-        context, plus optional keyword arguments supplied in the request body.
-      tags: [Agent Operations]
-      parameters:
-        - $ref: "#/components/parameters/connection_type_path"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/ExecuteScriptRequest"
-      responses:
-        "200":
-          description: The result of the script execution.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AgentOperationResponse"
-
   /api/v1/self-hosted-credentials/validate/{connection_type}:
     post:
       summary: Validate self-hosted credentials
@@ -1302,48 +1278,6 @@ components:
           type: string
           description: Optional trace ID echoed back in the response.
           example: "324986b4-b185-4187-b4af-b0c2cd60f7a0"
-
-    ExecuteScriptRequest:
-      type: object
-      description: Request body for executing an agent script.
-      properties:
-        credentials:
-          type: object
-          description: Authentication information for establishing the connection.
-          additionalProperties: {}
-        operation:
-          type: object
-          description: The script to execute.
-          properties:
-            trace_id:
-              type: string
-              description: Optional trace ID for log correlation.
-              example: "324986b4-b185-4187-b4af-b0c2cd60f7a0"
-            script:
-              type: string
-              description: >
-                Source of the Python script to execute. Must define a `run`
-                function that receives the connection client and an agent context.
-            kwargs:
-              type: object
-              description: Keyword arguments passed to the script's `run` function.
-              additionalProperties: {}
-      example:
-        credentials:
-          connect_args:
-            user: user_name
-            password: password
-            account: account
-            warehouse: warehouse
-        operation:
-          trace_id: "324986b4-b185-4187-b4af-b0c2cd60f7a0"
-          script: |
-            def run(connection, context, sql_query):
-                cursor = connection.cursor()
-                cursor.execute(sql_query)
-                return cursor.fetchall()
-          kwargs:
-            sql_query: "select database_name from snowflake.information_schema.databases"
 
     ValidateSelfHostedCredentialsRequest:
       type: object

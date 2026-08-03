@@ -1,22 +1,33 @@
 from typing import Required, TypedDict
 
-from apollo.integrations.ctp.models import CtpConfig, MapperConfig, TransformStep
+from apollo.integrations.ctp.models import CtpConfig, MapperConfig
 
 
-class PowerBiClientArgs(TypedDict):
-    token: Required[str]  # MSAL access token from resolve_msal_token transform
+class PowerBiClientArgs(TypedDict, total=False):
     auth_type: Required[str]  # always "Bearer" for Power BI
+    # Raw-creds mode: the agent mints a token per scope, selected by request host
+    # (api.powerbi.com -> Power BI scope, api.fabric.microsoft.com -> Fabric scope). Both
+    # audiences come from the same credentials — see PowerBiTokenProvider.
+    auth_mode: str  # "service_principal" or "primary_user"
+    client_id: str
+    tenant_id: str
+    client_secret: str
+    username: str
+    password: str
+    # Legacy pre-shaped mode: a token already minted by the data-collector (Power BI-scoped,
+    # rare for self-hosted). Served only for api.powerbi.com since there are no creds to re-mint.
+    token: str
 
 
-# Power BI self-hosted creds are flat top-level (no `connect_args` wrapper)
-# per docs. The docs example shows only client_id/client_secret/tenant_id,
-# matching client_credentials OAuth — the only auth mode used in practice.
-# The CTP also supports password grant via `auth_mode: "password"`, which is
-# left as an optional alternative variant.
+# Power BI self-hosted creds are flat top-level (no `connect_args` wrapper) per docs. The agent
+# owns token acquisition (the DC sends raw creds and injects no Authorization header in agent
+# mode), so the CTP passes the raw MSAL params through to `connect_args` unchanged and the proxy
+# client mints the correctly-scoped token per request host. `auth_mode` is `service_principal`
+# (client-credentials) or `primary_user` (username/password).
 POWER_BI_CREDENTIALS_SCHEMA = {
-    "auth_mode": {"type": "string", "allowed": ["client_credentials", "password"]},
-    "client_id": {"type": "string", "required": True, "empty": False},
-    "tenant_id": {"type": "string", "required": True, "empty": False},
+    "auth_mode": {"type": "string", "allowed": ["service_principal", "primary_user"]},
+    "client_id": {"type": "string"},
+    "tenant_id": {"type": "string"},
     "client_secret": {"type": "string"},
     "username": {"type": "string"},
     "password": {"type": "string"},
@@ -27,31 +38,22 @@ POWER_BI_CREDENTIALS_SCHEMA = {
 POWERBI_DEFAULT_CTP = CtpConfig(
     name="powerbi-default",
     raw_credentials_schema=POWER_BI_CREDENTIALS_SCHEMA,
-    steps=[
-        # Resolve MSAL token from raw credentials. Skipped when credentials are
-        # pre-shaped (DC path) and a token is already present.
-        TransformStep(
-            when="raw.auth_mode is defined",
-            type="resolve_msal_token",
-            input={
-                "auth_mode": "{{ raw.auth_mode }}",
-                "client_id": "{{ raw.client_id }}",
-                "tenant_id": "{{ raw.tenant_id }}",
-                "client_secret": "{{ raw.client_secret | default(none) }}",
-                "username": "{{ raw.username | default(none) }}",
-                "password": "{{ raw.password | default(none) }}",
-            },
-            output={"token": "msal_token"},
-            field_map={"token": "{{ derived.msal_token }}"},
-        ),
-    ],
+    steps=[],
     mapper=MapperConfig(
         name="powerbi_client_args",
         schema=PowerBiClientArgs,
+        # Pass the raw MSAL params (or a legacy pre-shaped token) straight through. Token
+        # acquisition happens per request in PowerBiProxyClient / PowerBiTokenProvider, which
+        # needs the raw credentials to mint a Power BI- or Fabric-scoped token by host. Absent
+        # fields resolve to None and are dropped by the mapper.
         field_map={
             "auth_type": "Bearer",
-            # Passed through when token is already resolved (DC pre-shaped path).
-            # Overridden by the resolve_msal_token step field_map when auth_mode is present.
+            "auth_mode": "{{ raw.auth_mode | default(none) }}",
+            "client_id": "{{ raw.client_id | default(none) }}",
+            "tenant_id": "{{ raw.tenant_id | default(none) }}",
+            "client_secret": "{{ raw.client_secret | default(none) }}",
+            "username": "{{ raw.username | default(none) }}",
+            "password": "{{ raw.password | default(none) }}",
             "token": "{{ raw.token | default(none) }}",
         },
     ),

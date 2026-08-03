@@ -60,6 +60,30 @@ dedicated `GcpDataformProxyClient`. The CTP config in `defaults/gcp_dataform.py`
 `project_id`, `service_account_info`, and an optional `locations` list; the proxy client handles
 SA credential construction and exposes Dataform API calls as serialized-dict methods.
 
+**Oracle** (`oracle` connection type) — CTP config in `defaults/oracle.py` maps the scalar
+connection fields (`dsn`/`user`/`password`/`expire_time`) and additionally passes the whole nested
+`ssl_options` block through **unchanged**: `"ssl_options": "{{ raw.ssl_options | default(none) }}"`.
+This is the reference for the **nested-dict passthrough pattern** — when a proxy client needs a
+structured credential sub-object (not flat scalars), map it through as a single template
+expression. The sandboxed `NativeEnvironment` (see `template.py`) preserves it as a `dict` rather
+than stringifying it. `OracleProxyClient` then pops `ssl_options` out of `connect_args` (it is not
+an `oracledb.connect` arg) and builds the thin `ssl.SSLContext` / thick wallet from it — the
+resolution can't happen in the CTP because it depends on runtime/process state (thin vs thick).
+
+**Power BI** (`power-bi` connection type) — the reference for the **deferred / host-scoped auth
+pattern**. Unlike every other enrolled connector, the CTP does *not* resolve a token: its config
+in `defaults/power_bi.py` has `steps=[]` and simply passes the raw MSAL credentials
+(`auth_mode` + `client_id`/`tenant_id`/`client_secret` or `username`/`password`) — or a legacy
+pre-shaped `token` — straight through to `connect_args`. Token acquisition happens *per request*
+in `PowerBiProxyClient` (`apollo/integrations/powerbi/`), which overrides
+`HttpProxyClient._attach_auth_header(headers, url)` and delegates to `PowerBiTokenProvider`
+(`apollo/integrations/powerbi/msal_auth.py`). The provider selects the MSAL scope by destination
+host — `api.powerbi.com` → the Power BI API scope, `api.fabric.microsoft.com` → the Microsoft
+Fabric scope, any other host → no token — minting and caching a token per scope. This is the
+precedent for connectors whose credential *audience* is only known at request time, not CTP time.
+(The generic `resolve_msal_token` transform that previously minted the Power BI token at CTP time
+was removed with this change; `msal_auth.acquire_token` is now the single home for the MSAL logic.)
+
 ## Security note
 
 Jinja2 templates are sandboxed (see `template.py`). Do not use `Environment()` directly —
