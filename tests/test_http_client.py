@@ -1188,15 +1188,15 @@ class TestMulesoftAgentEndToEnd(TestCase):
         self._agent = Agent(LoggingUtils())
 
     @patch("requests.request")
-    @patch("apollo.integrations.ctp.transforms.oauth.requests")
+    @patch("apollo.integrations.ctp.transforms.oauth.safe_request")
     def test_mulesoft_agent_execute_operation_routes_through_http_proxy(
-        self, mock_oauth_requests, mock_request
+        self, mock_oauth_sr, mock_request
     ):
         # Stage 1 mock: OAuth POST returns a token.
         oauth_resp = MagicMock()
         oauth_resp.json.return_value = {"access_token": "ms-token"}
         oauth_resp.raise_for_status.return_value = None
-        mock_oauth_requests.post.return_value = oauth_resp
+        mock_oauth_sr.return_value = oauth_resp
 
         # Stage 2 mock: downstream API GET returns JSON.
         api_resp = create_autospec(Response)
@@ -1224,7 +1224,7 @@ class TestMulesoftAgentEndToEnd(TestCase):
         # OAuth was attempted at the US region endpoint.
         self.assertEqual(
             "https://anypoint.mulesoft.com/accounts/api/v2/oauth2/token",
-            mock_oauth_requests.post.call_args.args[0],
+            mock_oauth_sr.call_args.args[1],
         )
         # Downstream call hit the DC-supplied URL with the Bearer header from CTP.
         mock_request.assert_called_with(
@@ -1236,15 +1236,15 @@ class TestMulesoftAgentEndToEnd(TestCase):
         self.assertEqual({"orgs": []}, response.result.get(ATTRIBUTE_NAME_RESULT))
 
     @patch("requests.request")
-    @patch("apollo.integrations.ctp.transforms.oauth.requests")
+    @patch("apollo.integrations.ctp.transforms.oauth.safe_request")
     def test_mulesoft_eu_region_routes_through_eu_endpoint(
-        self, mock_oauth_requests, mock_request
+        self, mock_oauth_sr, mock_request
     ):
         # Stage 1 mock: OAuth POST returns a token.
         oauth_resp = MagicMock()
         oauth_resp.json.return_value = {"access_token": "ms-eu-token"}
         oauth_resp.raise_for_status.return_value = None
-        mock_oauth_requests.post.return_value = oauth_resp
+        mock_oauth_sr.return_value = oauth_resp
 
         # Stage 2 mock: downstream API GET returns JSON.
         api_resp = create_autospec(Response)
@@ -1272,7 +1272,7 @@ class TestMulesoftAgentEndToEnd(TestCase):
         # OAuth was attempted at the EU region endpoint.
         self.assertEqual(
             "https://eu1.anypoint.mulesoft.com/accounts/api/v2/oauth2/token",
-            mock_oauth_requests.post.call_args.args[0],
+            mock_oauth_sr.call_args.args[1],
         )
         # Downstream call hit the EU base URL.
         mock_request.assert_called_with(
@@ -1284,9 +1284,9 @@ class TestMulesoftAgentEndToEnd(TestCase):
         self.assertEqual({"orgs": []}, response.result.get(ATTRIBUTE_NAME_RESULT))
 
     @patch("requests.request")
-    @patch("apollo.integrations.ctp.transforms.oauth.requests")
+    @patch("apollo.integrations.ctp.transforms.oauth.safe_request")
     def test_mulesoft_do_request_accepts_arbitrary_url_from_caller(
-        self, mock_oauth_requests, mock_request
+        self, mock_oauth_sr, mock_request
     ):
         """Documents the design decision: do_request does NOT validate the URL —
         the agent trusts the DC for URL construction. The DC may supply any URL
@@ -1295,7 +1295,7 @@ class TestMulesoftAgentEndToEnd(TestCase):
         oauth_resp = MagicMock()
         oauth_resp.json.return_value = {"access_token": "tok"}
         oauth_resp.raise_for_status.return_value = None
-        mock_oauth_requests.post.return_value = oauth_resp
+        mock_oauth_sr.return_value = oauth_resp
 
         api_resp = create_autospec(Response)
         api_resp.json.return_value = {}
