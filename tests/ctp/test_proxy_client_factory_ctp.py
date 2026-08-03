@@ -92,9 +92,9 @@ class TestProxyClientFactoryCtp(TestCase):
             captured["credentials"] = credentials
             raise StopIteration
 
-        # Mock the OAuth POST so the CTP pipeline produces a real token.
-        with patch("apollo.integrations.ctp.transforms.oauth.requests") as mock_req:
-            mock_resp = mock_req.post.return_value
+        # Mock the OAuth request so the CTP pipeline produces a real token.
+        with patch("apollo.integrations.ctp.transforms.oauth.safe_request") as mock_req:
+            mock_resp = mock_req.return_value
             mock_resp.json.return_value = {"access_token": "ms-token"}
             mock_resp.raise_for_status.return_value = None
 

@@ -40,9 +40,9 @@ class TestRegistration(TestCase):
 
 
 class TestRegionFullPipeline(TestCase):
-    @patch("apollo.integrations.ctp.transforms.oauth.requests")
-    def test_us_default_region_full_pipeline(self, mock_requests):
-        mock_requests.post.return_value = _mock_token_response("us-tok")
+    @patch("apollo.integrations.ctp.transforms.oauth.safe_request")
+    def test_us_default_region_full_pipeline(self, mock_safe_request):
+        mock_safe_request.return_value = _mock_token_response("us-tok")
 
         args = _resolve(_FLAT_CREDS)
 
@@ -50,39 +50,39 @@ class TestRegionFullPipeline(TestCase):
         self.assertEqual("Bearer", args["auth_type"])
         self.assertNotIn("ssl_verify", args)
         # Verify OAuth POSTed to the US region endpoint.
-        post_args = mock_requests.post.call_args
+        post_args = mock_safe_request.call_args
         self.assertEqual(
             "https://anypoint.mulesoft.com/accounts/api/v2/oauth2/token",
-            post_args.args[0],
+            post_args.args[1],
         )
 
-    @patch("apollo.integrations.ctp.transforms.oauth.requests")
-    def test_eu_region_pipeline(self, mock_requests):
-        mock_requests.post.return_value = _mock_token_response("eu-tok")
+    @patch("apollo.integrations.ctp.transforms.oauth.safe_request")
+    def test_eu_region_pipeline(self, mock_safe_request):
+        mock_safe_request.return_value = _mock_token_response("eu-tok")
 
         args = _resolve({**_FLAT_CREDS, "region": "EU"})
 
         self.assertEqual("eu-tok", args["token"])
         self.assertEqual(
             "https://eu1.anypoint.mulesoft.com/accounts/api/v2/oauth2/token",
-            mock_requests.post.call_args.args[0],
+            mock_safe_request.call_args.args[1],
         )
 
-    @patch("apollo.integrations.ctp.transforms.oauth.requests")
-    def test_gov_region_pipeline(self, mock_requests):
-        mock_requests.post.return_value = _mock_token_response("gov-tok")
+    @patch("apollo.integrations.ctp.transforms.oauth.safe_request")
+    def test_gov_region_pipeline(self, mock_safe_request):
+        mock_safe_request.return_value = _mock_token_response("gov-tok")
 
         args = _resolve({**_FLAT_CREDS, "region": "Gov"})
 
         self.assertEqual("gov-tok", args["token"])
         self.assertEqual(
             "https://mpt.mulesoft.com/accounts/api/v2/oauth2/token",
-            mock_requests.post.call_args.args[0],
+            mock_safe_request.call_args.args[1],
         )
 
-    @patch("apollo.integrations.ctp.transforms.oauth.requests")
-    def test_auth_type_always_bearer(self, mock_requests):
-        mock_requests.post.return_value = _mock_token_response()
+    @patch("apollo.integrations.ctp.transforms.oauth.safe_request")
+    def test_auth_type_always_bearer(self, mock_safe_request):
+        mock_safe_request.return_value = _mock_token_response()
 
         args = _resolve(_FLAT_CREDS)
 
@@ -90,17 +90,17 @@ class TestRegionFullPipeline(TestCase):
 
 
 class TestPreShapedPath(TestCase):
-    @patch("apollo.integrations.ctp.transforms.oauth.requests")
-    def test_pre_shaped_token_skips_both_steps(self, mock_requests):
+    @patch("apollo.integrations.ctp.transforms.oauth.safe_request")
+    def test_pre_shaped_token_skips_both_steps(self, mock_safe_request):
         args = _resolve({"token": "pre-shaped"})
 
         self.assertEqual("pre-shaped", args["token"])
         self.assertEqual("Bearer", args["auth_type"])
         self.assertNotIn("api_base_url", args)
-        mock_requests.post.assert_not_called()
+        mock_safe_request.assert_not_called()
 
-    @patch("apollo.integrations.ctp.transforms.oauth.requests")
-    def test_pre_shaped_with_extra_credentials_still_skips(self, mock_requests):
+    @patch("apollo.integrations.ctp.transforms.oauth.safe_request")
+    def test_pre_shaped_with_extra_credentials_still_skips(self, mock_safe_request):
         # Even with full client_id/secret present, an existing token short-circuits
         # both the endpoints transform and the oauth transform.
         args = _resolve(
@@ -112,39 +112,37 @@ class TestPreShapedPath(TestCase):
         )
 
         self.assertEqual("pre-shaped", args["token"])
-        mock_requests.post.assert_not_called()
+        mock_safe_request.assert_not_called()
 
 
 class TestFailurePaths(TestCase):
-    @patch("apollo.integrations.ctp.transforms.oauth.requests")
-    def test_oauth_failure_raises(self, mock_requests):
+    @patch("apollo.integrations.ctp.transforms.oauth.safe_request")
+    def test_oauth_failure_raises(self, mock_safe_request):
         # Simulate a 401 from the token endpoint.
         fail_resp = MagicMock()
         fail_resp.status_code = 401
         http_error = requests.HTTPError(response=fail_resp)
         fail_resp.raise_for_status.side_effect = http_error
-        mock_requests.HTTPError = requests.HTTPError
-        mock_requests.RequestException = requests.RequestException
-        mock_requests.post.return_value = fail_resp
+        mock_safe_request.return_value = fail_resp
 
         with self.assertRaises(CtpPipelineError):
             _resolve(_FLAT_CREDS)
 
-    @patch("apollo.integrations.ctp.transforms.oauth.requests")
-    def test_invalid_region_raises_before_oauth(self, mock_requests):
+    @patch("apollo.integrations.ctp.transforms.oauth.safe_request")
+    def test_invalid_region_raises_before_oauth(self, mock_safe_request):
         with self.assertRaises(CtpPipelineError) as ctx:
             _resolve({**_FLAT_CREDS, "region": "APAC"})
 
         self.assertIn("APAC", str(ctx.exception))
         # Pipeline must halt at the endpoints transform — OAuth must not be
         # attempted with the wrong (or undetermined) token endpoint.
-        mock_requests.post.assert_not_called()
+        mock_safe_request.assert_not_called()
 
 
 class TestSslPassthrough(TestCase):
-    @patch("apollo.integrations.ctp.transforms.oauth.requests")
-    def test_ssl_verify_passed_through(self, mock_requests):
-        mock_requests.post.return_value = _mock_token_response()
+    @patch("apollo.integrations.ctp.transforms.oauth.safe_request")
+    def test_ssl_verify_passed_through(self, mock_safe_request):
+        mock_safe_request.return_value = _mock_token_response()
 
         args = _resolve({**_FLAT_CREDS, "ssl_verify": "/path/to/ca-bundle.crt"})
 
@@ -157,9 +155,9 @@ class TestHttpProxyClientContract(TestCase):
     test catches it before the integration fails at runtime.
     """
 
-    @patch("apollo.integrations.ctp.transforms.oauth.requests")
-    def test_connect_args_match_http_proxy_client_contract(self, mock_requests):
-        mock_requests.post.return_value = _mock_token_response()
+    @patch("apollo.integrations.ctp.transforms.oauth.safe_request")
+    def test_connect_args_match_http_proxy_client_contract(self, mock_safe_request):
+        mock_safe_request.return_value = _mock_token_response()
 
         args = _resolve(_FLAT_CREDS)
 

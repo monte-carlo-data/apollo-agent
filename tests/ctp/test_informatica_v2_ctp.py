@@ -1,3 +1,4 @@
+import functools
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
@@ -54,6 +55,27 @@ def _mock_post(body: dict) -> MagicMock:
     return resp
 
 
+_OAUTH_SR = "apollo.integrations.ctp.transforms.oauth.safe_request"
+_INFO_SR = "apollo.integrations.ctp.transforms.resolve_informatica_session.safe_request"
+
+
+def _patch_both_safe_request(test_fn):
+    """Patch safe_request in BOTH transforms (oauth + resolve_informatica_session)
+    to a single shared mock, injected as the first test argument. The v2 pipeline
+    issues its two HTTP calls from different transforms; routing both through one
+    mock lets a test assert on their ordered sequence via a single call_args_list.
+    safe_request's signature is (method, url, **kwargs), so the URL is the second
+    positional arg — call_args_list[i][0][1]."""
+
+    @functools.wraps(test_fn)
+    def wrapper(self, *args, **kwargs):
+        shared = MagicMock()
+        with patch(_OAUTH_SR, shared), patch(_INFO_SR, shared):
+            return test_fn(self, shared, *args, **kwargs)
+
+    return wrapper
+
+
 class TestInformaticaV2CtpRegistered(TestCase):
     def test_registered(self):
         """CtpRegistry.get('informatica-v2') must return a config — not None."""
@@ -63,7 +85,7 @@ class TestInformaticaV2CtpRegistered(TestCase):
 class TestInformaticaV2CtpPipeline(TestCase):
     """Verify the v2 pipeline chains oauth → resolve_informatica_session correctly."""
 
-    @patch("requests.post")
+    @_patch_both_safe_request
     def test_oauth_credentials_produce_session_and_base_url(self, mock_post):
         """Flat OAuth credentials flow through both steps and produce connect_args."""
         mock_post.side_effect = [
@@ -82,7 +104,7 @@ class TestInformaticaV2CtpPipeline(TestCase):
         self.assertNotIn("oauth", result)
         self.assertNotIn("org_id", result)
 
-    @patch("requests.post")
+    @_patch_both_safe_request
     def test_first_call_is_idp_token_endpoint(self, mock_post):
         """Step 1 hits the IDP token URL with the grant_type and scope from raw.oauth."""
         mock_post.side_effect = [
@@ -92,14 +114,14 @@ class TestInformaticaV2CtpPipeline(TestCase):
 
         CtpPipeline().execute(INFORMATICA_V2_DEFAULT_CTP, _OAUTH_MODE_CREDENTIALS)
 
-        first_call_url = mock_post.call_args_list[0][0][0]
+        first_call_url = mock_post.call_args_list[0][0][1]
         first_call_data = mock_post.call_args_list[0][1]["data"]
         self.assertEqual("https://idp.example.com/oauth2/token", first_call_url)
         self.assertEqual("client_credentials", first_call_data["grant_type"])
         # `scope` from the raw.oauth blob is forwarded to the IDP request body.
         self.assertEqual("informatica", first_call_data["scope"])
 
-    @patch("requests.post")
+    @_patch_both_safe_request
     def test_password_grant_carries_username_and_password(self, mock_post):
         """raw.oauth with grant_type=password forwards username/password to the IDP."""
         mock_post.side_effect = [
@@ -125,7 +147,7 @@ class TestInformaticaV2CtpPipeline(TestCase):
         self.assertEqual("svc-user", first_call_data["username"])
         self.assertEqual("svc-pass", first_call_data["password"])
 
-    @patch("requests.post")
+    @_patch_both_safe_request
     def test_second_call_is_informatica_login_oauth_with_jwt(self, mock_post):
         """Step 2 hits Informatica /loginOAuth with the JWT obtained in step 1."""
         mock_post.side_effect = [
@@ -135,11 +157,11 @@ class TestInformaticaV2CtpPipeline(TestCase):
 
         CtpPipeline().execute(INFORMATICA_V2_DEFAULT_CTP, _OAUTH_MODE_CREDENTIALS)
 
-        second_call_url = mock_post.call_args_list[1][0][0]
+        second_call_url = mock_post.call_args_list[1][0][1]
         # /ma/api/v2/user/loginOAuth path is exercised when jwt_token is provided
         self.assertIn("/ma/api/v2/user/loginOAuth", second_call_url)
 
-    @patch("requests.post")
+    @_patch_both_safe_request
     def test_default_base_url_when_omitted(self, mock_post):
         """Omitting base_url falls back to the default Informatica POD URL."""
         mock_post.side_effect = [
@@ -155,7 +177,7 @@ class TestInformaticaV2CtpPipeline(TestCase):
         # Second call goes to the exact default URL — pin it so silent drift in
         # `_DEFAULT_BASE_URL` (e.g., dm-us → dm-eu, or to a staging URL) breaks
         # this test instead of slipping by a substring match.
-        second_call_url = mock_post.call_args_list[1][0][0]
+        second_call_url = mock_post.call_args_list[1][0][1]
         self.assertEqual(
             f"{_INFORMATICA_DEFAULT_BASE_URL}/ma/api/v2/user/loginOAuth",
             second_call_url,
@@ -175,7 +197,7 @@ class TestInformaticaV2CtpPasswordMode(TestCase):
         "userInfo": {"sessionId": "session-v3-xyz"},
     }
 
-    @patch("requests.post")
+    @_patch_both_safe_request
     def test_password_mode_skips_oauth_step_and_does_v3_login(self, mock_post):
         mock_post.return_value = _mock_post(self._V3_LOGIN_RESPONSE)
 
@@ -185,7 +207,7 @@ class TestInformaticaV2CtpPasswordMode(TestCase):
 
         # Only one HTTP call — straight to Informatica's V3 login (no OAuth step).
         self.assertEqual(1, mock_post.call_count)
-        login_url = mock_post.call_args_list[0][0][0]
+        login_url = mock_post.call_args_list[0][0][1]
         self.assertIn("/saas/public/core/v3/login", login_url)
         self.assertEqual("session-v3-xyz", result["session_id"])
         self.assertEqual("https://eu1.informaticacloud.com", result["api_base_url"])
@@ -194,7 +216,7 @@ class TestInformaticaV2CtpPasswordMode(TestCase):
 class TestInformaticaV2CtpFailureSurfaces(TestCase):
     """Each external failure surface must raise CtpPipelineError without leaking creds."""
 
-    @patch("requests.post")
+    @_patch_both_safe_request
     def test_idp_token_failure_raises(self, mock_post):
         """A 4xx from the IDP token endpoint surfaces as CtpPipelineError."""
         idp_failure = MagicMock()
@@ -206,7 +228,7 @@ class TestInformaticaV2CtpFailureSurfaces(TestCase):
         with self.assertRaises(CtpPipelineError):
             CtpPipeline().execute(INFORMATICA_V2_DEFAULT_CTP, _OAUTH_MODE_CREDENTIALS)
 
-    @patch("requests.post")
+    @_patch_both_safe_request
     def test_informatica_login_oauth_failure_raises(self, mock_post):
         """A 4xx from /loginOAuth (after IDP succeeded) surfaces as CtpPipelineError."""
         informatica_failure = MagicMock()
@@ -225,7 +247,7 @@ class TestInformaticaV2CtpFailureSurfaces(TestCase):
 class TestInformaticaV2CtpFactoryResolution(TestCase):
     """Verify CTP runs before InformaticaProxyClient is instantiated for v2."""
 
-    @patch("requests.post")
+    @_patch_both_safe_request
     def test_flat_credentials_resolved_to_connect_args_before_client_creation(
         self, mock_post
     ):
@@ -270,7 +292,7 @@ class TestInformaticaV2CtpAuthModeDiscriminator(TestCase):
     make the discriminator case-insensitive (or coerce missing values).
     """
 
-    @patch("requests.post")
+    @_patch_both_safe_request
     def test_case_mismatch_auth_mode_falls_through_to_password_path(self, mock_post):
         """`auth_mode: "OAuth"` (uppercase) falls through to password mode and
         therefore fails when required password fields are missing — surfacing
@@ -294,7 +316,7 @@ class TestInformaticaV2CtpPreResolvedPath(TestCase):
     here in tests rather than at runtime.
     """
 
-    @patch("requests.post")
+    @_patch_both_safe_request
     def test_pre_resolved_session_skips_both_steps(self, mock_post):
         result = CtpPipeline().execute(
             INFORMATICA_V2_DEFAULT_CTP,

@@ -35,7 +35,9 @@ class TestInformaticaCtpRegistered(TestCase):
 class TestInformaticaCtpPipeline(TestCase):
     """Verify the default CTP pipeline resolves credentials to session_id + api_base_url."""
 
-    @patch("requests.post")
+    @patch(
+        "apollo.integrations.ctp.transforms.resolve_informatica_session.safe_request"
+    )
     def test_v2_credentials_produce_session_and_base_url(self, mock_post):
         """V2 credentials flow through resolve_informatica_session and produce connect_args."""
         mock_post.return_value = _mock_post(_V2_LOGIN_RESPONSE)
@@ -56,7 +58,9 @@ class TestInformaticaCtpPipeline(TestCase):
         self.assertNotIn("username", result)
         self.assertNotIn("password", result)
 
-    @patch("requests.post")
+    @patch(
+        "apollo.integrations.ctp.transforms.resolve_informatica_session.safe_request"
+    )
     def test_v3_credentials_produce_session_and_base_url(self, mock_post):
         """V3 credentials flow through resolve_informatica_session and produce connect_args."""
         mock_post.return_value = _mock_post(_V3_LOGIN_RESPONSE)
@@ -73,7 +77,9 @@ class TestInformaticaCtpPipeline(TestCase):
         self.assertEqual("session-v3-xyz", result["session_id"])
         self.assertEqual("https://eu1.informaticacloud.com", result["api_base_url"])
 
-    @patch("requests.post")
+    @patch(
+        "apollo.integrations.ctp.transforms.resolve_informatica_session.safe_request"
+    )
     def test_minimal_credentials_default_to_v3(self, mock_post):
         """Credentials without informatica_auth default to V3 login."""
         mock_post.return_value = _mock_post(_V3_LOGIN_RESPONSE)
@@ -83,7 +89,7 @@ class TestInformaticaCtpPipeline(TestCase):
             {"username": "svc_user", "password": "s3cr3t"},
         )
 
-        login_url = mock_post.call_args[0][0]
+        login_url = mock_post.call_args[0][1]
         self.assertIn("/saas/public/core/v3/login", login_url)
         self.assertEqual("session-v3-xyz", result["session_id"])
 
@@ -91,7 +97,9 @@ class TestInformaticaCtpPipeline(TestCase):
 class TestInformaticaCtpPreResolvedPath(TestCase):
     """Verify the when= guard skips login when session_id is already present."""
 
-    @patch("requests.post")
+    @patch(
+        "apollo.integrations.ctp.transforms.resolve_informatica_session.safe_request"
+    )
     def test_pre_resolved_session_skips_login_step(self, mock_post):
         """When session_id is present in raw, the resolve_informatica_session step is skipped."""
         result = CtpPipeline().execute(
@@ -110,7 +118,9 @@ class TestInformaticaCtpPreResolvedPath(TestCase):
 class TestInformaticaCtpFactoryResolution(TestCase):
     """Verify CTP pipeline runs before InformaticaProxyClient is instantiated."""
 
-    @patch("requests.post")
+    @patch(
+        "apollo.integrations.ctp.transforms.resolve_informatica_session.safe_request"
+    )
     def test_flat_credentials_resolved_to_connect_args_before_client_creation(
         self, mock_post
     ):
