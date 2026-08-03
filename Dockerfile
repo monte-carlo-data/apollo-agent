@@ -117,6 +117,15 @@ RUN . $VENV_DIR/bin/activate && pip install --no-cache-dir -r requirements.txt
 # VULN-423
 RUN . $VENV_DIR/bin/activate && pip install -U pip setuptools
 
+# pip ships a vendored CycloneDX SBOM (_vendor/bom.cdx.json) that declares its
+# bundled deps (e.g. setuptools 70.3.0, msgpack 1.1.2). Docker Scout reads it and
+# attributes those versions to the image as HIGH CVEs, even though they are
+# pip-internal, used only at install time, and never imported by the running
+# agent — setuptools isn't even present as vendored code, it's a bom-only entry.
+# Same phantom-SBOM class as the _manifest files dropped in the lambda/azure
+# stages below. Delete the SBOM so Scout stops flagging pip's vendored versions.
+RUN rm -f $VENV_DIR/lib/python*/site-packages/pip/_vendor/bom.cdx.json
+
 # copy sources in the last step so we don't install python libraries due to a change in source code
 COPY --chown=mcdagent:mcdagent apollo/ ./apollo
 
