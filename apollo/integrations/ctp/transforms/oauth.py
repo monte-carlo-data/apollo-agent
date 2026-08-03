@@ -102,10 +102,15 @@ class OAuthTransform(Transform):
             )
             response.raise_for_status()
         except requests.HTTPError as exc:
+            # requests types HTTPError.response as Optional; raise_for_status always
+            # sets it here, but guard for the type checker (requests>=2.34 stubs).
+            status_code = (
+                exc.response.status_code if exc.response is not None else "unknown"
+            )
             raise CtpPipelineError(
                 stage="transform_execute",
                 step_name=step.type,
-                message=f"Token endpoint returned HTTP {exc.response.status_code}",
+                message=f"Token endpoint returned HTTP {status_code}",
             ) from exc
         except requests.RequestException as exc:
             raise CtpPipelineError(
