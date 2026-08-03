@@ -117,6 +117,11 @@ RUN . $VENV_DIR/bin/activate && pip install --no-cache-dir -r requirements.txt
 # VULN-423
 RUN . $VENV_DIR/bin/activate && pip install -U pip setuptools
 
+# Docker Scout reads pip's vendored SBOM (_vendor/bom.cdx.json) and flags its
+# bundled deps (setuptools, msgpack) as image CVEs, though they're pip-internal
+# and never imported at runtime. Drop it, like the _manifest removals below.
+RUN rm -f $VENV_DIR/lib/python*/site-packages/pip/_vendor/bom.cdx.json
+
 # copy sources in the last step so we don't install python libraries due to a change in source code
 COPY --chown=mcdagent:mcdagent apollo/ ./apollo
 
