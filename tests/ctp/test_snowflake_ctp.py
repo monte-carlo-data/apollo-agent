@@ -152,7 +152,7 @@ class TestSnowflakeCtp(TestCase):
 
     # ── OAuth via token acquisition ───────────────────────────────────
 
-    @patch("apollo.integrations.ctp.transforms.oauth.requests.post")
+    @patch("apollo.integrations.ctp.transforms.oauth.safe_request")
     def test_oauth_client_credentials(self, mock_post):
         mock_resp = MagicMock()
         mock_resp.json.return_value = {"access_token": "tok_sfdc"}
@@ -177,7 +177,7 @@ class TestSnowflakeCtp(TestCase):
         self.assertNotIn("private_key", args)
         self.assertNotIn("oauth", args)
 
-    @patch("apollo.integrations.ctp.transforms.oauth.requests.post")
+    @patch("apollo.integrations.ctp.transforms.oauth.safe_request")
     def test_oauth_password_grant(self, mock_post):
         mock_resp = MagicMock()
         mock_resp.json.return_value = {"access_token": "tok_pw"}
@@ -201,7 +201,7 @@ class TestSnowflakeCtp(TestCase):
         self.assertEqual("tok_pw", args["token"])
         self.assertEqual("oauth", args["authenticator"])
 
-    @patch("apollo.integrations.ctp.transforms.oauth.requests.post")
+    @patch("apollo.integrations.ctp.transforms.oauth.safe_request")
     def test_oauth_does_not_override_explicit_token(self, mock_post):
         # When both raw.token and raw.oauth are present, the OAuth step fires
         # and its field_map wins (step field_map overrides mapper field_map).

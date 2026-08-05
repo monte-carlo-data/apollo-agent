@@ -74,7 +74,9 @@ class TestRegistration(TestCase):
 
 
 class TestV2PasswordMode(TestCase):
-    @patch("requests.post")
+    @patch(
+        "apollo.integrations.ctp.transforms.resolve_informatica_session.safe_request"
+    )
     def test_v2_login_extracts_server_url_and_session_id(self, mock_post):
         mock_post.return_value = _mock_post(_V2_LOGIN_RESPONSE)
 
@@ -91,7 +93,9 @@ class TestV2PasswordMode(TestCase):
         self.assertEqual("session-v2-abc", state.derived["session_id"])
         self.assertEqual(_API_BASE_URL_V2, state.derived["api_base_url"])
 
-    @patch("requests.post")
+    @patch(
+        "apollo.integrations.ctp.transforms.resolve_informatica_session.safe_request"
+    )
     def test_v2_login_posts_to_v2_path(self, mock_post):
         mock_post.return_value = _mock_post(_V2_LOGIN_RESPONSE)
 
@@ -105,11 +109,13 @@ class TestV2PasswordMode(TestCase):
         )
         _run(step, {"username": "u", "password": "p"})
 
-        login_url = mock_post.call_args[0][0]
+        login_url = mock_post.call_args[0][1]
         self.assertIn("/ma/api/v2/user/login", login_url)
         self.assertNotIn("loginOAuth", login_url)
 
-    @patch("requests.post")
+    @patch(
+        "apollo.integrations.ctp.transforms.resolve_informatica_session.safe_request"
+    )
     def test_v2_login_sends_credentials_as_form_data(self, mock_post):
         mock_post.return_value = _mock_post(_V2_LOGIN_RESPONSE)
 
@@ -135,7 +141,9 @@ class TestV2PasswordMode(TestCase):
 
 
 class TestV3PasswordMode(TestCase):
-    @patch("requests.post")
+    @patch(
+        "apollo.integrations.ctp.transforms.resolve_informatica_session.safe_request"
+    )
     def test_v3_login_extracts_integration_cloud_base_url(self, mock_post):
         mock_post.return_value = _mock_post(_V3_LOGIN_RESPONSE)
 
@@ -152,7 +160,9 @@ class TestV3PasswordMode(TestCase):
         self.assertEqual("session-v3-xyz", state.derived["session_id"])
         self.assertEqual(_API_BASE_URL_V3, state.derived["api_base_url"])
 
-    @patch("requests.post")
+    @patch(
+        "apollo.integrations.ctp.transforms.resolve_informatica_session.safe_request"
+    )
     def test_v3_login_posts_to_v3_path(self, mock_post):
         mock_post.return_value = _mock_post(_V3_LOGIN_RESPONSE)
 
@@ -166,10 +176,12 @@ class TestV3PasswordMode(TestCase):
         )
         _run(step, {"username": "u", "password": "p"})
 
-        login_url = mock_post.call_args[0][0]
+        login_url = mock_post.call_args[0][1]
         self.assertIn("/saas/public/core/v3/login", login_url)
 
-    @patch("requests.post")
+    @patch(
+        "apollo.integrations.ctp.transforms.resolve_informatica_session.safe_request"
+    )
     def test_missing_informatica_auth_defaults_to_v3(self, mock_post):
         """When informatica_auth is absent, V3 is used."""
         mock_post.return_value = _mock_post(_V3_LOGIN_RESPONSE)
@@ -182,10 +194,12 @@ class TestV3PasswordMode(TestCase):
         )
         _run(step, {"username": "u", "password": "p"})
 
-        login_url = mock_post.call_args[0][0]
+        login_url = mock_post.call_args[0][1]
         self.assertIn("/saas/public/core/v3/login", login_url)
 
-    @patch("requests.post")
+    @patch(
+        "apollo.integrations.ctp.transforms.resolve_informatica_session.safe_request"
+    )
     def test_v3_login_sends_credentials_as_json(self, mock_post):
         """V3 endpoint requires application/json — must use json=, not data=."""
         mock_post.return_value = _mock_post(_V3_LOGIN_RESPONSE)
@@ -206,7 +220,9 @@ class TestV3PasswordMode(TestCase):
         )
         self.assertNotIn("data", call_kwargs)
 
-    @patch("requests.post")
+    @patch(
+        "apollo.integrations.ctp.transforms.resolve_informatica_session.safe_request"
+    )
     def test_v3_response_ignores_non_integration_cloud_products(self, mock_post):
         """Only the 'Integration Cloud' product's baseApiUrl is used."""
         mock_post.return_value = _mock_post(_V3_LOGIN_RESPONSE)
@@ -231,7 +247,9 @@ class TestV3PasswordMode(TestCase):
 
 
 class TestJwtMode(TestCase):
-    @patch("requests.post")
+    @patch(
+        "apollo.integrations.ctp.transforms.resolve_informatica_session.safe_request"
+    )
     def test_jwt_login_extracts_server_url_and_session_id(self, mock_post):
         mock_post.return_value = _mock_post(_JWT_LOGIN_RESPONSE)
 
@@ -247,7 +265,9 @@ class TestJwtMode(TestCase):
         self.assertEqual("session-jwt-123", state.derived["session_id"])
         self.assertEqual(_API_BASE_URL_V2, state.derived["api_base_url"])
 
-    @patch("requests.post")
+    @patch(
+        "apollo.integrations.ctp.transforms.resolve_informatica_session.safe_request"
+    )
     def test_jwt_login_posts_to_login_oauth_path(self, mock_post):
         mock_post.return_value = _mock_post(_JWT_LOGIN_RESPONSE)
 
@@ -260,10 +280,12 @@ class TestJwtMode(TestCase):
         )
         _run(step, {"jwt_token": "eyJhb...", "org_id": "myorg"})
 
-        login_url = mock_post.call_args[0][0]
+        login_url = mock_post.call_args[0][1]
         self.assertIn("/ma/api/v2/user/loginOAuth", login_url)
 
-    @patch("requests.post")
+    @patch(
+        "apollo.integrations.ctp.transforms.resolve_informatica_session.safe_request"
+    )
     def test_jwt_login_sends_org_id_and_token_as_json(self, mock_post):
         mock_post.return_value = _mock_post(_JWT_LOGIN_RESPONSE)
 
@@ -281,7 +303,9 @@ class TestJwtMode(TestCase):
             {"orgId": "myorg123", "oauthToken": "my.jwt.token"}, call_kwargs["json"]
         )
 
-    @patch("requests.post")
+    @patch(
+        "apollo.integrations.ctp.transforms.resolve_informatica_session.safe_request"
+    )
     def test_jwt_mode_uses_custom_base_url(self, mock_post):
         mock_post.return_value = _mock_post(_JWT_LOGIN_RESPONSE)
         custom_url = "https://eu1-dm.informaticacloud.com"
@@ -295,7 +319,7 @@ class TestJwtMode(TestCase):
         )
         _run(step, {"jwt_token": "t", "org_id": "org"})
 
-        login_url = mock_post.call_args[0][0]
+        login_url = mock_post.call_args[0][1]
         self.assertTrue(login_url.startswith(custom_url))
 
 
@@ -305,7 +329,9 @@ class TestJwtMode(TestCase):
 
 
 class TestBaseUrl(TestCase):
-    @patch("requests.post")
+    @patch(
+        "apollo.integrations.ctp.transforms.resolve_informatica_session.safe_request"
+    )
     def test_custom_base_url_used_in_login_request(self, mock_post):
         mock_post.return_value = _mock_post(_V2_LOGIN_RESPONSE)
         custom = "https://dm-eu.informaticacloud.com"
@@ -320,10 +346,12 @@ class TestBaseUrl(TestCase):
         )
         _run(step, {"username": "u", "password": "p"})
 
-        login_url = mock_post.call_args[0][0]
+        login_url = mock_post.call_args[0][1]
         self.assertTrue(login_url.startswith(custom))
 
-    @patch("requests.post")
+    @patch(
+        "apollo.integrations.ctp.transforms.resolve_informatica_session.safe_request"
+    )
     def test_missing_base_url_falls_back_to_default(self, mock_post):
         """When base_url is absent, the US pod default is used."""
         mock_post.return_value = _mock_post(_V2_LOGIN_RESPONSE)
@@ -337,7 +365,7 @@ class TestBaseUrl(TestCase):
         )
         _run(step, {"username": "u", "password": "p"})
 
-        login_url = mock_post.call_args[0][0]
+        login_url = mock_post.call_args[0][1]
         self.assertIn("dm-us.informaticacloud.com", login_url)
 
 
@@ -347,7 +375,9 @@ class TestBaseUrl(TestCase):
 
 
 class TestOutputKeys(TestCase):
-    @patch("requests.post")
+    @patch(
+        "apollo.integrations.ctp.transforms.resolve_informatica_session.safe_request"
+    )
     def test_custom_output_keys_written_to_derived(self, mock_post):
         """Output key names in step.output control where values land in derived."""
         mock_post.return_value = _mock_post(_V2_LOGIN_RESPONSE)
@@ -374,9 +404,11 @@ class TestOutputKeys(TestCase):
 
 
 class TestLoginTimeout(TestCase):
-    """All three login paths must pass timeout= to requests.post."""
+    """All three login paths must pass timeout= to safe_request."""
 
-    @patch("requests.post")
+    @patch(
+        "apollo.integrations.ctp.transforms.resolve_informatica_session.safe_request"
+    )
     def test_v2_login_passes_timeout(self, mock_post):
         mock_post.return_value = _mock_post(_V2_LOGIN_RESPONSE)
         step = _make_step(
@@ -390,7 +422,9 @@ class TestLoginTimeout(TestCase):
         _run(step, {})
         self.assertEqual(30, mock_post.call_args[1]["timeout"])
 
-    @patch("requests.post")
+    @patch(
+        "apollo.integrations.ctp.transforms.resolve_informatica_session.safe_request"
+    )
     def test_v3_login_passes_timeout(self, mock_post):
         mock_post.return_value = _mock_post(_V3_LOGIN_RESPONSE)
         step = _make_step(
@@ -404,7 +438,9 @@ class TestLoginTimeout(TestCase):
         _run(step, {})
         self.assertEqual(30, mock_post.call_args[1]["timeout"])
 
-    @patch("requests.post")
+    @patch(
+        "apollo.integrations.ctp.transforms.resolve_informatica_session.safe_request"
+    )
     def test_jwt_login_passes_timeout(self, mock_post):
         mock_post.return_value = _mock_post(_JWT_LOGIN_RESPONSE)
         step = _make_step({"jwt_token": "tok", "org_id": "org", "base_url": _BASE_URL})
@@ -444,7 +480,9 @@ class TestErrorPaths(TestCase):
             _run(step, {})
         self.assertIn("v99", str(ctx.exception))
 
-    @patch("requests.post")
+    @patch(
+        "apollo.integrations.ctp.transforms.resolve_informatica_session.safe_request"
+    )
     def test_v2_response_missing_server_url_raises(self, mock_post):
         mock_post.return_value = _mock_post({"icSessionId": "s"})  # no serverUrl
 
@@ -460,7 +498,9 @@ class TestErrorPaths(TestCase):
             _run(step, {})
         self.assertIn("serverUrl", str(ctx.exception))
 
-    @patch("requests.post")
+    @patch(
+        "apollo.integrations.ctp.transforms.resolve_informatica_session.safe_request"
+    )
     def test_v3_response_missing_integration_cloud_raises(self, mock_post):
         mock_post.return_value = _mock_post(
             {
@@ -481,7 +521,9 @@ class TestErrorPaths(TestCase):
             _run(step, {})
         self.assertIn("baseApiUrl", str(ctx.exception))
 
-    @patch("requests.post")
+    @patch(
+        "apollo.integrations.ctp.transforms.resolve_informatica_session.safe_request"
+    )
     def test_jwt_response_missing_session_id_raises(self, mock_post):
         mock_post.return_value = _mock_post(
             {"serverUrl": "https://x.com"}
@@ -498,7 +540,9 @@ class TestErrorPaths(TestCase):
             _run(step, {})
         self.assertIn("icSessionId", str(ctx.exception))
 
-    @patch("requests.post")
+    @patch(
+        "apollo.integrations.ctp.transforms.resolve_informatica_session.safe_request"
+    )
     def test_http_error_during_login_raises_ctp_error(self, mock_post):
         from requests import HTTPError
 
@@ -533,7 +577,9 @@ class TestCredentialSafety(TestCase):
     _PASSWORD = "super_secret_password_xyz"
     _JWT = "eyJhbGciOiJSUzI1NiJ9.secret_payload.signature"
 
-    @patch("requests.post")
+    @patch(
+        "apollo.integrations.ctp.transforms.resolve_informatica_session.safe_request"
+    )
     def test_password_not_leaked_in_login_failure_message(self, mock_post):
         from requests import HTTPError
 
@@ -554,7 +600,9 @@ class TestCredentialSafety(TestCase):
 
         self.assertNotIn(self._PASSWORD, str(ctx.exception))
 
-    @patch("requests.post")
+    @patch(
+        "apollo.integrations.ctp.transforms.resolve_informatica_session.safe_request"
+    )
     def test_jwt_token_not_leaked_in_login_failure_message(self, mock_post):
         from requests import HTTPError
 

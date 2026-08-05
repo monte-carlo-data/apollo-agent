@@ -4,7 +4,7 @@
 #
 #    pip-compile --max-rounds=40 --output-file=requirements.txt --strip-extras requirements.in
 #
-agent-base @ git+https://github.com/monte-carlo-data/agent-base.git@v0.0.4
+agent-base @ git+https://github.com/monte-carlo-data/agent-base.git@v0.0.5
     # via -r requirements.in
 asn1crypto==1.5.1
     # via snowflake-connector-python
@@ -75,7 +75,7 @@ click==8.4.2
     #   presto-python-client
 clickhouse-connect==0.8.18
     # via -r requirements.in
-cryptography==48.0.1
+cryptography==49.0.0
     # via
     #   -r requirements.in
     #   azure-identity
@@ -99,8 +99,10 @@ duckdb==1.5.3
     # via -r requirements.in
 et-xmlfile==1.1.0
     # via openpyxl
-filelock==3.17.0
-    # via snowflake-connector-python
+filelock==3.20.3
+    # via
+    #   -r requirements.in
+    #   snowflake-connector-python
 flask==2.3.3
     # via
     #   -r requirements.in
@@ -172,8 +174,9 @@ httplib2==0.32.0
     #   google-auth-httplib2
 ibm-db==3.2.7
     # via -r requirements.in
-idna==3.7
+idna==3.15
     # via
+    #   -r requirements.in
     #   requests
     #   snowflake-connector-python
 impyla==0.22.0
@@ -213,11 +216,13 @@ markupsafe==3.0.3
     #   -r requirements.in
     #   jinja2
     #   werkzeug
-marshmallow==3.26.1
-    # via dataclasses-json
+marshmallow==3.26.2
+    # via
+    #   -r requirements.in
+    #   dataclasses-json
 more-itertools==10.7.0
     # via simple-salesforce
-msal==1.36.0
+msal==1.37.0
     # via
     #   -r requirements.in
     #   azure-identity
@@ -304,11 +309,11 @@ pyjwt==2.13.0
     #   salesforce-cdp-connector
     #   simple-salesforce
     #   snowflake-connector-python
-pymysql==1.1.1
+pymysql==1.1.3
     # via -r requirements.in
 pyodbc==5.3.0
     # via -r requirements.in
-pyopenssl==26.2.0
+pyopenssl==26.4.0
     # via
     #   -r requirements.in
     #   snowflake-connector-python
@@ -327,9 +332,9 @@ pytz==2024.1
     #   pandas
     #   snowflake-connector-python
     #   trino
-    #   zeep
-requests==2.32.4
+requests==2.34.0
     # via
+    #   -r requirements.in
     #   agent-base
     #   azure-core
     #   databricks-sdk
@@ -351,8 +356,6 @@ requests-file==2.1.0
     # via zeep
 requests-toolbelt==1.0.0
     # via zeep
-restrictedpython==8.0
-    # via -r requirements.in
 retry2==0.9.5
     # via -r requirements.in
 rsa==4.9
@@ -371,7 +374,7 @@ six==1.16.0
     #   python-dateutil
     #   thrift
     #   thrift-sasl
-snowflake-connector-python==4.4.0
+snowflake-connector-python==4.7.1
     # via -r requirements.in
 sortedcontainers==2.4.0
     # via snowflake-connector-python
@@ -386,8 +389,10 @@ thrift==0.16.0
     #   thrift-sasl
 thrift-sasl==0.4.3
     # via impyla
-tomlkit==0.13.2
-    # via snowflake-connector-python
+tomlkit==0.15.1
+    # via
+    #   -r requirements.in
+    #   snowflake-connector-python
 trino==0.336.0
     # via -r requirements.in
 typing-extensions==4.12.2
@@ -419,12 +424,14 @@ urllib3==2.7.0
     #   requests
     #   salesforce-cdp-connector
     #   tableauserverclient
-werkzeug==3.1.0
+werkzeug==3.1.6
     # via
     #   -r requirements.in
     #   flask
-zeep==4.3.1
-    # via simple-salesforce
+zeep==4.3.3
+    # via
+    #   -r requirements.in
+    #   simple-salesforce
 zstandard==0.23.0
     # via
     #   clickhouse-connect

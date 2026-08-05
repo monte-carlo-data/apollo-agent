@@ -1,5 +1,6 @@
 import requests
 
+from apollo.integrations.http.url_safety import safe_request
 from apollo.integrations.ctp.errors import CtpPipelineError
 from apollo.integrations.ctp.models import PipelineState, TransformStep
 from apollo.integrations.ctp.template import TemplateEngine
@@ -151,7 +152,11 @@ class ResolveInformaticaSessionTransform(Transform):
     ) -> tuple[str, str]:
         """POST /ma/api/v2/user/login → (api_base_url, session_id)."""
         try:
-            response = requests.post(
+            # SSRF guard: base_url is templated from step.input; route through
+            # the SSRF-guarded helper (blocks cloud-metadata/loopback, allows
+            # private/on-prem Informatica pods).
+            response = safe_request(
+                "POST",
                 f"{base_url}{_V2_LOGIN_PATH}",
                 data={"username": username, "password": password},
                 timeout=_LOGIN_TIMEOUT,
@@ -185,7 +190,9 @@ class ResolveInformaticaSessionTransform(Transform):
     ) -> tuple[str, str]:
         """POST /saas/public/core/v3/login → (api_base_url, session_id)."""
         try:
-            response = requests.post(
+            # SSRF guard: base_url is templated from step.input (see _login_v2).
+            response = safe_request(
+                "POST",
                 f"{base_url}{_V3_LOGIN_PATH}",
                 json={"username": username, "password": password},
                 timeout=_LOGIN_TIMEOUT,
@@ -235,7 +242,9 @@ class ResolveInformaticaSessionTransform(Transform):
         so extraction is identical.
         """
         try:
-            response = requests.post(
+            # SSRF guard: base_url is templated from step.input (see _login_v2).
+            response = safe_request(
+                "POST",
                 f"{base_url}{_JWT_LOGIN_PATH}",
                 json={"orgId": org_id, "oauthToken": jwt_token},
                 timeout=_LOGIN_TIMEOUT,

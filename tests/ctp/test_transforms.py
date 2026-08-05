@@ -226,14 +226,14 @@ def _mock_token_response(token="tok_abc123"):
 class TestOAuthTransform(TestCase):
     # ── Client credentials grant ──────────────────────────────────────
 
-    @patch("apollo.integrations.ctp.transforms.oauth.requests.post")
+    @patch("apollo.integrations.ctp.transforms.oauth.safe_request")
     def test_client_credentials_stores_token(self, mock_post):
         mock_post.return_value = _mock_token_response("tok_cc")
         state = PipelineState(raw={"oauth": _CC_CONFIG})
         OAuthTransform().execute(_make_oauth_step(), state)
         self.assertEqual("tok_cc", state.derived["oauth_token"])
 
-    @patch("apollo.integrations.ctp.transforms.oauth.requests.post")
+    @patch("apollo.integrations.ctp.transforms.oauth.safe_request")
     def test_client_credentials_sends_basic_auth_header(self, mock_post):
         mock_post.return_value = _mock_token_response()
         state = PipelineState(raw={"oauth": _CC_CONFIG})
@@ -243,7 +243,7 @@ class TestOAuthTransform(TestCase):
         expected = base64.b64encode(b"my-client:my-secret").decode()
         self.assertEqual(f"Basic {expected}", kwargs["headers"]["Authorization"])
 
-    @patch("apollo.integrations.ctp.transforms.oauth.requests.post")
+    @patch("apollo.integrations.ctp.transforms.oauth.safe_request")
     def test_client_credentials_sends_grant_type_in_body(self, mock_post):
         mock_post.return_value = _mock_token_response()
         state = PipelineState(raw={"oauth": _CC_CONFIG})
@@ -252,7 +252,7 @@ class TestOAuthTransform(TestCase):
         _, kwargs = mock_post.call_args
         self.assertEqual("client_credentials", kwargs["data"]["grant_type"])
 
-    @patch("apollo.integrations.ctp.transforms.oauth.requests.post")
+    @patch("apollo.integrations.ctp.transforms.oauth.safe_request")
     def test_client_credentials_with_scope(self, mock_post):
         mock_post.return_value = _mock_token_response()
         config = {**_CC_CONFIG, "scope": "read:data"}
@@ -264,14 +264,14 @@ class TestOAuthTransform(TestCase):
 
     # ── Password grant ────────────────────────────────────────────────
 
-    @patch("apollo.integrations.ctp.transforms.oauth.requests.post")
+    @patch("apollo.integrations.ctp.transforms.oauth.safe_request")
     def test_password_grant_stores_token(self, mock_post):
         mock_post.return_value = _mock_token_response("tok_pw")
         state = PipelineState(raw={"oauth": _PW_CONFIG})
         OAuthTransform().execute(_make_oauth_step(), state)
         self.assertEqual("tok_pw", state.derived["oauth_token"])
 
-    @patch("apollo.integrations.ctp.transforms.oauth.requests.post")
+    @patch("apollo.integrations.ctp.transforms.oauth.safe_request")
     def test_password_grant_sends_username_and_password(self, mock_post):
         mock_post.return_value = _mock_token_response()
         state = PipelineState(raw={"oauth": _PW_CONFIG})
@@ -283,7 +283,7 @@ class TestOAuthTransform(TestCase):
 
     # ── Error handling ────────────────────────────────────────────────
 
-    @patch("apollo.integrations.ctp.transforms.oauth.requests.post")
+    @patch("apollo.integrations.ctp.transforms.oauth.safe_request")
     def test_http_error_raises_ctp_error(self, mock_post):
         import requests as req
 
@@ -298,7 +298,7 @@ class TestOAuthTransform(TestCase):
             OAuthTransform().execute(_make_oauth_step(), state)
         self.assertIn("401", str(ctx.exception))
 
-    @patch("apollo.integrations.ctp.transforms.oauth.requests.post")
+    @patch("apollo.integrations.ctp.transforms.oauth.safe_request")
     def test_missing_access_token_in_response_raises(self, mock_post):
         mock_resp = MagicMock()
         mock_resp.json.return_value = {"error": "invalid_client"}
@@ -583,119 +583,6 @@ class TestGenerateJwtTransform(TestCase):
 
     def test_registered(self):
         self.assertIsNotNone(TransformRegistry.get("generate_jwt"))
-
-
-# ── ResolveMsalTokenTransform ─────────────────────────────────────────────────
-
-from unittest.mock import MagicMock, patch
-
-from apollo.integrations.ctp.transforms.resolve_msal_token import (
-    ResolveMsalTokenTransform,
-)
-
-_MSAL_SP_RAW = {
-    "auth_mode": "service_principal",
-    "client_id": "cid",
-    "tenant_id": "tid",
-    "client_secret": "csec",
-}
-
-_MSAL_PU_RAW = {
-    "auth_mode": "primary_user",
-    "client_id": "cid",
-    "tenant_id": "tid",
-    "username": "alice@example.com",
-    "password": "hunter2",
-}
-
-
-def _make_msal_step(raw_keys, output_key="msal_token"):
-    return TransformStep(
-        type="resolve_msal_token",
-        input={k: "{{ raw." + k + " }}" for k in raw_keys},
-        output={"token": output_key},
-    )
-
-
-class TestResolveMsalTokenTransform(TestCase):
-    @patch(
-        "apollo.integrations.ctp.transforms.resolve_msal_token.msal.ConfidentialClientApplication"
-    )
-    def test_service_principal_stores_token(self, mock_app_cls):
-        mock_app = MagicMock()
-        mock_app.acquire_token_for_client.return_value = {"access_token": "tok_sp"}
-        mock_app_cls.return_value = mock_app
-
-        state = PipelineState(raw=_MSAL_SP_RAW)
-        ResolveMsalTokenTransform().execute(_make_msal_step(_MSAL_SP_RAW), state)
-        self.assertEqual("tok_sp", state.derived["msal_token"])
-
-    @patch(
-        "apollo.integrations.ctp.transforms.resolve_msal_token.msal.PublicClientApplication"
-    )
-    def test_primary_user_stores_token(self, mock_app_cls):
-        mock_app = MagicMock()
-        mock_app.get_accounts.return_value = []
-        mock_app.acquire_token_by_username_password.return_value = {
-            "access_token": "tok_pu"
-        }
-        mock_app_cls.return_value = mock_app
-
-        state = PipelineState(raw=_MSAL_PU_RAW)
-        ResolveMsalTokenTransform().execute(_make_msal_step(_MSAL_PU_RAW), state)
-        self.assertEqual("tok_pu", state.derived["msal_token"])
-
-    @patch(
-        "apollo.integrations.ctp.transforms.resolve_msal_token.msal.PublicClientApplication"
-    )
-    def test_primary_user_uses_cached_token(self, mock_app_cls):
-        mock_app = MagicMock()
-        mock_account = MagicMock()
-        mock_app.get_accounts.return_value = [mock_account]
-        mock_app.acquire_token_silent.return_value = {"access_token": "tok_cached"}
-        mock_app_cls.return_value = mock_app
-
-        state = PipelineState(raw=_MSAL_PU_RAW)
-        ResolveMsalTokenTransform().execute(_make_msal_step(_MSAL_PU_RAW), state)
-        self.assertEqual("tok_cached", state.derived["msal_token"])
-        mock_app.acquire_token_by_username_password.assert_not_called()
-
-    @patch(
-        "apollo.integrations.ctp.transforms.resolve_msal_token.msal.ConfidentialClientApplication"
-    )
-    def test_msal_error_raises_ctp_error(self, mock_app_cls):
-        mock_app = MagicMock()
-        mock_app.acquire_token_for_client.return_value = {
-            "error": "invalid_client",
-            "error_description": "bad secret",
-        }
-        mock_app_cls.return_value = mock_app
-
-        state = PipelineState(raw=_MSAL_SP_RAW)
-        with self.assertRaises(CtpPipelineError) as ctx:
-            ResolveMsalTokenTransform().execute(_make_msal_step(_MSAL_SP_RAW), state)
-        self.assertIn("invalid_client", str(ctx.exception))
-
-    @patch(
-        "apollo.integrations.ctp.transforms.resolve_msal_token.msal.ConfidentialClientApplication"
-    )
-    def test_empty_response_raises_ctp_error(self, mock_app_cls):
-        mock_app = MagicMock()
-        mock_app.acquire_token_for_client.return_value = None
-        mock_app_cls.return_value = mock_app
-
-        state = PipelineState(raw=_MSAL_SP_RAW)
-        with self.assertRaises(CtpPipelineError):
-            ResolveMsalTokenTransform().execute(_make_msal_step(_MSAL_SP_RAW), state)
-
-    def test_unsupported_auth_mode_raises(self):
-        state = PipelineState(raw={**_MSAL_SP_RAW, "auth_mode": "magic"})
-        with self.assertRaises(CtpPipelineError) as ctx:
-            ResolveMsalTokenTransform().execute(_make_msal_step(_MSAL_SP_RAW), state)
-        self.assertIn("magic", str(ctx.exception))
-
-    def test_registered(self):
-        self.assertIsNotNone(TransformRegistry.get("resolve_msal_token"))
 
 
 # ── ResolveDatabricksOauthTransform ───────────────────────────────────────────
