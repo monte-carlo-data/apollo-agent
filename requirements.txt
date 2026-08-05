@@ -75,7 +75,7 @@ click==8.4.2
     #   presto-python-client
 clickhouse-connect==0.8.18
     # via -r requirements.in
-cryptography==49.0.0
+cryptography==50.0.0
     # via
     #   -r requirements.in
     #   azure-identity
