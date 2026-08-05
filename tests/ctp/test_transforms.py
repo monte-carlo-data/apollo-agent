@@ -226,14 +226,14 @@ def _mock_token_response(token="tok_abc123"):
 class TestOAuthTransform(TestCase):
     # ── Client credentials grant ──────────────────────────────────────
 
-    @patch("apollo.integrations.ctp.transforms.oauth.requests.post")
+    @patch("apollo.integrations.ctp.transforms.oauth.safe_request")
     def test_client_credentials_stores_token(self, mock_post):
         mock_post.return_value = _mock_token_response("tok_cc")
         state = PipelineState(raw={"oauth": _CC_CONFIG})
         OAuthTransform().execute(_make_oauth_step(), state)
         self.assertEqual("tok_cc", state.derived["oauth_token"])
 
-    @patch("apollo.integrations.ctp.transforms.oauth.requests.post")
+    @patch("apollo.integrations.ctp.transforms.oauth.safe_request")
     def test_client_credentials_sends_basic_auth_header(self, mock_post):
         mock_post.return_value = _mock_token_response()
         state = PipelineState(raw={"oauth": _CC_CONFIG})
@@ -243,7 +243,7 @@ class TestOAuthTransform(TestCase):
         expected = base64.b64encode(b"my-client:my-secret").decode()
         self.assertEqual(f"Basic {expected}", kwargs["headers"]["Authorization"])
 
-    @patch("apollo.integrations.ctp.transforms.oauth.requests.post")
+    @patch("apollo.integrations.ctp.transforms.oauth.safe_request")
     def test_client_credentials_sends_grant_type_in_body(self, mock_post):
         mock_post.return_value = _mock_token_response()
         state = PipelineState(raw={"oauth": _CC_CONFIG})
@@ -252,7 +252,7 @@ class TestOAuthTransform(TestCase):
         _, kwargs = mock_post.call_args
         self.assertEqual("client_credentials", kwargs["data"]["grant_type"])
 
-    @patch("apollo.integrations.ctp.transforms.oauth.requests.post")
+    @patch("apollo.integrations.ctp.transforms.oauth.safe_request")
     def test_client_credentials_with_scope(self, mock_post):
         mock_post.return_value = _mock_token_response()
         config = {**_CC_CONFIG, "scope": "read:data"}
@@ -264,14 +264,14 @@ class TestOAuthTransform(TestCase):
 
     # ── Password grant ────────────────────────────────────────────────
 
-    @patch("apollo.integrations.ctp.transforms.oauth.requests.post")
+    @patch("apollo.integrations.ctp.transforms.oauth.safe_request")
     def test_password_grant_stores_token(self, mock_post):
         mock_post.return_value = _mock_token_response("tok_pw")
         state = PipelineState(raw={"oauth": _PW_CONFIG})
         OAuthTransform().execute(_make_oauth_step(), state)
         self.assertEqual("tok_pw", state.derived["oauth_token"])
 
-    @patch("apollo.integrations.ctp.transforms.oauth.requests.post")
+    @patch("apollo.integrations.ctp.transforms.oauth.safe_request")
     def test_password_grant_sends_username_and_password(self, mock_post):
         mock_post.return_value = _mock_token_response()
         state = PipelineState(raw={"oauth": _PW_CONFIG})
@@ -283,7 +283,7 @@ class TestOAuthTransform(TestCase):
 
     # ── Error handling ────────────────────────────────────────────────
 
-    @patch("apollo.integrations.ctp.transforms.oauth.requests.post")
+    @patch("apollo.integrations.ctp.transforms.oauth.safe_request")
     def test_http_error_raises_ctp_error(self, mock_post):
         import requests as req
 
@@ -298,7 +298,7 @@ class TestOAuthTransform(TestCase):
             OAuthTransform().execute(_make_oauth_step(), state)
         self.assertIn("401", str(ctx.exception))
 
-    @patch("apollo.integrations.ctp.transforms.oauth.requests.post")
+    @patch("apollo.integrations.ctp.transforms.oauth.safe_request")
     def test_missing_access_token_in_response_raises(self, mock_post):
         mock_resp = MagicMock()
         mock_resp.json.return_value = {"error": "invalid_client"}
