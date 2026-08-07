@@ -12,11 +12,12 @@ operation) supply an already-authenticated storage client and a key template.
 
 Contract notes (see the AO-914 master plan, contracts C1/C4):
 
-- **Batching:** a flush can trigger two ways. Pre-add: adding the next
-  fragment would cross ``flush_bytes``, so the buffer is flushed first and the
-  new fragment starts the next file. Post-add: the fragment just appended
-  brings the buffer to ``flush_bytes`` or beyond, so the file is flushed
-  immediately rather than waiting for another fragment. Together these keep
+- **Batching:** the file boundary is the pre-add check: when adding the next
+  fragment would cross ``flush_bytes``, the buffer is flushed first and the
+  new fragment starts the next file. A post-add check also flushes once the
+  buffer reaches ``flush_bytes``; it fires only on exact-boundary equality or
+  a single oversized fragment on an empty buffer, releasing the buffer one
+  fragment earlier without ever changing file contents. Together these keep
   each output file close to ``max(flush_bytes, largest_single_fragment)`` — an
   approximate bound, not an exact one: the written payload is a re-serialized
   compact merge, and JSON number round-tripping (e.g. ``1e5`` becoming
@@ -27,35 +28,48 @@ Contract notes (see the AO-914 master plan, contracts C1/C4):
 - **Keys:** ``key_template`` is filled via ``key_template.format(seq=N)`` with
   ``seq`` 0-based and incremented once per file; the canonical template uses
   ``{seq:04d}`` (pinned in C1) but the module is format-agnostic. The template
+  is validated before any fragment is consumed: one that fails to format or
+  lacks an effective ``{seq}`` placeholder raises ``ValueError``. The template
   is relative to the storage client's namespace — ``BaseStorageClient``
   prepends its configured prefix — and ``Manifest.files`` reports keys as
   passed (pre-prefix); aligning client prefix + template with the ingest path
   is the caller's responsibility.
 - **Failure semantics:** any fragment-level failure (transform error, JSON
   parse error, missing/invalid ``resourceSpans``) raises
-  :class:`OtlpFragmentError` and aborts the run. Semantics are at-least-once:
-  files flushed before the failure remain in storage (``keys_written`` on the
-  error lists them, same as-passed namespace as ``Manifest.files``); a retry
-  with the same deterministic key template overwrites them. Errors never carry
-  fragment content — fragments may hold prompt/completion text and exceptions
-  flow to logs and error reporting. Transform exceptions are referenced by
-  type only, and the underlying exception is dropped inside the ``except``
-  handler so :class:`OtlpFragmentError` is raised outside it: this leaves both
-  ``__cause__`` and the implicit ``__context__`` as ``None``, so a transform's
-  own exception message — which may embed fragment content — is unreachable
-  through the exception chain. The JSON-parse path applies the same treatment
-  for the same reason (``JSONDecodeError.doc`` holds the full raw fragment).
-- **Memory:** peak usage is a small multiple of ``flush_bytes`` (parsed object
-  trees plus the merged output string at flush time) and is unbounded by a
-  single oversized fragment. Fragments are consumed lazily from the iterator;
-  the full stream is never materialized.
+  :class:`OtlpFragmentError` and aborts the run. A storage-write failure
+  raises :class:`OtlpStorageError`, deliberately chained to the backend
+  exception: storage errors carry operation/error-code details, never
+  fragment content, and the chain preserves the backend's
+  retryable-vs-permanent signal. Semantics are at-least-once: files flushed
+  before the failure remain in storage (``keys_written`` on either error
+  lists them, same as-passed namespace as ``Manifest.files``); a retry with
+  the same deterministic key template overwrites them. Fragment errors never
+  carry fragment content — fragments may hold prompt/completion text and
+  exceptions flow to logs and error reporting. Transform exceptions are
+  referenced by type only, and the underlying exception is dropped inside the
+  ``except`` handler so :class:`OtlpFragmentError` is raised outside it: this
+  leaves both ``__cause__`` and the implicit ``__context__`` as ``None``, so
+  a transform's own exception message — which may embed fragment content — is
+  unreachable through the exception chain. The JSON-parse path applies the
+  same treatment for the same reason (``JSONDecodeError.doc`` holds the full
+  raw fragment).
+- **Memory:** buffered fragments are held as parsed object trees, whose
+  resident size is a shape-dependent multiple of the raw ``flush_bytes``
+  accounting — roughly 6-11x for attribute-dense OTLP-JSON (small dicts and
+  keys dominate, and ``json.loads`` does not share key strings across
+  fragments), down to ~1.2-3x when large prompt/completion strings dominate.
+  At the default 16 MiB threshold, plan for on the order of 100-200 MB
+  resident in the attribute-dense case, plus the merged serialized payload at
+  flush time. Peak usage is unbounded by a single oversized fragment.
+  Fragments are consumed lazily from the iterator; the full stream is never
+  materialized.
 - **PII posture:** fragment content is written as-is. If PII filtering is ever
   required on this path, the ``transform`` hook is the application point.
 """
 
 import json
 from dataclasses import dataclass, field
-from typing import Callable, Iterator, List, Optional, Tuple
+from typing import Callable, Iterable, List, Optional, Tuple
 
 from apollo.integrations.storage.base_storage_client import BaseStorageClient
 
@@ -101,8 +115,25 @@ class OtlpFragmentError(Exception):
         super().__init__(f"OTLP fragment {fragment_index}: {detail}")
 
 
+class OtlpStorageError(Exception):
+    """A flush failed to write its file to storage; the run is aborted.
+
+    Carries ``key`` — the key whose write failed (the object may be partially
+    written) — and ``keys_written``: the keys of files successfully flushed
+    before the failure (as-passed namespace, same as ``Manifest.files``).
+    Deliberately chained to the backend exception (storage errors carry
+    operation/error-code details, never fragment content), preserving the
+    backend's retryable-vs-permanent signal.
+    """
+
+    def __init__(self, key: str, keys_written: List[str]):
+        self.key = key
+        self.keys_written = keys_written
+        super().__init__(f"storage write failed for '{key}'")
+
+
 def write_otlp_files(
-    fragments: Iterator[str],
+    fragments: Iterable[str],
     storage: BaseStorageClient,
     key_template: str,
     flush_bytes: int = DEFAULT_FLUSH_BYTES,
@@ -115,16 +146,24 @@ def write_otlp_files(
     :param storage: destination client; only ``write(key, payload)`` is used.
     :param key_template: object-key template with a ``{seq}`` placeholder
         (canonically ``{seq:04d}``), relative to the client's namespace.
-    :param flush_bytes: buffered-bytes threshold that triggers a flush, both
-        pre-add (adding the next fragment would cross it) and post-add (the
-        fragment just appended reaches or exceeds it); see module docstring
-        for the file-size bound.
+    :param flush_bytes: buffered-bytes threshold; a flush triggers before
+        adding a fragment that would cross it (the file-boundary trigger). A
+        post-add flush on exact-boundary equality or a single oversized
+        fragment releases the buffer early without changing file contents;
+        see module docstring for the file-size bound.
     :param transform: optional per-fragment rewrite applied to the raw string
         before parsing; ``None`` means identity.
     :return: a :class:`Manifest` of files written and stream statistics.
+    :raises ValueError: if ``key_template`` fails to format or lacks an
+        effective ``{seq}`` placeholder; validated before the iterator is
+        touched.
     :raises OtlpFragmentError: on the first fragment that fails to transform,
         parse, or validate (fail-fast; see module docstring for semantics).
+    :raises OtlpStorageError: when a flush's storage write fails; chained to
+        the backend exception.
     """
+    _validate_key_template(key_template)
+
     files: List[str] = []
     buffer: List[list] = []  # each entry is one fragment's resourceSpans list
     buffered_bytes = 0
@@ -142,11 +181,19 @@ def write_otlp_files(
                 resource_span for fragment in buffer for resource_span in fragment
             ]
         }
-        payload = json.dumps(merged, separators=(",", ":"), ensure_ascii=False)
+        payload = json.dumps(merged, separators=(",", ":"), ensure_ascii=False).encode(
+            "utf-8"
+        )
         key = key_template.format(seq=len(files))
-        storage.write(key, payload)
+        try:
+            storage.write(key, payload)
+        except Exception as exc:
+            # Chained deliberately: storage exceptions carry operation and
+            # error-code details, never fragment content, and the chain keeps
+            # the backend's retryable-vs-permanent signal.
+            raise OtlpStorageError(key, list(files)) from exc
         files.append(key)
-        bytes_written += len(payload.encode("utf-8"))
+        bytes_written += len(payload)
         buffer = []
         buffered_bytes = 0
 
@@ -227,6 +274,29 @@ def write_otlp_files(
         max_collected_ts=max_collected_ts,
         bytes_written=bytes_written,
     )
+
+
+def _validate_key_template(key_template: str) -> None:
+    """Reject templates that cannot produce one distinct key per file.
+
+    Probe-formats with two ``seq`` values: a template that fails to format is
+    malformed, and one that formats both probes to the same key has no
+    effective ``{seq}`` placeholder — every flush would overwrite the same
+    object. The template is caller-supplied configuration and never carries
+    fragment content, so it may appear in the error message.
+    """
+    try:
+        first = key_template.format(seq=0)
+        second = key_template.format(seq=1)
+    except (KeyError, IndexError, ValueError) as exc:
+        raise ValueError(
+            f"key_template {key_template!r} is not formattable: {exc}"
+        ) from exc
+    if first == second:
+        raise ValueError(
+            f"key_template {key_template!r} has no effective {{seq}} placeholder; "
+            "every flush would overwrite the same key"
+        )
 
 
 def _collect_span_stats(resource_spans: list) -> Tuple[int, Optional[str]]:
