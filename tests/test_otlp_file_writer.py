@@ -595,6 +595,115 @@ class TestWriteOtlpFiles(TestCase):
 
         self.assertEqual(["traces-0.json", "traces-1.json"], manifest.files)
 
+    def test_seq_start_offsets_emitted_keys(self):
+        fragment = _make_fragment(["s1"], padding=100)
+        flush_bytes = len(fragment.encode("utf-8"))  # one file per fragment
+
+        manifest = write_otlp_files(
+            iter([fragment] * 3),
+            self.storage,
+            _KEY_TEMPLATE,
+            flush_bytes=flush_bytes,
+            seq_start=3,
+        )
+
+        # seq starts at seq_start, not 0: files continue an earlier run's sequence.
+        expected = [
+            "exports/acc-1/year=2026/month=07/day=27/traces-agent-job-0003.json",
+            "exports/acc-1/year=2026/month=07/day=27/traces-agent-job-0004.json",
+            "exports/acc-1/year=2026/month=07/day=27/traces-agent-job-0005.json",
+        ]
+        self.assertEqual(expected, manifest.files)
+        self.assertEqual(expected, self._written_keys())
+
+    def test_seq_start_zero_matches_default(self):
+        # The default is seq_start=0; passing it explicitly must be identical to
+        # omitting it (canonical 0000-based keys), i.e. no off-by-one.
+        fragment = _make_fragment(["s1"], padding=100)
+        flush_bytes = len(fragment.encode("utf-8"))
+
+        manifest = write_otlp_files(
+            iter([fragment] * 2),
+            self.storage,
+            _KEY_TEMPLATE,
+            flush_bytes=flush_bytes,
+            seq_start=0,
+        )
+
+        expected = [
+            "exports/acc-1/year=2026/month=07/day=27/traces-agent-job-0000.json",
+            "exports/acc-1/year=2026/month=07/day=27/traces-agent-job-0001.json",
+        ]
+        self.assertEqual(expected, manifest.files)
+        self.assertEqual(expected, self._written_keys())
+
+    def test_seq_start_does_not_bypass_template_validation(self):
+        # A non-zero seq_start must not let a no-{seq} template through: the
+        # template is still validated before the iterator is touched.
+        pulled = 0
+
+        def fragment_generator():
+            nonlocal pulled
+            pulled += 1
+            yield _make_fragment(["s1"])
+
+        with self.assertRaises(ValueError):
+            write_otlp_files(
+                fragment_generator(),
+                self.storage,
+                "traces/fixed.json",
+                seq_start=7,
+            )
+
+        self.storage.write.assert_not_called()
+        self.assertEqual(0, pulled)  # validation ran before the first pull
+
+    def test_seq_start_reflected_in_fragment_error_keys(self):
+        good = _make_fragment(["s1"], padding=100)
+        flush_bytes = len(good.encode("utf-8"))  # good fragment flushes alone
+
+        with self.assertRaises(OtlpFragmentError) as ctx:
+            write_otlp_files(
+                iter([good, "{not-json"]),
+                self.storage,
+                _KEY_TEMPLATE,
+                flush_bytes=flush_bytes,
+                seq_start=5,
+            )
+
+        # keys_written carries the offset key of the file flushed pre-failure.
+        self.assertEqual(
+            ["exports/acc-1/year=2026/month=07/day=27/traces-agent-job-0005.json"],
+            ctx.exception.keys_written,
+        )
+        self.assertEqual(1, ctx.exception.fragment_index)
+
+    def test_seq_start_reflected_in_storage_error_keys(self):
+        fragment = _make_fragment(["s1"], padding=100)
+        flush_bytes = len(fragment.encode("utf-8"))  # one file per fragment
+        backend_error = BaseStorageClient.GenericError("AccessDenied on PutObject")
+        self.storage.write.side_effect = [None, backend_error]
+
+        with self.assertRaises(OtlpStorageError) as ctx:
+            write_otlp_files(
+                iter([fragment] * 2),
+                self.storage,
+                _KEY_TEMPLATE,
+                flush_bytes=flush_bytes,
+                seq_start=5,
+            )
+
+        # The failed key carries the offset...
+        self.assertEqual(
+            "exports/acc-1/year=2026/month=07/day=27/traces-agent-job-0006.json",
+            ctx.exception.key,
+        )
+        # ...and keys_written holds only the earlier successfully flushed offset key.
+        self.assertEqual(
+            ["exports/acc-1/year=2026/month=07/day=27/traces-agent-job-0005.json"],
+            ctx.exception.keys_written,
+        )
+
     def test_storage_write_failure_raises_storage_error(self):
         fragment = _make_fragment(["s1"], padding=100)
         flush_bytes = len(fragment.encode("utf-8"))  # one file per fragment
