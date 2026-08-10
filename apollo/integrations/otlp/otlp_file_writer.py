@@ -26,14 +26,20 @@ Contract notes (see the AO-914 master plan, contracts C1/C4):
   truncated. The residual buffer is flushed when the iterator is exhausted; an
   empty buffer never produces a file.
 - **Keys:** ``key_template`` is filled via ``key_template.format(seq=N)`` with
-  ``seq`` 0-based and incremented once per file; the canonical template uses
-  ``{seq:04d}`` (pinned in C1) but the module is format-agnostic. The template
-  is validated before any fragment is consumed: one that fails to format or
-  lacks an effective ``{seq}`` placeholder raises ``ValueError``. The template
-  is relative to the storage client's namespace — ``BaseStorageClient``
-  prepends its configured prefix — and ``Manifest.files`` reports keys as
-  passed (pre-prefix); aligning client prefix + template with the ingest path
-  is the caller's responsibility.
+  ``seq`` incremented once per file; the canonical template uses ``{seq:04d}``
+  (pinned in C1) but the module is format-agnostic. ``seq`` starts at
+  ``seq_start`` (default 0) and equals ``seq_start + len(files_written_so_far)``.
+  ``seq_start`` lets a caller continue one logical export's sequence across
+  several ``write_otlp_files`` runs — e.g. a data-collector job paginated over
+  recursive child invocations, where each invocation passes ``seq_start`` = the
+  number of files prior invocations wrote, so invocation N+1 does not overwrite
+  invocation N's deterministic keys. The template is validated before any
+  fragment is consumed: one that fails to format or lacks an effective
+  ``{seq}`` placeholder raises ``ValueError``. The template is relative to the
+  storage client's namespace — ``BaseStorageClient`` prepends its configured
+  prefix — and ``Manifest.files`` reports keys as passed (pre-prefix), reflecting
+  the ``seq_start`` offset; aligning client prefix + template with the ingest
+  path is the caller's responsibility.
 - **Failure semantics:** any fragment-level failure (transform error, JSON
   parse error, missing/invalid ``resourceSpans``) raises
   :class:`OtlpFragmentError` and aborts the run. A storage-write failure
@@ -137,6 +143,7 @@ def write_otlp_files(
     storage: BaseStorageClient,
     key_template: str,
     flush_bytes: int = DEFAULT_FLUSH_BYTES,
+    seq_start: int = 0,
     transform: Optional[Callable[[str], str]] = None,
 ) -> Manifest:
     """Merge OTLP-JSON fragments into files in object storage and return a manifest.
@@ -151,6 +158,12 @@ def write_otlp_files(
         post-add flush on exact-boundary equality or a single oversized
         fragment releases the buffer early without changing file contents;
         see module docstring for the file-size bound.
+    :param seq_start: value the ``{seq}`` counter starts at (default 0); each
+        emitted key uses ``seq = seq_start + len(files_written_so_far)``. Lets a
+        caller continue one export's file sequence across successive runs (e.g.
+        a paginated job's recursive invocations) so later runs do not overwrite
+        earlier runs' deterministic keys. Reflected in ``Manifest.files`` and in
+        the ``keys_written`` on either error.
     :param transform: optional per-fragment rewrite applied to the raw string
         before parsing; ``None`` means identity.
     :return: a :class:`Manifest` of files written and stream statistics.
@@ -184,7 +197,7 @@ def write_otlp_files(
         payload = json.dumps(merged, separators=(",", ":"), ensure_ascii=False).encode(
             "utf-8"
         )
-        key = key_template.format(seq=len(files))
+        key = key_template.format(seq=seq_start + len(files))
         try:
             storage.write(key, payload)
         except Exception as exc:
