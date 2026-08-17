@@ -75,15 +75,14 @@ class TestS3Client(TestCase):
         self.assertIsNone(result.result.get(ATTRIBUTE_NAME_ERROR))
 
         response = result.result[ATTRIBUTE_NAME_RESULT]
+        # Compare the decompressed payload, not the gzip bytes: the serializer streams
+        # through gzip.GzipFile, which stamps the current mtime into the header, so the
+        # exact bytes are not reproducible (and gzip.compress defaults mtime to 0 from
+        # Python 3.14 on, which made an exact-bytes comparison version-dependent).
+        self.assertEqual({"Body"}, response.keys())
         self.assertEqual(
-            {
-                "Body": {
-                    "__data__": base64.b64encode(gzip.compress(b"body")).decode(
-                        "ascii"
-                    ),
-                    # Expected base64 encoded gzip string
-                    "__type__": ATTRIBUTE_VALUE_TYPE_STREAMING_BODY,
-                }
-            },
-            response,
+            ATTRIBUTE_VALUE_TYPE_STREAMING_BODY, response["Body"]["__type__"]
+        )
+        self.assertEqual(
+            b"body", gzip.decompress(base64.b64decode(response["Body"]["__data__"]))
         )

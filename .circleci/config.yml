@@ -82,6 +82,19 @@ jobs:
           extra_build_args: --target tests
           step-name: Run tests in docker build
 
+  # The azure image is the only one on Python 3.14 (its base is the sole non-EOL
+  # variant Microsoft publishes — see the azure stage in the Dockerfile), so the
+  # suite is run a second time against that interpreter and its resolved deps.
+  run-test-docker-azure:
+    machine:
+      image: ubuntu-2204:current
+    steps:
+      - checkout
+      - docker/build:
+          image: mcd/apollo-agent-tests-azure
+          extra_build_args: --target tests-azure
+          step-name: Run tests in docker build (azure, Python 3.14)
+
   build-and-push:
     machine:
       image: ubuntu-2204:current
@@ -420,6 +433,11 @@ workflows:
           filters:
             tags:
               only: /.*/
+      - run-test-docker-azure:
+          # run for all tags and branches, we need to add this so the job is available for build-and-push-prod
+          filters:
+            tags:
+              only: /.*/
       - build-and-push:
           name: build-and-push-dev
           docker_hub_repository: pre-release-agent
@@ -432,6 +450,7 @@ workflows:
           requires:
             - run-linter
             - run-test-docker
+            - run-test-docker-azure
           filters:
             branches:
               only:
@@ -517,6 +536,7 @@ workflows:
           requires:
             - run-linter
             - run-test-docker
+            - run-test-docker-azure
           filters:
             branches:
               only:
@@ -585,6 +605,7 @@ workflows:
           requires:
             - run-linter
             - run-test-docker
+            - run-test-docker-azure
           filters: # run only for tags starting with v, don't run for branches
             tags:
               only: /^v.*/
@@ -627,6 +648,7 @@ workflows:
           requires:
             - run-linter
             - run-test-docker
+            - run-test-docker-azure
           filters: # run only for tags starting with v, don't run for branches
             tags:
               only: /^v.*/
@@ -672,6 +694,7 @@ workflows:
           requires:
             - run-linter
             - run-test-docker
+            - run-test-docker-azure
           filters:
             branches:
               only:
@@ -687,6 +710,7 @@ workflows:
           requires:
             - run-linter
             - run-test-docker
+            - run-test-docker-azure
           filters: # run only for tags starting with v, don't run for branches
             tags:
               only: /^v.*/
@@ -696,6 +720,7 @@ workflows:
           requires:
             - run-linter
             - run-test-docker
+            - run-test-docker-azure
             - gcp-prod-update-and-validate-golden-agent-merge-queue
             - az-prod-update-and-validate-golden-agent-merge-queue
             - aws-prod-update-and-validate-golden-agent-merge-queue
