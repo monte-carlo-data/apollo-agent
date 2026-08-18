@@ -7,6 +7,7 @@ mocked; no cloud SDKs are involved.
 """
 
 import json
+import traceback
 from unittest import TestCase
 from unittest.mock import Mock
 
@@ -14,6 +15,7 @@ from apollo.integrations.otlp.otlp_file_writer import (
     DEFAULT_FLUSH_BYTES,
     Manifest,
     OtlpFragmentError,
+    OtlpStorageError,
     write_otlp_files,
 )
 from apollo.integrations.storage.base_storage_client import BaseStorageClient
@@ -124,7 +126,7 @@ class TestWriteOtlpFiles(TestCase):
                 span_count=4,
                 fragment_count=3,
                 max_collected_ts="2026-07-27T00:00:02Z",
-                bytes_written=len(self._written_payloads()[0].encode("utf-8")),
+                bytes_written=len(self._written_payloads()[0]),
             ),
             manifest,
         )
@@ -149,9 +151,10 @@ class TestWriteOtlpFiles(TestCase):
         self.assertEqual(2, len(first["resourceSpans"]))
         self.assertEqual(1, len(second["resourceSpans"]))
         # No written payload exceeds max(flush_bytes, largest single fragment).
+        # Payloads are UTF-8 bytes, so len() is already the byte count.
         bound = max(flush_bytes, max(fragment_sizes))
         for payload in self._written_payloads():
-            self.assertLessEqual(len(payload.encode("utf-8")), bound)
+            self.assertLessEqual(len(payload), bound)
         self.assertEqual(3, manifest.fragment_count)
 
     def test_byte_length_not_char_length_drives_flush(self):
@@ -282,8 +285,17 @@ class TestWriteOtlpFiles(TestCase):
 
         self.assertNotIn(secret, str(ctx.exception))
         self.assertNotIn(secret, repr(vars(ctx.exception)))
-        # Not chained: JSONDecodeError retains the document on .doc.
+        # Not chained: JSONDecodeError retains the document on .doc, so neither
+        # __cause__ nor __context__ may reference it — a reporter walking the
+        # implicit context chain must not reach the raw fragment.
         self.assertIsNone(ctx.exception.__cause__)
+        self.assertIsNone(ctx.exception.__context__)
+        full_chain = "".join(
+            traceback.format_exception(
+                type(ctx.exception), ctx.exception, ctx.exception.__traceback__
+            )
+        )
+        self.assertNotIn(secret, full_chain)
 
     def test_transform_error_is_wrapped_without_its_message(self):
         secret = "SECRET-FRAGMENT-TEXT"
@@ -303,8 +315,16 @@ class TestWriteOtlpFiles(TestCase):
         self.assertNotIn(secret, str(ctx.exception))
         self.assertNotIn(secret, repr(vars(ctx.exception)))
         # Deliberately not chained: the transform's own exception may embed
-        # fragment content, so it must never reach __cause__.
+        # fragment content, so it must reach neither __cause__ nor __context__,
+        # and must not surface anywhere in the formatted traceback chain.
         self.assertIsNone(ctx.exception.__cause__)
+        self.assertIsNone(ctx.exception.__context__)
+        full_chain = "".join(
+            traceback.format_exception(
+                type(ctx.exception), ctx.exception, ctx.exception.__traceback__
+            )
+        )
+        self.assertNotIn(secret, full_chain)
 
     def test_transform_returning_non_string_fails_fast(self):
         def returns_none(fragment: str) -> str:
@@ -364,13 +384,11 @@ class TestWriteOtlpFiles(TestCase):
 
         payloads = self._written_payloads()
         self.assertEqual(2, len(payloads))
-        # Computed from what was actually passed to the mock, not mirrored
-        # from the implementation's arithmetic.
-        self.assertEqual(
-            sum(len(p.encode("utf-8")) for p in payloads), manifest.bytes_written
-        )
+        # Computed from what was actually passed to the mock (UTF-8 bytes),
+        # not mirrored from the implementation's arithmetic.
+        self.assertEqual(sum(len(p) for p in payloads), manifest.bytes_written)
         self.assertGreater(
-            manifest.bytes_written, sum(len(p) for p in payloads)
+            manifest.bytes_written, sum(len(p.decode("utf-8")) for p in payloads)
         )  # non-ASCII made bytes > chars
         self.assertEqual(4, manifest.span_count)
         self.assertEqual(3, manifest.fragment_count)
@@ -576,3 +594,158 @@ class TestWriteOtlpFiles(TestCase):
         )
 
         self.assertEqual(["traces-0.json", "traces-1.json"], manifest.files)
+
+    def test_seq_start_offsets_emitted_keys(self):
+        fragment = _make_fragment(["s1"], padding=100)
+        flush_bytes = len(fragment.encode("utf-8"))  # one file per fragment
+
+        manifest = write_otlp_files(
+            iter([fragment] * 3),
+            self.storage,
+            _KEY_TEMPLATE,
+            flush_bytes=flush_bytes,
+            seq_start=3,
+        )
+
+        # seq starts at seq_start, not 0: files continue an earlier run's sequence.
+        expected = [
+            "exports/acc-1/year=2026/month=07/day=27/traces-agent-job-0003.json",
+            "exports/acc-1/year=2026/month=07/day=27/traces-agent-job-0004.json",
+            "exports/acc-1/year=2026/month=07/day=27/traces-agent-job-0005.json",
+        ]
+        self.assertEqual(expected, manifest.files)
+        self.assertEqual(expected, self._written_keys())
+
+    def test_seq_start_zero_matches_default(self):
+        # The default is seq_start=0; passing it explicitly must be identical to
+        # omitting it (canonical 0000-based keys), i.e. no off-by-one.
+        fragment = _make_fragment(["s1"], padding=100)
+        flush_bytes = len(fragment.encode("utf-8"))
+
+        manifest = write_otlp_files(
+            iter([fragment] * 2),
+            self.storage,
+            _KEY_TEMPLATE,
+            flush_bytes=flush_bytes,
+            seq_start=0,
+        )
+
+        expected = [
+            "exports/acc-1/year=2026/month=07/day=27/traces-agent-job-0000.json",
+            "exports/acc-1/year=2026/month=07/day=27/traces-agent-job-0001.json",
+        ]
+        self.assertEqual(expected, manifest.files)
+        self.assertEqual(expected, self._written_keys())
+
+    def test_seq_start_does_not_bypass_template_validation(self):
+        # A non-zero seq_start must not let a no-{seq} template through: the
+        # template is still validated before the iterator is touched.
+        pulled = 0
+
+        def fragment_generator():
+            nonlocal pulled
+            pulled += 1
+            yield _make_fragment(["s1"])
+
+        with self.assertRaises(ValueError):
+            write_otlp_files(
+                fragment_generator(),
+                self.storage,
+                "traces/fixed.json",
+                seq_start=7,
+            )
+
+        self.storage.write.assert_not_called()
+        self.assertEqual(0, pulled)  # validation ran before the first pull
+
+    def test_seq_start_reflected_in_fragment_error_keys(self):
+        good = _make_fragment(["s1"], padding=100)
+        flush_bytes = len(good.encode("utf-8"))  # good fragment flushes alone
+
+        with self.assertRaises(OtlpFragmentError) as ctx:
+            write_otlp_files(
+                iter([good, "{not-json"]),
+                self.storage,
+                _KEY_TEMPLATE,
+                flush_bytes=flush_bytes,
+                seq_start=5,
+            )
+
+        # keys_written carries the offset key of the file flushed pre-failure.
+        self.assertEqual(
+            ["exports/acc-1/year=2026/month=07/day=27/traces-agent-job-0005.json"],
+            ctx.exception.keys_written,
+        )
+        self.assertEqual(1, ctx.exception.fragment_index)
+
+    def test_seq_start_reflected_in_storage_error_keys(self):
+        fragment = _make_fragment(["s1"], padding=100)
+        flush_bytes = len(fragment.encode("utf-8"))  # one file per fragment
+        backend_error = BaseStorageClient.GenericError("AccessDenied on PutObject")
+        self.storage.write.side_effect = [None, backend_error]
+
+        with self.assertRaises(OtlpStorageError) as ctx:
+            write_otlp_files(
+                iter([fragment] * 2),
+                self.storage,
+                _KEY_TEMPLATE,
+                flush_bytes=flush_bytes,
+                seq_start=5,
+            )
+
+        # The failed key carries the offset...
+        self.assertEqual(
+            "exports/acc-1/year=2026/month=07/day=27/traces-agent-job-0006.json",
+            ctx.exception.key,
+        )
+        # ...and keys_written holds only the earlier successfully flushed offset key.
+        self.assertEqual(
+            ["exports/acc-1/year=2026/month=07/day=27/traces-agent-job-0005.json"],
+            ctx.exception.keys_written,
+        )
+
+    def test_storage_write_failure_raises_storage_error(self):
+        fragment = _make_fragment(["s1"], padding=100)
+        flush_bytes = len(fragment.encode("utf-8"))  # one file per fragment
+        backend_error = BaseStorageClient.GenericError("AccessDenied on PutObject")
+        self.storage.write.side_effect = [None, backend_error]
+
+        with self.assertRaises(OtlpStorageError) as ctx:
+            write_otlp_files(
+                iter([fragment] * 2),
+                self.storage,
+                _KEY_TEMPLATE,
+                flush_bytes=flush_bytes,
+            )
+
+        self.assertEqual(2, self.storage.write.call_count)
+        # The failed (possibly partially written) key is reported separately...
+        self.assertEqual(self._written_keys()[1], ctx.exception.key)
+        # ...while keys_written holds only the successfully flushed keys.
+        self.assertEqual(self._written_keys()[:1], ctx.exception.keys_written)
+        # Deliberately chained: storage errors are content-free, and the chain
+        # preserves the backend's retryable-vs-permanent signal.
+        self.assertIs(backend_error, ctx.exception.__cause__)
+
+    def test_key_template_without_seq_fails_before_consuming_iterator(self):
+        pulled = 0
+
+        def fragment_generator():
+            nonlocal pulled
+            pulled += 1
+            yield _make_fragment(["s1"])
+
+        with self.assertRaises(ValueError):
+            write_otlp_files(fragment_generator(), self.storage, "traces/fixed.json")
+
+        self.storage.write.assert_not_called()
+        self.assertEqual(0, pulled)  # validation ran before the first pull
+
+    def test_malformed_key_template_fails_fast(self):
+        for template in ("traces/{seq:04d}}.json", "traces/{seq}_{oops}.json"):
+            with self.subTest(template=template):
+                with self.assertRaises(ValueError):
+                    write_otlp_files(
+                        iter([_make_fragment(["s1"])]), self.storage, template
+                    )
+                self.storage.write.assert_not_called()
