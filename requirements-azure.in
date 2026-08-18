@@ -1,6 +1,6 @@
 -c requirements.txt
-azure-functions==1.18.0
-azure-functions-durable==1.2.9
+azure-functions==2.2.0
+azure-functions-durable==1.7.0  # >=1.7.0 required on Python 3.14
 azure-mgmt-resource==23.0.1
 azure-monitor-opentelemetry==1.8.8  # <1.4 pulls opentelemetry-instrumentation 0.46b0, which imports pkg_resources and crashes on py3.13; newer uses importlib.metadata
 azure-monitor-query==1.2.1
