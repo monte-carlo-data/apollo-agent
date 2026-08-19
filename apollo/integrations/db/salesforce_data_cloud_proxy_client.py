@@ -55,6 +55,14 @@ _SOQL_API_VERSION = "v62.0"
 _LIST_DATASPACES_SOQL = "SELECT DataSpaceApiName FROM Dataspace"
 _DISCOVERY_REQUEST_TIMEOUT_SECONDS = 30
 
+# Agent-owned ceiling on a data-collector-supplied ``ssot_get`` read timeout
+# (YET-2440). The DC clamps its own schedule-limit knob before sending, but that
+# bound lives in the CALLER: this one bounds how long a single agent worker can be
+# held on one Salesforce GET, whatever any DC build asks for. Slow Data Cloud orgs
+# legitimately need well over the 30s default for a ``/ssot`` page (observed p99
+# 63-72s across two orgs), so the default stays 30 and callers opt in above it.
+_SSOT_REQUEST_TIMEOUT_MAX_SECONDS = 300
+
 
 class _CapturingSession(requests.Session):
     """
@@ -140,6 +148,25 @@ def _redact_body(body: str | None) -> str | None:
     if body is None:
         return None
     return _SENSITIVE_VALUE_PATTERN.sub(r"\1'[REDACTED]'", body)
+
+
+def _resolve_ssot_timeout(timeout: int | None) -> int:
+    """
+    Coerce a data-collector-supplied ``ssot_get`` read timeout into a safe bound.
+
+    The value crosses the agent boundary inside the DC's operation payload, so it
+    is untrusted in the same way ``path`` is — it decides how long one agent worker
+    stays pinned on a single Salesforce GET. Anything that is not a positive ``int``
+    falls back to the default, and the agent enforces its OWN ceiling
+    (``_SSOT_REQUEST_TIMEOUT_MAX_SECONDS``) rather than trusting the caller to have
+    clamped correctly (YET-2440).
+
+    ``bool`` is rejected explicitly: it subclasses ``int``, so a JSON ``true`` would
+    otherwise be accepted as a 1-second timeout.
+    """
+    if isinstance(timeout, bool) or not isinstance(timeout, int) or timeout <= 0:
+        return _DISCOVERY_REQUEST_TIMEOUT_SECONDS
+    return min(timeout, _SSOT_REQUEST_TIMEOUT_MAX_SECONDS)
 
 
 def _attach_capturing_session(
@@ -683,7 +710,7 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
                 f"(HTTP {token_response.status_code}, Salesforce response: {body})"
             ) from e
 
-    def ssot_get(self, path: str) -> dict | list:
+    def ssot_get(self, path: str, timeout: int | None = None) -> dict | list:
         """
         Issue an authenticated GET against a Salesforce **core REST** path on the
         connection's My Domain and return the parsed JSON body.
@@ -713,11 +740,20 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
         My Domain. Rejection is based on the parsed URL structure, so a query
         string that merely embeds a URL (e.g. a pagination cursor) is allowed.
 
+        ``timeout`` optionally overrides the read timeout on the Salesforce GET
+        (default ``_DISCOVERY_REQUEST_TIMEOUT_SECONDS``); it is coerced and clamped
+        by :func:`_resolve_ssot_timeout`, so a non-``int`` or out-of-range value
+        degrades to the default rather than being trusted. It covers **only** the
+        GET — the client-credentials token mint that precedes it keeps its own 30s
+        bound — so a caller sizing a transport deadman must budget ``30 + timeout``,
+        not ``timeout`` (YET-2440).
+
         Raises ``ValueError`` for an unsafe ``path``; ``RuntimeError`` carrying
         ``code NNN`` on a non-200 response and ``HTTP NNN`` on a non-JSON 200
         response, with the response body redacted before it is surfaced.
         """
         validate_relative_rest_path(path)
+        request_timeout = _resolve_ssot_timeout(timeout)
         split = urllib.parse.urlsplit(path)
         # Query-string values (pagination cursors, filters) may be sensitive —
         # logs and error messages only ever carry the path component.
@@ -731,7 +767,11 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
             "Salesforce Data Cloud: SSOT GET "
             f"(domain={domain}, path={log_path}, has_query={has_query}, "
             f"client_id={self._credentials.client_id[:8]}...)",
-            extra={"ssot_path": log_path, "ssot_has_query": has_query},
+            extra={
+                "ssot_path": log_path,
+                "ssot_has_query": has_query,
+                "ssot_timeout": request_timeout,
+            },
         )
 
         access_token = self._mint_core_token(session)
@@ -739,7 +779,7 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
         response = session.get(
             f"https://{domain}{path}",
             headers={"Authorization": f"Bearer {access_token}"},
-            timeout=_DISCOVERY_REQUEST_TIMEOUT_SECONDS,
+            timeout=request_timeout,
         )
         if response.status_code != 200:
             body = _redact_body(session.last_exchange_body)
