@@ -12,6 +12,9 @@ from apollo.agent.agent import Agent
 from apollo.common.agent.constants import ATTRIBUTE_NAME_RESULT
 from apollo.agent.logging_utils import LoggingUtils
 from apollo.integrations.db.salesforce_data_cloud_proxy_client import (
+    _DISCOVERY_REQUEST_TIMEOUT_SECONDS,
+    _SSOT_REQUEST_TIMEOUT_MAX_SECONDS,
+    _CapturingSession,
     _RetryingSalesforceDataCloudCursor,
 )
 
@@ -1347,11 +1350,13 @@ class SalesforceDataCloudProxyClientTests(TestCase):
     _SSOT_PATH = "/services/data/v62.0/ssot/data-streams"
     _SSOT_URL = "https://test.salesforce.com/services/data/v62.0/ssot/data-streams"
 
-    def _ssot_get_operation(self, path: str) -> dict:
+    def _ssot_get_operation(self, path: str, **extra_kwargs) -> dict:
+        kwargs: dict = {"path": path}
+        kwargs.update(extra_kwargs)
         return {
             "trace_id": "test-trace-id",
             "skip_cache": True,
-            "commands": [{"method": "ssot_get", "kwargs": {"path": path}}],
+            "commands": [{"method": "ssot_get", "kwargs": kwargs}],
         }
 
     def test_ssot_get_returns_json_and_uses_minted_core_token(self):
@@ -1579,6 +1584,89 @@ class SalesforceDataCloudProxyClientTests(TestCase):
         message = str(response.result)
         self.assertIn("[REDACTED]", message)
         self.assertNotIn("secret-should-redact", message)
+
+    # -- ssot_get read timeout (YET-2440) --------------------------------------------
+
+    def _run_ssot_get_capturing_timeouts(self, **operation_kwargs):
+        """Run one ssot_get op, returning the ``timeout=`` every session GET/POST saw.
+
+        Returns ``(get_timeouts, post_timeouts)`` in call order. The GET list holds
+        the Salesforce /ssot read; the POST list holds the client-credentials token
+        mint, which must keep its own bound no matter what the caller asks for.
+        """
+        get_timeouts: list = []
+        post_timeouts: list = []
+        real_get = _CapturingSession.get
+        real_post = _CapturingSession.post
+
+        def spy_get(session_self, url, **kwargs):
+            get_timeouts.append(kwargs.get("timeout"))
+            return real_get(session_self, url, **kwargs)
+
+        def spy_post(session_self, url, **kwargs):
+            post_timeouts.append(kwargs.get("timeout"))
+            return real_post(session_self, url, **kwargs)
+
+        self.mock_responses.add_callback(
+            method=responses.GET,
+            url=self._SSOT_URL,
+            callback=Mock(return_value=(200, {}, json.dumps({"dataStreams": []}))),
+        )
+
+        with patch.object(_CapturingSession, "get", spy_get), patch.object(
+            _CapturingSession, "post", spy_post
+        ):
+            response = self.agent.execute_operation(
+                connection_type="salesforce-data-cloud",
+                operation_name="test_ssot_get_timeout",
+                operation_dict=self._ssot_get_operation(
+                    self._SSOT_PATH, **operation_kwargs
+                ),
+                credentials=self.credentials,
+            )
+
+        self.assertFalse(response.is_error, msg=str(response.result))
+        return get_timeouts, post_timeouts
+
+    def test_ssot_get_uses_the_default_timeout_when_the_caller_sends_none(self):
+        """A data-collector that predates YET-2440 sends no `timeout`, and the GET
+        keeps the historical 30s bound — the parameter is purely opt-in."""
+        get_timeouts, post_timeouts = self._run_ssot_get_capturing_timeouts()
+
+        self.assertEqual(get_timeouts, [_DISCOVERY_REQUEST_TIMEOUT_SECONDS])
+        self.assertEqual(post_timeouts, [_DISCOVERY_REQUEST_TIMEOUT_SECONDS])
+
+    def test_ssot_get_honours_a_caller_supplied_timeout_but_not_for_the_mint(self):
+        """An explicit `timeout` bounds the Salesforce /ssot GET only. The token mint
+        that precedes it keeps its own 30s bound, which is why a caller sizing a
+        transport deadman must budget `30 + timeout` rather than `timeout`."""
+        get_timeouts, post_timeouts = self._run_ssot_get_capturing_timeouts(timeout=120)
+
+        self.assertEqual(get_timeouts, [120])
+        self.assertEqual(post_timeouts, [_DISCOVERY_REQUEST_TIMEOUT_SECONDS])
+
+    def test_ssot_get_clamps_a_caller_timeout_to_the_agent_ceiling(self):
+        """The agent enforces its OWN ceiling rather than trusting the caller to have
+        clamped: no data-collector build can pin a worker for longer than this."""
+        get_timeouts, _ = self._run_ssot_get_capturing_timeouts(
+            timeout=_SSOT_REQUEST_TIMEOUT_MAX_SECONDS * 100
+        )
+
+        self.assertEqual(get_timeouts, [_SSOT_REQUEST_TIMEOUT_MAX_SECONDS])
+
+    def test_ssot_get_falls_back_to_the_default_for_an_unusable_timeout(self):
+        """`timeout` arrives inside the DC-supplied payload, so it is untrusted in the
+        same way `path` is. Anything that is not a positive int degrades to the
+        default instead of reaching `requests`. `True` is covered explicitly: bool
+        subclasses int, so a JSON `true` would otherwise mean a 1-second timeout."""
+        for bad in (0, -5, "120", 1.5, True, [120], {"seconds": 120}):
+            with self.subTest(timeout=bad):
+                get_timeouts, _ = self._run_ssot_get_capturing_timeouts(timeout=bad)
+                self.assertEqual(
+                    get_timeouts,
+                    [_DISCOVERY_REQUEST_TIMEOUT_SECONDS],
+                    f"{bad!r} should degrade to the default timeout",
+                )
 
     def test_redact_body_masks_sensitive_keys(self):
         """`_redact_body` masks double-quoted access_token / id_token values (the
