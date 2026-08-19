@@ -232,7 +232,14 @@ USER mcdagent
 
 CMD [ "apollo.interfaces.lambda_function.handler.lambda_handler" ]
 
-FROM mcr.microsoft.com/azure-functions/python:4-python3.13 AS azure
+# Python 3.14, not 3.13, because of the base OS: every `4-python3.13` tag is still
+# Debian 12 (bookworm), which left regular Debian security support on 2026-07-11
+# (YET-2254 / VULN-1399). Microsoft ships no trixie variant and has no plans to —
+# `4-python3.14` is Ubuntu 24.04 LTS instead, and Azure Functions supports Python
+# 3.14 (GA, end-of-support October 2030). This is the only apollo stage not on
+# python:3.13-slim; the deps that needed cp314 wheels for it are floored in
+# requirements.in.
+FROM mcr.microsoft.com/azure-functions/python:4-python3.14 AS azure
 
 ENV AzureWebJobsScriptRoot=/home/site/wwwroot \
     AzureFunctionsJobHost__Logging__Console__IsEnabled=true
@@ -247,7 +254,13 @@ ENV AzureWebJobsScriptRoot=/home/site/wwwroot \
 # under /home/data/Functions/secrets (fails host startup) and the debug
 # sentinel under /home/LogFiles/Application/Functions/Host (logged error).
 # Pre-create and chown both so the host can write them.
-RUN groupadd --gid 1000 mcdagent \
+#
+# Ubuntu 24.04 ships a stock `ubuntu` user at uid/gid 1000 (the Debian 12 base did
+# not), so drop it first: mcdagent keeps uid/gid 1000 here, matching every other
+# apollo stage and the hand-written lambda /etc/passwd entry.
+RUN if getent passwd ubuntu >/dev/null; then userdel ubuntu && rm -rf /home/ubuntu; fi \
+    && if getent group ubuntu >/dev/null; then groupdel ubuntu; fi \
+    && groupadd --gid 1000 mcdagent \
     && useradd --uid 1000 --gid mcdagent --no-create-home --home-dir /home/site/wwwroot --shell /usr/sbin/nologin mcdagent \
     && mkdir -p /home/data /home/LogFiles \
     && chown mcdagent:mcdagent /home/site/wwwroot /home/data /home/LogFiles
@@ -257,27 +270,26 @@ RUN apt-get install -y --no-install-recommends git
 # install libcrypt1 for IBM DB2 ibm-db package compatibility (provides libcrypt.so.1)
 RUN apt-get install -y --no-install-recommends libcrypt1
 
-# Azure database clients and sql-server uses pyodbc which requires unixODBC and 'ODBC Driver 17
-# for SQL Server' Microsoft's python 3.13 base image comes with msodbcsql18 but we are expecting to
-# use the msodbcsql17 driver so need to install specific versions of some libraries and allow Docker
-# to downgrade some pre-installed packages.
-RUN apt-get update
-RUN apt-get install -y --no-install-recommends gnupg gnupg2 gnupg1 curl apt-transport-https
-RUN ACCEPT_EULA=Y apt-get install -y --no-install-recommends msodbcsql17 odbcinst=2.3.11-2+deb12u1 odbcinst1debian2=2.3.11-2+deb12u1 unixodbc-dev=2.3.11-2+deb12u1 unixodbc=2.3.11-2+deb12u1
+# Azure database clients and sql-server use pyodbc, which requires unixODBC and
+# 'ODBC Driver 17 for SQL Server'. The base image ships msodbcsql18; on Ubuntu
+# 24.04 msodbcsql17 (17.11.1.1-1, from the packages.microsoft.com noble feed the
+# base image already has configured) installs alongside it with no downgrades or
+# removals. That's why there are no version pins or `apt-mark hold` here: on the
+# old Debian 12 base the ODBC stack had to be held at 2.3.11-2+deb12u1 to keep
+# msodbcsql17 installable, which also blocked security updates for those packages.
+RUN ACCEPT_EULA=Y apt-get install -y --no-install-recommends msodbcsql17 unixodbc unixodbc-dev
 
-# Hold the ODBC stack at the pinned versions above (those pins force downgrades
-# so msodbcsql17 — rather than the msodbcsql18 expected by the MS base image —
-# stays installable), then upgrade everything else to pick up Debian security
-# fixes (glibc, dpkg, xorg-server, etc.).
-RUN apt-mark hold msodbcsql17 odbcinst odbcinst1debian2 unixodbc unixodbc-dev \
-    && apt-get upgrade -y
+# Upgrade everything else to pick up OS security fixes (glibc, dpkg, xorg-server,
+# etc.) on every rebuild rather than waiting for the base image to be republished.
+RUN apt-get upgrade -y
 
 # openssh-client required by git client
 RUN apt-get install -y openssh-client
 
-# Oracle Instant Client for thick mode. libaio is a runtime dependency; on Debian
-# trixie the time_t transition renamed libaio1 -> libaio1t64 (shipping
-# libaio.so.1t64), so add the libaio.so.1 symlink the Oracle libs link against.
+# Oracle Instant Client for thick mode. libaio is a runtime dependency; both Ubuntu
+# 24.04 (this stage) and Debian trixie (the other stages) renamed libaio1 ->
+# libaio1t64 in the time_t transition (shipping libaio.so.1t64), so add the
+# libaio.so.1 symlink the Oracle libs link against.
 ARG ORACLE_IC_ZIP
 ARG ORACLE_IC_URL
 RUN apt-get install -y --no-install-recommends unzip curl \
@@ -298,13 +310,13 @@ COPY --from=oracle-pki-builder /opt/oracle-pki /opt/oracle-pki
 
 # Purge the X11/GTK + cups/tiff/nss surface the MS azure-functions base drags in
 # but the data-collector agent never uses. These packages carry a large block of
-# unfixed ("wont-fix") Debian HIGH/CRITICAL CVEs (libcups2, libnss3, libtiff6, and
-# the X11/GTK stack); `apt-get upgrade` can't clear wont-fix CVEs, so
+# unfixed ("wont-fix") distro HIGH/CRITICAL CVEs (libcups2t64, libnss3, libtiff6,
+# and the X11/GTK stack); `apt-get upgrade` can't clear wont-fix CVEs, so
 # the only lever is to remove the vulnerable surface from the image entirely. Runs
 # AFTER the ODBC/oracle installs and the security `apt-get upgrade` above so it
 # can't strip anything they need.
 #
-# NOTE: the core perl stack (perl / perl-modules-5.36 / libperl5.36) is deliberately
+# NOTE: the core perl stack (perl / perl-modules-5.38 / libperl5.38) is deliberately
 # NOT purged — `git`, installed above for the agent-base git+https dependency and
 # Looker view collection, hard-depends on `perl`, so purging it would remove git and
 # break the pip install. Only libx11-protocol-perl (an unused LWP/X11 perl module) is
@@ -319,7 +331,7 @@ RUN apt-get purge -y --auto-remove \
         xvfb xserver-common x11-common x11-utils x11-xkb-utils x11-xserver-utils \
         libxext6 libxft2 libxi6 libxinerama1 libxpm4 libxrender1 libxrender-dev \
         libx11-6 libx11-data libx11-dev libx11-xcb1 libx11-protocol-perl x11proto-dev xauth \
-        libcups2 libtiff6 libnss3 \
+        libcups2t64 libtiff6 libnss3 \
     && apt-get autoremove -y && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # delete this file that includes an old golang version (including vulns) and is not used
@@ -331,16 +343,26 @@ COPY requirements-azure.txt /
 # sys.path — these two roots must stay separate; consolidating them would silently break imports.
 # Install deps into the Functions app-package dir (not system site-packages) so the
 # host's dependency isolation keeps them off the worker's sys.path. Otherwise our
-# protobuf and the worker's bundled protobuf co-load and SIGSEGV the worker on py3.13.
-# No setuptools/pkg_resources needed (opentelemetry moved off it; remaining users guard the import).
+# protobuf and the worker's bundled protobuf co-load and SIGSEGV the worker on py3.13+.
+# No setuptools/pkg_resources needed here (opentelemetry moved off it; remaining users
+# guard the import) — except for distutils, installed separately below.
 RUN pip install --no-cache-dir \
     --target=/home/site/wwwroot/.python_packages/lib/site-packages \
     -r /requirements.txt -r /requirements-azure.txt \
     && chown -R mcdagent:mcdagent /home/site/wwwroot/.python_packages \
-    && rm -rf /opt/python/3/_manifest \
     # Drop the SBOM the azure-functions-durable wheel bundles at the site-packages
     # root: it lists stale versions that aren't installed, tripping scout false positives.
     && rm -rf /home/site/wwwroot/.python_packages/lib/site-packages/_manifest
+
+# distutils for lambda-git, whose `git` module (imported by GitCloneClient for Looker
+# view collection) does `from distutils.spawn import find_executable`. distutils left
+# the stdlib in 3.12; setuptools carries the shim, so:
+#   - it goes in a real site dir, not the --target dir above (.pth files are only
+#     processed for site dirs), and
+#   - the shim needs an explicit opt-in on 3.12+, hence SETUPTOOLS_USE_DISTUTILS.
+# tests/test_git_client.py imports it, so tests-azure catches a regression here.
+ENV SETUPTOOLS_USE_DISTUTILS=local
+RUN pip install --no-cache-dir setuptools
 
 COPY --chown=mcdagent:mcdagent apollo /home/site/wwwroot/apollo
 
@@ -352,10 +374,6 @@ ARG build_number="0"
 RUN echo $code_version,$build_number > /home/site/wwwroot/apollo/agent/version \
     && chown mcdagent:mcdagent /home/site/wwwroot/apollo/agent/version
 
-# delete MS provided SBOM as it's outdated after the packages we installed
-# docker scout will find vulnerabilities anyway by scanning the image
-RUN rm -rf /usr/local/_manifest
-
 # required for the verify-version-in-docker-image step in circle-ci
 WORKDIR /home/site/wwwroot
 
@@ -366,3 +384,34 @@ WORKDIR /home/site/wwwroot
 ENV ASPNETCORE_URLS=http://+:8080
 EXPOSE 8080
 USER mcdagent
+
+# tests-azure — run the unit suite against the azure image's Python 3.14 runtime.
+# The `tests` stage above covers every other stage (all on Python 3.13); azure is
+# the only stage on 3.14 (see its FROM comment), so without this lane nothing would
+# exercise the interpreter Azure Functions customers actually run. Test deps are
+# installed into the same --target dir as the runtime deps, so the suite imports
+# exactly the versions the azure image ships. Root, because the azure stage ends as
+# mcdagent and pip needs to write to .python_packages.
+FROM azure AS tests-azure
+
+USER root
+
+COPY requirements-dev.txt /
+COPY requirements-cloudrun.txt /
+# Separate --target dir, NOT the runtime one: `pip install --target` does not merge
+# into an existing namespace-package directory, so installing google-cloud-logging
+# next to the already-installed google-cloud-* packages silently leaves
+# google/cloud/logging out. Two sys.path entries each holding part of the
+# google.cloud PEP 420 namespace do merge correctly, so keep them apart.
+RUN pip install --no-cache-dir \
+    --target=/test-packages \
+    -r /requirements-dev.txt -r /requirements-cloudrun.txt
+
+COPY tests /home/site/wwwroot/tests
+# pip --target installs no console scripts on PATH, so invoke pytest as a module.
+# `python`, not `python3`: the base image symlinks /usr/bin/python and
+# /usr/bin/python3.14 to its 3.14 install, and the X11 purge in the azure stage
+# takes Ubuntu's own python3 (3.12) with it, leaving no `python3` on PATH.
+ARG CACHEBUST=1
+RUN PYTHONPATH=/home/site/wwwroot:/home/site/wwwroot/.python_packages/lib/site-packages:/test-packages \
+    python -m pytest tests
