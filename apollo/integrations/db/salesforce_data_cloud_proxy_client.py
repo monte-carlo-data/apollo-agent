@@ -53,14 +53,27 @@ _RETRY_KWARGS: dict[str, Any] = {
 # customer orgs returning DataSpaceApiName from the Dataspace SObject (YET-1256).
 _SOQL_API_VERSION = "v62.0"
 _LIST_DATASPACES_SOQL = "SELECT DataSpaceApiName FROM Dataspace"
+# Bounds the SOQL dataspace discovery GET and the core-token mint POST. The mint
+# bound is the ``30`` term in the data-collector's documented cross-repo deadman
+# budget (``30 + timeout``, see ``ssot_get``) — changing it is not a local
+# decision, it reflows through that budget in a separate repo. It is also the
+# connect half of the ``/ssot`` GET's ``(connect, read)`` timeout tuple.
 _DISCOVERY_REQUEST_TIMEOUT_SECONDS = 30
 
+# Default read timeout for the ``/ssot`` GET when the caller sends nothing
+# (YET-2440). Deliberately equal to the mint bound above today, but a SEPARATE
+# knob: a pre-gate data-collector's page walk must stay bit-for-bit unchanged if
+# the discovery bound is ever re-tuned, so the two must not be able to drift
+# together by accident.
+_SSOT_REQUEST_TIMEOUT_DEFAULT_SECONDS = 30
+
 # Agent-owned ceiling on a data-collector-supplied ``ssot_get`` read timeout
-# (YET-2440). The DC clamps its own schedule-limit knob before sending, but that
-# bound lives in the CALLER: this one bounds how long a single agent worker can be
-# held on one Salesforce GET, whatever any DC build asks for. Slow Data Cloud orgs
-# legitimately need well over the 30s default for a ``/ssot`` page (observed p99
-# 63-72s across two orgs), so the default stays 30 and callers opt in above it.
+# (YET-2440). Even where the DC clamps its own schedule-limit knob before
+# sending, that bound lives in the CALLER; this one is the agent's: it bounds how
+# long a single agent worker can be held on one Salesforce GET, whatever any DC
+# build asks for. Slow Data Cloud orgs legitimately need well over the 30s
+# default for a ``/ssot`` page (observed p99 63-72s across two orgs), so the
+# default stays 30 and callers opt in above it.
 _SSOT_REQUEST_TIMEOUT_MAX_SECONDS = 300
 
 
@@ -157,16 +170,41 @@ def _resolve_ssot_timeout(timeout: int | None) -> int:
     The value crosses the agent boundary inside the DC's operation payload, so it
     is untrusted in the same way ``path`` is — it decides how long one agent worker
     stays pinned on a single Salesforce GET. Anything that is not a positive ``int``
-    falls back to the default, and the agent enforces its OWN ceiling
-    (``_SSOT_REQUEST_TIMEOUT_MAX_SECONDS``) rather than trusting the caller to have
-    clamped correctly (YET-2440).
+    falls back to the default (``_SSOT_REQUEST_TIMEOUT_DEFAULT_SECONDS``), and the
+    agent enforces its OWN ceiling (``_SSOT_REQUEST_TIMEOUT_MAX_SECONDS``) rather
+    than trusting the caller to have clamped correctly (YET-2440).
 
     ``bool`` is rejected explicitly: it subclasses ``int``, so a JSON ``true`` would
     otherwise be accepted as a 1-second timeout.
+
+    Both non-identity paths (unusable value, over-ceiling value) log a warning so
+    a rollout can distinguish "older DC sent nothing" from "DC sent something we
+    rejected or clamped" — both would otherwise resolve to indistinguishable
+    values in the logs (see the ``ssot_timeout`` field on the SSOT GET's
+    ``logger.info`` in :meth:`SalesforceDataCloudProxyClient.ssot_get`).
     """
     if isinstance(timeout, bool) or not isinstance(timeout, int) or timeout <= 0:
-        return _DISCOVERY_REQUEST_TIMEOUT_SECONDS
-    return min(timeout, _SSOT_REQUEST_TIMEOUT_MAX_SECONDS)
+        if timeout is not None:
+            logger.warning(
+                "Salesforce Data Cloud: ssot_get timeout override is unusable, "
+                "falling back to default",
+                extra={
+                    "ssot_timeout_requested": repr(timeout),
+                    "ssot_timeout_resolved": _SSOT_REQUEST_TIMEOUT_DEFAULT_SECONDS,
+                },
+            )
+        return _SSOT_REQUEST_TIMEOUT_DEFAULT_SECONDS
+    if timeout > _SSOT_REQUEST_TIMEOUT_MAX_SECONDS:
+        logger.warning(
+            "Salesforce Data Cloud: ssot_get timeout override exceeds the agent "
+            "ceiling, clamping",
+            extra={
+                "ssot_timeout_requested": repr(timeout),
+                "ssot_timeout_resolved": _SSOT_REQUEST_TIMEOUT_MAX_SECONDS,
+            },
+        )
+        return _SSOT_REQUEST_TIMEOUT_MAX_SECONDS
+    return timeout
 
 
 def _attach_capturing_session(
@@ -740,13 +778,17 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
         My Domain. Rejection is based on the parsed URL structure, so a query
         string that merely embeds a URL (e.g. a pagination cursor) is allowed.
 
-        ``timeout`` optionally overrides the read timeout on the Salesforce GET
-        (default ``_DISCOVERY_REQUEST_TIMEOUT_SECONDS``); it is coerced and clamped
-        by :func:`_resolve_ssot_timeout`, so a non-``int`` or out-of-range value
-        degrades to the default rather than being trusted. It covers **only** the
-        GET — the client-credentials token mint that precedes it keeps its own 30s
-        bound — so a caller sizing a transport deadman must budget ``30 + timeout``,
-        not ``timeout`` (YET-2440).
+        ``timeout`` optionally overrides the READ bound on the Salesforce GET
+        (default ``_SSOT_REQUEST_TIMEOUT_DEFAULT_SECONDS``, 30s); it is coerced and
+        clamped by :func:`_resolve_ssot_timeout`, whose two branches have OPPOSITE
+        consequences: a non-``int``/``bool``/non-positive value DEGRADES to the
+        30s default, while a value above the agent's ceiling is CLAMPED DOWN to
+        that ceiling (300s) rather than degrading to 30. The override covers
+        **only** the read bound on this GET — the connect phase stays pinned at
+        the discovery bound (see the tuple ``timeout`` passed to ``session.get``
+        below), and the client-credentials token mint that precedes it keeps its
+        own 30s bound — so a caller sizing a transport deadman must budget
+        ``30 + timeout``, not ``timeout`` (YET-2440).
 
         Raises ``ValueError`` for an unsafe ``path``; ``RuntimeError`` carrying
         ``code NNN`` on a non-200 response and ``HTTP NNN`` on a non-JSON 200
@@ -776,10 +818,17 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
 
         access_token = self._mint_core_token(session)
 
+        # ``requests`` applies a scalar ``timeout`` to the connect phase AND the
+        # read phase independently, so passing ``request_timeout`` alone would
+        # silently widen the TCP/TLS connect bound from the discovery default up
+        # to whatever the caller asked for (up to 300s) — verified empirically:
+        # a scalar ``timeout=3`` against a black-holed IP raises ConnectTimeout at
+        # 3.01s, while a tuple ``(1, 30)`` raises it at 1.00s. Pin connect at the
+        # discovery bound via a tuple; only the read bound is caller-tunable.
         response = session.get(
             f"https://{domain}{path}",
             headers={"Authorization": f"Bearer {access_token}"},
-            timeout=request_timeout,
+            timeout=(_DISCOVERY_REQUEST_TIMEOUT_SECONDS, request_timeout),
         )
         if response.status_code != 200:
             body = _redact_body(session.last_exchange_body)
