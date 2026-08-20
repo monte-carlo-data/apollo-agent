@@ -50,8 +50,11 @@ intercept the redirect chain at a higher level.
 |---|---|---|
 | `MCD_HTTP_BLOCKED_CIDRS` | _(empty)_ | Comma-separated extra CIDRs to block |
 | `MCD_HTTP_REQUIRE_HTTPS` | `false` | Require HTTPS on the default tier |
+| `HTTPLIB2_DECODE_LIMIT_RATIO` | `500` | Max gzip amplification for `httplib2_client.py`. Raises httplib2's own 100x default; setting it *below* 500 re-introduces the failures it was raised to fix. Values that would disable the guard (`0`, `inf`, `nan`, negative) are rejected with a warning |
 
-Both are read once at import time. Changing them requires a process restart.
+The two `MCD_HTTP_*` variables are read once at import time, so changing them
+requires a process restart. `HTTPLIB2_DECODE_LIMIT_RATIO` is resolved per client
+build (httplib2's own lowercase spelling wins if both are set).
 
 ## Call-site guidance
 
@@ -96,3 +99,6 @@ on that worker thread — it does not propagate automatically.
 - **`apollo/integrations/ctp/transforms/`** — CTP transforms build credentials
   and resolve OAuth tokens before a connection is opened; they intentionally
   do not route through the guard.
+- **`httplib2_client.py`** — httplib2 does not use `urllib3`, so requests made
+  through the clients it builds never reach the `create_connection` hook. The
+  destinations are fixed Google API endpoints, not caller-supplied URLs.

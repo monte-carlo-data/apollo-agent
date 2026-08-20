@@ -7,3 +7,7 @@ export MCD_STORAGE=GCS
 
 # SSRF guard — require HTTPS in the default tier (true/false, default false)
 # export MCD_HTTP_REQUIRE_HTTPS=true
+
+# Max gzip amplification for Google API clients (default 500, raising httplib2's
+# 100x). Lowering it below the default re-introduces BigQuery decode failures.
+# export HTTPLIB2_DECODE_LIMIT_RATIO=500

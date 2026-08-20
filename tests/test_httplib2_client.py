@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 import httplib2
 from google_auth_httplib2 import AuthorizedHttp
 
+from apollo.integrations.http import httplib2_client
 from apollo.integrations.http.httplib2_client import (
     DEFAULT_DECODE_LIMIT_RATIO,
     DEFAULT_TIMEOUT_SECONDS,
@@ -54,6 +55,29 @@ class ResolveDecodeLimitRatioTests(TestCase):
         os.environ["HTTPLIB2_DECODE_LIMIT_RATIO"] = "not-a-number"
         self.assertEqual(500.0, resolve_decode_limit_ratio())
 
+    def test_values_that_would_disable_the_guard_are_rejected(self):
+        # httplib2 only applies the ratio when `ratio > 0`, so each of these would
+        # switch the CVE guard off entirely rather than tighten it.
+        for raw in ("0", "0.0", "inf", "-inf", "nan", "-1", "-0.5"):
+            with self.subTest(raw=raw):
+                os.environ["HTTPLIB2_DECODE_LIMIT_RATIO"] = raw
+                self.assertEqual(500.0, resolve_decode_limit_ratio())
+
+    def test_invalid_value_does_not_mask_a_valid_one(self):
+        # The warning must not claim the default was used when the other spelling
+        # still supplies a usable value.
+        os.environ["httplib2_decode_limit_ratio"] = "0"
+        os.environ["HTTPLIB2_DECODE_LIMIT_RATIO"] = "750"
+
+        with self.assertLogs(
+            "apollo.integrations.http.httplib2_client", level="WARNING"
+        ) as logs:
+            resolved = resolve_decode_limit_ratio()
+
+        self.assertEqual(750.0, resolved)
+        self.assertEqual(1, len(logs.output))
+        self.assertNotIn("500", logs.output[0])
+
 
 class BuildAuthorizedHttpTests(TestCase):
     def setUp(self):
@@ -63,7 +87,9 @@ class BuildAuthorizedHttpTests(TestCase):
     def test_decode_limit_ratio_is_applied_to_the_http_client(self):
         http = build_authorized_http(MagicMock(), scopes=_SCOPES).http
 
-        self.assertEqual({"ratio": 500.0}, http.limit_kwargs)
+        # Asserting on the key rather than the whole dict: Http populates
+        # limit_kwargs from four env-var sources, not just the ratio.
+        self.assertEqual(500.0, http.limit_kwargs["ratio"])
 
     def test_decode_limit_ratio_honors_env_override(self):
         os.environ["HTTPLIB2_DECODE_LIMIT_RATIO"] = "750"
@@ -72,7 +98,7 @@ class BuildAuthorizedHttpTests(TestCase):
         finally:
             os.environ.pop("HTTPLIB2_DECODE_LIMIT_RATIO", None)
 
-        self.assertEqual({"ratio": 750.0}, http.limit_kwargs)
+        self.assertEqual(750.0, http.limit_kwargs["ratio"])
 
     def test_explicit_timeout_is_applied(self):
         authorized_http = build_authorized_http(
@@ -120,6 +146,39 @@ class BuildAuthorizedHttpTests(TestCase):
 
         mock_with_scopes.assert_called_once_with(credentials, _SCOPES)
         self.assertIs(scoped, authorized_http.credentials)
+
+    def test_warns_when_client_certificates_are_requested(self):
+        # discovery.build() reads this only on the branch we no longer take, so the
+        # certificate would be dropped without a word.
+        with patch.dict(os.environ, {"GOOGLE_API_USE_CLIENT_CERTIFICATE": "true"}):
+            with self.assertLogs(
+                "apollo.integrations.http.httplib2_client", level="WARNING"
+            ) as logs:
+                build_authorized_http(MagicMock(), scopes=_SCOPES)
+
+        self.assertIn("GOOGLE_API_USE_CLIENT_CERTIFICATE", logs.output[0])
+
+    def test_warns_on_unhonored_mtls_endpoint(self):
+        with patch.dict(os.environ, {"GOOGLE_API_USE_MTLS_ENDPOINT": "always"}):
+            with self.assertLogs(
+                "apollo.integrations.http.httplib2_client", level="WARNING"
+            ) as logs:
+                build_authorized_http(MagicMock(), scopes=_SCOPES)
+
+        self.assertIn("GOOGLE_API_USE_MTLS_ENDPOINT", logs.output[0])
+
+    def test_no_mtls_warning_for_default_values(self):
+        with patch.dict(
+            os.environ,
+            {
+                "GOOGLE_API_USE_CLIENT_CERTIFICATE": "false",
+                "GOOGLE_API_USE_MTLS_ENDPOINT": "auto",
+            },
+        ):
+            with patch.object(httplib2_client.logger, "warning") as mock_warning:
+                build_authorized_http(MagicMock(), scopes=_SCOPES)
+
+        mock_warning.assert_not_called()
 
     @patch("apollo.integrations.http.httplib2_client.google.auth.default")
     def test_no_credentials_falls_back_to_adc(self, mock_default):

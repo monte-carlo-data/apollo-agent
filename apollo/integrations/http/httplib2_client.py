@@ -21,6 +21,18 @@ takes over the credential handling ``build()`` would otherwise do: resolving
 Application Default Credentials when none are supplied, and applying scopes.
 Without the scoping step, service-account credentials fail to refresh.
 
+Only the ratio is overridden. httplib2's absolute output cap (``decode_limit_hard``,
+10 GiB) is deliberately left at its default: it sits above every container size we
+deploy to, so it could not fire before the process was OOM-killed either before or
+after this change. What actually bounds a decompressed response is the ratio times
+the compressed body, and the container memory budget behind that.
+
+Passing ``http=`` also bypasses the mTLS/client-certificate handling in
+``discovery.build()``. Nothing here sets ``GOOGLE_API_USE_CLIENT_CERTIFICATE`` or
+``GOOGLE_API_USE_MTLS_ENDPOINT``, so that path is unused, but a deployment that did
+set them would silently drop to plain TLS — hence the warning below rather than a
+quiet downgrade.
+
 Nothing here is specific to one API: callers supply their own scopes, and any
 discovery-based Google API client can use this factory. BigQuery is currently the
 only caller, and is where the ratio limit was first hit.
@@ -30,6 +42,7 @@ use urllib3 — requests made through this client are not covered by it.
 """
 
 import logging
+import math
 import os
 import socket
 from typing import Optional, Sequence, cast
@@ -62,21 +75,47 @@ def resolve_decode_limit_ratio() -> float:
     Resolved here rather than deferred to httplib2 (by leaving the kwarg unset)
     because httplib2 silently discards an unparseable value and falls back to its
     100x default — which would quietly re-break collection.
+
+    Values that would disable or break the guard are rejected rather than passed
+    through: ``0``, ``inf`` and ``nan`` all make httplib2's ``ratio > 0`` check skip
+    the limit entirely, and a negative value raises out of ``LimitDecoder`` when the
+    client is constructed. Each is one keystroke away in an operator-set variable.
     """
     for name in _DECODE_LIMIT_RATIO_ENV_VARS:
         raw = os.getenv(name)
         if not raw:
             continue
         try:
-            return float(raw)
+            value = float(raw)
         except ValueError:
-            logger.warning(
-                "Ignoring invalid %s=%r, using %s",
-                name,
-                raw,
-                DEFAULT_DECODE_LIMIT_RATIO,
-            )
+            value = None
+        if value is not None and math.isfinite(value) and value > 0:
+            return value
+        # Deliberately does not name the fallback: a later spelling of the variable
+        # may still supply a usable value.
+        logger.warning("Ignoring invalid %s=%r", name, raw)
     return DEFAULT_DECODE_LIMIT_RATIO
+
+
+def _warn_if_mtls_requested() -> None:
+    """Warn when mTLS env vars are set, since ``http=`` bypasses that handling.
+
+    ``discovery.build()`` reads these only on the branch we no longer take, so a
+    client certificate would be dropped — and an unsupported value, which used to
+    raise ``MutualTLSChannelError``, would now fail open.
+    """
+    if os.getenv("GOOGLE_API_USE_CLIENT_CERTIFICATE", "false").lower() != "false":
+        logger.warning(
+            "GOOGLE_API_USE_CLIENT_CERTIFICATE is set but client certificates are "
+            "not supported here; the connection will use plain TLS"
+        )
+    mtls_endpoint = os.getenv("GOOGLE_API_USE_MTLS_ENDPOINT")
+    if mtls_endpoint is not None and mtls_endpoint not in ("never", "auto"):
+        logger.warning(
+            "GOOGLE_API_USE_MTLS_ENDPOINT=%r is not honored here; the standard "
+            "endpoint will be used",
+            mtls_endpoint,
+        )
 
 
 def build_authorized_http(
@@ -92,6 +131,8 @@ def build_authorized_http(
     :param timeout: socket timeout in seconds. Defaults to the process socket
         default, then to ``DEFAULT_TIMEOUT_SECONDS``, matching ``build_http()``.
     """
+    _warn_if_mtls_requested()
+
     resolved_credentials: Credentials
     if credentials is None:
         adc_credentials, _ = google.auth.default(scopes=list(scopes))
