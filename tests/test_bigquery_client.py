@@ -1,7 +1,10 @@
 from unittest import TestCase
-from unittest.mock import patch, Mock, MagicMock, call
+from unittest.mock import patch, Mock, MagicMock
 
-from apollo.integrations.bigquery.bq_proxy_client import BqProxyClient
+from apollo.integrations.bigquery.bq_proxy_client import (
+    _BIGQUERY_SCOPES,
+    BqProxyClient,
+)
 
 
 _SERVICE_ACCOUNT_CREDENTIALS = {
@@ -17,8 +20,13 @@ _SERVICE_ACCOUNT_CREDENTIALS = {
 
 
 class BigQueryClientTests(TestCase):
-    @patch("apollo.integrations.bigquery.bq_proxy_client.socket.setdefaulttimeout")
-    @patch("apollo.integrations.bigquery.bq_proxy_client.socket.getdefaulttimeout")
+    """The client passes an explicitly configured http= rather than credentials=.
+
+    discovery.build() rejects both together, so the assertions below check that
+    credentials reach build_authorized_http instead of build().
+    """
+
+    @patch("apollo.integrations.bigquery.bq_proxy_client.build_authorized_http")
     @patch(
         "apollo.integrations.bigquery.bq_proxy_client.googleapiclient.discovery.build"
     )
@@ -29,31 +37,32 @@ class BigQueryClientTests(TestCase):
         self,
         mock_from_service_account,
         mock_build,
-        mock_default_timeout,
-        mock_set_default_timeout,
+        mock_build_http,
     ):
         """Test that direct service account credentials work (legacy format)."""
-        mock_default_timeout.return_value = 30.0
         mock_credentials = MagicMock()
         mock_from_service_account.return_value = mock_credentials
-        mock_client = Mock()
-        mock_build.return_value = mock_client
+        mock_http = Mock()
+        mock_build_http.return_value = mock_http
+        mock_build.return_value = Mock()
 
         client = BqProxyClient(credentials=_SERVICE_ACCOUNT_CREDENTIALS)
 
         self.assertIsNotNone(client)
         mock_from_service_account.assert_called_once_with(_SERVICE_ACCOUNT_CREDENTIALS)
+        mock_build_http.assert_called_once_with(
+            mock_credentials,
+            scopes=_BIGQUERY_SCOPES,
+            timeout=None,
+        )
         mock_build.assert_called_once_with(
             "bigquery",
             "v2",
             cache_discovery=False,
-            credentials=mock_credentials,
+            http=mock_http,
         )
-        mock_set_default_timeout.assert_has_calls([call(30.0), call(30.0)])
-        self.assertEqual(mock_set_default_timeout.call_count, 2)
 
-    @patch("apollo.integrations.bigquery.bq_proxy_client.socket.setdefaulttimeout")
-    @patch("apollo.integrations.bigquery.bq_proxy_client.socket.getdefaulttimeout")
+    @patch("apollo.integrations.bigquery.bq_proxy_client.build_authorized_http")
     @patch(
         "apollo.integrations.bigquery.bq_proxy_client.googleapiclient.discovery.build"
     )
@@ -64,15 +73,12 @@ class BigQueryClientTests(TestCase):
         self,
         mock_from_service_account,
         mock_build,
-        mock_default_timeout,
-        mock_set_default_timeout,
+        mock_build_http,
     ):
         """Test that socket timeout is removed from direct credentials."""
-        mock_default_timeout.return_value = 30.0
         mock_credentials = MagicMock()
         mock_from_service_account.return_value = mock_credentials
-        mock_client = Mock()
-        mock_build.return_value = mock_client
+        mock_build.return_value = Mock()
 
         credentials_with_timeout = {
             **_SERVICE_ACCOUNT_CREDENTIALS,
@@ -84,17 +90,13 @@ class BigQueryClientTests(TestCase):
 
         self.assertIsNotNone(client)
         mock_from_service_account.assert_called_once_with(expected_credentials)
-        mock_build.assert_called_once_with(
-            "bigquery",
-            "v2",
-            cache_discovery=False,
-            credentials=mock_credentials,
+        mock_build_http.assert_called_once_with(
+            mock_credentials,
+            scopes=_BIGQUERY_SCOPES,
+            timeout=12.5,
         )
-        mock_set_default_timeout.assert_has_calls([call(12.5), call(30.0)])
-        self.assertEqual(mock_set_default_timeout.call_count, 2)
 
-    @patch("apollo.integrations.bigquery.bq_proxy_client.socket.setdefaulttimeout")
-    @patch("apollo.integrations.bigquery.bq_proxy_client.socket.getdefaulttimeout")
+    @patch("apollo.integrations.bigquery.bq_proxy_client.build_authorized_http")
     @patch(
         "apollo.integrations.bigquery.bq_proxy_client.googleapiclient.discovery.build"
     )
@@ -105,15 +107,14 @@ class BigQueryClientTests(TestCase):
         self,
         mock_from_service_account,
         mock_build,
-        mock_default_timeout,
-        mock_set_default_timeout,
+        mock_build_http,
     ):
         """Test that credentials wrapped in connect_args work (self-hosted format)."""
-        mock_default_timeout.return_value = 30.0
         mock_credentials = MagicMock()
         mock_from_service_account.return_value = mock_credentials
-        mock_client = Mock()
-        mock_build.return_value = mock_client
+        mock_http = Mock()
+        mock_build_http.return_value = mock_http
+        mock_build.return_value = Mock()
 
         credentials_with_connect_args = {
             "connect_args": _SERVICE_ACCOUNT_CREDENTIALS,
@@ -124,17 +125,19 @@ class BigQueryClientTests(TestCase):
         self.assertIsNotNone(client)
         # Should extract credentials from connect_args
         mock_from_service_account.assert_called_once_with(_SERVICE_ACCOUNT_CREDENTIALS)
+        mock_build_http.assert_called_once_with(
+            mock_credentials,
+            scopes=_BIGQUERY_SCOPES,
+            timeout=None,
+        )
         mock_build.assert_called_once_with(
             "bigquery",
             "v2",
             cache_discovery=False,
-            credentials=mock_credentials,
+            http=mock_http,
         )
-        mock_set_default_timeout.assert_has_calls([call(30.0), call(30.0)])
-        self.assertEqual(mock_set_default_timeout.call_count, 2)
 
-    @patch("apollo.integrations.bigquery.bq_proxy_client.socket.setdefaulttimeout")
-    @patch("apollo.integrations.bigquery.bq_proxy_client.socket.getdefaulttimeout")
+    @patch("apollo.integrations.bigquery.bq_proxy_client.build_authorized_http")
     @patch(
         "apollo.integrations.bigquery.bq_proxy_client.googleapiclient.discovery.build"
     )
@@ -145,15 +148,12 @@ class BigQueryClientTests(TestCase):
         self,
         mock_from_service_account,
         mock_build,
-        mock_default_timeout,
-        mock_set_default_timeout,
+        mock_build_http,
     ):
         """Test that socket timeout uses a custom HTTP client."""
-        mock_default_timeout.return_value = 30.0
         mock_credentials = MagicMock()
         mock_from_service_account.return_value = mock_credentials
-        mock_client = Mock()
-        mock_build.return_value = mock_client
+        mock_build.return_value = Mock()
 
         credentials_with_timeout = {
             "connect_args": {
@@ -166,17 +166,13 @@ class BigQueryClientTests(TestCase):
 
         self.assertIsNotNone(client)
         mock_from_service_account.assert_called_once_with(_SERVICE_ACCOUNT_CREDENTIALS)
-        mock_build.assert_called_once_with(
-            "bigquery",
-            "v2",
-            cache_discovery=False,
-            credentials=mock_credentials,
+        mock_build_http.assert_called_once_with(
+            mock_credentials,
+            scopes=_BIGQUERY_SCOPES,
+            timeout=12.5,
         )
-        mock_set_default_timeout.assert_has_calls([call(12.5), call(30.0)])
-        self.assertEqual(mock_set_default_timeout.call_count, 2)
 
-    @patch("apollo.integrations.bigquery.bq_proxy_client.socket.setdefaulttimeout")
-    @patch("apollo.integrations.bigquery.bq_proxy_client.socket.getdefaulttimeout")
+    @patch("apollo.integrations.bigquery.bq_proxy_client.build_authorized_http")
     @patch(
         "apollo.integrations.bigquery.bq_proxy_client.googleapiclient.discovery.build"
     )
@@ -187,31 +183,32 @@ class BigQueryClientTests(TestCase):
         self,
         mock_from_service_account,
         mock_build,
-        mock_default_timeout,
-        mock_set_default_timeout,
+        mock_build_http,
     ):
         """Test that when no credentials are provided, ADC is used."""
-        mock_default_timeout.return_value = 30.0
-        mock_client = Mock()
-        mock_build.return_value = mock_client
+        mock_http = Mock()
+        mock_build_http.return_value = mock_http
+        mock_build.return_value = Mock()
 
         client = BqProxyClient(credentials=None)
 
         self.assertIsNotNone(client)
         # Should not call from_service_account_info when no credentials
         mock_from_service_account.assert_not_called()
-        # Should build with None credentials (ADC)
+        # None credentials means build_authorized_http resolves ADC
+        mock_build_http.assert_called_once_with(
+            None,
+            scopes=_BIGQUERY_SCOPES,
+            timeout=None,
+        )
         mock_build.assert_called_once_with(
             "bigquery",
             "v2",
             cache_discovery=False,
-            credentials=None,
+            http=mock_http,
         )
-        mock_set_default_timeout.assert_has_calls([call(30.0), call(30.0)])
-        self.assertEqual(mock_set_default_timeout.call_count, 2)
 
-    @patch("apollo.integrations.bigquery.bq_proxy_client.socket.setdefaulttimeout")
-    @patch("apollo.integrations.bigquery.bq_proxy_client.socket.getdefaulttimeout")
+    @patch("apollo.integrations.bigquery.bq_proxy_client.build_authorized_http")
     @patch(
         "apollo.integrations.bigquery.bq_proxy_client.googleapiclient.discovery.build"
     )
@@ -222,24 +219,18 @@ class BigQueryClientTests(TestCase):
         self,
         mock_from_service_account,
         mock_build,
-        mock_default_timeout,
-        mock_set_default_timeout,
+        mock_build_http,
     ):
         """Test that when empty credentials dict is provided, ADC is used."""
-        mock_default_timeout.return_value = 30.0
-        mock_client = Mock()
-        mock_build.return_value = mock_client
+        mock_build.return_value = Mock()
 
         client = BqProxyClient(credentials={})
 
         self.assertIsNotNone(client)
         # Empty dict is falsy, so should not call from_service_account_info
         mock_from_service_account.assert_not_called()
-        mock_build.assert_called_once_with(
-            "bigquery",
-            "v2",
-            cache_discovery=False,
-            credentials=None,
+        mock_build_http.assert_called_once_with(
+            None,
+            scopes=_BIGQUERY_SCOPES,
+            timeout=None,
         )
-        mock_set_default_timeout.assert_has_calls([call(30.0), call(30.0)])
-        self.assertEqual(mock_set_default_timeout.call_count, 2)
