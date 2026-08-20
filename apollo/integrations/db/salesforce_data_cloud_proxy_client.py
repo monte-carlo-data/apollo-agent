@@ -441,6 +441,82 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
         if self._connection:
             self._connection.close()
 
+    def process_result(self, value: Any) -> Any:
+        """Skip the inherited DB-API post-processing for REST-passthrough bodies (YET-2410).
+
+        This client serves two kinds of result. Query ops go through
+        :class:`SalesforceCDPCursor` and produce a real DB-API result, which must be
+        transformed. :meth:`ssot_get` is a REST passthrough returning a Salesforce resource
+        body verbatim, and such a body can legitimately carry a top-level ``description`` — as
+        a human-readable STRING. The base implementation keys off the presence of the
+        ``description`` key alone and indexes seven elements out of each "column", so a string
+        was iterated character by character and ``col[1]`` raised
+        ``IndexError: string index out of range``, failing the whole op. Every Data 360
+        Retriever detail read through an agent hit this.
+
+        The shape check lives HERE rather than in :class:`BaseDbProxyClient` because it is only
+        exact here. Data Cloud descriptions are plain 7-tuples built by the connector itself
+        (``salesforcecdpconnector.query_result_parser._get_description_item``), so
+        ``list``/``tuple`` covers every column this client can produce. Other drivers behind
+        that base class return column descriptors that are objects rather than tuples
+        (``psycopg2.Column``, ``oracledb.FetchInfo``), so the same check applied there would
+        skip serialization for Postgres, Redshift and Oracle and then fail on ``json.dumps``.
+
+        A non-cursor-shaped value passes through untouched — including a ``description`` or
+        ``all_results`` of ``None``, which the base class coerces to ``[]``: right for a
+        row-less cursor, wrong for a REST body that genuinely carried ``null``.
+        """
+        if isinstance(value, dict) and not self._is_dbapi_result(value):
+            return value
+        return super().process_result(value)
+
+    @staticmethod
+    def _is_dbapi_result(value: dict) -> bool:
+        """True iff ``value`` looks like a Data Cloud cursor result rather than a REST body.
+
+        A cursor result carries ``description`` as a sequence of 7+-element sequences and
+        ``all_results`` as a sequence of row sequences; either may be ``None`` for a row-less
+        query. A value carrying neither key is not a cursor result — returning ``False`` leaves
+        it untouched, which is what the base class would do with it anyway.
+
+        A LONE ``None``-valued key is read as a REST body that carried JSON ``null``, not as a
+        row-less cursor: the collector builds cursor results with
+        ``build_dict(all_results=…, description=…, rowcount=…)``, so a genuine cursor result
+        always reports both keys together. This is what keeps ``{"description": null}`` on a
+        Retriever detail from being rewritten to ``{"description": []}``.
+        """
+
+        def _is_sequence(candidate: Any) -> bool:
+            return not isinstance(candidate, (str, bytes, dict)) and isinstance(
+                candidate, (list, tuple)
+            )
+
+        has_description, has_rows = "description" in value, "all_results" in value
+        if not has_description and not has_rows:
+            return False
+
+        if has_description:
+            description = value["description"]
+            if description is not None and not (
+                _is_sequence(description)
+                and all(_is_sequence(col) and len(col) >= 7 for col in description)
+            ):
+                return False
+
+        if has_rows:
+            all_results = value["all_results"]
+            if all_results is not None and not (
+                _is_sequence(all_results)
+                and all(_is_sequence(row) for row in all_results)
+            ):
+                return False
+
+        if has_description and has_rows:
+            return True
+        return (has_description and value["description"] is not None) or (
+            has_rows and value["all_results"] is not None
+        )
+
     def list_tables(self, dataspace: str | None = None) -> list[dict]:
         if dataspace is not None:
             logger.info(
