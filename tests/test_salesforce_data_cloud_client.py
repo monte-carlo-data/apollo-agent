@@ -1405,6 +1405,39 @@ class SalesforceDataCloudProxyClientTests(TestCase):
         # ... and the token never leaks back to the caller in the result.
         self.assertNotIn(self.client_credentials_token, json.dumps(response.result))
 
+    def test_ssot_get_resource_with_description_string_passes_through(self):
+        """A per-resource /ssot body carrying a top-level human-readable
+        `description` STRING (e.g. a Data 360 Retriever detail, YET-2410) must be
+        returned verbatim. BaseDbProxyClient.process_result used to mistake any
+        dict with a `description` key for a DB-API cursor result and index each
+        character of the string, failing EVERY such op with
+        `IndexError: string index out of range`."""
+        detail_path = "/services/data/v62.0/ssot/machine-learning/retrievers/sfdc_ai__WebRetrievalAction"
+        detail_body = {
+            "name": "WebRetrievalAction",
+            "namespace": "sfdc_ai",
+            "description": "Web search retriever retrieves search results from the internet.",
+            "activeConfiguration": {
+                "name": "WebRetrievalActionVersion",
+                "isActive": True,
+            },
+        }
+        self.mock_responses.add_callback(
+            method=responses.GET,
+            url=f"https://test.salesforce.com{detail_path}",
+            callback=Mock(return_value=(200, {}, json.dumps(detail_body))),
+        )
+
+        response = self.agent.execute_operation(
+            connection_type="salesforce-data-cloud",
+            operation_name="test_ssot_get_retriever_detail",
+            operation_dict=self._ssot_get_operation(detail_path),
+            credentials=self.credentials,
+        )
+
+        self.assertFalse(response.is_error, msg=str(response.result))
+        self.assertEqual(response.result[ATTRIBUTE_NAME_RESULT], detail_body)
+
     def test_ssot_get_rejects_absolute_url(self):
         """ssot_get must only ever target the connection's own My Domain. An
         absolute URL (or any value carrying a scheme/host) is rejected before a
