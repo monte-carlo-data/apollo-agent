@@ -177,11 +177,12 @@ def _resolve_ssot_timeout(timeout: int | None) -> int:
     ``bool`` is rejected explicitly: it subclasses ``int``, so a JSON ``true`` would
     otherwise be accepted as a 1-second timeout.
 
-    Both non-identity paths (unusable value, over-ceiling value) log a warning so
-    a rollout can distinguish "older DC sent nothing" from "DC sent something we
-    rejected or clamped" — both would otherwise resolve to indistinguishable
-    values in the logs (see the ``ssot_timeout`` field on the SSOT GET's
-    ``logger.info`` in :meth:`SalesforceDataCloudProxyClient.ssot_get`).
+    A warning is logged only when the DC actually supplied a value that we then
+    rejected (unusable) or clamped (over-ceiling), so a rollout can spot a DC that
+    sends a bad timeout. A missing kwarg and an explicit ``None`` are NOT
+    distinguishable: both skip the warning and fall back to the default silently
+    (see the ``ssot_timeout`` field on the SSOT GET's ``logger.info`` in
+    :meth:`SalesforceDataCloudProxyClient.ssot_get`).
     """
     if isinstance(timeout, bool) or not isinstance(timeout, int) or timeout <= 0:
         if timeout is not None:
