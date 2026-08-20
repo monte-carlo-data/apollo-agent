@@ -1972,3 +1972,95 @@ class SalesforceDataCloudRetryTests(TestCase):
         self.assertEqual(attempts["n"], 2)
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0]["name"], "Account")
+
+
+class SalesforceDataCloudProcessResultTests(TestCase):
+    """`process_result` must transform Data Cloud cursor results and leave REST bodies alone.
+
+    This client serves both: query ops via `SalesforceCDPCursor`, and `ssot_get`, which returns
+    a Salesforce resource body verbatim. The override discriminates by shape, which is exact
+    here because Data Cloud descriptions are plain 7-tuples built by the connector
+    (`query_result_parser._get_description_item`) — see the base-class test for why the same
+    check must NOT live one level up (YET-2410).
+    """
+
+    def setUp(self) -> None:
+        from apollo.integrations.db.salesforce_data_cloud_proxy_client import (
+            SalesforceDataCloudProxyClient,
+        )
+
+        # No connection is needed: process_result is pure. Bypass __init__ so the test does
+        # not stand up a SalesforceCDPConnection.
+        self.client = SalesforceDataCloudProxyClient.__new__(
+            SalesforceDataCloudProxyClient
+        )
+        self.client._connection = None
+
+    def test_cursor_result_is_transformed(self):
+        """The real Data Cloud cursor shape — a list of 7-tuples, exactly what
+        `_get_description_item` emits — still gets serialized to lists."""
+        processed = self.client.process_result(
+            {
+                "description": [("Id__c", "VARCHAR", None, None, None, None, None)],
+                "all_results": [["a"], ["b"]],
+            }
+        )
+        self.assertEqual(
+            processed["description"],
+            [["Id__c", "VARCHAR", None, None, None, None, None]],
+        )
+        self.assertEqual(processed["all_results"], [["a"], ["b"]])
+
+    def test_row_less_cursor_result_keeps_empty_list_shape(self):
+        """`None` on a cursor result is still coerced to `[]` by the base class."""
+        processed = self.client.process_result(
+            {"description": None, "all_results": None}
+        )
+        self.assertEqual(processed["description"], [])
+        self.assertEqual(processed["all_results"], [])
+
+    def test_rest_body_with_description_string_passes_through(self):
+        """The failure this override exists for: a Retriever detail body whose top-level
+        `description` is prose. The base class iterated the string and indexed each
+        character, raising `IndexError: string index out of range`."""
+        body = {
+            "name": "WebRetrievalAction",
+            "description": "Web search retriever retrieves search results from the internet.",
+            "activeConfiguration": {
+                "name": "WebRetrievalActionVersion",
+                "isActive": True,
+            },
+        }
+        self.assertEqual(self.client.process_result(json.loads(json.dumps(body))), body)
+
+    def test_rest_body_with_string_rows_is_not_exploded_into_characters(self):
+        """`all_results` gets the same element-level check as `description`. A REST body
+        carrying strings under that key used to be silently rewritten to lists of
+        characters — no exception, just corrupted data."""
+        body = {"all_results": ["alpha", "beta"]}
+        self.assertEqual(self.client.process_result(json.loads(json.dumps(body))), body)
+
+    def test_rest_body_with_object_rows_keeps_its_objects(self):
+        """A list of JSON objects under `all_results` used to be reduced to its keys."""
+        body = {"all_results": [{"id": 1, "label": "x"}]}
+        self.assertEqual(self.client.process_result(json.loads(json.dumps(body))), body)
+
+    def test_rest_body_with_null_description_keeps_null(self):
+        """A REST body that genuinely carried `null` is not rewritten to `[]` — that
+        coercion is a cursor-result contract, not a passthrough one. Distinguished from a
+        row-less cursor by the absence of any other cursor key."""
+        body = {"name": "Retriever_With_No_Description", "description": None}
+        self.assertEqual(self.client.process_result(json.loads(json.dumps(body))), body)
+
+    def test_rest_body_with_short_sequence_description_passes_through(self):
+        """A `description` that is a list of non-column sequences is not a cursor result."""
+        body = {"description": [["too", "short"]], "name": "X"}
+        self.assertEqual(self.client.process_result(json.loads(json.dumps(body))), body)
+
+    def test_body_without_cursor_keys_is_untouched(self):
+        body = {"name": "SalesforceHelpContentRetriever", "isGlobal": True}
+        self.assertEqual(self.client.process_result(json.loads(json.dumps(body))), body)
+
+    def test_non_dict_results_are_delegated_unchanged(self):
+        """`ssot_get` can return a top-level JSON list for some core REST endpoints."""
+        self.assertEqual(self.client.process_result([{"a": 1}]), [{"a": 1}])
