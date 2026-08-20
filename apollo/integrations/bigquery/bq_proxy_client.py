@@ -1,14 +1,22 @@
-import socket
 from typing import Optional, Dict, Any
 import googleapiclient.discovery
 from google.oauth2.service_account import Credentials
 
 from apollo.integrations.base_proxy_client import BaseProxyClient
+from apollo.integrations.http.httplib2_client import build_authorized_http
 
 _API_SERVICE_NAME = "bigquery"
 _API_VERSION = "v2"
 _ATTR_CONNECT_ARGS = "connect_args"
 _ATTR_SOCKET_TIMEOUT = "socket_timeout_in_seconds"
+# Applied by build_authorized_http. discovery.build() would instead apply all seven
+# scopes the discovery document declares (adding bigquery.insertdata,
+# cloud-platform.read-only and three devstorage.* scopes); this is a deliberate
+# narrowing, and cloud-platform subsumes the dropped ones for what we call.
+_BIGQUERY_SCOPES = [
+    "https://www.googleapis.com/auth/bigquery",
+    "https://www.googleapis.com/auth/cloud-platform",
+]
 
 
 class BqProxyClient(BaseProxyClient):
@@ -46,28 +54,21 @@ class BqProxyClient(BaseProxyClient):
         # if no credentials are specified then ADC (app default credentials) will be used
         # in the context of Cloud Run it comes from the service account used to run the service
         # in local dev environments you can use gcloud CLI to set ADC.
-        http_timeout = self._resolve_socket_timeout(socket_timeout_in_seconds)
-        previous_timeout = socket.getdefaulttimeout()
-        if http_timeout is not None:
-            socket.setdefaulttimeout(http_timeout)
-        try:
-            self._client = googleapiclient.discovery.build(
-                _API_SERVICE_NAME,
-                _API_VERSION,
-                credentials=bq_credentials,
-                cache_discovery=False,
-            )
-        finally:
-            if http_timeout is not None:
-                socket.setdefaulttimeout(previous_timeout)
+        self._client = googleapiclient.discovery.build(
+            _API_SERVICE_NAME,
+            _API_VERSION,
+            http=build_authorized_http(
+                bq_credentials,
+                scopes=_BIGQUERY_SCOPES,
+                timeout=(
+                    float(socket_timeout_in_seconds)
+                    if socket_timeout_in_seconds is not None
+                    else None
+                ),
+            ),
+            cache_discovery=False,
+        )
 
     @property
     def wrapped_client(self):
         return self._client
-
-    def _resolve_socket_timeout(
-        self, socket_timeout_in_seconds: Optional[float]
-    ) -> Optional[float]:
-        if socket_timeout_in_seconds is not None:
-            return float(socket_timeout_in_seconds)
-        return socket.getdefaulttimeout()

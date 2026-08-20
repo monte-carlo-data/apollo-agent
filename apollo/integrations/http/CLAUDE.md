@@ -11,6 +11,10 @@ services, RFC 1918 ranges (where not expected), and other sensitive targets.
   HTTP-based integrations.
 - **`url_safety.py`** — SSRF guard: a `urllib3` connection hook plus the
   `safety_policy` context manager that activates it per-thread.
+- **`httplib2_client.py`** — `build_authorized_http`: builds the `httplib2.Http`
+  passed to `googleapiclient.discovery.build(http=...)`, with a raised gzip
+  decompression ratio and an explicit timeout. Not covered by the SSRF guard —
+  httplib2 does not use `urllib3`.
 - **`informatica_proxy_client.py`** — `InformaticaProxyClient`: `HttpProxyClient`
   subclass for Informatica Intelligent Data Management Cloud.
 - **`mulesoft_proxy_client.py`** — `MuleSoftProxyClient`: `HttpProxyClient`
@@ -46,8 +50,11 @@ intercept the redirect chain at a higher level.
 |---|---|---|
 | `MCD_HTTP_BLOCKED_CIDRS` | _(empty)_ | Comma-separated extra CIDRs to block |
 | `MCD_HTTP_REQUIRE_HTTPS` | `false` | Require HTTPS on the default tier |
+| `HTTPLIB2_DECODE_LIMIT_RATIO` | `500` | Max gzip amplification for `httplib2_client.py`. Raises httplib2's own 100x default; setting it *below* 500 re-introduces the failures it was raised to fix. Values that would disable the guard (`0`, `inf`, `nan`, negative) are rejected with a warning |
 
-Both are read once at import time. Changing them requires a process restart.
+The two `MCD_HTTP_*` variables are read once at import time, so changing them
+requires a process restart. `HTTPLIB2_DECODE_LIMIT_RATIO` is resolved per client
+build (httplib2's own lowercase spelling wins if both are set).
 
 ## Call-site guidance
 
@@ -92,3 +99,6 @@ on that worker thread — it does not propagate automatically.
 - **`apollo/integrations/ctp/transforms/`** — CTP transforms build credentials
   and resolve OAuth tokens before a connection is opened; they intentionally
   do not route through the guard.
+- **`httplib2_client.py`** — httplib2 does not use `urllib3`, so requests made
+  through the clients it builds never reach the `create_connection` hook. The
+  destinations are fixed Google API endpoints, not caller-supplied URLs.

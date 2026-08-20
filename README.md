@@ -203,6 +203,20 @@ variables allow operators to tune this behaviour:
   permitted in the default tier). The strict download tier always requires HTTPS regardless of this
   setting.
 
+### Response decompression limits
+
+Google API clients (currently BigQuery) reject a gzip'd response that decompresses to more than a
+set multiple of its compressed size, once the output passes httplib2's 10 MiB `safe_limit`.
+
+- **`HTTPLIB2_DECODE_LIMIT_RATIO`** — maximum amplification ratio. **Defaults to `500`**, which
+  raises httplib2's own default of `100`; that default rejected legitimate BigQuery responses, which
+  reach roughly 255x on highly repetitive result sets. Setting this **below 500 re-introduces those
+  failures**, so only lower it deliberately. Values that would switch the guard off entirely (`0`,
+  `inf`, `nan`) or break client construction (negative) are ignored with a logged warning, and the
+  default applies. httplib2 also reads the lowercase spelling `httplib2_decode_limit_ratio`, which
+  takes precedence if both are set. Resolved each time a client is built, so no restart is needed
+  beyond the one that picks up the new environment.
+
 ## Advanced deployment
 This section is intended only for troubleshooting and advanced scenarios, using templates (Terraform or CloudFormation)
 is the preferred way to deploy agents (even test agents as you can customize the image to use).
