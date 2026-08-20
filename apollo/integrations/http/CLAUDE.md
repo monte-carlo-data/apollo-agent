@@ -11,6 +11,10 @@ services, RFC 1918 ranges (where not expected), and other sensitive targets.
   HTTP-based integrations.
 - **`url_safety.py`** — SSRF guard: a `urllib3` connection hook plus the
   `safety_policy` context manager that activates it per-thread.
+- **`httplib2_client.py`** — `build_authorized_http`: builds the `httplib2.Http`
+  passed to `googleapiclient.discovery.build(http=...)`, with a raised gzip
+  decompression ratio and an explicit timeout. Not covered by the SSRF guard —
+  httplib2 does not use `urllib3`.
 - **`informatica_proxy_client.py`** — `InformaticaProxyClient`: `HttpProxyClient`
   subclass for Informatica Intelligent Data Management Cloud.
 - **`mulesoft_proxy_client.py`** — `MuleSoftProxyClient`: `HttpProxyClient`
