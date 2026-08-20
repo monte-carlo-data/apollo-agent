@@ -220,6 +220,9 @@ COPY --from=oracle-pki-builder /opt/oracle-pki /opt/oracle-pki
 # VULN-464
 RUN rm -rf /var/lib/rpm/rpmdb.sqlite*
 
+# Same pip vendored-SBOM noise as in the `base` stage, for the Lambda interpreter.
+RUN rm -f /var/lang/lib/python*/site-packages/pip/_vendor/bom.cdx.json
+
 RUN dnf clean all && rm -rf /var/cache/yum
 
 COPY --chown=mcdagent:mcdagent apollo "${LAMBDA_TASK_ROOT}/apollo"
