@@ -42,21 +42,45 @@ class BaseDbProxyClient(BaseProxyClient, ABC):
         those 7 elements back for each element in description.
         Results are serialized using `AgentUtils.serialize_value`, this allows us to properly serialize
         date, datetime and any other data type that requires a custom serialization in the future.
+
+        Only values that actually LOOK like a DB-API cursor result are transformed: a
+        `description` that is a list of 7+-element sequences, an `all_results` that is a
+        list/tuple of rows. REST-passthrough results (e.g. the SFDC `ssot_get` op returning a
+        resource body) can legitimately carry a top-level `description` STRING — iterating it
+        as cursor columns indexed each character and raised
+        `IndexError: string index out of range`, failing the whole op (YET-2410 Retriever
+        detail reads). Such values pass through verbatim. A `None` description/all_results
+        still becomes `[]`, the long-standing shape callers iterate for row-less results.
         """
         if isinstance(value, Dict):
             if "description" in value:
-                description = value["description"] or []
-                value["description"] = [
-                    self._process_description(
-                        [col[0], col[1], col[2], col[3], col[4], col[5], col[6]]
-                    )
-                    for col in description
-                ]
+                description = value["description"]
+                if description is None:
+                    value["description"] = []
+                elif self._is_dbapi_description(description):
+                    value["description"] = [
+                        self._process_description(
+                            [col[0], col[1], col[2], col[3], col[4], col[5], col[6]]
+                        )
+                        for col in description
+                    ]
             if "all_results" in value:
-                all_results: List = value["all_results"] or []
-                value["all_results"] = [self._process_row(r) for r in all_results]
+                all_results = value["all_results"]
+                if all_results is None:
+                    value["all_results"] = []
+                elif isinstance(all_results, (list, tuple)):
+                    value["all_results"] = [self._process_row(r) for r in all_results]
 
         return value
+
+    @staticmethod
+    def _is_dbapi_description(description: Any) -> bool:
+        """True iff `description` has the DB-API cursor-description shape: a sequence of
+        7+-element sequences (name, type_code, display_size, internal_size, precision,
+        scale, null_ok)."""
+        return isinstance(description, (list, tuple)) and all(
+            isinstance(col, (list, tuple)) and len(col) >= 7 for col in description
+        )
 
     @staticmethod
     def _process_row(row: List) -> List:
