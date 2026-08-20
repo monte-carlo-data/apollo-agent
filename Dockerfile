@@ -223,6 +223,13 @@ RUN rm -rf /var/lib/rpm/rpmdb.sqlite*
 # Same pip vendored-SBOM noise as in the `base` stage, for the Lambda interpreter.
 RUN rm -f /var/lang/lib/python*/site-packages/pip/_vendor/bom.cdx.json
 
+# The Runtime Interface Emulator is only for local `docker run` testing —
+# /lambda-entrypoint.sh execs it when AWS_LAMBDA_RUNTIME_API is unset, which
+# Lambda always sets. It's a Go binary carrying the stdlib CVEs of whatever Go
+# release AWS last built it with, re-imported on every refresh of this unpinned
+# base image.
+RUN rm -f /usr/local/bin/aws-lambda-rie
+
 RUN dnf clean all && rm -rf /var/cache/yum
 
 COPY --chown=mcdagent:mcdagent apollo "${LAMBDA_TASK_ROOT}/apollo"
