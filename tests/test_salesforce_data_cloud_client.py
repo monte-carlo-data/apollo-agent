@@ -1,6 +1,7 @@
 import http.client
 import json
 import uuid
+from typing import Any
 from unittest import TestCase
 from unittest.mock import Mock, patch
 
@@ -12,6 +13,10 @@ from apollo.agent.agent import Agent
 from apollo.common.agent.constants import ATTRIBUTE_NAME_RESULT
 from apollo.agent.logging_utils import LoggingUtils
 from apollo.integrations.db.salesforce_data_cloud_proxy_client import (
+    _DISCOVERY_REQUEST_TIMEOUT_SECONDS,
+    _SSOT_REQUEST_TIMEOUT_DEFAULT_SECONDS,
+    _SSOT_REQUEST_TIMEOUT_MAX_SECONDS,
+    _CapturingSession,
     _RetryingSalesforceDataCloudCursor,
 )
 
@@ -1347,11 +1352,13 @@ class SalesforceDataCloudProxyClientTests(TestCase):
     _SSOT_PATH = "/services/data/v62.0/ssot/data-streams"
     _SSOT_URL = "https://test.salesforce.com/services/data/v62.0/ssot/data-streams"
 
-    def _ssot_get_operation(self, path: str) -> dict:
+    def _ssot_get_operation(self, path: str, **extra_kwargs: Any) -> dict:
+        kwargs: dict = {"path": path}
+        kwargs.update(extra_kwargs)
         return {
             "trace_id": "test-trace-id",
             "skip_cache": True,
-            "commands": [{"method": "ssot_get", "kwargs": {"path": path}}],
+            "commands": [{"method": "ssot_get", "kwargs": kwargs}],
         }
 
     def test_ssot_get_returns_json_and_uses_minted_core_token(self):
@@ -1579,6 +1586,175 @@ class SalesforceDataCloudProxyClientTests(TestCase):
         message = str(response.result)
         self.assertIn("[REDACTED]", message)
         self.assertNotIn("secret-should-redact", message)
+
+    # -- ssot_get read timeout (YET-2440) --------------------------------------------
+
+    def _run_ssot_get_capturing_timeouts(
+        self, **operation_kwargs: Any
+    ) -> tuple[list[tuple[int, int]], list[int]]:
+        """Run one ssot_get op, returning the ``timeout=`` every session GET/POST saw.
+
+        Returns ``(get_timeouts, post_timeouts)`` in call order. The GET list holds
+        the Salesforce /ssot read; the POST list holds the client-credentials token
+        mint, which must keep its own bound no matter what the caller asks for.
+
+        The GET's ``timeout`` is a ``(connect, read)`` tuple (the connect half is
+        pinned to the discovery bound; only the read half is caller-tunable), so
+        each captured GET entry is recorded as-is — a 2-tuple — rather than
+        unwrapped to just the read value. That keeps the connect pin itself
+        assertable and matches what ``requests`` actually receives, at the cost of
+        callers writing ``(_DISCOVERY_REQUEST_TIMEOUT_SECONDS, <read>)`` instead of
+        a bare int. The mint POST's ``timeout`` stays a bare scalar.
+        """
+        get_timeouts: list[tuple[int, int]] = []
+        post_timeouts: list[int] = []
+        real_get = _CapturingSession.get
+        real_post = _CapturingSession.post
+
+        def spy_get(session_self, url, **kwargs):
+            get_timeouts.append(kwargs.get("timeout"))
+            return real_get(session_self, url, **kwargs)
+
+        def spy_post(session_self, url, **kwargs):
+            post_timeouts.append(kwargs.get("timeout"))
+            return real_post(session_self, url, **kwargs)
+
+        self.mock_responses.add_callback(
+            method=responses.GET,
+            url=self._SSOT_URL,
+            callback=Mock(return_value=(200, {}, json.dumps({"dataStreams": []}))),
+        )
+
+        with patch.object(_CapturingSession, "get", spy_get), patch.object(
+            _CapturingSession, "post", spy_post
+        ):
+            response = self.agent.execute_operation(
+                connection_type="salesforce-data-cloud",
+                operation_name="test_ssot_get_timeout",
+                operation_dict=self._ssot_get_operation(
+                    self._SSOT_PATH, **operation_kwargs
+                ),
+                credentials=self.credentials,
+            )
+
+        self.assertFalse(response.is_error, msg=str(response.result))
+        return get_timeouts, post_timeouts
+
+    def test_ssot_timeout_constants_are_a_data_collector_contract(self):
+        """These three constants are a cross-repo contract with the data-collector,
+        which budgets `30 + timeout` on its own transport deadman and clamps its
+        schedule knob below the agent ceiling. The tests below only assert
+        constant-relative equalities (e.g. `[_DISCOVERY_REQUEST_TIMEOUT_SECONDS]`),
+        which stay green even if a constant's literal value drifts — so pin the
+        literals here too, to make a drift (e.g. re-tuning the default from 30 to
+        60) fail loudly instead of passing an unchanged, tautological suite."""
+        self.assertEqual(_SSOT_REQUEST_TIMEOUT_DEFAULT_SECONDS, 30)
+        self.assertEqual(_DISCOVERY_REQUEST_TIMEOUT_SECONDS, 30)
+        self.assertEqual(_SSOT_REQUEST_TIMEOUT_MAX_SECONDS, 300)
+
+    def test_ssot_get_uses_the_default_timeout_when_the_caller_omits_it(self):
+        """A data-collector that predates YET-2440 sends no `timeout` kwarg at all
+        (as opposed to sending an explicit `None` — see the unusable-timeout test),
+        and the GET keeps the historical 30s bound — the parameter is purely
+        opt-in."""
+        get_timeouts, post_timeouts = self._run_ssot_get_capturing_timeouts()
+
+        self.assertEqual(
+            get_timeouts,
+            [
+                (
+                    _DISCOVERY_REQUEST_TIMEOUT_SECONDS,
+                    _SSOT_REQUEST_TIMEOUT_DEFAULT_SECONDS,
+                )
+            ],
+        )
+        self.assertEqual(post_timeouts, [_DISCOVERY_REQUEST_TIMEOUT_SECONDS])
+
+    def test_ssot_get_honours_a_caller_supplied_timeout_but_not_for_the_mint(self):
+        """An explicit `timeout` bounds the READ half of the Salesforce /ssot GET
+        only — the connect half stays pinned at the discovery bound. The token mint
+        that precedes it keeps its own 30s bound, which is why a caller sizing a
+        transport deadman must budget `30 + timeout` rather than `timeout`."""
+        get_timeouts, post_timeouts = self._run_ssot_get_capturing_timeouts(timeout=120)
+
+        self.assertEqual(get_timeouts, [(_DISCOVERY_REQUEST_TIMEOUT_SECONDS, 120)])
+        self.assertEqual(post_timeouts, [_DISCOVERY_REQUEST_TIMEOUT_SECONDS])
+
+    def test_ssot_get_honours_a_caller_timeout_below_the_default(self):
+        """The default (30s) is a fallback for an unusable value, not a floor: a
+        caller explicitly asking for a shorter read bound (5s) must get exactly
+        that, not be silently raised back up to the default."""
+        get_timeouts, _ = self._run_ssot_get_capturing_timeouts(timeout=5)
+
+        self.assertEqual(get_timeouts, [(_DISCOVERY_REQUEST_TIMEOUT_SECONDS, 5)])
+
+    def test_ssot_get_clamps_a_caller_timeout_to_the_agent_ceiling(self):
+        """The agent enforces its OWN ceiling rather than trusting the caller to have
+        clamped: no data-collector build can pin a worker for longer than this."""
+        get_timeouts, _ = self._run_ssot_get_capturing_timeouts(
+            timeout=_SSOT_REQUEST_TIMEOUT_MAX_SECONDS * 100
+        )
+
+        self.assertEqual(
+            get_timeouts,
+            [(_DISCOVERY_REQUEST_TIMEOUT_SECONDS, _SSOT_REQUEST_TIMEOUT_MAX_SECONDS)],
+        )
+
+    def test_ssot_get_does_not_clamp_a_timeout_exactly_at_the_ceiling(self):
+        """The ceiling is inclusive: a value exactly at
+        `_SSOT_REQUEST_TIMEOUT_MAX_SECONDS` is a valid caller-supplied bound and must
+        pass through unclamped, not be treated as already-over-the-line."""
+        get_timeouts, _ = self._run_ssot_get_capturing_timeouts(
+            timeout=_SSOT_REQUEST_TIMEOUT_MAX_SECONDS
+        )
+
+        self.assertEqual(
+            get_timeouts,
+            [(_DISCOVERY_REQUEST_TIMEOUT_SECONDS, _SSOT_REQUEST_TIMEOUT_MAX_SECONDS)],
+        )
+
+    def test_ssot_get_falls_back_to_the_default_for_an_unusable_timeout(self):
+        """`timeout` arrives inside the DC-supplied payload, so it is untrusted in the
+        same way `path` is. Anything that is not a positive int degrades to the
+        default instead of reaching `requests`. `True` is covered explicitly: bool
+        subclasses int, so a JSON `true` would otherwise mean a 1-second timeout.
+        `None` is covered explicitly too: it's the most likely non-int shape a
+        data-collector would put on the wire for `{"timeout": null}` built
+        unconditionally from an optional config — a different dispatch path than
+        omitting the kwarg entirely (see the "omits it" test above), even though
+        both collapse to the same `_resolve_ssot_timeout(None)` call."""
+        for bad in (None, 0, -5, "120", 1.5, True, [120], {"seconds": 120}):
+            with self.subTest(timeout=bad):
+                get_timeouts, _ = self._run_ssot_get_capturing_timeouts(timeout=bad)
+                self.assertEqual(
+                    get_timeouts,
+                    [
+                        (
+                            _DISCOVERY_REQUEST_TIMEOUT_SECONDS,
+                            _SSOT_REQUEST_TIMEOUT_DEFAULT_SECONDS,
+                        )
+                    ],
+                    f"{bad!r} should degrade to the default timeout",
+                )
+
+    def test_ssot_get_logs_the_resolved_timeout_not_the_requested_one(self):
+        """The `ssot_timeout` log field is the observability contract for the whole
+        rollout — it's how prod verifies a caller-supplied timeout actually took
+        effect. Use the clamp case, where resolved != requested, so asserting the
+        logged value actually proves it's the resolved one and not an echo of the
+        caller's raw input."""
+        requested = _SSOT_REQUEST_TIMEOUT_MAX_SECONDS * 100
+        with self.assertLogs(self._PROXY_CLIENT_LOGGER, level="INFO") as logs:
+            self._run_ssot_get_capturing_timeouts(timeout=requested)
+
+        ssot_get_records = [
+            record for record in logs.records if "ssot_timeout" in record.__dict__
+        ]
+        self.assertTrue(ssot_get_records, "expected a log record carrying ssot_timeout")
+        for record in ssot_get_records:
+            resolved = record.__dict__["ssot_timeout"]
+            self.assertEqual(resolved, _SSOT_REQUEST_TIMEOUT_MAX_SECONDS)
+            self.assertNotEqual(resolved, requested)
 
     def test_redact_body_masks_sensitive_keys(self):
         """`_redact_body` masks double-quoted access_token / id_token values (the
