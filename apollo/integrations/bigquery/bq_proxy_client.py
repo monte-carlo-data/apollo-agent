@@ -9,8 +9,10 @@ _API_SERVICE_NAME = "bigquery"
 _API_VERSION = "v2"
 _ATTR_CONNECT_ARGS = "connect_args"
 _ATTR_SOCKET_TIMEOUT = "socket_timeout_in_seconds"
-# Applied by build_authorized_http; discovery.build() would otherwise derive these
-# from the discovery document itself.
+# Applied by build_authorized_http. discovery.build() would instead apply all seven
+# scopes the discovery document declares (adding bigquery.insertdata,
+# cloud-platform.read-only and three devstorage.* scopes); this is a deliberate
+# narrowing, and cloud-platform subsumes the dropped ones for what we call.
 _BIGQUERY_SCOPES = [
     "https://www.googleapis.com/auth/bigquery",
     "https://www.googleapis.com/auth/cloud-platform",

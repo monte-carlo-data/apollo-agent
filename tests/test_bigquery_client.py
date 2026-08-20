@@ -1,3 +1,4 @@
+import socket
 from unittest import TestCase
 from unittest.mock import patch, Mock, MagicMock
 
@@ -207,6 +208,42 @@ class BigQueryClientTests(TestCase):
             cache_discovery=False,
             http=mock_http,
         )
+
+    @patch(
+        "apollo.integrations.bigquery.bq_proxy_client.googleapiclient.discovery.build"
+    )
+    @patch(
+        "apollo.integrations.bigquery.bq_proxy_client.Credentials.from_service_account_info"
+    )
+    def test_process_socket_default_is_not_mutated(
+        self,
+        mock_from_service_account,
+        mock_build,
+    ):
+        """The timeout must not travel via the process-wide socket default.
+
+        It used to be applied with socket.setdefaulttimeout() around build(), which
+        races under the threaded workers: an overlapping build can restore another
+        request's value as the process default. build_authorized_http is left
+        unmocked so a reintroduced mutation would be observed here.
+        """
+        mock_from_service_account.return_value = MagicMock()
+        mock_build.return_value = Mock()
+        before = socket.getdefaulttimeout()
+
+        # Asserting the write never happens, not just that the value is restored:
+        # the old code set and restored it, so a before/after comparison alone would
+        # not notice the pattern coming back.
+        with patch.object(socket, "setdefaulttimeout") as mock_set_default_timeout:
+            BqProxyClient(
+                credentials={
+                    **_SERVICE_ACCOUNT_CREDENTIALS,
+                    "socket_timeout_in_seconds": 12.5,
+                }
+            )
+
+        mock_set_default_timeout.assert_not_called()
+        self.assertEqual(before, socket.getdefaulttimeout())
 
     @patch("apollo.integrations.bigquery.bq_proxy_client.build_authorized_http")
     @patch(

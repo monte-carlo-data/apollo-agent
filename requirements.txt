@@ -135,7 +135,9 @@ google-auth==2.30.0
     #   google-cloud-secret-manager
     #   google-cloud-storage
 google-auth-httplib2==0.2.0
-    # via google-api-python-client
+    # via
+    #   -r requirements.in
+    #   google-api-python-client
 google-cloud-core==2.4.1
     # via google-cloud-storage
 google-cloud-dataform==0.6.2
