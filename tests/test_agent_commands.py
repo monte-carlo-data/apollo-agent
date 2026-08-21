@@ -151,6 +151,98 @@ class AgentCommandsTests(TestCase):
         )
 
 
+class AgentCommandDunderHardeningTests(TestCase):
+    """
+    The command dispatch resolves method names via getattr on the target. Without
+    filtering, an attacker with invoker credentials can walk dunder attributes
+    (``__init__.__globals__["os"].system(...)``) to reach arbitrary code
+    execution. ``_resolve_method`` must reject double-underscore (dunder) method
+    names except a small allow-list the client legitimately dispatches (dict
+    subscript + stringify), while leaving single-underscore method names callable.
+    """
+
+    _GADGET_METHOD_NAMES = (
+        "__init__",
+        "__class__",
+        "__globals__",
+        "__builtins__",
+        "__subclasses__",
+        "__dict__",
+        "__getattribute__",
+        "__reduce__",
+        "__mro__",
+    )
+
+    def test_resolve_method_rejects_dunder_gadget_names(self):
+        client = SampleProxyClient()
+        for name in self._GADGET_METHOD_NAMES:
+            with self.subTest(method=name):
+                with self.assertRaises(AttributeError):
+                    AgentEvaluationUtils._resolve_method(client, name)
+
+    def test_resolve_method_allows_single_underscore_private_names(self):
+        # Single-underscore names cannot start an escape chain (that always
+        # needs a dunder hop) and existing operations dispatch them, e.g.
+        # salesforce-data-cloud calls "_connection_type". They must resolve.
+        client = SampleProxyClient()
+        resolved = AgentEvaluationUtils._resolve_method(client, "_client")
+        self.assertIs(resolved, client._client)
+
+    def test_dunder_rejection_logs_error_with_method_name(self):
+        with self.assertLogs(_EVALUATION_LOGGER, level=logging.ERROR) as captured:
+            with self.assertRaises(AttributeError):
+                AgentEvaluationUtils._resolve_method(SampleProxyClient(), "__init__")
+
+        self.assertEqual(1, len(captured.records))
+        self.assertIn("__init__", captured.records[0].getMessage())
+
+    def test_resolve_method_allows_safe_dunders(self):
+        # data-collector legitimately dispatches these (dict subscript writes,
+        # subscript reads, and stringifying a call result).
+        target = {"key": "value"}
+        for name in ("__getitem__", "__setitem__", "__str__", "__repr__"):
+            with self.subTest(method=name):
+                method = AgentEvaluationUtils._resolve_method(target, name)
+                self.assertTrue(callable(method))
+
+    def test_exploit_chain_first_hop_rejected(self):
+        # The gadget's first hop (`__init__`) must fail before anything runs.
+        context = {CONTEXT_VAR_CLIENT: SampleProxyClient()}
+        command = AgentCommand.from_dict({"method": "__init__"})
+        with self.assertRaises(AttributeError):
+            AgentEvaluationUtils._execute_single_command(command, context)
+
+    def test_underscore_target_and_store_names_still_resolve(self):
+        # The guard is method-only: dunder-named target/store variables (context
+        # variables like "_cursor"/"__utils") must keep working end to end.
+        query = "SELECT * FROM table"
+        expected = SampleProxyClient().execute_and_fetch(query)
+
+        result = Agent(LoggingUtils())._execute(
+            SampleProxyClient(),
+            "test",
+            AgentCommands.from_dict(
+                {
+                    "operation_name": "test",
+                    "trace_id": "1",
+                    "commands": [
+                        {"method": "cursor", "store": "__cursor__"},
+                        {
+                            "target": "__cursor__",
+                            "method": "cursor_execute_query",
+                            "kwargs": {"query": query},
+                        },
+                        {
+                            "target": "__cursor__",
+                            "method": "cursor_fetch_results",
+                        },
+                    ],
+                }
+            ),
+        )
+        self.assertEqual(expected, result)
+
+
 class _SecretRaisingClient(SampleProxyClient):
     _SECRET = "presigned-url-token-super-secret"
 

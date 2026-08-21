@@ -19,6 +19,19 @@ from apollo.agent.utils import AgentUtils
 
 logger = logging.getLogger(__name__)
 
+# Dispatch resolves method names via getattr on the target object. Allowing
+# double-underscore ("dunder") names lets a caller walk internal attributes to
+# escape the proxy client API and reach arbitrary code execution, e.g.
+# ``<obj>.__init__.__globals__["os"].system(...)`` — every such escape needs a
+# dunder hop. Dunder method names are therefore rejected, except for the small
+# set the agent client legitimately dispatches: dict subscript reads/writes
+# (used to aggregate query results) and stringifying a call result. Single
+# underscore names (e.g. ``_connection_type``) remain callable: they cannot
+# start an escape chain, and existing operations dispatch them.
+_ALLOWED_DUNDER_METHODS = frozenset(
+    {"__getitem__", "__setitem__", "__str__", "__repr__"}
+)
+
 
 class AgentEvaluationUtils:
     """
@@ -137,6 +150,9 @@ class AgentEvaluationUtils:
         :param method_name: the method to search for
         :return: the method found, AttributeError is raised if no method is found.
         """
+        if method_name.startswith("__") and method_name not in _ALLOWED_DUNDER_METHODS:
+            logger.error("Refusing to resolve dunder method %s", method_name)
+            raise AttributeError(f"Failed to resolve method {method_name}")
         if hasattr(target, method_name):
             return getattr(target, method_name)
         if hasattr(target, "wrapped_client"):
