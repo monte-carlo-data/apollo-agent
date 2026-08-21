@@ -287,10 +287,35 @@ class TestSqlServerKerberosCtp(TestCase):
         mode = stat.S_IMODE(os.stat(os.environ["KRB5_CLIENT_KTNAME"]).st_mode)
         self.assertEqual(0o600, mode)
 
-    def test_ccache_is_in_memory(self):
-        """MEMORY: keeps the TGT off disk and scopes it per process, per SDD 5.3."""
+    def test_keytab_form_uses_an_in_memory_ccache(self):
+        """MEMORY: is correct here: GSSAPI acquires the TGT in-process from the client
+        keytab, so nothing else needs to see the cache and the ticket never touches disk.
+        """
         self._resolve_kerberos()
         self.assertEqual("MEMORY:", os.environ.get("KRB5CCNAME"))
+
+    def test_password_form_uses_a_file_ccache_not_memory(self):
+        """Regression: MEMORY: cannot work for the password form.
+
+        kinit runs as a separate process and populates its own per-process memory cache,
+        which dies with it -- the connecting process then gets "No Kerberos credentials
+        available (default cache: MEMORY:)". Confirmed against a live KDC on 2026-08-21:
+        the keytab form passed and the password form failed exactly this way.
+
+        A file cache is required so the acquiring and connecting processes share it.
+        """
+        self._resolve_kerberos(keytab_base64=None, password=self._PASSWORD)
+        ccache = os.environ.get("KRB5CCNAME", "")
+        self.assertNotEqual("MEMORY:", ccache)
+        self.assertTrue(
+            ccache.startswith("FILE:"), f"expected a FILE: ccache, got {ccache!r}"
+        )
+
+    def test_password_form_ccache_is_not_world_readable(self):
+        self._resolve_kerberos(keytab_base64=None, password=self._PASSWORD)
+        path = os.environ["KRB5CCNAME"].removeprefix("FILE:")
+        self._temp_paths.append(path)
+        self.assertEqual(0o600, stat.S_IMODE(os.stat(path).st_mode))
 
     def test_password_form_sets_no_client_keytab(self):
         """No keytab means no library auto-acquire; the client kinits instead."""
@@ -385,7 +410,9 @@ class TestSqlServerKerberosCtp(TestCase):
         self.assertIn(os.environ["KRB5_CONFIG"], temp_files)
         self.assertIn(os.environ["KRB5_CLIENT_KTNAME"], temp_files)
 
-    def test_password_form_registers_only_the_krb5_conf(self):
+    def test_password_form_registers_the_krb5_conf_and_the_ccache(self):
+        """No keytab on this path, but the file ccache holds a live TGT, so it has to be
+        cleaned up too."""
         temp_files: list[str] = []
         CtpRegistry.resolve(
             "sql-server",
@@ -394,8 +421,11 @@ class TestSqlServerKerberosCtp(TestCase):
         )
         self._temp_paths.extend(temp_files)
 
-        self.assertEqual(1, len(temp_files))
+        self.assertEqual(
+            2, len(temp_files), f"expected krb5.conf + ccache, got {temp_files}"
+        )
         self.assertIn(os.environ["KRB5_CONFIG"], temp_files)
+        self.assertIn(os.environ["KRB5CCNAME"].removeprefix("FILE:"), temp_files)
 
     def test_sql_path_materialises_no_files(self):
         temp_files: list[str] = []

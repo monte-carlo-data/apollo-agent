@@ -16,10 +16,23 @@ _KRB5_CONFIG = "KRB5_CONFIG"
 _KRB5_CLIENT_KTNAME = "KRB5_CLIENT_KTNAME"
 _KRB5CCNAME = "KRB5CCNAME"
 
-# MEMORY: keeps the TGT out of any file and scopes it to this process, which is what
-# SDD §5.3 chose: DB operations run in long-lived workers, so a per-process cache is
-# reused across a whole collection run without ever touching disk.
-_CCACHE = "MEMORY:"
+# Credential cache type depends on the credential form, and getting this wrong fails at
+# connect time with a message that does not name the cause.
+#
+# keytab   -> MEMORY: GSSAPI acquires the TGT in-process from the client keytab, so the
+#             cache never needs to be visible to another process and the ticket never
+#             touches disk. This is what SDD §5.3 chose.
+# password -> MEMORY: CANNOT work. There is no library auto-acquire for a stored
+#             password, so acquisition happens by running kinit -- a separate process,
+#             which populates its own per-process memory cache and takes it away when it
+#             exits. The connecting process then finds "No Kerberos credentials
+#             available (default cache: MEMORY:)". Verified against a live AWS Managed AD
+#             + RDS SQL Server on 2026-08-21: keytab passed, password failed exactly so.
+#
+# The password form therefore needs a file cache the two processes can share. Prefer a
+# tmpfs directory so the TGT still stays off durable disk.
+_CCACHE_MEMORY = "MEMORY:"
+_TMPFS_DIRS = ("/dev/shm", "/run/shm")
 
 # dns_lookup_kdc=false with an explicit kdc means no SRV lookups; rdns=false means no
 # PTR lookups. Together they reduce what the agent needs from DNS to plain forward
@@ -124,19 +137,26 @@ class PrepareKerberosTransform(Transform):
         # was made to avoid.
         state.temp_files.append(krb5_conf_path)
         os.environ[_KRB5_CONFIG] = krb5_conf_path
-        os.environ[_KRB5CCNAME] = _CCACHE
 
         if keytab_base64:
             # Pointing the *client* keytab at the file makes GSSAPI acquire and refresh
             # the TGT by itself whenever the cache is empty -- no kinit, no renewal
-            # daemon, and no ticket-lifecycle code in the agent (SDD §5.3).
+            # daemon, and no ticket-lifecycle code in the agent (SDD §5.3). Because that
+            # happens in-process, an in-memory cache is sufficient and keeps the ticket
+            # off disk entirely.
+            os.environ[_KRB5CCNAME] = _CCACHE_MEMORY
             keytab_path = self._write_keytab(str(keytab_base64), step.type)
             state.temp_files.append(keytab_path)
             os.environ[_KRB5_CLIENT_KTNAME] = keytab_path
         else:
             # No library-managed equivalent exists for a stored password, so the caller
-            # is responsible for kinit. Clear any inherited value so a stale keytab from
-            # another connection cannot silently satisfy this one.
+            # runs kinit -- a separate process, which cannot share an in-memory cache.
+            # Hence a file cache here; see the _CCACHE_MEMORY comment above.
+            ccache_path = self._create_ccache_file()
+            state.temp_files.append(ccache_path)
+            os.environ[_KRB5CCNAME] = f"FILE:{ccache_path}"
+            # Clear any inherited keytab so a stale one from another connection cannot
+            # silently satisfy this one.
             os.environ.pop(_KRB5_CLIENT_KTNAME, None)
 
     @staticmethod
@@ -153,11 +173,17 @@ class PrepareKerberosTransform(Transform):
         # and to None in others; normalise so callers only check falsiness.
         return None if rendered in (None, "", "None") else rendered
 
+    @classmethod
+    def _write_secure_temp_file(cls, contents: bytes | str, suffix: str) -> str:
+        return cls._write_secure_temp_file_in(contents, suffix, None)
+
     @staticmethod
-    def _write_secure_temp_file(contents: bytes | str, suffix: str) -> str:
+    def _write_secure_temp_file_in(
+        contents: bytes | str, suffix: str, directory: str | None
+    ) -> str:
         is_bytes = isinstance(contents, bytes)
         with tempfile.NamedTemporaryFile(
-            mode="wb" if is_bytes else "w", suffix=suffix, delete=False
+            mode="wb" if is_bytes else "w", suffix=suffix, delete=False, dir=directory
         ) as handle:
             handle.write(contents)
             path = handle.name
@@ -168,6 +194,19 @@ class PrepareKerberosTransform(Transform):
             os.unlink(path)
             raise
         return path
+
+    @classmethod
+    def _create_ccache_file(cls) -> str:
+        """Create an empty 0600 credential cache for the password path.
+
+        Placed on tmpfs when available so the TGT stays out of durable storage; falls back
+        to the default temp dir rather than failing, since a working connection matters
+        more than the storage medium.
+        """
+        for directory in _TMPFS_DIRS:
+            if os.path.isdir(directory):
+                return cls._write_secure_temp_file_in(b"", ".ccache", directory)
+        return cls._write_secure_temp_file(b"", ".ccache")
 
     @classmethod
     def _write_krb5_conf(cls, realm: str, kdc: str) -> str:
