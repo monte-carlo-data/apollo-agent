@@ -127,6 +127,19 @@ class _CachedCoreToken:
 # thread mints per key (the agent runs multi-threaded, see the Dockerfile
 # ``--threads`` setting); invalidation is a compare-and-swap so a thread can only
 # evict the token it actually saw rejected, never a token a peer just refreshed.
+#
+# "Process-wide" is literal: the cache is per OS process, not per host. The WSGI
+# platforms (generic/hermes, aws) run gunicorn with 5 workers x 8 threads, so one
+# container holds up to 5 independent caches — the 8 threads in a worker share one
+# (guarded by the lock above), but the 5 workers do not; Lambda and Cloud Run run
+# one process per instance and scale by adding instances. So the token is
+# deduplicated per process, and the aggregate mint floor is one per active
+# worker/instance per max-age window, NOT one globally. It still collapses the
+# incident pathology on every platform: YET-2410's N+1 storm is one collection
+# issuing a single list + N SEQUENTIAL detail ``ssot_get`` calls, and sequential
+# agent invocations reuse a warm process, so those N mints fold into ~1 there
+# regardless of the platform's concurrency model. Driving the floor lower would
+# need an out-of-process shared store (e.g. Redis), which is out of scope here.
 _CORE_TOKEN_CACHE_LOCK = threading.Lock()
 _CORE_TOKEN_CACHE: dict[str, _CachedCoreToken] = {}
 
