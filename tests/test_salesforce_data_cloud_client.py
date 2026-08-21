@@ -13,12 +13,18 @@ import urllib3.exceptions
 from apollo.agent.agent import Agent
 from apollo.common.agent.constants import ATTRIBUTE_NAME_RESULT
 from apollo.agent.logging_utils import LoggingUtils
+from apollo.integrations.db import salesforce_data_cloud_proxy_client as sfdc_module
 from apollo.integrations.db.salesforce_data_cloud_proxy_client import (
+    _CORE_TOKEN_CACHE,
     _DISCOVERY_REQUEST_TIMEOUT_SECONDS,
     _SSOT_REQUEST_TIMEOUT_DEFAULT_SECONDS,
     _SSOT_REQUEST_TIMEOUT_MAX_SECONDS,
     _CapturingSession,
+    _is_expired_session,
+    _retry_read_timeout,
     _RetryingSalesforceDataCloudCursor,
+    SalesforceDataCloudCredentials,
+    SalesforceDataCloudProxyClient,
 )
 
 
@@ -33,6 +39,13 @@ class SalesforceDataCloudProxyClientTests(TestCase):
                 "core_token": "test_core_token",  # Default is client credentials which only has core_token
             }
         }
+
+        # The core-token cache (YET-2522) is process-wide module state; clear it
+        # so tokens minted in one test never leak into another (each test's mint
+        # mock returns a fresh uuid, so a leaked token would be a stale value that
+        # silently suppresses the mint a test expects).
+        _CORE_TOKEN_CACHE.clear()
+        self.addCleanup(_CORE_TOKEN_CACHE.clear)
 
         self.mock_responses = responses.RequestsMock()
         self.mock_responses.start()
@@ -1710,6 +1723,378 @@ class SalesforceDataCloudProxyClientTests(TestCase):
         message = str(response.result)
         self.assertIn("[REDACTED]", message)
         self.assertNotIn("secret-should-redact", message)
+
+    # -- ssot_get core-token reuse (YET-2522) ----------------------------------------
+
+    _INVALID_SESSION_BODY = json.dumps(
+        [{"errorCode": "INVALID_SESSION_ID", "message": "Session expired or invalid"}]
+    )
+
+    def _direct_ssot_client(self, **overrides: str) -> SalesforceDataCloudProxyClient:
+        """Build a proxy client directly instead of going through the agent.
+
+        The core-token cache is process-wide, keyed by (domain, client_id,
+        client_secret), and shared across client instances (YET-2522). The agent
+        path passes `skip_cache=True`, so `ProxyClientFactory` builds a fresh
+        client per operation — which is exactly the production boundary the cache
+        must survive. Driving the client directly here lets a test observe both
+        "two calls, one mint" on one client AND token sharing across separate
+        client instances (the real DC path). `overrides` tweak individual
+        connect_args (e.g. a different `client_secret`) to exercise cache keying.
+        """
+        connect_args = {**self.credentials["connect_args"], **overrides}
+        return SalesforceDataCloudProxyClient(
+            credentials=SalesforceDataCloudCredentials(
+                domain=connect_args["domain"],
+                client_id=connect_args["client_id"],
+                client_secret=connect_args["client_secret"],
+                core_token=connect_args.get("core_token"),
+                refresh_token=None,
+            )
+        )
+
+    def _mint_returns(self, *tokens: str) -> int:
+        """Make successive client-credentials mints return `tokens` in order.
+
+        Returns the mint count so far, so callers can assert on the delta rather
+        than the absolute count (building the client may mint on its own). Once
+        `tokens` is exhausted a distinctive sentinel token is returned rather than
+        raising `StopIteration` inside the `responses` callback — so a regression
+        that mints once too many fails on the caller's mint-count/Bearer
+        assertion (a clear diagnosis) instead of an opaque callback error.
+        """
+        token_iter = iter(tokens)
+
+        def _next_mint(_request: Any):
+            token = next(token_iter, "unexpected-extra-mint-token")
+            return (
+                200,
+                {},
+                json.dumps(
+                    {
+                        "access_token": token,
+                        "instance_url": "https://test.salesforce.com",
+                    }
+                ),
+            )
+
+        self.client_credentials_token_endpoint.side_effect = _next_mint
+        return self.client_credentials_token_endpoint.call_count
+
+    def _mints_since(self, before: int) -> int:
+        return self.client_credentials_token_endpoint.call_count - before
+
+    def _ssot_calls(self) -> list:
+        return [
+            c
+            for c in self.mock_responses.calls
+            if "/ssot/data-streams" in c.request.url
+        ]
+
+    def _cache_key(self, client: SalesforceDataCloudProxyClient) -> str:
+        return client._core_token_cache_key
+
+    def test_ssot_get_reuses_the_cached_core_token_across_calls(self):
+        """The token endpoint — not the data reads — is what Salesforce throttles
+        (`invalid_grant: login rate exceeded`), and YET-2410 made ssot_get per-item,
+        so a mint per call is N+1 mints per collection run. Two reads on one client
+        must mint ONCE and send the same Bearer credential twice."""
+        client = self._direct_ssot_client()
+        mints_before = self._mint_returns("first-core-token", "second-core-token")
+        self.mock_responses.add_callback(
+            method=responses.GET,
+            url=self._SSOT_URL,
+            callback=Mock(return_value=(200, {}, json.dumps({"dataStreams": []}))),
+        )
+
+        client.ssot_get(self._SSOT_PATH)
+        client.ssot_get(self._SSOT_PATH)
+
+        self.assertEqual(self._mints_since(mints_before), 1)
+        ssot_calls = self._ssot_calls()
+        self.assertEqual(len(ssot_calls), 2)
+        self.assertEqual(
+            {c.request.headers["Authorization"] for c in ssot_calls},
+            {"Bearer first-core-token"},
+        )
+
+    def test_ssot_get_shares_the_cached_token_across_client_instances(self):
+        """The production fix (YET-2522): the data-collector sends `skip_cache=true`,
+        so every ssot_get gets a BRAND-NEW proxy client. If the cache were on the
+        instance it would never be reused and the N+1 mint storm would persist.
+        Two independent clients with identical credentials must therefore share one
+        minted token — one mint total across both."""
+        first_client = self._direct_ssot_client()
+        second_client = self._direct_ssot_client()
+        mints_before = self._mint_returns("shared-core-token", "unexpected-second")
+        self.mock_responses.add_callback(
+            method=responses.GET,
+            url=self._SSOT_URL,
+            callback=Mock(return_value=(200, {}, json.dumps({"dataStreams": []}))),
+        )
+
+        first_client.ssot_get(self._SSOT_PATH)
+        second_client.ssot_get(self._SSOT_PATH)
+
+        self.assertEqual(self._mints_since(mints_before), 1)
+        self.assertEqual(
+            {c.request.headers["Authorization"] for c in self._ssot_calls()},
+            {"Bearer shared-core-token"},
+        )
+
+    def test_ssot_get_does_not_share_tokens_across_different_credentials(self):
+        """The cache key is a hash of (domain, client_id, client_secret), so a
+        token minted for one connection is never served to another — no
+        cross-tenant credential reuse. Two clients differing only in client_secret
+        each mint their own token."""
+        client_a = self._direct_ssot_client(client_secret="secret_a")
+        client_b = self._direct_ssot_client(client_secret="secret_b")
+        self.assertNotEqual(self._cache_key(client_a), self._cache_key(client_b))
+        mints_before = self._mint_returns("token-a", "token-b")
+        self.mock_responses.add_callback(
+            method=responses.GET,
+            url=self._SSOT_URL,
+            callback=Mock(return_value=(200, {}, json.dumps({"dataStreams": []}))),
+        )
+
+        client_a.ssot_get(self._SSOT_PATH)
+        client_b.ssot_get(self._SSOT_PATH)
+
+        self.assertEqual(self._mints_since(mints_before), 2)
+        self.assertEqual(
+            [c.request.headers["Authorization"] for c in self._ssot_calls()],
+            ["Bearer token-a", "Bearer token-b"],
+        )
+
+    def test_ssot_get_remints_when_the_cached_token_is_older_than_the_max_age(self):
+        """The cache is bounded by a soft max age (~60s), mirroring the client-cache
+        lifetime the design leaned on, so a token minted under a since-rotated
+        secret cannot linger indefinitely. Past that age the next call mints fresh
+        even without a 401."""
+        client = self._direct_ssot_client()
+        mints_before = self._mint_returns("aged-out-token", "fresh-token")
+        self.mock_responses.add_callback(
+            method=responses.GET,
+            url=self._SSOT_URL,
+            callback=Mock(return_value=(200, {}, json.dumps({"dataStreams": []}))),
+        )
+
+        # First call at t=1000 primes the cache; second at t=1000+max_age+1 is stale.
+        # A constant return_value per phase keeps this robust to how many times the
+        # implementation happens to read the clock.
+        max_age = sfdc_module._CORE_TOKEN_CACHE_MAX_AGE_SECONDS
+        with patch.object(sfdc_module.time, "monotonic", return_value=1000.0):
+            client.ssot_get(self._SSOT_PATH)
+        with patch.object(
+            sfdc_module.time, "monotonic", return_value=1000.0 + max_age + 1
+        ):
+            client.ssot_get(self._SSOT_PATH)
+
+        self.assertEqual(self._mints_since(mints_before), 2)
+        self.assertEqual(
+            [c.request.headers["Authorization"] for c in self._ssot_calls()],
+            ["Bearer aged-out-token", "Bearer fresh-token"],
+        )
+
+    def test_ssot_get_remints_once_and_retries_when_the_cached_token_expired(self):
+        """Expiry cannot be predicted — Salesforce omits `expires_in` on the
+        client-credentials grant and the token dies with the org session (or is
+        revoked). So a cached token that comes back 401/INVALID_SESSION_ID is
+        discarded, re-minted once, and the idempotent GET retried."""
+        client = self._direct_ssot_client()
+        mints_before = self._mint_returns("expired-core-token", "renewed-core-token")
+        body = {"dataStreams": [{"name": "Web_Engagement", "totalRecords": 42}]}
+        self.mock_responses.add_callback(
+            method=responses.GET,
+            url=self._SSOT_URL,
+            callback=Mock(
+                side_effect=[
+                    (200, {}, json.dumps(body)),  # primes the cache
+                    (401, {}, self._INVALID_SESSION_BODY),  # cached token expired
+                    (200, {}, json.dumps(body)),  # retry on a fresh token
+                ]
+            ),
+        )
+
+        client.ssot_get(self._SSOT_PATH)
+        self.assertEqual(client.ssot_get(self._SSOT_PATH), body)
+
+        self.assertEqual(self._mints_since(mints_before), 2)
+        ssot_calls = self._ssot_calls()
+        self.assertEqual(len(ssot_calls), 3)
+        self.assertEqual(
+            ssot_calls[-1].request.headers["Authorization"],
+            "Bearer renewed-core-token",
+        )
+
+    def test_ssot_get_does_not_remint_when_the_token_was_minted_for_this_call(self):
+        """The `from_cache` guard is a key decision: a 401 on a token minted moments
+        ago is a real authorization failure (revoked connected app, missing SSOT
+        permission), NOT expiry, so it must surface immediately without a re-mint —
+        re-minting here would double mint volume against the throttled endpoint.
+        A fresh client's very first ssot_get hitting 401 proves the guard holds
+        (without it, the retry path would fire and mint a second time)."""
+        client = self._direct_ssot_client()
+        mints_before = self._mint_returns("only-core-token", "should-not-be-minted")
+        self.mock_responses.add_callback(
+            method=responses.GET,
+            url=self._SSOT_URL,
+            callback=Mock(return_value=(401, {}, self._INVALID_SESSION_BODY)),
+        )
+
+        with self.assertRaises(RuntimeError) as raised:
+            client.ssot_get(self._SSOT_PATH)
+
+        self.assertIn("code 401", str(raised.exception))
+        self.assertEqual(self._mints_since(mints_before), 1)
+        self.assertEqual(len(self._ssot_calls()), 1)
+
+    def test_ssot_get_retries_at_most_once_on_a_persistent_401(self):
+        """The retry is bounded: a 401 that survives the re-mint is a real failure
+        (revoked connected app, missing permission) and must surface the existing
+        `code 401` RuntimeError rather than minting in a loop — which is the very
+        pressure this change exists to relieve. And a token the retry also saw
+        rejected must not stay cached: the entry is evicted so the process never
+        knowingly holds an INVALID_SESSION token."""
+        client = self._direct_ssot_client()
+        mints_before = self._mint_returns(
+            "first-core-token", "second-core-token", "third-core-token"
+        )
+        self.mock_responses.add_callback(
+            method=responses.GET,
+            url=self._SSOT_URL,
+            callback=Mock(
+                side_effect=[
+                    (200, {}, json.dumps({"dataStreams": []})),  # primes the cache
+                    (401, {}, self._INVALID_SESSION_BODY),
+                    (401, {}, self._INVALID_SESSION_BODY),
+                ]
+            ),
+        )
+
+        client.ssot_get(self._SSOT_PATH)
+        with self.assertRaises(RuntimeError) as raised:
+            client.ssot_get(self._SSOT_PATH)
+
+        self.assertIn("code 401", str(raised.exception))
+        self.assertEqual(self._mints_since(mints_before), 2)
+        self.assertEqual(len(self._ssot_calls()), 3)
+        # Post-failure state is pinned: the twice-rejected token is not left cached.
+        self.assertNotIn(self._cache_key(client), _CORE_TOKEN_CACHE)
+
+    def test_retry_read_timeout_deducts_elapsed_and_floors(self):
+        """The re-mint-and-retry must not double the caller's read budget: the DC
+        sizes its transport deadman at `30 + timeout` and expects the agent to error
+        first (YET-2440). The retry GET's read bound is `timeout` minus the first
+        GET's elapsed time — so both reads stay within one `timeout` — floored at
+        the minimum so `requests` never gets a non-positive deadline."""
+        # Normal case: 10s already spent out of 100 leaves 90 for the retry read.
+        self.assertEqual(_retry_read_timeout(100, 10.0), 90)
+        # Nothing spent yet: full budget.
+        self.assertEqual(_retry_read_timeout(100, 0.0), 100)
+        # First GET consumed the whole budget (or more): floor, never <= 0.
+        self.assertEqual(_retry_read_timeout(30, 40.0), 1)
+        self.assertEqual(_retry_read_timeout(30, 30.0), 1)
+
+    def test_ssot_get_logs_whether_the_core_token_came_from_cache(self):
+        """`ssot_core_token_cached` on the SSOT GET log record is how a cache hit
+        is confirmed in Datadog — a scalar, per the logging convention."""
+        client = self._direct_ssot_client()
+        self._mint_returns("first-core-token", "second-core-token")
+        self.mock_responses.add_callback(
+            method=responses.GET,
+            url=self._SSOT_URL,
+            callback=Mock(return_value=(200, {}, json.dumps({"dataStreams": []}))),
+        )
+
+        with self.assertLogs(self._PROXY_CLIENT_LOGGER, level="INFO") as logs:
+            client.ssot_get(self._SSOT_PATH)
+            client.ssot_get(self._SSOT_PATH)
+
+        flags = [
+            record.ssot_core_token_cached
+            for record in logs.records
+            if hasattr(record, "ssot_core_token_cached")
+        ]
+        self.assertEqual(flags, [False, True])
+
+    def test_list_dataspaces_keeps_minting_its_own_core_token(self):
+        """Only the ssot_get mints are deduped. `list_dataspaces` runs once per
+        collection and stays on its own mint — it neither reads nor writes the
+        ssot_get cache. (The per-dataspace `list_tables` path likewise mints per
+        dataspace, deliberately, to avoid ambiguous scoping; not exercised here.)"""
+        client = self._direct_ssot_client()
+        mints_before = self._mint_returns("ssot-core-token", "dataspaces-core-token")
+        self.mock_responses.add_callback(
+            method=responses.GET,
+            url=self._SSOT_URL,
+            callback=Mock(return_value=(200, {}, json.dumps({"dataStreams": []}))),
+        )
+        self._add_soql_callback(
+            Mock(
+                return_value=(
+                    200,
+                    {},
+                    json.dumps(
+                        {
+                            "records": [{"DataSpaceApiName": "default"}],
+                            "done": True,
+                        }
+                    ),
+                )
+            )
+        )
+
+        client.ssot_get(self._SSOT_PATH)
+        self.assertEqual(client.list_dataspaces(), ["default"])
+
+        self.assertEqual(self._mints_since(mints_before), 2)
+        soql_call = next(
+            c
+            for c in self.mock_responses.calls
+            if "/services/data/v62.0/query" in c.request.url
+        )
+        self.assertEqual(
+            soql_call.request.headers["Authorization"],
+            "Bearer dataspaces-core-token",
+        )
+
+    def test_is_expired_session_branches(self):
+        """`_is_expired_session` gates the re-mint. Cover all three branches:
+        a 401 is always expiry; a 200 never is (even if the body mentions the
+        string — an auth-object metadata payload must not force a spurious mint);
+        and a non-401 error requires a STRUCTURED errorCode, not a substring, so a
+        4xx that merely echoes caller-supplied text back does not evict a good
+        token."""
+
+        def resp(status: int, body: Any) -> requests.Response:
+            r = requests.Response()
+            r.status_code = status
+            r._content = json.dumps(body).encode() if body is not None else b"<html>"
+            return r
+
+        # 401 → expiry regardless of body.
+        self.assertTrue(_is_expired_session(resp(401, [{"errorCode": "OTHER"}])))
+        # 200 → never expiry, even when the string appears in the payload.
+        self.assertFalse(_is_expired_session(resp(200, {"note": "INVALID_SESSION_ID"})))
+        # Non-401 error with the structured errorCode → expiry (dict or list form).
+        self.assertTrue(
+            _is_expired_session(resp(403, [{"errorCode": "INVALID_SESSION_ID"}]))
+        )
+        self.assertTrue(
+            _is_expired_session(resp(500, {"errorCode": "INVALID_SESSION_ID"}))
+        )
+        # Non-401 error that only REFLECTS the string in a message → not expiry.
+        self.assertFalse(
+            _is_expired_session(
+                resp(
+                    400,
+                    [{"errorCode": "MALFORMED_QUERY", "message": "INVALID_SESSION_ID"}],
+                )
+            )
+        )
+        # Unparseable body → not expiry.
+        self.assertFalse(_is_expired_session(resp(500, None)))
 
     # -- ssot_get read timeout (YET-2440) --------------------------------------------
 
