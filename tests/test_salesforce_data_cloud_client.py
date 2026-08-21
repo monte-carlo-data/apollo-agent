@@ -1805,6 +1805,37 @@ class SalesforceDataCloudProxyClientTests(TestCase):
             ["Bearer aged-out-token", "Bearer fresh-token"],
         )
 
+    def test_ssot_get_prunes_aged_out_entries_for_other_keys_on_mint(self):
+        """The cache is pruned on mint so it cannot grow without bound across many
+        distinct credential sets: an entry past the reuse max age can never be
+        served again (a read would re-mint it), so the next mint for ANY key drops
+        it. Without this a long-lived process cycling through many connections would
+        accumulate one dead entry per credential set (YET-2522)."""
+        client_a = self._direct_ssot_client(client_secret="secret_a")
+        client_b = self._direct_ssot_client(client_secret="secret_b")
+        self._mint_returns("token-a", "token-b")
+        self.mock_responses.add_callback(
+            method=responses.GET,
+            url=self._SSOT_URL,
+            callback=Mock(return_value=(200, {}, json.dumps({"dataStreams": []}))),
+        )
+        max_age = sfdc_module._CORE_TOKEN_CACHE_MAX_AGE_SECONDS
+
+        # Prime the cache for credential A at t=1000.
+        with patch.object(sfdc_module.time, "monotonic", return_value=1000.0):
+            client_a.ssot_get(self._SSOT_PATH)
+        self.assertIn(self._cache_key(client_a), _CORE_TOKEN_CACHE)
+
+        # A mint for credential B well past A's max age must evict A's dead entry
+        # while leaving B's fresh one.
+        with patch.object(
+            sfdc_module.time, "monotonic", return_value=1000.0 + max_age + 1
+        ):
+            client_b.ssot_get(self._SSOT_PATH)
+
+        self.assertNotIn(self._cache_key(client_a), _CORE_TOKEN_CACHE)
+        self.assertIn(self._cache_key(client_b), _CORE_TOKEN_CACHE)
+
     def test_ssot_get_remints_once_and_retries_when_the_cached_token_expired(self):
         """Expiry cannot be predicted — Salesforce omits `expires_in` on the
         client-credentials grant and the token dies with the org session (or is
@@ -1904,6 +1935,18 @@ class SalesforceDataCloudProxyClientTests(TestCase):
         # First GET consumed the whole budget (or more): floor, never <= 0.
         self.assertEqual(_retry_read_timeout(30, 40.0), 1)
         self.assertEqual(_retry_read_timeout(30, 30.0), 1)
+
+    def test_retry_read_timeout_rounds_fractional_elapsed_up(self):
+        """Fractional elapsed must be charged in FULL, not truncated: rounding the
+        consumed time DOWN (`int(elapsed)`) would over-allocate the retry read by up
+        to ~0.999s and let the two reads together exceed one `timeout`, breaking the
+        DC's `30 + timeout` deadman guarantee (YET-2440/YET-2522). Rounding up keeps
+        the combined read budget within one `timeout`."""
+        # 10.1s spent out of 100 must leave AT MOST 89 (not 90 via truncation).
+        self.assertEqual(_retry_read_timeout(100, 10.1), 89)
+        # Any fraction consumes the whole second it falls in.
+        self.assertEqual(_retry_read_timeout(100, 10.9), 89)
+        self.assertEqual(_retry_read_timeout(100, 0.001), 99)
 
     def test_ssot_get_logs_whether_the_core_token_came_from_cache(self):
         """`ssot_core_token_cached` on the SSOT GET log record is how a cache hit
