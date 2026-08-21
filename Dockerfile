@@ -81,6 +81,11 @@ RUN apt-get install -y --no-install-recommends unzip \
 # orapki + minimal JRE for building thick-mode TLS wallets (see oracle-pki-builder).
 COPY --from=oracle-pki-builder /opt/oracle-pki /opt/oracle-pki
 
+# VULN-1654: jq <= 1.7.1 has a heap-buffer-overflow; Debian bookworm only ships
+# 1.6.x with no patched backport, so apt-get upgrade cannot reach 1.8.0. Remove
+# it — no runtime stage uses jq (only README examples and CircleCI CI scripts do).
+RUN apt-get purge -y jq || true
+
 # clean up all unused libraries
 RUN apt-get autoremove -y && apt-get clean && rm -rf /var/lib/apt/lists/*
 
@@ -230,6 +235,9 @@ RUN rm -f /var/lang/lib/python*/site-packages/pip/_vendor/bom.cdx.json
 # base image.
 RUN rm -f /usr/local/bin/aws-lambda-rie
 
+# VULN-1654: remove jq if present in the AL2023 base image — no runtime code uses it.
+RUN dnf remove -y jq || true
+
 RUN dnf clean all && rm -rf /var/cache/yum
 
 COPY --chown=mcdagent:mcdagent apollo "${LAMBDA_TASK_ROOT}/apollo"
@@ -336,7 +344,10 @@ COPY --from=oracle-pki-builder /opt/oracle-pki /opt/oracle-pki
 # satisfy the purge, it aborts and the build fails loudly rather than shipping a
 # broken image. --auto-remove sweeps the now-orphaned dependency cascade in one pass.
 #
+# VULN-1654: jq <= 1.7.1 has a heap-buffer-overflow; Ubuntu 24.04 may ship a
+# vulnerable version. Remove if present — no runtime code uses jq.
 # clean up all unused libraries
+RUN apt-get purge -y jq || true
 RUN apt-get purge -y --auto-remove \
         xvfb xserver-common x11-common x11-utils x11-xkb-utils x11-xserver-utils \
         libxext6 libxft2 libxi6 libxinerama1 libxpm4 libxrender1 libxrender-dev \
