@@ -374,6 +374,11 @@ RUN pip install --no-cache-dir \
 ENV SETUPTOOLS_USE_DISTUTILS=local
 RUN pip install --no-cache-dir setuptools
 
+# Same pip vendored-SBOM noise as in the `base` and `lambda` stages, for the
+# interpreter the MS base image ships (the base tag is unpinned, so a refresh
+# brings back whatever pip it currently bundles).
+RUN rm -f /opt/python/*/lib/python*/site-packages/pip/_vendor/bom.cdx.json
+
 COPY --chown=mcdagent:mcdagent apollo /home/site/wwwroot/apollo
 
 # the files under apollo/interfaces/azure like function_app.py must be in the root folder of the app
