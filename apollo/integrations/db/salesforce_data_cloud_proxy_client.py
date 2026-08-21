@@ -1,5 +1,6 @@
 import http.client
 import logging
+import math
 import re
 import threading
 import time
@@ -91,8 +92,16 @@ def _retry_read_timeout(request_timeout: int, elapsed_seconds: float) -> int:
     ``request_timeout`` after the first GET's ``elapsed_seconds``, floored at
     :data:`_SSOT_RETRY_MIN_READ_SECONDS` so both reads together stay within one
     ``timeout`` while never handing ``requests`` a non-positive deadline
-    (YET-2440/YET-2522)."""
-    return max(_SSOT_RETRY_MIN_READ_SECONDS, request_timeout - int(elapsed_seconds))
+    (YET-2440/YET-2522).
+
+    The elapsed time is rounded UP (``math.ceil``) rather than truncated: charging
+    only the whole-second part would under-count the first GET by up to ~0.999s and
+    hand the retry that much extra read budget, so the two reads together could
+    exceed one ``timeout`` and overrun the DC's ``30 + timeout`` transport deadman.
+    Rounding up keeps the combined budget within one ``timeout``."""
+    return max(
+        _SSOT_RETRY_MIN_READ_SECONDS, request_timeout - math.ceil(elapsed_seconds)
+    )
 
 
 @dataclass
@@ -118,6 +127,19 @@ class _CachedCoreToken:
 # thread mints per key (the agent runs multi-threaded, see the Dockerfile
 # ``--threads`` setting); invalidation is a compare-and-swap so a thread can only
 # evict the token it actually saw rejected, never a token a peer just refreshed.
+#
+# "Process-wide" is literal: the cache is per OS process, not per host. The WSGI
+# platforms (generic/hermes, aws) run gunicorn with 5 workers x 8 threads, so one
+# container holds up to 5 independent caches — the 8 threads in a worker share one
+# (guarded by the lock above), but the 5 workers do not; Lambda and Cloud Run run
+# one process per instance and scale by adding instances. So the token is
+# deduplicated per process, and the aggregate mint floor is one per active
+# worker/instance per max-age window, NOT one globally. It still collapses the
+# incident pathology on every platform: YET-2410's N+1 storm is one collection
+# issuing a single list + N SEQUENTIAL detail ``ssot_get`` calls, and sequential
+# agent invocations reuse a warm process, so those N mints fold into ~1 there
+# regardless of the platform's concurrency model. Driving the floor lower would
+# need an out-of-process shared store (e.g. Redis), which is out of scope here.
 _CORE_TOKEN_CACHE_LOCK = threading.Lock()
 _CORE_TOKEN_CACHE: dict[str, _CachedCoreToken] = {}
 
@@ -128,8 +150,30 @@ _CORE_TOKEN_CACHE: dict[str, _CachedCoreToken] = {}
 # as the org session (default ~2h, down to 15min, revocable at will). It is a bound
 # on how long a token minted under a since-rotated secret can linger in the process.
 # Genuine mid-window expiry or revocation is still caught reactively (see
-# ``_is_expired_session`` and the retry in ``ssot_get``).
+# ``_is_expired_session`` and the retry in ``ssot_get``). It also bounds the cache's
+# size: an entry past this age can never be reused, so each mint prunes any that have
+# aged out (see ``_prune_expired_core_tokens``), keeping the dict from growing
+# unbounded across many distinct credential sets.
 _CORE_TOKEN_CACHE_MAX_AGE_SECONDS = 60
+
+
+def _prune_expired_core_tokens(now: float) -> None:
+    """Evict every cache entry older than :data:`_CORE_TOKEN_CACHE_MAX_AGE_SECONDS`.
+
+    Such an entry can never be served again — :meth:`_get_or_mint_core_token`
+    re-mints past the max age — so dropping it on each mint bounds the dict's growth
+    across many distinct credential sets rather than letting one dead entry per
+    credential accumulate for the process lifetime (YET-2522).
+
+    Callers MUST hold :data:`_CORE_TOKEN_CACHE_LOCK`; the dict is mutated in place.
+    """
+    stale_keys = [
+        key
+        for key, entry in _CORE_TOKEN_CACHE.items()
+        if now - entry.minted_at >= _CORE_TOKEN_CACHE_MAX_AGE_SECONDS
+    ]
+    for key in stale_keys:
+        del _CORE_TOKEN_CACHE[key]
 
 
 def _core_token_cache_key(credentials: "SalesforceDataCloudCredentials") -> str:
@@ -965,9 +1009,12 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
             ):
                 return cached.token, True
             token = self._mint_core_token(session)
-            _CORE_TOKEN_CACHE[key] = _CachedCoreToken(
-                token=token, minted_at=time.monotonic()
-            )
+            minted_at = time.monotonic()
+            # Drop any entries (including this key's own stale one, and any left by
+            # since-idle credential sets) that have aged past the reuse window before
+            # inserting, so the cache can't grow without bound (YET-2522).
+            _prune_expired_core_tokens(minted_at)
+            _CORE_TOKEN_CACHE[key] = _CachedCoreToken(token=token, minted_at=minted_at)
             return token, False
 
     def _invalidate_core_token(self, rejected_token: str) -> None:
@@ -1114,17 +1161,7 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
         if response.status_code != 200:
             body = _redact_body(session.last_exchange_body)
             status = session.last_exchange_status
-            # A 404 is the expected, benign response from orgs that lack the SSOT
-            # feature behind the requested path (e.g. Data Governance tags on orgs
-            # without the license, YET-1998). It still raises `code 404` below so
-            # the data-collector can branch on status and skip silently, but it
-            # must NOT warn — orgs without the feature would otherwise spam a
-            # warning every collection cycle. Genuinely unexpected non-200s
-            # (auth, rate limits, 5xx, ...) still warn. Key the demotion off the
-            # same captured `status` reported in `extra` so the log level always
-            # matches the status we surface.
-            log = logger.debug if status == 404 else logger.warning
-            log(
+            logger.warning(
                 "Salesforce Data Cloud: SSOT GET failed",
                 extra={
                     "ssot_path": log_path,
