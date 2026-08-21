@@ -1,8 +1,11 @@
 import http.client
 import logging
 import re
+import threading
+import time
 import urllib.parse
 from dataclasses import dataclass
+from hashlib import sha256
 from typing import Any, NoReturn
 
 import requests
@@ -75,6 +78,67 @@ _SSOT_REQUEST_TIMEOUT_DEFAULT_SECONDS = 30
 # default for a ``/ssot`` page (observed p99 63-72s across two orgs), so the
 # default stays 30 and callers opt in above it.
 _SSOT_REQUEST_TIMEOUT_MAX_SECONDS = 300
+
+# Floor on the retry GET's read bound (YET-2522). The retry deducts the first
+# GET's elapsed time from ``timeout`` so the two reads together stay within one
+# ``timeout`` budget (see ``ssot_get``); this keeps that subtraction from handing
+# ``requests`` a zero/negative deadline when the first GET nearly exhausted it.
+_SSOT_RETRY_MIN_READ_SECONDS = 1
+
+
+def _retry_read_timeout(request_timeout: int, elapsed_seconds: float) -> int:
+    """Read bound for the cached-token retry GET: what's left of the caller's
+    ``request_timeout`` after the first GET's ``elapsed_seconds``, floored at
+    :data:`_SSOT_RETRY_MIN_READ_SECONDS` so both reads together stay within one
+    ``timeout`` while never handing ``requests`` a non-positive deadline
+    (YET-2440/YET-2522)."""
+    return max(_SSOT_RETRY_MIN_READ_SECONDS, request_timeout - int(elapsed_seconds))
+
+
+@dataclass
+class _CachedCoreToken:
+    token: str
+    minted_at: float  # time.monotonic() when minted
+
+
+# Process-wide cache of minted core tokens, keyed by credential identity and
+# shared across every SalesforceDataCloudProxyClient instance (YET-2522).
+#
+# The cache MUST outlive a single client. The data-collector sends
+# ``skip_cache=true`` on every agent operation (its default), so
+# ``ProxyClientFactory`` builds a fresh proxy client per ``ssot_get`` and closes
+# it in the same operation — an instance attribute would never be reused, and the
+# N+1 mints that make Salesforce throttle the token endpoint
+# (``invalid_grant: login rate exceeded``) would persist. A module-level cache
+# deduplicates mints across those short-lived clients.
+#
+# The key is a hash of ``(domain, client_id, client_secret)``, so a token is only
+# ever served back to byte-identical credentials — it never crosses orgs,
+# dataspaces, or connections. The lock is held across the mint so exactly one
+# thread mints per key (the agent runs multi-threaded, see the Dockerfile
+# ``--threads`` setting); invalidation is a compare-and-swap so a thread can only
+# evict the token it actually saw rejected, never a token a peer just refreshed.
+_CORE_TOKEN_CACHE_LOCK = threading.Lock()
+_CORE_TOKEN_CACHE: dict[str, _CachedCoreToken] = {}
+
+# Soft ceiling on how long a cached core token is served before a fresh mint,
+# mirroring the ~60s ProxyClientFactory client-cache lifetime the original
+# per-instance design leaned on. This is NOT the token's real lifetime — Salesforce
+# omits ``expires_in`` on the client-credentials grant and the token lives as long
+# as the org session (default ~2h, down to 15min, revocable at will). It is a bound
+# on how long a token minted under a since-rotated secret can linger in the process.
+# Genuine mid-window expiry or revocation is still caught reactively (see
+# ``_is_expired_session`` and the retry in ``ssot_get``).
+_CORE_TOKEN_CACHE_MAX_AGE_SECONDS = 60
+
+
+def _core_token_cache_key(credentials: "SalesforceDataCloudCredentials") -> str:
+    """Stable per-credential cache key. ``\\0`` joins so distinct field splits
+    (e.g. domain ``a`` + id ``bc`` vs domain ``ab`` + id ``c``) can't collide."""
+    material = "\0".join(
+        [credentials.domain, credentials.client_id, credentials.client_secret]
+    )
+    return sha256(material.encode("utf-8")).hexdigest()
 
 
 class _CapturingSession(requests.Session):
@@ -161,6 +225,38 @@ def _redact_body(body: str | None) -> str | None:
     if body is None:
         return None
     return _SENSITIVE_VALUE_PATTERN.sub(r"\1'[REDACTED]'", body)
+
+
+def _is_expired_session(response: requests.Response) -> bool:
+    """
+    True when a core REST response reads as "the token is no longer valid".
+
+    Salesforce answers an expired or revoked session with ``401`` and an
+    ``INVALID_SESSION_ID`` error code. A ``200`` is never an expired session,
+    whatever its body happens to contain — that guard stops a successful payload
+    that merely mentions the string (e.g. metadata about auth objects) from
+    forcing a spurious re-mint.
+
+    For a non-401 error the body's *structured* ``errorCode`` is required, not a
+    substring: the response echoes the data-collector-supplied path/query, which
+    this module treats as untrusted (see ``_resolve_ssot_timeout``), so matching
+    on reflected text could let a caller-influenced 4xx body evict a good cached
+    token and force an extra mint — the exact pressure this cache relieves. An
+    unparseable body is not an expiry.
+    """
+    if response.status_code == 200:
+        return False
+    if response.status_code == 401:
+        return True
+    try:
+        payload = response.json()
+    except ValueError:
+        return False
+    elements = payload if isinstance(payload, list) else [payload]
+    return any(
+        isinstance(element, dict) and element.get("errorCode") == "INVALID_SESSION_ID"
+        for element in elements
+    )
 
 
 def _resolve_ssot_timeout(timeout: int | None) -> int:
@@ -422,6 +518,10 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
     def __init__(self, credentials: SalesforceDataCloudCredentials):
         super().__init__(connection_type="salesforce-data-cloud")
         self._credentials = credentials
+        # Key into the process-wide core-token cache shared by ssot_get across
+        # client instances (YET-2522, see _CORE_TOKEN_CACHE). Precomputed once
+        # since the credentials are fixed for this client's life.
+        self._core_token_cache_key = _core_token_cache_key(credentials)
         self._connection = SalesforceDataCloudConnection(
             f"https://{credentials.domain}",
             client_id=credentials.client_id,
@@ -782,7 +882,11 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
         ``salesforcecdpconnector`` library mints its own token internally for Data
         Cloud query traffic but does not expose that flow for arbitrary core REST
         calls, so dataspace discovery (:meth:`list_dataspaces`) and generic SSOT
-        reads (:meth:`ssot_get`) mint their own token here.
+        reads (:meth:`ssot_get`) mint their own token here. Every call to this
+        method is a hit on Salesforce's rate-limited token endpoint —
+        :meth:`ssot_get` therefore reaches it through
+        :meth:`_get_or_mint_core_token`, which caches the result process-wide and
+        so mints at most once per credential per ~60s window (YET-2522).
 
         ``session`` is a :class:`_CapturingSession` so the caller can surface the
         redacted response body on failure. Raises ``RuntimeError`` carrying
@@ -825,6 +929,78 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
                 f"(HTTP {token_response.status_code}, Salesforce response: {body})"
             ) from e
 
+    def _get_or_mint_core_token(self, session: _CapturingSession) -> tuple[str, bool]:
+        """
+        Return ``(token, from_cache)`` for :meth:`ssot_get`, minting only on a miss
+        (YET-2522).
+
+        Before this cache every ``ssot_get`` minted its own token and threw it away.
+        That was tolerable while ``ssot_get`` served a few page walks per run, but
+        Data 360 Retriever collection (YET-2410) reads one detail resource per item,
+        so a collection run issued N+1 client-credentials mints and Salesforce began
+        throttling the **token** endpoint itself
+        (``invalid_grant: login rate exceeded``) — the reads were never the problem.
+
+        The token lives in the process-wide :data:`_CORE_TOKEN_CACHE`, not on this
+        client, because the data-collector builds a fresh client per operation (see
+        that cache's docstring). A cache entry older than
+        :data:`_CORE_TOKEN_CACHE_MAX_AGE_SECONDS` is re-minted; genuine mid-window
+        expiry is caught reactively by the retry in :meth:`ssot_get`.
+
+        The lock is held across the mint so concurrent callers for one credential
+        mint at most once between them, rather than stampeding the throttled token
+        endpoint at a cold cache or an expiry boundary.
+
+        Only ``ssot_get`` shares this token. :meth:`list_dataspaces` runs once per
+        collection, and :meth:`list_tables` mints per dataspace on purpose, to keep
+        dataspace scoping unambiguous.
+        """
+        key = self._core_token_cache_key
+        with _CORE_TOKEN_CACHE_LOCK:
+            cached = _CORE_TOKEN_CACHE.get(key)
+            if (
+                cached is not None
+                and time.monotonic() - cached.minted_at
+                < _CORE_TOKEN_CACHE_MAX_AGE_SECONDS
+            ):
+                return cached.token, True
+            token = self._mint_core_token(session)
+            _CORE_TOKEN_CACHE[key] = _CachedCoreToken(
+                token=token, minted_at=time.monotonic()
+            )
+            return token, False
+
+    def _invalidate_core_token(self, rejected_token: str) -> None:
+        """Evict ``rejected_token`` from the shared cache, but only if it is still
+        the cached token — a compare-and-swap, so a concurrent caller's freshly
+        minted replacement is never discarded (YET-2522)."""
+        key = self._core_token_cache_key
+        with _CORE_TOKEN_CACHE_LOCK:
+            cached = _CORE_TOKEN_CACHE.get(key)
+            if cached is not None and cached.token == rejected_token:
+                del _CORE_TOKEN_CACHE[key]
+
+    def _ssot_request(
+        self,
+        session: _CapturingSession,
+        path: str,
+        access_token: str,
+        request_timeout: int,
+    ) -> requests.Response:
+        """Issue one authenticated SSOT GET with the given core token."""
+        # ``requests`` applies a scalar ``timeout`` to the connect phase AND the
+        # read phase independently, so passing ``request_timeout`` alone would
+        # silently widen the TCP/TLS connect bound from the discovery default up
+        # to whatever the caller asked for (up to 300s) — verified empirically:
+        # a scalar ``timeout=3`` against a black-holed IP raises ConnectTimeout at
+        # 3.01s, while a tuple ``(1, 30)`` raises it at 1.00s. Pin connect at the
+        # discovery bound via a tuple; only the read bound is caller-tunable.
+        return session.get(
+            f"https://{self._credentials.domain}{path}",
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=(_DISCOVERY_REQUEST_TIMEOUT_SECONDS, request_timeout),
+        )
+
     def ssot_get(self, path: str, timeout: int | None = None) -> dict | list:
         """
         Issue an authenticated GET against a Salesforce **core REST** path on the
@@ -843,10 +1019,18 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
         is returned.
 
         Authentication mirrors :meth:`list_dataspaces`: a short-lived core token
-        is minted via the client-credentials grant (:meth:`_mint_core_token`) and
-        sent as a Bearer credential. SSOT endpoints are core REST on the My Domain
-        authenticated with the **core token** — not the Data Cloud query token
-        obtained via the a360 exchange.
+        minted via the client-credentials grant is sent as a Bearer credential.
+        SSOT endpoints are core REST on the My Domain authenticated with the
+        **core token** — not the Data Cloud query token obtained via the a360
+        exchange.
+
+        The core token is minted once and cached process-wide, reused across calls
+        and across client instances (:meth:`_get_or_mint_core_token`, YET-2522). If
+        a *cached* token is rejected as an expired or revoked session, it is
+        evicted, re-minted once, and the GET retried — safe because these are
+        idempotent core-REST reads. The retry is bounded at one, and a token minted
+        for this very call is never re-minted: a 401 on a fresh token is a real
+        authorization failure, not expiry.
 
         ``path`` must be a relative path beginning with ``/`` (e.g.
         ``/services/data/v62.0/ssot/data-streams``). Values carrying a scheme or
@@ -861,11 +1045,14 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
         consequences: a non-``int``/``bool``/non-positive value DEGRADES to the
         30s default, while a value above the agent's ceiling is CLAMPED DOWN to
         that ceiling (300s) rather than degrading to 30. The override covers
-        **only** the read bound on this GET — the connect phase stays pinned at
-        the discovery bound (see the tuple ``timeout`` passed to ``session.get``
-        below), and the client-credentials token mint that precedes it keeps its
-        own 30s bound — so a caller sizing a transport deadman must budget
-        ``30 + timeout``, not ``timeout`` (YET-2440).
+        **only** the read bound on each GET — the connect phase stays pinned at
+        the discovery bound (see the tuple ``timeout`` in :meth:`_ssot_request`),
+        and the client-credentials token mint keeps its own 30s bound — so a caller
+        sizing a transport deadman must budget ``30 + timeout``, not ``timeout``
+        (YET-2440). The cached-token retry (YET-2522) preserves that ceiling rather
+        than doubling it: the retry GET's read bound is ``timeout`` minus the first
+        GET's elapsed time, so both reads together never exceed one ``timeout``,
+        and the single re-mint is the ``30`` term already in the budget.
 
         Raises ``ValueError`` for an unsafe ``path``; ``RuntimeError`` carrying
         ``code NNN`` on a non-200 response and ``HTTP NNN`` on a non-JSON 200
@@ -882,6 +1069,8 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
         domain = self._credentials.domain
         session = _CapturingSession()
 
+        access_token, from_cache = self._get_or_mint_core_token(session)
+
         logger.info(
             "Salesforce Data Cloud: SSOT GET "
             f"(domain={domain}, path={log_path}, has_query={has_query}, "
@@ -890,23 +1079,38 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
                 "ssot_path": log_path,
                 "ssot_has_query": has_query,
                 "ssot_timeout": request_timeout,
+                "ssot_core_token_cached": from_cache,
             },
         )
 
-        access_token = self._mint_core_token(session)
+        started_at = time.monotonic()
+        response = self._ssot_request(session, path, access_token, request_timeout)
 
-        # ``requests`` applies a scalar ``timeout`` to the connect phase AND the
-        # read phase independently, so passing ``request_timeout`` alone would
-        # silently widen the TCP/TLS connect bound from the discovery default up
-        # to whatever the caller asked for (up to 300s) — verified empirically:
-        # a scalar ``timeout=3`` against a black-holed IP raises ConnectTimeout at
-        # 3.01s, while a tuple ``(1, 30)`` raises it at 1.00s. Pin connect at the
-        # discovery bound via a tuple; only the read bound is caller-tunable.
-        response = session.get(
-            f"https://{domain}{path}",
-            headers={"Authorization": f"Bearer {access_token}"},
-            timeout=(_DISCOVERY_REQUEST_TIMEOUT_SECONDS, request_timeout),
-        )
+        # A cached token can expire or be revoked mid-flight, discoverable only from
+        # the response. Retry only when the token CAME FROM THE CACHE: on a token
+        # minted moments ago a 401 is a real authorization failure (revoked
+        # connected app, missing permission), and re-minting for it would double the
+        # mint volume in exactly the situation this cache exists to relieve. One
+        # retry only. The retry's read bound is what's left of ``timeout`` after the
+        # first GET, so the two reads together stay within one ``timeout`` and the
+        # DC's ``30 + timeout`` transport deadman is preserved (YET-2440/YET-2522).
+        if from_cache and _is_expired_session(response):
+            logger.info(
+                "Salesforce Data Cloud: cached core token rejected, re-minting once",
+                extra={"ssot_path": log_path, "ssot_core_token_cached": True},
+            )
+            self._invalidate_core_token(access_token)
+            retry_timeout = _retry_read_timeout(
+                request_timeout, time.monotonic() - started_at
+            )
+            access_token, _ = self._get_or_mint_core_token(session)
+            response = self._ssot_request(session, path, access_token, retry_timeout)
+            # If the freshly minted token is rejected too, don't leave a token the
+            # process has already seen as INVALID_SESSION sitting in the cache — evict
+            # it so the next call re-mints cleanly rather than wasting a GET on it.
+            if _is_expired_session(response):
+                self._invalidate_core_token(access_token)
+
         if response.status_code != 200:
             body = _redact_body(session.last_exchange_body)
             status = session.last_exchange_status
