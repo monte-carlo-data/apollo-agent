@@ -1,14 +1,20 @@
 from typing import NotRequired, Required, TypedDict
 
-from apollo.integrations.ctp.models import CtpConfig, MapperConfig
+from apollo.integrations.ctp.models import CtpConfig, MapperConfig, TransformStep
 
 
 class SqlServerOdbcArgs(TypedDict):
     # Connection identity — ODBC key names are uppercase by convention
     DRIVER: Required[str]
     SERVER: Required[str]  # "tcp:{host},{port}"
-    UID: Required[str]
-    PWD: Required[str]
+    # UID/PWD are NotRequired because the kerberos (Windows auth) path omits both by
+    # design -- Active Directory vouches for the client and no credential goes on the
+    # wire. The mapper enforces __required_keys__ at runtime, so leaving these Required
+    # would make the kerberos path fail validation. Presence on the sql path is still
+    # enforced upstream by SQL_SERVER_CREDENTIALS_SCHEMA.
+    UID: NotRequired[str]
+    PWD: NotRequired[str]
+    Trusted_Connection: NotRequired[str]  # "yes" — kerberos / Windows authentication
     # Optional connection fields
     DATABASE: NotRequired[str]  # required for Azure variants
     Authentication: NotRequired[str]  # "ActiveDirectoryServicePrincipal"
@@ -28,9 +34,38 @@ _SQL_SERVER_BASE_FIELD_MAP = {
     "query_timeout_in_seconds": "{{ raw.query_timeout_in_seconds | default(none) }}",
 }
 
+# Windows Authentication (Kerberos) — PRO-3016.
+#
+# Guarded by `when`, so it runs only for auth_type=kerberos and every existing
+# username/password connection is untouched. Because a step's field_map is applied only
+# when the step executes, and the mapper drops None values, this is also how UID and PWD
+# get *removed* on the kerberos path — the entire connection-string change is
+# Trusted_Connection=yes with no credential on the wire.
+_KERBEROS_STEP = TransformStep(
+    type="prepare_kerberos",
+    when="raw.auth_type is defined and raw.auth_type | lower == 'kerberos'",
+    input={
+        "realm": "{{ raw.realm | default(none) }}",
+        "kdc": "{{ raw.kdc | default(none) }}",
+        "principal": "{{ raw.principal | default(none) }}",
+        "keytab_base64": "{{ raw.keytab_base64 | default(none) }}",
+        "password": "{{ raw.password | default(none) }}",
+    },
+    output={},
+    field_map={
+        "Trusted_Connection": "yes",
+        # None removes the base field map's entry: AD vouches for the client, so no
+        # credential is sent. Leaving PWD would additionally offer the AD service
+        # account's password to SQL Server as a SQL login — the very thing customers
+        # requiring Windows auth have banned.
+        "UID": None,
+        "PWD": None,
+    },
+)
+
 SQL_SERVER_DEFAULT_CTP = CtpConfig(
     name="sql-server-default",
-    steps=[],
+    steps=[_KERBEROS_STEP],
     mapper=MapperConfig(
         name="sql_server_odbc_args",
         schema=SqlServerOdbcArgs,
@@ -94,15 +129,50 @@ MS_FABRIC_DEFAULT_CTP = CtpConfig(
 # a string, only "non-empty" is enforced (no parsing); when a dict, full
 # field-level validation runs. See the follow-up tracked in the plan for
 # docs eventually preferring the dict example.
+# Auth modes are mutually exclusive via oneof_schema, following the databricks and
+# informatica_v2 precedent. Without this the kerberos form would be rejected outright,
+# because the sql form requires user and password -- and the self-hosted credential JSON
+# is exactly how a Windows-auth connection is configured.
+_SQL_SERVER_HOST_FIELDS = {
+    "host": {"type": "string", "required": True, "empty": False},
+    "port": {"type": "integer"},
+    "database": {"type": "string"},
+}
+
+_SQL_SERVER_KERBEROS_FIELDS = {
+    **_SQL_SERVER_HOST_FIELDS,
+    # host must be the SQL Server FQDN here: the ODBC driver derives the SPN as
+    # MSSQLSvc/<host>:<port> and does not support ServerSPN, so an IP or a CNAME that
+    # does not match the registered SPN cannot be compensated for in code.
+    "auth_type": {"type": "string", "required": True, "allowed": ["kerberos"]},
+    "realm": {"type": "string", "required": True, "empty": False},
+    "kdc": {"type": "string", "required": True, "empty": False},
+    "principal": {"type": "string", "required": True, "empty": False},
+}
+
 _SQL_SERVER_CONNECT_ARGS_DICT_SCHEMA = {
     "type": "dict",
-    "schema": {
-        "host": {"type": "string", "required": True, "empty": False},
-        "port": {"type": "integer"},
-        "user": {"type": "string", "required": True, "empty": False},
-        "password": {"type": "string", "required": True, "empty": False},
-        "database": {"type": "string"},
-    },
+    "oneof_schema": [
+        # SQL Authentication — unchanged; every existing customer rides this.
+        {
+            **_SQL_SERVER_HOST_FIELDS,
+            "auth_type": {"type": "string", "allowed": ["sql"]},
+            "user": {"type": "string", "required": True, "empty": False},
+            "password": {"type": "string", "required": True, "empty": False},
+        },
+        # Windows Authentication, keytab form (recommended).
+        {
+            **_SQL_SERVER_KERBEROS_FIELDS,
+            "keytab_base64": {"type": "string", "required": True, "empty": False},
+        },
+        # Windows Authentication, password form — for customers who cannot readily
+        # produce a keytab. oneof_schema also gives us the keytab/password mutual
+        # exclusion for free: supplying both matches neither variant.
+        {
+            **_SQL_SERVER_KERBEROS_FIELDS,
+            "password": {"type": "string", "required": True, "empty": False},
+        },
+    ],
     "allow_unknown": True,
 }
 
