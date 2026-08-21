@@ -37,6 +37,21 @@ is a template method that runs `_close_client()` and then deletes any temp crede
 registered via `register_temp_files` (in a `finally`, so cleanup runs even if the connection
 teardown raises). Overriding `close()` directly silently skips that cleanup.
 
+### Cached credentials
+
+A client may cache a minted secret (e.g. an OAuth token) to avoid re-minting on every
+call. Scope the cache deliberately: an **instance attribute does not survive a single
+operation**, because the data-collector sends `skip_cache=true` on every agent op, so
+`ProxyClientFactory` builds a fresh proxy client per call and closes it immediately —
+`_close_client` never runs long enough to matter. To dedupe across calls the cache must be
+**process-wide** (module-level), keyed by a hash of the identifying credential fields so a
+token is only ever served back to byte-identical credentials. Bound its lifetime explicitly
+(a soft max-age) rather than relying on `close()`, guard it with a lock (the agent runs
+multi-threaded — see the Dockerfile `--threads` setting), and detect secret
+expiry/revocation reactively on the auth-failure response rather than with a hopeful TTL. See
+`salesforce_data_cloud_proxy_client._get_or_mint_core_token` and its `_CORE_TOKEN_CACHE` for
+the reference implementation (YET-2522).
+
 ### Credential temp files
 
 If `__init__` (or a helper like `get_cert_path`) materializes a cert/key/CA file on disk, register
