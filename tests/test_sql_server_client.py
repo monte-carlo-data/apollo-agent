@@ -553,3 +553,211 @@ class SqlServerKerberosCredentialSafetyTests(TestCase):
             output = formatter.format(record)
             self.assertNotIn(self._KEYTAB_B64, output, "keytab leaked to logs")
             self.assertNotIn(self._PASSWORD, output, "password leaked to logs")
+
+
+class SqlServerKerberosErrorTaxonomyTests(TestCase):
+    """Kerberos fails in three ways that need different fixes, and the driver's own
+    messages do not say which — PRO-3016 / SDD §5.4.
+
+    Support cannot act on "cannot generate SSPI context". The remediation for a missing
+    ticket (keytab/clock/KDC reachability) is nothing like the remediation for an SPN
+    mismatch (setspn on the server, connect by FQDN) or for an unauthorized login
+    (CREATE LOGIN ... FROM WINDOWS). So the client classifies the failure and appends a
+    hint, while preserving the driver's original text.
+
+    Hints are added only on the Kerberos path: a SQL-Authentication login failure must
+    not be answered with Kerberos advice.
+    """
+
+    _HOST = "labsql.mclab.internal"
+    _PRINCIPAL = "svc-montecarlo@MCLAB.INTERNAL"
+    _KEYTAB_B64 = "BQIAAABTAAIADU1DTEFCLklOVEVSTkFM"
+    # Asserted explicitly: several driver messages already contain words like "keytab"
+    # or "clock", so without a marker these tests would pass on the echoed driver text
+    # alone and prove nothing about the diagnosis.
+    _MARKER = "Windows authentication diagnosis:"
+
+    _OPERATION = {
+        "trace_id": "kerberos-taxonomy-test",
+        "skip_cache": True,
+        "commands": [{"method": "cursor", "store": "_cursor"}],
+    }
+
+    def setUp(self) -> None:
+        self._agent = Agent(LoggingUtils())
+        self._saved_env = {
+            key: os.environ.get(key)
+            for key in ("KRB5_CONFIG", "KRB5_CLIENT_KTNAME", "KRB5CCNAME")
+        }
+
+    def tearDown(self) -> None:
+        for key, value in self._saved_env.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
+    def _kerberos_credentials(self) -> dict:
+        return {
+            "auth_type": "kerberos",
+            "host": self._HOST,
+            "port": 1433,
+            "database": "mcdemo",
+            "realm": "MCLAB.INTERNAL",
+            "kdc": "labdc.mclab.internal",
+            "principal": self._PRINCIPAL,
+            "keytab_base64": self._KEYTAB_B64,
+        }
+
+    def _error_for(self, driver_exception: Exception, connect_args=None) -> str:
+        with patch("pyodbc.connect") as mock_connect:
+            mock_connect.side_effect = driver_exception
+            response = self._agent.execute_operation(
+                "sql-server",
+                "run_query",
+                self._OPERATION,
+                {"connect_args": connect_args or self._kerberos_credentials()},
+            )
+        return response.result.get(ATTRIBUTE_NAME_ERROR, "")
+
+    # ── 1. No usable ticket ───────────────────────────────────────────
+
+    def test_no_credentials_supplied_is_diagnosed_as_a_ticket_problem(self):
+        error = self._error_for(
+            pyodbc.Error("HY000", "[HY000] SSPI Provider: No credentials were supplied")
+        )
+        self.assertIn("No credentials were supplied", error)  # driver text preserved
+        self.assertIn(self._MARKER, error)
+        self.assertIn("keytab", error.lower())  # points at the credential
+
+    def test_keytab_with_no_suitable_keys_is_diagnosed(self):
+        error = self._error_for(
+            pyodbc.Error(
+                "HY000", "[HY000] Keytab contains no suitable keys for host/x@REALM"
+            )
+        )
+        self.assertIn(self._MARKER, error)
+        self.assertIn("key version", error.lower())
+
+    def test_clock_skew_is_called_out_explicitly(self):
+        """Kerberos requires client and KDC within ~5 minutes; nothing else hints at it."""
+        error = self._error_for(pyodbc.Error("HY000", "[HY000] Clock skew too great"))
+        self.assertIn(self._MARKER, error)
+        self.assertIn("5 minutes", error)
+
+    # ── 2. SPN / DNS mismatch ─────────────────────────────────────────
+
+    def test_sspi_context_failure_mentions_the_spn(self):
+        error = self._error_for(
+            pyodbc.Error(
+                "HY000", "[HY000] Cannot generate SSPI context (SQLDriverConnect)"
+            )
+        )
+        self.assertIn("Cannot generate SSPI context", error)
+        self.assertIn("SPN", error)
+
+    def test_server_not_found_in_kerberos_database_mentions_the_spn(self):
+        error = self._error_for(
+            pyodbc.Error("HY000", "[HY000] Server not found in Kerberos database")
+        )
+        self.assertIn("SPN", error)
+
+    def test_spn_hint_names_the_expected_spn_so_it_can_be_compared(self):
+        """The actionable step is comparing what we asked for against setspn -L."""
+        error = self._error_for(
+            pyodbc.Error("HY000", "[HY000] Cannot generate SSPI context")
+        )
+        self.assertIn(f"MSSQLSvc/{self._HOST}:1433", error)
+
+    # ── 3. Login not authorized ───────────────────────────────────────
+
+    def test_login_failed_is_diagnosed_as_authorization_not_authentication(self):
+        error = self._error_for(
+            pyodbc.ProgrammingError(
+                "42000", f"[42000] Login failed for user '{self._PRINCIPAL}'."
+            )
+        )
+        self.assertIn("Login failed", error)
+        self.assertIn(self._MARKER, error)
+        self.assertIn("CREATE LOGIN", error)
+
+    # ── Scoping and hygiene ───────────────────────────────────────────
+
+    def test_sql_auth_failures_get_no_kerberos_advice(self):
+        """A username/password login failure must not be answered with SPN hints."""
+        error = self._error_for(
+            pyodbc.ProgrammingError("42000", "[42000] Login failed for user 'alice'."),
+            connect_args={
+                "host": "db.example.com",
+                "port": 1433,
+                "user": "alice",
+                "password": "pw",
+            },
+        )
+        self.assertIn("Login failed", error)
+        self.assertNotIn(self._MARKER, error)
+        self.assertNotIn("SPN", error)
+
+    def test_unrecognised_driver_error_is_passed_through_unchanged(self):
+        """No speculative diagnosis when we do not recognise the failure."""
+        error = self._error_for(
+            pyodbc.OperationalError("08001", "[08001] Login timeout expired")
+        )
+        self.assertIn("Login timeout expired", error)
+        self.assertNotIn(self._MARKER, error)
+
+    def test_diagnosis_never_includes_the_credential(self):
+        with patch("pyodbc.connect") as mock_connect:
+            mock_connect.side_effect = pyodbc.Error(
+                "HY000", "[HY000] Cannot generate SSPI context"
+            )
+            response = self._agent.execute_operation(
+                "sql-server",
+                "run_query",
+                self._OPERATION,
+                {"connect_args": self._kerberos_credentials()},
+            )
+        serialized = json.dumps(response.result, default=str)
+        self.assertNotIn(self._KEYTAB_B64, serialized)
+
+    def test_undonstructable_exception_type_does_not_mask_the_original(self):
+        """Re-raising as type(error)(str) assumes a single-string constructor.
+
+        A driver exception subclass that requires extra arguments would raise TypeError
+        during our own error handling, replacing a real connection failure with a
+        confusing one. The original must survive instead.
+        """
+
+        class _PickyError(pyodbc.Error):
+            def __init__(self, required_arg, another):  # noqa: D107
+                super().__init__(f"{required_arg}/{another}")
+                self.required_arg = required_arg
+
+        error = self._error_for(_PickyError("Cannot generate SSPI context", "extra"))
+        self.assertIn("Cannot generate SSPI context", error)
+
+    def test_failed_connection_still_deletes_the_keytab(self):
+        """A failed connect must not leave the keytab on disk.
+
+        The keytab is materialised by the CTP pipeline before the client exists, so
+        nothing on the client can clean it up if construction fails. The factory unlinks
+        the pipeline's temp files in an `except BaseException` — this asserts the
+        enriched re-raise from the error taxonomy does not bypass that.
+        """
+        with patch("pyodbc.connect") as mock_connect:
+            mock_connect.side_effect = pyodbc.Error(
+                "HY000", "[HY000] Cannot generate SSPI context"
+            )
+            self._agent.execute_operation(
+                "sql-server",
+                "run_query",
+                self._OPERATION,
+                {"connect_args": self._kerberos_credentials()},
+            )
+
+        keytab_path = os.environ.get("KRB5_CLIENT_KTNAME")
+        self.assertIsNotNone(keytab_path, "the pipeline should have written a keytab")
+        self.assertFalse(
+            os.path.exists(keytab_path),
+            f"keytab survived a failed connection: {keytab_path}",
+        )
