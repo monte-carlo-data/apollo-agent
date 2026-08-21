@@ -21,6 +21,7 @@ from apollo.common.agent.constants import (
 )
 from apollo.agent.logging_utils import LoggingUtils
 from apollo.integrations.db.sql_server_proxy_client import SqlServerProxyClient
+from apollo.integrations.ctp.transforms import prepare_kerberos
 from apollo.interfaces.lambda_function.json_log_formatter import JsonLogFormatter
 
 _SQL_SERVER_CREDENTIALS = (
@@ -509,9 +510,18 @@ class SqlServerKerberosCredentialSafetyTests(TestCase):
         self.assertIn("Login failed", error)
         self._assert_no_credential_leak(response)
 
+    @patch.object(prepare_kerberos.subprocess, "run", return_value=Mock(returncode=0))
     @patch("pyodbc.connect")
-    def test_password_form_password_never_reaches_the_response(self, mock_connect):
-        """The password is for kinit against the KDC; it must not appear anywhere."""
+    def test_password_form_password_never_reaches_the_response(
+        self, mock_connect, _mock_subprocess
+    ):
+        """The password is for kinit against the KDC; it must not appear anywhere.
+
+        subprocess is stubbed to report an existing valid ticket. Without that the CTP's
+        TGT guard fails first (no reachable KDC in a unit test) and pyodbc.connect is
+        never reached -- the assertion would still pass while testing nothing about the
+        driver path, so mock_connect.assert_called_once() holds it honest.
+        """
 
         def _raise_echoing_connection_string(connection_string, *args, **kwargs):
             raise pyodbc.OperationalError(
@@ -524,6 +534,7 @@ class SqlServerKerberosCredentialSafetyTests(TestCase):
             self._keytab_credentials(keytab_base64=None, password=self._PASSWORD)
         )
 
+        mock_connect.assert_called_once()
         self._assert_no_credential_leak(response)
 
     # ── Log safety (Lambda / Datadog path) ────────────────────────────

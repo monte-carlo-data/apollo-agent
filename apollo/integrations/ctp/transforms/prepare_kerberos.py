@@ -2,7 +2,9 @@ import base64
 import binascii
 import os
 import stat
+import subprocess
 import tempfile
+import threading
 
 from apollo.integrations.ctp.errors import CtpPipelineError
 from apollo.integrations.ctp.models import PipelineState, TransformStep
@@ -33,6 +35,27 @@ _KRB5CCNAME = "KRB5CCNAME"
 # tmpfs directory so the TGT still stays off durable disk.
 _CCACHE_MEMORY = "MEMORY:"
 _TMPFS_DIRS = ("/dev/shm", "/run/shm")
+
+# Single-flight lock for TGT acquisition. SDD §5.3: DB operations run in long-lived
+# workers with many threads, so several can find a cold cache at the same moment. Without
+# this they each shell out to kinit -- hammering the KDC and racing to write the same
+# ccache file. One lock per process is the whole coordination requirement; there is
+# deliberately no cross-process or cross-pod renewer.
+_TGT_LOCK = threading.Lock()
+
+# Bounded so an unreachable KDC surfaces as a clear error instead of hanging a worker
+# thread for the operation's whole timeout.
+_KINIT_TIMEOUT_SECONDS = 30
+
+
+def reset_tgt_state_for_testing() -> None:
+    """Release the acquisition lock if a test left it held. Tests only."""
+    if _TGT_LOCK.locked():  # pragma: no cover - defensive
+        try:
+            _TGT_LOCK.release()
+        except RuntimeError:
+            pass
+
 
 # dns_lookup_kdc=false with an explicit kdc means no SRV lookups; rdns=false means no
 # PTR lookups. Together they reduce what the agent needs from DNS to plain forward
@@ -158,6 +181,7 @@ class PrepareKerberosTransform(Transform):
             # Clear any inherited keytab so a stale one from another connection cannot
             # silently satisfy this one.
             os.environ.pop(_KRB5_CLIENT_KTNAME, None)
+            self._ensure_tgt(str(principal), str(password), step.type)
 
     @staticmethod
     def _render(step: TransformStep, state: PipelineState, key: str):
@@ -237,6 +261,85 @@ class PrepareKerberosTransform(Transform):
                 message="keytab decoded to zero bytes",
             )
         return cls._write_secure_temp_file(raw, ".keytab")
+
+    @classmethod
+    def _ensure_tgt(cls, principal: str, password: str, step_name: str) -> None:
+        """Acquire a TGT from the password if the credential cache lacks a valid one.
+
+        Only the password form needs this. The keytab form relies on MIT Kerberos'
+        default *client* keytab, where GSSAPI acquires and refreshes the ticket itself.
+
+        Acquisition is a KDC round trip and tickets last ~10h, so this checks first and
+        usually does nothing: cost is bounded by process count x ticket lifetime, not by
+        connection count.
+        """
+        with _TGT_LOCK:
+            # Re-check inside the lock: another thread may have acquired while this one
+            # waited, which is the entire point of holding it.
+            if cls._has_valid_tgt():
+                return
+
+            try:
+                result = subprocess.run(
+                    ["kinit", principal],
+                    # stdin, never argv -- argv is readable via /proc by any local
+                    # process, so a password there leaks outside this process.
+                    input=password,
+                    text=True,
+                    capture_output=True,
+                    timeout=_KINIT_TIMEOUT_SECONDS,
+                )
+            except subprocess.TimeoutExpired:
+                raise CtpPipelineError(
+                    stage="transform_execute",
+                    step_name=step_name,
+                    message=(
+                        f"timed out acquiring a Kerberos ticket after "
+                        f"{_KINIT_TIMEOUT_SECONDS}s; the KDC may be unreachable "
+                        "(check network access to port 88 and that the realm's kdc "
+                        "hostname resolves)"
+                    ),
+                ) from None
+            except FileNotFoundError:
+                raise CtpPipelineError(
+                    stage="transform_execute",
+                    step_name=step_name,
+                    message=(
+                        "kinit not found: the krb5 client tools are required for "
+                        "Windows authentication (install krb5-user)"
+                    ),
+                ) from None
+
+            if result.returncode != 0:
+                # kinit reports the reason on stderr and never echoes the password, so
+                # this is safe to surface -- and it is the difference between a bad
+                # password, an unknown principal and a clock-skew failure.
+                detail = (result.stderr or result.stdout or "").strip()
+                raise CtpPipelineError(
+                    stage="transform_execute",
+                    step_name=step_name,
+                    message=f"could not acquire a Kerberos ticket: {detail}",
+                )
+
+    @staticmethod
+    def _has_valid_tgt() -> bool:
+        """True when the cache in KRB5CCNAME holds an unexpired ticket.
+
+        ``klist -s`` is the standard silent probe: exit 0 means a valid ticket. A missing
+        klist is treated as "no ticket" so the kinit path produces the actionable
+        krb5-user error rather than this one.
+        """
+        try:
+            return (
+                subprocess.run(
+                    ["klist", "-s"],
+                    capture_output=True,
+                    timeout=_KINIT_TIMEOUT_SECONDS,
+                ).returncode
+                == 0
+            )
+        except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+            return False
 
 
 TransformRegistry.register("prepare_kerberos", PrepareKerberosTransform)

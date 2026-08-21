@@ -2,10 +2,15 @@
 import os
 import pathlib
 import stat
+import subprocess
+import threading
+import time
 from contextlib import suppress
 from unittest import TestCase
+from unittest.mock import Mock, patch
 
 from apollo.integrations.ctp.errors import CtpPipelineError
+from apollo.integrations.ctp.transforms import prepare_kerberos
 
 from apollo.credentials.schema import validate
 from apollo.integrations.ctp.defaults.sql_server import (
@@ -173,6 +178,17 @@ class TestSqlServerKerberosCtp(TestCase):
         for key in self._saved_env:
             os.environ.pop(key, None)
         self._temp_paths: list[str] = []
+
+        # These tests are about what the CTP *produces*; the password form's TGT
+        # acquisition is covered in TestSqlServerKerberosTgtGuard. Report a valid
+        # existing ticket so no real kinit is attempted here -- otherwise every
+        # password-form assertion depends on a reachable KDC.
+        patcher = patch.object(
+            prepare_kerberos.subprocess, "run", return_value=Mock(returncode=0)
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        prepare_kerberos.reset_tgt_state_for_testing()
 
     def tearDown(self):
         for key, value in self._saved_env.items():
@@ -501,4 +517,191 @@ class TestSqlServerKerberosCredentialsSchema(TestCase):
                 SQL_SERVER_CREDENTIALS_SCHEMA,
                 {"connect_args": "DRIVER={ODBC Driver 17 for SQL Server};SERVER=..."},
             )
+        )
+
+
+class TestSqlServerKerberosTgtGuard(TestCase):
+    """The password form's TGT acquisition — SDD §5.3.
+
+    The keytab form needs nothing: MIT Kerberos' default client keytab makes GSSAPI
+    acquire and refresh the TGT itself. There is no equivalent for a stored password, so
+    the agent must acquire one — but only when the cache lacks a valid ticket, since
+    acquisition is a KDC round trip and tickets last ~10h.
+
+    Verified against a live KDC on 2026-08-21 that a subprocess kinit populating a FILE
+    ccache does satisfy msodbcsql's GSSAPI at connect time.
+    """
+
+    _REALM = "MCLAB.INTERNAL"
+    _PRINCIPAL = "svc-montecarlo@MCLAB.INTERNAL"
+    _PASSWORD = "p@ss-with-$dollar-and-'quote"
+    _KEYTAB_B64 = "a2V5dGFiLWJ5dGVz"
+
+    def setUp(self):
+        self._saved_env = {
+            key: os.environ.get(key)
+            for key in ("KRB5_CONFIG", "KRB5_CLIENT_KTNAME", "KRB5CCNAME")
+        }
+        for key in self._saved_env:
+            os.environ.pop(key, None)
+        self._temp_paths: list[str] = []
+        prepare_kerberos.reset_tgt_state_for_testing()
+
+    def tearDown(self):
+        for key, value in self._saved_env.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+        for path in self._temp_paths:
+            with suppress(OSError):
+                os.unlink(path)
+        prepare_kerberos.reset_tgt_state_for_testing()
+
+    def _credentials(self, **overrides) -> dict:
+        creds = {
+            "auth_type": "kerberos",
+            "host": "labsql.mclab.internal",
+            "port": 1433,
+            "realm": self._REALM,
+            "kdc": "labdc.mclab.internal",
+            "principal": self._PRINCIPAL,
+        }
+        creds.update(overrides)
+        return {k: v for k, v in creds.items() if v is not None}
+
+    def _resolve(self, **overrides) -> dict:
+        args = _resolve(SQL_SERVER_DEFAULT_CTP, self._credentials(**overrides))
+        for key in ("KRB5_CONFIG", "KRB5_CLIENT_KTNAME"):
+            if os.environ.get(key):
+                self._temp_paths.append(os.environ[key])
+        ccache = os.environ.get("KRB5CCNAME", "")
+        if ccache.startswith("FILE:"):
+            self._temp_paths.append(ccache.removeprefix("FILE:"))
+        return args
+
+    # ── The keytab form must not kinit ─────────────────────────────────
+
+    @patch.object(prepare_kerberos.subprocess, "run")
+    def test_keytab_form_never_invokes_kinit(self, mock_run):
+        """GSSAPI auto-acquires from the client keytab; a kinit here would be redundant
+        work on every connection and would defeat the design's whole point."""
+        self._resolve(keytab_base64=self._KEYTAB_B64)
+        mock_run.assert_not_called()
+
+    # ── The password form acquires ─────────────────────────────────────
+
+    @patch.object(prepare_kerberos.subprocess, "run")
+    def test_password_form_acquires_a_tgt(self, mock_run):
+        mock_run.side_effect = [
+            Mock(returncode=1, stdout="", stderr=""),  # klist -s: no valid ticket
+            Mock(returncode=0, stdout="", stderr=""),  # kinit: success
+        ]
+        self._resolve(password=self._PASSWORD)
+
+        self.assertEqual(2, mock_run.call_count)
+        kinit_argv = mock_run.call_args_list[1].args[0]
+        self.assertEqual("kinit", kinit_argv[0])
+        self.assertIn(self._PRINCIPAL, kinit_argv)
+
+    @patch.object(prepare_kerberos.subprocess, "run")
+    def test_password_is_passed_on_stdin_never_in_argv(self, mock_run):
+        """argv is world-readable via /proc; a password there leaks to any local process."""
+        mock_run.side_effect = [
+            Mock(returncode=1, stdout="", stderr=""),
+            Mock(returncode=0, stdout="", stderr=""),
+        ]
+        self._resolve(password=self._PASSWORD)
+
+        kinit_call = mock_run.call_args_list[1]
+        self.assertNotIn(self._PASSWORD, kinit_call.args[0])
+        self.assertIn(self._PASSWORD, kinit_call.kwargs.get("input", ""))
+
+    @patch.object(prepare_kerberos.subprocess, "run")
+    def test_valid_existing_ticket_skips_acquisition(self, mock_run):
+        """Tickets last ~10h; re-acquiring per connection would hammer the KDC."""
+        mock_run.return_value = Mock(
+            returncode=0, stdout="", stderr=""
+        )  # klist -s: valid
+        self._resolve(password=self._PASSWORD)
+
+        self.assertEqual(1, mock_run.call_count, "expected only the klist probe")
+        self.assertEqual("klist", mock_run.call_args_list[0].args[0][0])
+
+    # ── Failure handling ──────────────────────────────────────────────
+
+    @patch.object(prepare_kerberos.subprocess, "run")
+    def test_kinit_failure_raises_without_echoing_the_password(self, mock_run):
+        mock_run.side_effect = [
+            Mock(returncode=1, stdout="", stderr=""),
+            Mock(returncode=1, stdout="", stderr="kinit: Password incorrect"),
+        ]
+        with self.assertRaises(CtpPipelineError) as ctx:
+            self._resolve(password=self._PASSWORD)
+
+        message = str(ctx.exception)
+        self.assertNotIn(self._PASSWORD, message)
+        self.assertIn("Password incorrect", message)  # actionable
+
+    @patch.object(prepare_kerberos.subprocess, "run")
+    def test_kinit_timeout_is_reported_as_a_kdc_reachability_problem(self, mock_run):
+        mock_run.side_effect = [
+            Mock(returncode=1, stdout="", stderr=""),
+            subprocess.TimeoutExpired(cmd="kinit", timeout=30),
+        ]
+        with self.assertRaises(CtpPipelineError) as ctx:
+            self._resolve(password=self._PASSWORD)
+
+        message = str(ctx.exception).lower()
+        self.assertIn("kdc", message)
+        self.assertNotIn(self._PASSWORD.lower(), message)
+
+    @patch.object(prepare_kerberos.subprocess, "run")
+    def test_missing_kinit_binary_is_actionable(self, mock_run):
+        """krb5-user is a deployment prerequisite; say so rather than surfacing ENOENT."""
+        mock_run.side_effect = [
+            Mock(returncode=1, stdout="", stderr=""),
+            FileNotFoundError("kinit"),
+        ]
+        with self.assertRaises(CtpPipelineError) as ctx:
+            self._resolve(password=self._PASSWORD)
+        self.assertIn("krb5", str(ctx.exception).lower())
+
+    # ── Single-flight ─────────────────────────────────────────────────
+
+    @patch.object(prepare_kerberos.subprocess, "run")
+    def test_concurrent_threads_acquire_only_once(self, mock_run):
+        """SDD §5.3: threads in one worker can hit a cold cache together. Without a lock
+        they each kinit, hammering the KDC and racing on the same ccache file."""
+        kinit_calls = []
+
+        def _fake_run(argv, **kwargs):
+            if argv[0] == "klist":
+                # Cold until the first kinit completes.
+                return Mock(
+                    returncode=1 if not kinit_calls else 0, stdout="", stderr=""
+                )
+            kinit_calls.append(argv)
+            time.sleep(0.05)  # widen the window a race would exploit
+            return Mock(returncode=0, stdout="", stderr="")
+
+        mock_run.side_effect = _fake_run
+
+        errors: list[BaseException] = []
+
+        def _worker():
+            try:
+                self._resolve(password=self._PASSWORD)
+            except BaseException as exc:  # noqa: BLE001
+                errors.append(exc)
+
+        threads = [threading.Thread(target=_worker) for _ in range(8)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        self.assertEqual([], errors)
+        self.assertEqual(
+            1, len(kinit_calls), f"expected one kinit, got {len(kinit_calls)}"
         )
