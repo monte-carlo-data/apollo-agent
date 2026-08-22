@@ -1670,24 +1670,32 @@ class SalesforceDataCloudProxyClientTests(TestCase):
         """The op fetches N consecutive offset pages (offset = start_offset + i*limit)
         and returns them keyed by string index under ``pages`` — the whole result has
         no top-level ``all_results``/``description`` so process_result passes it
-        through untouched."""
+        through untouched.
 
-        def by_offset(request):
-            offset = self._offset_of(request.url)
-            return (200, {}, json.dumps({"rows": [f"r{offset}"], "offset": offset}))
+        The per-page GET is stubbed at ``_ssot_get_one`` rather than via ``responses``:
+        the op fans out concurrently, and ``responses``' RequestsMock is not
+        thread-safe (it races and mis-routes under a real ThreadPoolExecutor), so
+        width>1 tests drive the stubbed primitive instead (plan: responses-based
+        error-path tests run at width 1)."""
 
-        self.mock_responses.add_callback(
-            method=responses.GET, url=self._SSOT_URL, callback=by_offset
-        )
+        def stub(_self, path, _request_timeout):
+            offset = self._offset_of("x?" + urllib.parse.urlsplit(path).query)
+            return {"rows": [f"r{offset}"], "offset": offset}
 
-        response = self.agent.execute_operation(
-            connection_type="salesforce-data-cloud",
-            operation_name="test_offset_pages",
-            operation_dict=self._offset_pages_operation(
-                self._SSOT_PATH, limit=200, start_offset=0, page_count=3
-            ),
-            credentials=self.credentials,
-        )
+        with patch.object(
+            sfdc_module.SalesforceDataCloudProxyClient,
+            "_ssot_get_one",
+            autospec=True,
+            side_effect=stub,
+        ):
+            response = self.agent.execute_operation(
+                connection_type="salesforce-data-cloud",
+                operation_name="test_offset_pages",
+                operation_dict=self._offset_pages_operation(
+                    self._SSOT_PATH, limit=200, start_offset=0, page_count=3
+                ),
+                credentials=self.credentials,
+            )
 
         self.assertFalse(response.is_error, msg=str(response.result))
         pages = response.result[ATTRIBUTE_NAME_RESULT]["pages"]
@@ -1695,53 +1703,61 @@ class SalesforceDataCloudProxyClientTests(TestCase):
         self.assertEqual(pages["0"]["result"]["offset"], 0)
         self.assertEqual(pages["1"]["result"]["offset"], 200)
         self.assertEqual(pages["2"]["result"]["offset"], 400)
-        requested = sorted(self._offset_of(c.request.url) for c in self._ssot_calls())
-        self.assertEqual(requested, [0, 200, 400])
 
     def test_ssot_get_offset_pages_mixed_success_404_and_quota(self):
         """One page failing never fails the op: a 200 is a ``result`` entry, a 404 and
-        a 403/REQUEST_LIMIT_EXCEEDED become structured per-page ``error`` entries
+        a 429/REQUEST_LIMIT_EXCEEDED become structured per-page ``error`` entries
         (status/error_code/error_type), and the op still returns is_error False. This
         is the CANONICAL envelope shape the data-collector translation is tested
-        against — keep it in sync with the DC fixture ``ssot_offset_pages_envelope``."""
+        against — keep it in sync with the DC fixture ``ssot_offset_pages_envelope``.
 
-        def by_offset(request):
-            offset = self._offset_of(request.url)
-            if offset == 0:
-                return (200, {}, json.dumps({"ok": True}))
+        Stubs ``_ssot_get_one_with_retry`` (raising ``SsotGetError`` for the error
+        offsets) rather than using ``responses``: the op fans out concurrently and
+        ``responses`` is not thread-safe. A barrier makes every worker pass its
+        quota stop-flag check BEFORE any page raises, so no page is skipped and all
+        three entries are produced deterministically."""
+        barrier = threading.Barrier(3, timeout=5)
+
+        def stub(_self, path, _request_timeout):
+            offset = self._offset_of("x?" + urllib.parse.urlsplit(path).query)
+            barrier.wait()  # all three enter before any raises → no skipped_quota
             if offset == 200:
-                return (
-                    404,
-                    {},
-                    json.dumps([{"errorCode": "NOT_FOUND", "message": "no"}]),
+                raise sfdc_module.SsotGetError(
+                    "Salesforce Data Cloud SSOT GET /x failed with code 404",
+                    status_code=404,
+                    error_code="NOT_FOUND",
                 )
-            return (
-                403,
-                {},
-                json.dumps([{"errorCode": "REQUEST_LIMIT_EXCEEDED", "message": "q"}]),
+            if offset == 400:
+                raise sfdc_module.SsotGetError(
+                    "Salesforce Data Cloud SSOT GET /x failed with code 429",
+                    status_code=429,
+                    error_code="REQUEST_LIMIT_EXCEEDED",
+                )
+            return {"ok": True}
+
+        with patch.object(
+            sfdc_module.SalesforceDataCloudProxyClient,
+            "_ssot_get_one_with_retry",
+            autospec=True,
+            side_effect=stub,
+        ):
+            response = self.agent.execute_operation(
+                connection_type="salesforce-data-cloud",
+                operation_name="test_offset_pages_mixed",
+                operation_dict=self._offset_pages_operation(
+                    self._SSOT_PATH, limit=200, start_offset=0, page_count=3
+                ),
+                credentials=self.credentials,
             )
-
-        self.mock_responses.add_callback(
-            method=responses.GET, url=self._SSOT_URL, callback=by_offset
-        )
-
-        response = self.agent.execute_operation(
-            connection_type="salesforce-data-cloud",
-            operation_name="test_offset_pages_mixed",
-            operation_dict=self._offset_pages_operation(
-                self._SSOT_PATH, limit=200, start_offset=0, page_count=3
-            ),
-            credentials=self.credentials,
-        )
 
         self.assertFalse(response.is_error, msg=str(response.result))
         pages = response.result[ATTRIBUTE_NAME_RESULT]["pages"]
         self.assertEqual(pages["0"], {"result": {"ok": True}})
         self.assertEqual(pages["1"]["status_code"], 404)
         self.assertEqual(pages["1"]["error_code"], "NOT_FOUND")
-        self.assertEqual(pages["2"]["status_code"], 403)
+        self.assertEqual(pages["2"]["status_code"], 429)
         self.assertEqual(pages["2"]["error_code"], "REQUEST_LIMIT_EXCEEDED")
-        self.assertEqual(pages["2"]["error_type"], "auth_failed")
+        self.assertEqual(pages["2"]["error_type"], "rate_limited")
         # No token leaks into the returned envelope.
         self.assertNotIn(self.client_credentials_token, json.dumps(response.result))
 
