@@ -14,7 +14,7 @@ cryptography>=50.0.0  # CVE-2026-26007; >=48.0.1 for GHSA-537c-gmf6-5ccf (bundle
 databricks-sql-connector==4.2.5  # highest 4.x compatible with impyla's thrift==0.16.0 pin (4.2.6+ require thrift>=0.22.0); 4.0.0 also capped numpy<2.0.0, which blocked the Python 3.13 numpy 2 bump
 databricks-sdk==0.39.0
 duckdb==1.5.3  # pinned to the exact version MotherDuck's server-side extension supports (it rejects both <1.5.3 and >1.5.3, e.g. 1.5.4)
-flask==2.3.3
+flask==3.1.3  # CVE-2026-27205: missing Vary: Cookie on some session accesses, fixed in 3.1.3
 flask-compress==1.14
 google-api-python-client==2.176.0  # Upgraded in VULN-620
 google-cloud-dataform==0.6.2
