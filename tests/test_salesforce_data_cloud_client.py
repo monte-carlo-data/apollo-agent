@@ -1961,6 +1961,73 @@ class SalesforceDataCloudProxyClientTests(TestCase):
         self.assertEqual([q["dataspace"] for q in seen], ["CSG", "CSG"])
         self.assertEqual(sorted(int(q["offset"]) for q in seen), [100, 150])
 
+    def test_ssot_get_offset_pages_preserves_duplicate_and_blank_query_params(self):
+        """The existing query is preserved VERBATIM, so duplicate keys (``?a=1&a=2``) and
+        intentionally blank-valued params (``?flag=``) survive — a dict round-trip would
+        collapse the duplicate and drop the blank (Copilot #378). limit/offset are still
+        appended per page."""
+        seen: list = []
+
+        def stub(_self, path, _request_timeout):
+            seen.append(urllib.parse.urlsplit(path).query)
+            return {}
+
+        client = self._direct_ssot_client()
+        with patch.object(
+            sfdc_module.SalesforceDataCloudProxyClient,
+            "_ssot_get_one",
+            autospec=True,
+            side_effect=stub,
+        ):
+            client.ssot_get_offset_pages(
+                self._SSOT_PATH + "?a=1&a=2&flag=",
+                limit=50,
+                start_offset=0,
+                page_count=1,
+            )
+
+        self.assertEqual(len(seen), 1)
+        query = seen[0]
+        self.assertIn("a=1", query)
+        self.assertIn("a=2", query)  # duplicate key survives
+        self.assertIn("flag=", query)  # blank-valued param survives
+        self.assertIn("limit=50", query)
+        self.assertIn("offset=0", query)
+
+    def test_ssot_get_offset_pages_redacts_url_query_in_transport_errors(self):
+        """A raw transport exception (``requests.ConnectionError``) embeds the full
+        request URL — including offset/limit and any ``?dataspace=`` filter — in its
+        ``str``. The per-page error entry must strip that query before it leaves the
+        agent (Copilot #378), so no cursor/filter value rides out in the envelope."""
+
+        def stub(_self, path, _request_timeout):
+            # Mirror how requests formats a transport failure: rooted url with query.
+            raise requests.exceptions.ConnectionError(
+                "HTTPSConnectionPool(host='x', port=443): Max retries exceeded with url: "
+                "/services/data/v62.0/ssot/data-streams?dataspace=SECRET&limit=200&offset=400 "
+                "(Caused by NewConnectionError('boom'))"
+            )
+
+        client = self._direct_ssot_client()
+        with patch.object(
+            sfdc_module.SalesforceDataCloudProxyClient,
+            "_ssot_get_one_with_retry",
+            autospec=True,
+            side_effect=stub,
+        ):
+            result = client.ssot_get_offset_pages(
+                self._SSOT_PATH + "?dataspace=SECRET",
+                limit=200,
+                start_offset=400,
+                page_count=1,
+            )
+
+        error = result["pages"]["0"]["error"]
+        self.assertIn("[REDACTED]", error)
+        self.assertNotIn("dataspace=SECRET", error)
+        self.assertNotIn("offset=400", error)
+        self.assertNotIn("limit=200", error)
+
     def test_ssot_get_offset_pages_page_body_with_description_passes_through(self):
         """A per-page body carrying a top-level ``description`` string round-trips
         unmangled — the op envelope's top level is ``pages`` (not a dbapi shape), and

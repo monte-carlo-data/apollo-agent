@@ -299,19 +299,24 @@ def _is_ssot_quota_error(exc: BaseException) -> bool:
 def _build_offset_path(
     path_split: urllib.parse.SplitResult, limit: int, offset: int
 ) -> str:
-    """Build one offset page path from a validated base split + integers, appending
-    (or overriding) ``limit`` / ``offset`` on the query. Because
-    ``validate_relative_rest_path`` guarantees no scheme/host, the result is a rooted
-    path like ``/services/data/v67.0/ssot/...?limit=200&offset=400``."""
-    query = dict(urllib.parse.parse_qsl(path_split.query))
-    query["limit"] = str(limit)
-    query["offset"] = str(offset)
+    """Build one offset page path from a validated base split + integers, APPENDING
+    ``limit`` / ``offset`` to the existing query. Because ``validate_relative_rest_path``
+    guarantees no scheme/host and ``ssot_get_offset_pages`` has already rejected a base
+    path that carries its own ``limit``/``offset``, the result is a rooted path like
+    ``/services/data/v67.0/ssot/...?dataspace=CSG&limit=200&offset=400``.
+
+    The existing query string is preserved VERBATIM (not round-tripped through a dict),
+    so duplicate keys and intentionally blank-valued params survive — a dict round-trip
+    would silently collapse ``?a=1&a=2`` and drop ``?flag=``. ``limit``/``offset`` are
+    pre-validated ints, so appending them as a literal fragment is safe."""
+    appended = f"limit={limit}&offset={offset}"
+    query = f"{path_split.query}&{appended}" if path_split.query else appended
     return urllib.parse.urlunsplit(
         (
             path_split.scheme,
             path_split.netloc,
             path_split.path,
-            urllib.parse.urlencode(query),
+            query,
             path_split.fragment,
         )
     )
@@ -351,6 +356,20 @@ def _redact_body(body: str | None) -> str | None:
     if body is None:
         return None
     return _SENSITIVE_VALUE_PATTERN.sub(r"\1'[REDACTED]'", body)
+
+
+# Strips the query string off any URL or rooted path in a string, keeping the path for
+# diagnostics. Catches both ``https://host/p?limit=..`` and the rooted ``url: /p?limit=..``
+# form ``requests`` transport errors embed (e.g. HTTPSConnectionPool "Max retries exceeded
+# with url: /services/.../tag-assignments?limit=200&offset=400"). Governance-tag page
+# queries carry offset/limit and can carry a ``?dataspace=`` filter — none of which should
+# ride out to the DC in a per-page error string.
+_URL_QUERY_PATTERN = re.compile(r"(https?://[^\s'\"?]+|/[^\s'\"?]*)\?[^\s'\")]*")
+
+
+def _redact_url_query(message: str) -> str:
+    """Replace any URL/path query string in ``message`` with ``?[REDACTED]``."""
+    return _URL_QUERY_PATTERN.sub(r"\1?[REDACTED]", message)
 
 
 def _is_expired_session(response: requests.Response) -> bool:
@@ -1319,13 +1338,18 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
 
     @staticmethod
     def _offset_page_error_entry(exc: Exception) -> dict:
-        """Structured per-page error entry (never a raw body): the message already
-        carries a redacted body and only the path (no query); status/code come from
-        :class:`SsotGetError` when available."""
+        """Structured per-page error entry (never a raw body): status/code come from
+        :class:`SsotGetError` when available.
+
+        The message is URL-query-redacted before it leaves the agent. A
+        :class:`SsotGetError` message is already path-only (no query), but a raw
+        transport exception (``requests`` ``ConnectionError``/``Timeout``) embeds the
+        full request URL including the query string — offset/limit and any
+        ``?dataspace=`` filter — which must not ride out to the DC in the envelope."""
         status = exc.status_code if isinstance(exc, SsotGetError) else None
         error_code = exc.error_code if isinstance(exc, SsotGetError) else None
         return {
-            "error": str(exc)[:_SSOT_OFFSET_ERROR_MAX_CHARS],
+            "error": _redact_url_query(str(exc))[:_SSOT_OFFSET_ERROR_MAX_CHARS],
             "error_type": _classify_exchange_status(status),
             "error_code": error_code,
             "status_code": status,

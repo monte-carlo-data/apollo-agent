@@ -26,6 +26,7 @@ def _discover() -> None:
     import apollo.integrations.ctp.transforms.resolve_redshift_credentials  # noqa: F401
     import apollo.integrations.ctp.transforms.resolve_mulesoft_endpoints  # noqa: F401
     import apollo.integrations.ctp.transforms.encode_basic_auth  # noqa: F401
+    import apollo.integrations.ctp.transforms.prepare_kerberos  # noqa: F401
 
 
 def _ensure_initialized() -> None:
