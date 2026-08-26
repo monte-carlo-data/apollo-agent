@@ -142,7 +142,11 @@ MS_FABRIC_DEFAULT_CTP = CtpConfig(
 # is exactly how a Windows-auth connection is configured.
 _SQL_SERVER_HOST_FIELDS = {
     "host": {"type": "string", "required": True, "empty": False},
-    "port": {"type": "integer"},
+    # Both types: the collector types port as a string (PluginConnectionSchema.port is
+    # Optional[str]) while a customer hand-writing self-hosted JSON writes an integer.
+    # Two producers, one schema. The mapper interpolates it into SERVER either way.
+    # Matches the collector's own Redshift schema, which already accepts both.
+    "port": {"type": ["string", "integer"]},
     "database": {"type": "string"},
 }
 
