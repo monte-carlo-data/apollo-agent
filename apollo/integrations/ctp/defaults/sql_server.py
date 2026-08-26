@@ -21,13 +21,20 @@ class SqlServerOdbcArgs(TypedDict):
     MARS_Connection: NotRequired[str]  # "Yes" — multiple active result sets
     Encrypt: NotRequired[str]  # "yes" / "no" / "strict"
     TrustServerCertificate: NotRequired[str]  # "yes" / "no"
+    # Not ODBC params. The base field map emits them and SqlServerProxyClient pops both
+    # off connect_args, so the schema has to declare them or the mapper rejects its own
+    # output.
+    login_timeout: NotRequired[int]
+    query_timeout_in_seconds: NotRequired[int]
 
 
 _SQL_SERVER_BASE_FIELD_MAP = {
     "DRIVER": "{ODBC Driver 17 for SQL Server}",
     # SERVER combines host and port in ODBC native format: tcp:{host},{port}
     "SERVER": "tcp:{{ raw.host }},{{ raw.port | default(1433) }}",
-    "UID": "{{ raw.user | default(raw.username) }}",
+    # Inner default: Jinja evaluates the argument eagerly, so without it a credential
+    # carrying neither field raises "'username' is undefined" instead of yielding nothing.
+    "UID": "{{ raw.user | default(raw.username | default(none)) }}",
     "PWD": "{{ raw.password }}",
     # Timeout fields — not ODBC params; proxy clients pop these before building the connection string
     "login_timeout": "{{ raw.login_timeout | default(none) }}",
@@ -135,7 +142,11 @@ MS_FABRIC_DEFAULT_CTP = CtpConfig(
 # is exactly how a Windows-auth connection is configured.
 _SQL_SERVER_HOST_FIELDS = {
     "host": {"type": "string", "required": True, "empty": False},
-    "port": {"type": "integer"},
+    # Both types: the collector types port as a string (PluginConnectionSchema.port is
+    # Optional[str]) while a customer hand-writing self-hosted JSON writes an integer.
+    # Two producers, one schema. The mapper interpolates it into SERVER either way.
+    # Matches the collector's own Redshift schema, which already accepts both.
+    "port": {"type": ["string", "integer"]},
     "database": {"type": "string"},
 }
 
