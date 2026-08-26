@@ -243,6 +243,35 @@ class TestSqlServerKerberosCtp(TestCase):
         self.assertEqual("tcp:labsql.mclab.internal,1433", args["SERVER"])
         self.assertEqual("{ODBC Driver 17 for SQL Server}", args["DRIVER"])
 
+    def test_credential_with_neither_user_nor_username_does_not_explode(self):
+        """`{{ raw.user | default(raw.username) }}` evaluates its argument eagerly, so a
+        credential carrying NEITHER field renders a StrictUndefined and raises
+        `'username' is undefined` -- an opaque Jinja error with nothing pointing at the
+        real cause.
+
+        Reachable whenever the kerberos step's `when` guard does not fire (auth_type
+        absent, or not 'kerberos') on a credential with no SQL login. Predates the
+        kerberos work, but Windows auth is the first shape that gets there.
+        """
+        args = _resolve(
+            SQL_SERVER_DEFAULT_CTP,
+            {"host": "db.example.com", "port": 1433, "password": "s"},
+        )
+        self.assertNotIn("UID", args)
+
+    def test_legacy_username_alias_still_resolves(self):
+        """Guard for the fix above: the alias must keep working."""
+        args = _resolve(
+            SQL_SERVER_DEFAULT_CTP,
+            {
+                "host": "db.example.com",
+                "port": 1433,
+                "username": "legacy",
+                "password": "s",
+            },
+        )
+        self.assertEqual("legacy", args["UID"])
+
     def test_sql_path_is_unchanged_by_the_kerberos_addition(self):
         """Regression guard: every existing SQL Server customer rides this path."""
         args = _resolve(

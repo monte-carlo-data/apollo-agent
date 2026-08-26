@@ -27,7 +27,9 @@ _SQL_SERVER_BASE_FIELD_MAP = {
     "DRIVER": "{ODBC Driver 17 for SQL Server}",
     # SERVER combines host and port in ODBC native format: tcp:{host},{port}
     "SERVER": "tcp:{{ raw.host }},{{ raw.port | default(1433) }}",
-    "UID": "{{ raw.user | default(raw.username) }}",
+    # Inner default: Jinja evaluates the argument eagerly, so without it a credential
+    # carrying neither field raises "'username' is undefined" instead of yielding nothing.
+    "UID": "{{ raw.user | default(raw.username | default(none)) }}",
     "PWD": "{{ raw.password }}",
     # Timeout fields — not ODBC params; proxy clients pop these before building the connection string
     "login_timeout": "{{ raw.login_timeout | default(none) }}",

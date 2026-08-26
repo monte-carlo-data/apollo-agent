@@ -60,6 +60,12 @@ RUN echo "deb [arch=amd64,arm64 signed-by=/etc/apt/keyrings/microsoft.gpg] https
 RUN apt-get update
 RUN ACCEPT_EULA=Y apt-get install -y msodbcsql17 unixodbc unixodbc-dev
 
+# krb5-user provides kinit, which SQL Server Windows Authentication needs on the password
+# credential form -- there is no library auto-acquire for a stored password. The keytab
+# form does not need it (GSSAPI acquires in-process via KRB5_CLIENT_KTNAME), and the
+# GSSAPI libraries themselves already arrive as an msodbcsql17 dependency.
+RUN apt-get install -y --no-install-recommends krb5-user
+
 # Oracle Instant Client for thick mode. libaio is a runtime dependency; on Debian
 # trixie the time_t transition renamed libaio1 -> libaio1t64 (shipping
 # libaio.so.1t64), so add the libaio.so.1 symlink the Oracle libs link against.
