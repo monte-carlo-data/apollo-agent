@@ -272,6 +272,25 @@ class TestSqlServerKerberosCtp(TestCase):
         )
         self.assertEqual("legacy", args["UID"])
 
+    def test_timeouts_pass_through_the_mapper(self):
+        """The base field map emits login_timeout and query_timeout_in_seconds, and
+        SqlServerProxyClient pops both off connect_args -- so the schema has to declare
+        them or the mapper rejects its own output.
+
+        Latent until now: the sql path sends a pre-built ODBC string, so the mapper never
+        ran for sql-server. Kerberos is the first credential to take the dict path.
+        """
+        args = self._resolve_kerberos(login_timeout=15, query_timeout_in_seconds=840)
+        self.assertEqual(15, args["login_timeout"])
+        self.assertEqual(840, args["query_timeout_in_seconds"])
+
+    def test_timeouts_are_absent_when_not_supplied(self):
+        """The mapper drops None, so an unset timeout must not appear as a key at all --
+        the proxy client's pop() default is what supplies the fallback."""
+        args = self._resolve_kerberos()
+        self.assertNotIn("login_timeout", args)
+        self.assertNotIn("query_timeout_in_seconds", args)
+
     def test_sql_path_is_unchanged_by_the_kerberos_addition(self):
         """Regression guard: every existing SQL Server customer rides this path."""
         args = _resolve(

@@ -21,6 +21,11 @@ class SqlServerOdbcArgs(TypedDict):
     MARS_Connection: NotRequired[str]  # "Yes" — multiple active result sets
     Encrypt: NotRequired[str]  # "yes" / "no" / "strict"
     TrustServerCertificate: NotRequired[str]  # "yes" / "no"
+    # Not ODBC params. The base field map emits them and SqlServerProxyClient pops both
+    # off connect_args, so the schema has to declare them or the mapper rejects its own
+    # output.
+    login_timeout: NotRequired[int]
+    query_timeout_in_seconds: NotRequired[int]
 
 
 _SQL_SERVER_BASE_FIELD_MAP = {
