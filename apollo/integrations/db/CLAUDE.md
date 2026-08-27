@@ -68,6 +68,32 @@ Client freezes its trust store at the first `init_oracle_client`, so the wallet 
 single client — per-client cleanup would delete a wallet still needed by later connections. See the
 `oracle_client_config` module docstring for the full rationale.
 
+### Concurrent batch reads (agent-side fan-out)
+
+An op that would otherwise make the data-collector issue N sequential agent round-trips can instead
+expose a **single batched method that fans out concurrently inside the agent process**. The agent
+executes an op's recorded commands *sequentially* (`AgentClient._calls` is a shared list and is not
+thread-safe), so the DC cannot parallelize round-trips by recording several `ssot_get` commands —
+the parallelism has to live in one agent method. See
+`salesforce_data_cloud_proxy_client.ssot_get_offset_pages`, which pulls N consecutive offset pages
+with an internal `ThreadPoolExecutor` (YET-2531 follow-up).
+
+Rules for that pattern:
+
+- **The agent owns its bounds.** Clamp width (`_SSOT_OFFSET_PAGES_MAX`) and per-page limit inside the
+  method — never trust the caller's numbers. Validate inputs (reject a base path that already carries
+  the paginated params) and fail the whole batch *before* any request when they're malformed.
+- **One page's failure is not the batch's failure.** Return a map keyed by page index where each entry
+  is either `{"result": <body>}` or a structured `{"error", "error_type", "status_code",
+  "error_code"}`. The caller decides what a hole means; the op never turns a single 404/quota into a
+  batch-wide exception. Keep this envelope shape in lockstep with the consumer's translation tests.
+- **Retry transient, never quota.** Give each page one retry within its timeout envelope for
+  network/5xx blips, but let quota errors (`_is_ssot_quota_error`) fall straight through — retrying an
+  exhausted org just deepens the hole.
+- **Per-worker sessions, one shared token.** Each worker builds its own `_CapturingSession` (a shared
+  `requests.Session` cross-contaminates under threads), but they all draw from the process-wide core
+  token cache, so a cold-cache batch mints exactly once (see **Cached credentials**).
+
 ### Non-pyodbc clients
 
 Most other clients (postgres, mysql, bigquery, etc.) wrap their own driver's connection object.

@@ -5,6 +5,7 @@ import re
 import threading
 import time
 import urllib.parse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from hashlib import sha256
 from typing import Any, NoReturn
@@ -249,6 +250,92 @@ def _classify_exchange_status(status: int | None) -> str:
     return "other"
 
 
+class SsotGetError(RuntimeError):
+    """A non-200 SSOT GET, carrying the structured HTTP status for the per-page
+    error entries ``ssot_get_offset_pages`` returns (YET follow-up to YET-2531).
+
+    Subclasses ``RuntimeError`` and preserves ``ssot_get``'s message format verbatim
+    (``... failed with code NNN ...``), so existing callers that catch ``RuntimeError``
+    or parse the ``code NNN`` substring (the data-collector does) are unaffected — the
+    ``status_code`` / ``error_code`` attributes are additive."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        status_code: int | None = None,
+        error_code: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+        self.error_code = error_code
+
+
+def _parse_ssot_error_code(body: str | None) -> str | None:
+    """Best-effort ``errorCode`` from an already-redacted error body, for the
+    structured per-page entry. Matches both the ``str(response.json())`` python-repr
+    form (``'errorCode': 'X'``) and raw-JSON (``"errorCode": "X"``). Never raises."""
+    if not body:
+        return None
+    match = re.search(r"'errorCode'\s*:\s*'([^']+)'", body) or re.search(
+        r'"errorCode"\s*:\s*"([^"]+)"', body
+    )
+    return match.group(1) if match else None
+
+
+def _is_ssot_quota_error(exc: BaseException) -> bool:
+    """True when a failed SSOT GET is an org API-quota exhaustion — HTTP 429, or a
+    ``REQUEST_LIMIT_EXCEEDED`` errorCode/body (Salesforce also returns that as 403).
+
+    SFDC quota is org-wide and shared with the customer's own integrations, so
+    ``ssot_get_offset_pages`` never retries it and stops dispatching the rest of the
+    batch on the first sighting."""
+    if isinstance(exc, SsotGetError):
+        if exc.status_code == 429 or exc.error_code == "REQUEST_LIMIT_EXCEEDED":
+            return True
+    return "REQUEST_LIMIT_EXCEEDED" in str(exc)
+
+
+def _build_offset_path(
+    path_split: urllib.parse.SplitResult, limit: int, offset: int
+) -> str:
+    """Build one offset page path from a validated base split + integers, APPENDING
+    ``limit`` / ``offset`` to the existing query. Because ``validate_relative_rest_path``
+    guarantees no scheme/host and ``ssot_get_offset_pages`` has already rejected a base
+    path that carries its own ``limit``/``offset``, the result is a rooted path like
+    ``/services/data/v67.0/ssot/...?dataspace=CSG&limit=200&offset=400``.
+
+    The existing query string is preserved VERBATIM (not round-tripped through a dict),
+    so duplicate keys and intentionally blank-valued params survive — a dict round-trip
+    would silently collapse ``?a=1&a=2`` and drop ``?flag=``. ``limit``/``offset`` are
+    pre-validated ints, so appending them as a literal fragment is safe."""
+    appended = f"limit={limit}&offset={offset}"
+    query = f"{path_split.query}&{appended}" if path_split.query else appended
+    return urllib.parse.urlunsplit(
+        (
+            path_split.scheme,
+            path_split.netloc,
+            path_split.path,
+            query,
+            path_split.fragment,
+        )
+    )
+
+
+# Agent-owned bounds for ``ssot_get_offset_pages`` — the agent's OWN safety backstop,
+# independent of any data-collector clamp, because this is the first op whose fan-out
+# multiplier is caller-chosen and each page is an authenticated request against the
+# customer's org-wide API quota. Max batch width EQUALS max concurrency so every page
+# runs at once and the DC's per-op transport deadman (one page's worst case, not the
+# sum) holds regardless of width.
+_SSOT_OFFSET_PAGES_MAX = 8
+_SSOT_OFFSET_PAGE_LIMIT_MIN = 1
+_SSOT_OFFSET_PAGE_LIMIT_MAX = 200
+# Cap on the per-page error string returned to the DC (the message already carries a
+# redacted body and only the path, never the query).
+_SSOT_OFFSET_ERROR_MAX_CHARS = 500
+
+
 _SENSITIVE_VALUE_PATTERN = re.compile(
     r"(['\"](?:access_token|refresh_token|id_token|signature)['\"]\s*:\s*)['\"][^'\"]*['\"]"
 )
@@ -269,6 +356,20 @@ def _redact_body(body: str | None) -> str | None:
     if body is None:
         return None
     return _SENSITIVE_VALUE_PATTERN.sub(r"\1'[REDACTED]'", body)
+
+
+# Strips the query string off any URL or rooted path in a string, keeping the path for
+# diagnostics. Catches both ``https://host/p?limit=..`` and the rooted ``url: /p?limit=..``
+# form ``requests`` transport errors embed (e.g. HTTPSConnectionPool "Max retries exceeded
+# with url: /services/.../tag-assignments?limit=200&offset=400"). Governance-tag page
+# queries carry offset/limit and can carry a ``?dataspace=`` filter — none of which should
+# ride out to the DC in a per-page error string.
+_URL_QUERY_PATTERN = re.compile(r"(https?://[^\s'\"?]+|/[^\s'\"?]*)\?[^\s'\")]*")
+
+
+def _redact_url_query(message: str) -> str:
+    """Replace any URL/path query string in ``message`` with ``?[REDACTED]``."""
+    return _URL_QUERY_PATTERN.sub(r"\1?[REDACTED]", message)
 
 
 def _is_expired_session(response: requests.Response) -> bool:
@@ -1101,12 +1202,30 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
         GET's elapsed time, so both reads together never exceed one ``timeout``,
         and the single re-mint is the ``30`` term already in the budget.
 
-        Raises ``ValueError`` for an unsafe ``path``; ``RuntimeError`` carrying
-        ``code NNN`` on a non-200 response and ``HTTP NNN`` on a non-JSON 200
-        response, with the response body redacted before it is surfaced.
+        Raises ``ValueError`` for an unsafe ``path``; ``SsotGetError`` (a
+        ``RuntimeError`` subclass carrying ``code NNN``) on a non-200 response and a
+        plain ``RuntimeError`` carrying ``HTTP NNN`` on a non-JSON 200 response, with
+        the response body redacted before it is surfaced.
         """
         validate_relative_rest_path(path)
         request_timeout = _resolve_ssot_timeout(timeout)
+        return self._ssot_get_one(path, request_timeout)
+
+    def _ssot_get_one(self, path: str, request_timeout: int) -> dict | list:
+        """One authenticated SSOT GET on its OWN session, with the cached-token
+        single retry — the extracted core of :meth:`ssot_get`.
+
+        Assumes ``path`` is already validated and ``request_timeout`` already
+        resolved (the two public entry points — :meth:`ssot_get` and
+        :meth:`ssot_get_offset_pages` — do that once before calling this). A fresh
+        ``_CapturingSession`` per call is deliberate: it is what lets
+        :meth:`ssot_get_offset_pages` fan this out across worker threads without the
+        last-write-wins ``last_exchange_*`` capture fields bleeding between concurrent
+        pages. The process-wide token cache is still shared and lock-guarded, so
+        concurrent first calls still mint exactly once (YET-2522).
+
+        Raises :class:`SsotGetError` (with ``status_code``/``error_code``) on a
+        non-200, and a plain ``RuntimeError`` on a non-JSON 200."""
         split = urllib.parse.urlsplit(path)
         # Query-string values (pagination cursors, filters) may be sensitive —
         # logs and error messages only ever carry the path component.
@@ -1172,9 +1291,11 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
                 },
             )
             detail = f" (Salesforce response: {body})" if body else ""
-            raise RuntimeError(
+            raise SsotGetError(
                 f"Salesforce Data Cloud SSOT GET {log_path} failed with code "
-                f"{response.status_code}{detail}"
+                f"{response.status_code}{detail}",
+                status_code=response.status_code,
+                error_code=_parse_ssot_error_code(body),
             )
 
         try:
@@ -1185,6 +1306,207 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
                 f"Salesforce Data Cloud SSOT GET {log_path}: non-JSON response "
                 f"(HTTP {response.status_code}, Salesforce response: {body})"
             ) from e
+
+    def _ssot_get_one_with_retry(self, path: str, request_timeout: int) -> dict | list:
+        """:meth:`_ssot_get_one` with the same 2-attempt TRANSIENT resilience the
+        data-collector's sequential page path gets from ``_get_tag_page_with_retry`` —
+        kept within ONE ``request_timeout`` envelope so a batched wave's transport
+        worst case stays one page's ``30 + timeout`` (both reads share the budget, as
+        the cached-token retry already does).
+
+        Only transient failures are retried: a quota error (never — it must stop the
+        batch) and a deterministic client error (4xx other than 429 — a 404 "no rows"
+        answer, a 401/403 permission failure — won't recover on a second try) are
+        raised straight through. 5xx, connection drops, read timeouts and non-JSON
+        bodies get one more attempt on the remaining budget."""
+        started = time.monotonic()
+        try:
+            return self._ssot_get_one(path, request_timeout)
+        except (
+            Exception
+        ) as exc:  # noqa: BLE001 — reclassified below, re-raised if not transient
+            if _is_ssot_quota_error(exc) or (
+                isinstance(exc, SsotGetError)
+                and exc.status_code is not None
+                and 400 <= exc.status_code < 500
+            ):
+                raise
+            retry_timeout = _retry_read_timeout(
+                request_timeout, time.monotonic() - started
+            )
+            return self._ssot_get_one(path, retry_timeout)
+
+    @staticmethod
+    def _offset_page_error_entry(exc: Exception) -> dict:
+        """Structured per-page error entry (never a raw body): status/code come from
+        :class:`SsotGetError` when available.
+
+        The message is URL-query-redacted before it leaves the agent. A
+        :class:`SsotGetError` message is already path-only (no query), but a raw
+        transport exception (``requests`` ``ConnectionError``/``Timeout``) embeds the
+        full request URL including the query string — offset/limit and any
+        ``?dataspace=`` filter — which must not ride out to the DC in the envelope."""
+        status = exc.status_code if isinstance(exc, SsotGetError) else None
+        error_code = exc.error_code if isinstance(exc, SsotGetError) else None
+        return {
+            "error": _redact_url_query(str(exc))[:_SSOT_OFFSET_ERROR_MAX_CHARS],
+            "error_type": _classify_exchange_status(status),
+            "error_code": error_code,
+            "status_code": status,
+        }
+
+    def ssot_get_offset_pages(
+        self,
+        path: str,
+        limit: int,
+        start_offset: int,
+        page_count: int,
+        timeout: int | None = None,
+    ) -> dict:
+        """Fetch ``page_count`` CONSECUTIVE offset pages of one ``/ssot`` endpoint
+        CONCURRENTLY and return per-page results/errors in a single agent operation.
+
+        This is the batched counterpart of :meth:`ssot_get`, added so the
+        data-collector's governance-tag offset walk can collect an agent connection's
+        pages in parallel instead of one DC->agent round trip per page (the agent
+        clamped that walk to one worker because the DC-side ``AgentClient`` records
+        commands into a shared list — this op moves the fan-out agent-side, where the
+        token cache is already thread-safe, YET-2522). Because all pages run at once,
+        the whole op's wall time is ~one page's, so the DC's per-op transport deadman
+        is independent of ``page_count``.
+
+        TEMPLATED range, NOT an arbitrary path list: the agent builds every URL from
+        ONE validated base ``path`` plus integers —
+        ``{path}?...&limit=<limit>&offset=<start_offset + i*limit>`` for i in
+        ``[0, page_count)``. So the fan-out width and each URL are structural, not
+        caller-forgeable, and ``validate_relative_rest_path`` runs once. ``path`` must
+        be relative and must NOT already carry ``limit``/``offset`` (the agent owns
+        those). ``limit`` is clamped to ``[1, 200]`` and ``page_count`` to
+        ``[1, _SSOT_OFFSET_PAGES_MAX]`` — the agent's OWN safety bounds on request
+        amplification against the org's shared API quota, independent of any DC clamp.
+
+        Each page runs on its own session with the two-attempt transient resilience of
+        :meth:`_ssot_get_one_with_retry`. Return shape — string keys (JSON transit
+        coerces int keys), and deliberately NOT a top-level ``all_results`` /
+        ``description`` (``BaseDbProxyClient.process_result`` special-cases those)::
+
+            {"pages": {"0": {"result": <body>},
+                       "1": {"error": "...", "error_type": "auth_failed",
+                             "error_code": "...", "status_code": 401},
+                       "2": {"skipped_quota": true}}}
+
+        One page failing NEVER fails the op — the DC maps each entry back to a page or
+        a reconstructed exception. A per-page org-quota error (429 /
+        ``REQUEST_LIMIT_EXCEEDED``) is not retried and sets a stop flag so pages not
+        yet started come back as ``skipped_quota`` rather than piling more requests
+        onto an exhausted org.
+
+        NOTE (SSRF): each GET runs on a worker thread but does NOT route through
+        ``HttpProxyClient``/``safety_policy`` — ``_ssot_get_one`` builds the URL from
+        the connection's own credentials, not caller input, so the thread-local
+        URL-safety policy does not apply here. If this is ever changed to route
+        through ``HttpProxyClient``, that policy MUST be re-entered on each worker
+        thread (see ``apollo/integrations/http/url_safety.py``)."""
+        validate_relative_rest_path(path)
+
+        if (
+            not isinstance(page_count, int)
+            or isinstance(page_count, bool)
+            or page_count < 1
+        ):
+            raise ValueError(
+                f"ssot_get_offset_pages: page_count must be a positive int, got {page_count!r}"
+            )
+        if page_count > _SSOT_OFFSET_PAGES_MAX:
+            logger.warning(
+                "Salesforce Data Cloud: ssot_get_offset_pages page_count exceeds the "
+                "agent cap, clamping",
+                extra={"requested": page_count, "resolved": _SSOT_OFFSET_PAGES_MAX},
+            )
+            page_count = _SSOT_OFFSET_PAGES_MAX
+
+        if not isinstance(limit, int) or isinstance(limit, bool):
+            raise ValueError(
+                f"ssot_get_offset_pages: limit must be an int, got {limit!r}"
+            )
+        clamped_limit = max(
+            _SSOT_OFFSET_PAGE_LIMIT_MIN, min(limit, _SSOT_OFFSET_PAGE_LIMIT_MAX)
+        )
+        if clamped_limit != limit:
+            logger.warning(
+                "Salesforce Data Cloud: ssot_get_offset_pages limit out of range, clamping",
+                extra={"requested": limit, "resolved": clamped_limit},
+            )
+        limit = clamped_limit
+
+        if (
+            not isinstance(start_offset, int)
+            or isinstance(start_offset, bool)
+            or start_offset < 0
+        ):
+            raise ValueError(
+                f"ssot_get_offset_pages: start_offset must be a non-negative int, "
+                f"got {start_offset!r}"
+            )
+
+        request_timeout = _resolve_ssot_timeout(timeout)
+
+        split = urllib.parse.urlsplit(path)
+        existing = urllib.parse.parse_qs(split.query)
+        if "limit" in existing or "offset" in existing:
+            raise ValueError(
+                "ssot_get_offset_pages: base path must not carry limit/offset — the "
+                "agent appends them per page"
+            )
+        page_paths = [
+            _build_offset_path(split, limit, start_offset + i * limit)
+            for i in range(page_count)
+        ]
+
+        logger.info(
+            "Salesforce Data Cloud: SSOT batched offset GET "
+            f"(path={split.path}, limit={limit}, start_offset={start_offset}, "
+            f"page_count={page_count})",
+            extra={
+                "ssot_path": split.path,
+                "ssot_batch_limit": limit,
+                "ssot_batch_start_offset": start_offset,
+                "ssot_batch_page_count": page_count,
+                "ssot_timeout": request_timeout,
+            },
+        )
+
+        # A quota sighting stops pages not yet started (see the flag check in the
+        # worker); pages already in flight run to completion — bounded by page_count,
+        # which equals max concurrency, so at most page_count requests reach the org.
+        quota_stop = threading.Event()
+        # Distinct string keys per index; each worker writes exactly its own, so the
+        # plain dict needs no lock under the GIL.
+        pages: dict[str, dict] = {}
+
+        def fetch(index: int, page_path: str) -> None:
+            if quota_stop.is_set():
+                pages[str(index)] = {"skipped_quota": True}
+                return
+            try:
+                pages[str(index)] = {
+                    "result": self._ssot_get_one_with_retry(page_path, request_timeout)
+                }
+            except (
+                Exception
+            ) as exc:  # noqa: BLE001 — captured per-page, never fails the op
+                if _is_ssot_quota_error(exc):
+                    quota_stop.set()
+                pages[str(index)] = self._offset_page_error_entry(exc)
+
+        with ThreadPoolExecutor(max_workers=page_count) as pool:
+            futures = [pool.submit(fetch, i, p) for i, p in enumerate(page_paths)]
+            for future in as_completed(futures):
+                # ``fetch`` catches per-page errors itself; a raise here would be an
+                # unexpected bug (not a Salesforce error), so let it fail the op.
+                future.result()
+
+        return {"pages": pages}
 
     def _serialize_table(self, table: GenieTable) -> dict:
         fields: list[Field] = table.fields
