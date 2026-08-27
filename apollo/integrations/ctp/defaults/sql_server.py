@@ -26,6 +26,9 @@ class SqlServerOdbcArgs(TypedDict):
     # output.
     login_timeout: NotRequired[int]
     query_timeout_in_seconds: NotRequired[int]
+    # Kerberos artefact locations, popped the same way. A dict, not a string: it is
+    # consumed as process environment, never serialized into the connection string.
+    kerberos: NotRequired[dict]
 
 
 _SQL_SERVER_BASE_FIELD_MAP = {
@@ -62,9 +65,13 @@ _KERBEROS_STEP = TransformStep(
         "keytab_base64": "{{ raw.keytab_base64 | default(none) }}",
         "password": "{{ raw.password | default(none) }}",
     },
-    output={},
+    output={"kerberos": "kerberos_env"},
     field_map={
         "Trusted_Connection": "yes",
+        # Nested-dict passthrough, following Oracle's ssl_options: SqlServerProxyClient
+        # pops this and sets the KRB5_* variables around pyodbc.connect. They are
+        # process-global and shared with Hive/Impala GSSAPI, so they cannot be set here.
+        "kerberos": "{{ derived.kerberos_env }}",
         # None removes the base field map's entry: AD vouches for the client, so no
         # credential is sent. Leaving PWD would additionally offer the AD service
         # account's password to SQL Server as a SQL login — the very thing customers

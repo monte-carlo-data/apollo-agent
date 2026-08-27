@@ -5,6 +5,10 @@ from typing import (
 
 import pyodbc
 
+from apollo.integrations.db.sql_server_kerberos_env import (
+    kerberos_environment,
+    pop_kerberos_params,
+)
 from apollo.integrations.db.tsql_base_db_proxy_client import (
     TSqlBaseDbProxyClient,
     odbc_string_from_dict,
@@ -109,6 +113,7 @@ class SqlServerProxyClient(TSqlBaseDbProxyClient):
             )
         connect_args = credentials[_ATTR_CONNECT_ARGS]
         kerberos_spn: Optional[str] = None
+        kerberos_params: Optional[dict[str, Any]] = None
         if isinstance(connect_args, dict):
             # CTP path: timeout fields land in connect_args; pop before building ODBC string
             connect_args = dict(connect_args)
@@ -122,6 +127,10 @@ class SqlServerProxyClient(TSqlBaseDbProxyClient):
                 # Reconstruct the SPN the driver will derive, so a failure can be
                 # compared against what AD actually holds. SERVER is "tcp:{host},{port}".
                 kerberos_spn = self._expected_spn(connect_args.get("SERVER"))
+            # Must happen before odbc_string_from_dict: it stringifies every value, so a
+            # nested dict left here would serialize paths and the password into the
+            # connection string.
+            kerberos_params = pop_kerberos_params(connect_args)
             connection_string = odbc_string_from_dict(connect_args)
         else:
             # Legacy path: pre-built ODBC string; timeouts at top-level credentials
@@ -133,11 +142,21 @@ class SqlServerProxyClient(TSqlBaseDbProxyClient):
             )
             connection_string = connect_args
         try:
-            self._connection = pyodbc.connect(
-                connection_string,
-                # Set timeout for establishing connection to db
-                timeout=login_timeout,
-            )  # type: ignore
+            if kerberos_params is None:
+                self._connection = pyodbc.connect(
+                    connection_string,
+                    # Set timeout for establishing connection to db
+                    timeout=login_timeout,
+                )  # type: ignore
+            else:
+                # The KRB5_* variables are process-global, so they are set only for the
+                # duration of the connect and then restored. Nothing else belongs inside:
+                # the scope holds a lock against every other Kerberos connection.
+                with kerberos_environment(kerberos_params):
+                    self._connection = pyodbc.connect(
+                        connection_string,
+                        timeout=login_timeout,
+                    )  # type: ignore
         except Exception as error:
             # get_error_type() is the usual place to classify, but it is only consulted
             # when a client instance exists — and this failure happens during

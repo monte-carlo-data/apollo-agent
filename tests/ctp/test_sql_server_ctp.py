@@ -34,17 +34,6 @@ def _resolve(config, credentials: dict) -> dict:
     return CtpPipeline().execute(config, credentials)
 
 
-def _assert_tgt_lock_not_held(test: unittest.TestCase) -> None:
-    """Fail loudly if a previous test left ``_TGT_LOCK`` held.
-
-    Asserts rather than releases: ``_ensure_tgt`` uses ``with``, so a held lock means a
-    real leak, and quietly releasing it would turn the next run's hang into a pass.
-    """
-    test.assertFalse(
-        prepare_kerberos._TGT_LOCK.locked(), "_TGT_LOCK leaked from a prior test"
-    )
-
-
 class TestSqlServerCtp(TestCase):
     def test_sql_server_variants_registered(self):
         for connection_type, _ in _ALL_CONFIGS:
@@ -181,32 +170,12 @@ class TestSqlServerKerberosCtp(TestCase):
     _PASSWORD = "sup3r-s3cret-pw"
 
     def setUp(self):
-        # prepare_kerberos exports KRB5_* into the process environment, so each
-        # test starts from a known state and restores afterwards.
-        self._saved_env = {
-            key: os.environ.get(key)
-            for key in ("KRB5_CONFIG", "KRB5_CLIENT_KTNAME", "KRB5CCNAME")
-        }
-        for key in self._saved_env:
-            os.environ.pop(key, None)
+        # No environment save/restore and no kinit stub: the transform materializes files
+        # and reports their locations. Setting KRB5_* and acquiring the ticket belong to
+        # sql_server_kerberos_env, tested in tests/test_sql_server_kerberos_env.py.
         self._temp_paths: list[str] = []
 
-        # These tests are about what the CTP *produces*; the password form's TGT
-        # acquisition is covered in TestSqlServerKerberosTgtGuard. Make kinit succeed so
-        # no password-form assertion depends on a reachable KDC.
-        patcher = patch.object(
-            prepare_kerberos.subprocess, "run", return_value=Mock(returncode=0)
-        )
-        patcher.start()
-        self.addCleanup(patcher.stop)
-        _assert_tgt_lock_not_held(self)
-
     def tearDown(self):
-        for key, value in self._saved_env.items():
-            if value is None:
-                os.environ.pop(key, None)
-            else:
-                os.environ[key] = value
         for path in self._temp_paths:
             with suppress(OSError):
                 os.unlink(path)
@@ -227,10 +196,18 @@ class TestSqlServerKerberosCtp(TestCase):
 
     def _resolve_kerberos(self, **overrides) -> dict:
         args = _resolve(SQL_SERVER_DEFAULT_CTP, self._kerberos_credentials(**overrides))
-        for key in ("KRB5_CONFIG", "KRB5_CLIENT_KTNAME"):
-            if os.environ.get(key):
-                self._temp_paths.append(os.environ[key])
+        params = args.get("kerberos") or {}
+        for key in ("krb5_config_path", "client_keytab_path"):
+            if params.get(key):
+                self._temp_paths.append(params[key])
+        ccache = params.get("ccache", "")
+        if ccache.startswith("FILE:"):
+            self._temp_paths.append(ccache.removeprefix("FILE:"))
         return args
+
+    def _kerberos_params(self, **overrides) -> dict:
+        """The block the proxy client consumes -- where the paths now live."""
+        return self._resolve_kerberos(**overrides)["kerberos"]
 
     # ── The connection string change ──────────────────────────────────
 
@@ -329,15 +306,12 @@ class TestSqlServerKerberosCtp(TestCase):
 
     # ── krb5.conf assembly ────────────────────────────────────────────
 
-    def test_krb5_conf_written_and_env_var_points_at_it(self):
-        self._resolve_kerberos()
-        path = os.environ.get("KRB5_CONFIG")
-        self.assertIsNotNone(path, "KRB5_CONFIG must be exported for libkrb5 to see it")
+    def test_krb5_conf_written_and_its_path_is_reported(self):
+        path = self._kerberos_params()["krb5_config_path"]
         self.assertTrue(os.path.exists(path))
 
     def test_krb5_conf_contents(self):
-        self._resolve_kerberos()
-        conf = pathlib.Path(os.environ["KRB5_CONFIG"]).read_text()
+        conf = pathlib.Path(self._kerberos_params()["krb5_config_path"]).read_text()
         self.assertIn(f"default_realm = {self._REALM}", conf)
         self.assertIn(f"kdc = {self._KDC}", conf)
         # Explicit KDC + these two off means Kerberos needs only forward A-record
@@ -347,30 +321,25 @@ class TestSqlServerKerberosCtp(TestCase):
         self.assertIn("rdns = false", conf)
 
     def test_krb5_conf_is_not_world_readable(self):
-        self._resolve_kerberos()
-        mode = stat.S_IMODE(os.stat(os.environ["KRB5_CONFIG"]).st_mode)
-        self.assertEqual(0o600, mode)
+        path = self._kerberos_params()["krb5_config_path"]
+        self.assertEqual(0o600, stat.S_IMODE(os.stat(path).st_mode))
 
     # ── Keytab handling ───────────────────────────────────────────────
 
     def test_keytab_decoded_from_base64_to_a_file(self):
-        self._resolve_kerberos()
-        path = os.environ.get("KRB5_CLIENT_KTNAME")
-        self.assertIsNotNone(path, "KRB5_CLIENT_KTNAME drives GSSAPI auto-acquire")
+        path = self._kerberos_params()["client_keytab_path"]
         self.assertEqual(b"keytab-bytes", pathlib.Path(path).read_bytes())
 
     def test_keytab_is_not_world_readable(self):
         """A keytab is a long-lived AD credential; 0600 is the floor."""
-        self._resolve_kerberos()
-        mode = stat.S_IMODE(os.stat(os.environ["KRB5_CLIENT_KTNAME"]).st_mode)
-        self.assertEqual(0o600, mode)
+        path = self._kerberos_params()["client_keytab_path"]
+        self.assertEqual(0o600, stat.S_IMODE(os.stat(path).st_mode))
 
     def test_keytab_form_uses_an_in_memory_ccache(self):
         """MEMORY: is correct here: GSSAPI acquires the TGT in-process from the client
         keytab, so nothing else needs to see the cache and the ticket never touches disk.
         """
-        self._resolve_kerberos()
-        self.assertTrue((os.environ.get("KRB5CCNAME") or "").startswith("MEMORY:"))
+        self.assertTrue(self._kerberos_params()["ccache"].startswith("MEMORY:"))
 
     def test_password_form_uses_a_file_ccache_not_memory(self):
         """Regression: MEMORY: cannot work for the password form.
@@ -382,24 +351,26 @@ class TestSqlServerKerberosCtp(TestCase):
 
         A file cache is required so the acquiring and connecting processes share it.
         """
-        self._resolve_kerberos(keytab_base64=None, password=self._PASSWORD)
-        ccache = os.environ.get("KRB5CCNAME", "")
+        params = self._kerberos_params(keytab_base64=None, password=self._PASSWORD)
+        ccache = params["ccache"]
         self.assertNotEqual("MEMORY:", ccache)
         self.assertTrue(
             ccache.startswith("FILE:"), f"expected a FILE: ccache, got {ccache!r}"
         )
 
     def test_password_form_ccache_is_not_world_readable(self):
-        self._resolve_kerberos(keytab_base64=None, password=self._PASSWORD)
-        path = os.environ["KRB5CCNAME"].removeprefix("FILE:")
-        self._temp_paths.append(path)
+        params = self._kerberos_params(keytab_base64=None, password=self._PASSWORD)
+        path = params["ccache"].removeprefix("FILE:")
         self.assertEqual(0o600, stat.S_IMODE(os.stat(path).st_mode))
 
-    def test_password_form_sets_no_client_keytab(self):
-        """No keytab means no library auto-acquire; the client kinits instead."""
-        self._resolve_kerberos(keytab_base64=None, password=self._PASSWORD)
-        self.assertIsNone(os.environ.get("KRB5_CLIENT_KTNAME"))
-        self.assertIsNotNone(os.environ.get("KRB5_CONFIG"))
+    def test_password_form_reports_no_client_keytab_but_does_report_a_principal(self):
+        """No keytab means no library auto-acquire, so the env module kinits instead --
+        which needs the principal and password carried alongside the cache."""
+        params = self._kerberos_params(keytab_base64=None, password=self._PASSWORD)
+        self.assertNotIn("client_keytab_path", params)
+        self.assertEqual(self._PRINCIPAL, params["principal"])
+        self.assertEqual(self._PASSWORD, params["password"])
+        self.assertTrue(params["krb5_config_path"])
 
     def test_password_form_still_drops_pwd_from_odbc_args(self):
         """The password is for kinit against the KDC, never for SQL Server."""
@@ -466,7 +437,60 @@ class TestSqlServerKerberosCtp(TestCase):
         )
         self._temp_paths.extend(temp_files)
 
-        self.assertEqual(flat, wrapped["connect_args"])
+        # The kerberos block carries per-resolve temp paths and a uuid ccache, so it can
+        # never compare equal across two runs. Compare the ODBC args exactly, then assert
+        # the block has the same shape.
+        self.assertEqual(
+            {k: v for k, v in flat.items() if k != "kerberos"},
+            {k: v for k, v in wrapped["connect_args"].items() if k != "kerberos"},
+        )
+        self.assertEqual(
+            set(flat["kerberos"]), set(wrapped["connect_args"]["kerberos"])
+        )
+
+    # ── Storage medium ────────────────────────────────────────────────
+
+    def test_artifacts_prefer_tmpfs_when_available(self):
+        """A keytab is a long-lived AD credential and the ccache holds a live TGT, so both
+        are kept off durable disk where the platform offers somewhere to do it. Asserted
+        because the preference is a security property with no other enforcement.
+
+        Spies on the chosen directory rather than the resulting path: /dev/shm does not
+        exist on macOS, so faking isdir and letting the write proceed would just fail.
+        """
+        real_write = (
+            prepare_kerberos.PrepareKerberosTransform._write_secure_temp_file_in
+        )
+        directories = []
+
+        def _spy(contents, suffix, directory):
+            directories.append((suffix, directory))
+            return real_write(contents, suffix, None)
+
+        with (
+            patch.object(prepare_kerberos.os.path, "isdir", return_value=True),
+            patch.object(
+                prepare_kerberos.PrepareKerberosTransform,
+                "_write_secure_temp_file_in",
+                staticmethod(_spy),
+            ),
+        ):
+            self._kerberos_params()
+            self._kerberos_params(keytab_base64=None, password=self._PASSWORD)
+
+        chosen = dict(directories)
+        self.assertEqual("/dev/shm", chosen[".keytab"])
+        self.assertEqual("/dev/shm", chosen[".ccache"])
+
+    def test_falls_back_to_the_default_temp_dir_with_no_tmpfs(self):
+        """A working connection matters more than the storage medium, so the absence of
+        tmpfs must degrade rather than fail -- and the file must still be 0600."""
+        with patch.object(prepare_kerberos.os.path, "isdir", return_value=False):
+            params = self._kerberos_params()
+
+        path = params["client_keytab_path"]
+        self.assertFalse(path.startswith("/dev/shm/"))
+        self.assertEqual(0o600, stat.S_IMODE(os.stat(path).st_mode))
 
     # ── Temp-file lifecycle ───────────────────────────────────────────
 
@@ -477,33 +501,35 @@ class TestSqlServerKerberosCtp(TestCase):
         temp_files, so both artefacts have to be registered there.
         """
         temp_files: list[str] = []
-        CtpRegistry.resolve(
+        resolved = CtpRegistry.resolve(
             "sql-server", self._kerberos_credentials(), temp_files=temp_files
         )
         self._temp_paths.extend(temp_files)
+        params = resolved["connect_args"]["kerberos"]
 
         self.assertEqual(
             2, len(temp_files), f"expected krb5.conf + keytab, got {temp_files}"
         )
-        self.assertIn(os.environ["KRB5_CONFIG"], temp_files)
-        self.assertIn(os.environ["KRB5_CLIENT_KTNAME"], temp_files)
+        self.assertIn(params["krb5_config_path"], temp_files)
+        self.assertIn(params["client_keytab_path"], temp_files)
 
     def test_password_form_registers_the_krb5_conf_and_the_ccache(self):
         """No keytab on this path, but the file ccache holds a live TGT, so it has to be
         cleaned up too."""
         temp_files: list[str] = []
-        CtpRegistry.resolve(
+        resolved = CtpRegistry.resolve(
             "sql-server",
             self._kerberos_credentials(keytab_base64=None, password=self._PASSWORD),
             temp_files=temp_files,
         )
         self._temp_paths.extend(temp_files)
+        params = resolved["connect_args"]["kerberos"]
 
         self.assertEqual(
             2, len(temp_files), f"expected krb5.conf + ccache, got {temp_files}"
         )
-        self.assertIn(os.environ["KRB5_CONFIG"], temp_files)
-        self.assertIn(os.environ["KRB5CCNAME"].removeprefix("FILE:"), temp_files)
+        self.assertIn(params["krb5_config_path"], temp_files)
+        self.assertIn(params["ccache"].removeprefix("FILE:"), temp_files)
 
     def test_sql_path_materialises_no_files(self):
         temp_files: list[str] = []
@@ -580,180 +606,3 @@ class TestSqlServerKerberosCredentialsSchema(TestCase):
                 {"connect_args": "DRIVER={ODBC Driver 17 for SQL Server};SERVER=..."},
             )
         )
-
-
-class TestSqlServerKerberosTgtGuard(TestCase):
-    """The password form's TGT acquisition — SDD §5.3.
-
-    The keytab form needs nothing: MIT Kerberos' default client keytab makes GSSAPI
-    acquire and refresh the TGT itself. There is no equivalent for a stored password, so
-    the agent must acquire one — but only when the cache lacks a valid ticket, since
-    acquisition is a KDC round trip and tickets last ~10h.
-
-    Verified against a live KDC on 2026-08-21 that a subprocess kinit populating a FILE
-    ccache does satisfy msodbcsql's GSSAPI at connect time.
-    """
-
-    _REALM = "MCLAB.INTERNAL"
-    _PRINCIPAL = "svc-montecarlo@MCLAB.INTERNAL"
-    _PASSWORD = "p@ss-with-$dollar-and-'quote"
-    _KEYTAB_B64 = "a2V5dGFiLWJ5dGVz"
-
-    def setUp(self):
-        self._saved_env = {
-            key: os.environ.get(key)
-            for key in ("KRB5_CONFIG", "KRB5_CLIENT_KTNAME", "KRB5CCNAME")
-        }
-        for key in self._saved_env:
-            os.environ.pop(key, None)
-        self._temp_paths: list[str] = []
-        _assert_tgt_lock_not_held(self)
-
-    def tearDown(self):
-        for key, value in self._saved_env.items():
-            if value is None:
-                os.environ.pop(key, None)
-            else:
-                os.environ[key] = value
-        for path in self._temp_paths:
-            with suppress(OSError):
-                os.unlink(path)
-        _assert_tgt_lock_not_held(self)
-
-    def _credentials(self, **overrides) -> dict:
-        creds = {
-            "auth_type": "kerberos",
-            "host": "labsql.mclab.internal",
-            "port": 1433,
-            "realm": self._REALM,
-            "kdc": "labdc.mclab.internal",
-            "principal": self._PRINCIPAL,
-        }
-        creds.update(overrides)
-        return {k: v for k, v in creds.items() if v is not None}
-
-    def _resolve(self, **overrides) -> dict:
-        args = _resolve(SQL_SERVER_DEFAULT_CTP, self._credentials(**overrides))
-        for key in ("KRB5_CONFIG", "KRB5_CLIENT_KTNAME"):
-            if os.environ.get(key):
-                self._temp_paths.append(os.environ[key])
-        ccache = os.environ.get("KRB5CCNAME", "")
-        if ccache.startswith("FILE:"):
-            self._temp_paths.append(ccache.removeprefix("FILE:"))
-        return args
-
-    # ── The keytab form must not kinit ─────────────────────────────────
-
-    @patch.object(prepare_kerberos.subprocess, "run")
-    def test_keytab_form_never_invokes_kinit(self, mock_run):
-        """GSSAPI auto-acquires from the client keytab; a kinit here would be redundant
-        work on every connection and would defeat the design's whole point."""
-        self._resolve(keytab_base64=self._KEYTAB_B64)
-        mock_run.assert_not_called()
-
-    # ── The password form acquires ─────────────────────────────────────
-
-    @patch.object(prepare_kerberos.subprocess, "run")
-    def test_password_form_acquires_a_tgt(self, mock_run):
-        mock_run.return_value = Mock(returncode=0, stdout="", stderr="")  # kinit
-        self._resolve(password=self._PASSWORD)
-
-        self.assertEqual(1, mock_run.call_count)
-        kinit_argv = mock_run.call_args_list[0].args[0]
-        self.assertEqual("kinit", kinit_argv[0])
-        self.assertIn(self._PRINCIPAL, kinit_argv)
-
-    @patch.object(prepare_kerberos.subprocess, "run")
-    def test_password_is_passed_on_stdin_never_in_argv(self, mock_run):
-        """argv is world-readable via /proc; a password there leaks to any local process."""
-        mock_run.return_value = Mock(returncode=0, stdout="", stderr="")
-        self._resolve(password=self._PASSWORD)
-
-        kinit_call = mock_run.call_args_list[0]
-        self.assertNotIn(self._PASSWORD, kinit_call.args[0])
-        self.assertIn(self._PASSWORD, kinit_call.kwargs.get("input", ""))
-
-    @patch.object(prepare_kerberos.subprocess, "run")
-    def test_a_ticket_is_always_acquired_rather_than_reused(self, mock_run):
-        """No reuse probe. Each connection gets a fresh NamedTemporaryFile ccache, so a
-        probe could only ever hit a *concurrent* connection's cache via the shared
-        KRB5CCNAME and reuse its ticket under a different service principal."""
-        mock_run.return_value = Mock(returncode=0, stdout="", stderr="")
-        self._resolve(password=self._PASSWORD)
-        self._resolve(password=self._PASSWORD)
-
-        self.assertEqual(2, mock_run.call_count)
-        for call in mock_run.call_args_list:
-            self.assertEqual("kinit", call.args[0][0])
-
-    # ── Failure handling ──────────────────────────────────────────────
-
-    @patch.object(prepare_kerberos.subprocess, "run")
-    def test_kinit_failure_raises_without_echoing_the_password(self, mock_run):
-        mock_run.return_value = Mock(
-            returncode=1, stdout="", stderr="kinit: Password incorrect"
-        )
-        with self.assertRaises(CtpPipelineError) as ctx:
-            self._resolve(password=self._PASSWORD)
-
-        message = str(ctx.exception)
-        self.assertNotIn(self._PASSWORD, message)
-        self.assertIn("Password incorrect", message)  # actionable
-
-    @patch.object(prepare_kerberos.subprocess, "run")
-    def test_kinit_timeout_is_reported_as_a_kdc_reachability_problem(self, mock_run):
-        mock_run.side_effect = subprocess.TimeoutExpired(cmd="kinit", timeout=30)
-        with self.assertRaises(CtpPipelineError) as ctx:
-            self._resolve(password=self._PASSWORD)
-
-        message = str(ctx.exception).lower()
-        self.assertIn("kdc", message)
-        self.assertNotIn(self._PASSWORD.lower(), message)
-
-    @patch.object(prepare_kerberos.subprocess, "run")
-    def test_missing_kinit_binary_is_actionable(self, mock_run):
-        """krb5-user is a deployment prerequisite; say so rather than surfacing ENOENT."""
-        mock_run.side_effect = FileNotFoundError("kinit")
-        with self.assertRaises(CtpPipelineError) as ctx:
-            self._resolve(password=self._PASSWORD)
-        self.assertIn("krb5", str(ctx.exception).lower())
-
-    # ── Single-flight ─────────────────────────────────────────────────
-
-    @patch.object(prepare_kerberos.subprocess, "run")
-    def test_concurrent_threads_each_acquire_into_their_own_cache(self, mock_run):
-        """Every connection gets its own ccache, so every one must acquire -- the lock keeps
-        each KRB5CCNAME write paired with its own kinit rather than skipping work."""
-        kinit_calls = []
-        ccache_stayed_put = []
-
-        def _fake_run(argv, **kwargs):
-            kinit_calls.append(argv)
-            # Sample either side of the sleep. Distinctness alone would prove nothing --
-            # the residual is a uuid4, so it is distinct whether or not the lock is held.
-            # What the lock buys is that no other thread repoints KRB5CCNAME while this
-            # kinit is in flight, which is exactly what the sleep gives them room to do.
-            before = os.environ.get("KRB5CCNAME")
-            time.sleep(0.05)
-            ccache_stayed_put.append(before == os.environ.get("KRB5CCNAME"))
-            return Mock(returncode=0, stdout="", stderr="")
-
-        mock_run.side_effect = _fake_run
-
-        errors: list[BaseException] = []
-
-        def _worker():
-            try:
-                self._resolve(password=self._PASSWORD)
-            except BaseException as exc:  # noqa: BLE001
-                errors.append(exc)
-
-        threads = [threading.Thread(target=_worker) for _ in range(8)]
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
-
-        self.assertEqual([], errors)
-        self.assertEqual(8, len(kinit_calls))
-        self.assertEqual([True] * 8, ccache_stayed_put)

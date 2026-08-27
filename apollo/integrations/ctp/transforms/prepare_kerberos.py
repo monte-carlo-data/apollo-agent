@@ -2,9 +2,7 @@ import base64
 import binascii
 import os
 import stat
-import subprocess
 import tempfile
-import threading
 import uuid
 
 from apollo.integrations.ctp.errors import CtpPipelineError
@@ -12,12 +10,6 @@ from apollo.integrations.ctp.models import PipelineState, TransformStep
 from apollo.integrations.ctp.template import TemplateEngine
 from apollo.integrations.ctp.transforms.base import Transform
 from apollo.integrations.ctp.transforms.registry import TransformRegistry
-
-# libkrb5 is configured by environment, not by connection-string arguments, so this
-# transform's real output is process state rather than a derived value.
-_KRB5_CONFIG = "KRB5_CONFIG"
-_KRB5_CLIENT_KTNAME = "KRB5_CLIENT_KTNAME"
-_KRB5CCNAME = "KRB5CCNAME"
 
 # Credential cache type depends on the credential form, and getting this wrong fails at
 # connect time with a message that does not name the cause.
@@ -40,17 +32,6 @@ _KRB5CCNAME = "KRB5CCNAME"
 # auto-acquire -- which only fires on an empty cache -- would never run.
 _CCACHE_MEMORY_PREFIX = "MEMORY:"
 _TMPFS_DIRS = ("/dev/shm", "/run/shm")
-
-# Serializes pointing KRB5CCNAME at a connection's cache and running kinit against it.
-# Both are needed: KRB5CCNAME is process-global and the agent runs 8 gunicorn threads per
-# worker, so a concurrent connection overwriting it between the two would send kinit into
-# the wrong cache. Note this does not cover the later pyodbc.connect, which reads the same
-# variable -- see the class docstring.
-_TGT_LOCK = threading.Lock()
-
-# Bounded so an unreachable KDC surfaces as a clear error instead of hanging a worker
-# thread for the operation's whole timeout.
-_KINIT_TIMEOUT_SECONDS = 30
 
 
 # dns_lookup_kdc=false with an explicit kdc means no SRV lookups; rdns=false means no
@@ -79,11 +60,11 @@ _KRB5_CONF_TEMPLATE = """\
 class PrepareKerberosTransform(Transform):
     """Assemble the Kerberos runtime for a Windows-authentication connection.
 
-    Writes a krb5.conf, materialises the keytab when one is supplied, and exports the
-    MIT environment variables that point libkrb5 at both. The connection-string change
-    (``Trusted_Connection`` on, ``UID``/``PWD`` dropped) comes from the step's own
-    ``field_map`` rather than a derived value -- see ``_KERBEROS_STEP`` in
-    ``ctp/defaults/sql_server.py``.
+    Writes a krb5.conf, materialises the keytab when one is supplied, creates the
+    credential cache the password form needs, and emits their locations for the proxy
+    client. The connection-string change (``Trusted_Connection`` on, ``UID``/``PWD``
+    dropped) comes from the step's own ``field_map`` rather than a derived value -- see
+    ``_KERBEROS_STEP`` in ``ctp/defaults/sql_server.py``.
 
     One transform rather than a composition of ``write_ini_file`` + ``tmp_file_write``
     for two reasons: krb5.conf is not the flat ``[section]`` shape ``write_ini_file``
@@ -95,23 +76,12 @@ class PrepareKerberosTransform(Transform):
     ``when``, so reaching ``_execute`` already means Windows authentication was asked
     for and the required fields are genuinely required.
 
-    KNOWN LIMITATION. ``KRB5_CONFIG`` / ``KRB5CCNAME`` / ``KRB5_CLIENT_KTNAME`` are
-    process-global, are never restored, and the agent runs 8 threads per worker. Two
-    consequences:
-
-    - Concurrency. Setting them and running kinit is serialized (``_TGT_LOCK``), but the
-      later ``pyodbc.connect`` reads them without the lock, so two connections under
-      *different* principals or realms can have one read the other's values. Same-principal
-      traffic -- the common case -- is unaffected, since every connection writes identical
-      values.
-    - Other Kerberos consumers. After the connection closes, ``state.temp_files`` cleanup
-      deletes the krb5.conf while the variable still points at it, leaving the process on a
-      dangling single-realm config. Hive/Impala with ``auth_mechanism=GSSAPI`` reads the same
-      variables, so a SQL Server connection can break an unrelated integration on the same
-      agent. The collector's twin (``kerberos_environment.py``) does save and restore.
-
-    Both close the same way: hand the paths to the proxy client and set/restore the
-    environment around the connect call instead of here.
+    This transform sets no environment variables. ``KRB5_CONFIG`` / ``KRB5CCNAME`` /
+    ``KRB5_CLIENT_KTNAME`` are process-global and shared with every other Kerberos
+    consumer in the worker, so they are set and restored around the connect call itself
+    by ``integrations/db/sql_server_kerberos_env.py``. The nested-dict passthrough
+    follows Oracle's ``ssl_options``: a structured block the proxy client pops and
+    resolves, because the resolution depends on process state the CTP cannot own.
 
     Input keys:
         realm:         Kerberos realm (required)
@@ -121,12 +91,14 @@ class PrepareKerberosTransform(Transform):
         password:      service-account password; mutually exclusive with keytab_base64
 
     Output keys:
-        none — the effect is process environment plus the step's own field_map
+        kerberos: derived key for the dict of paths and cache name the proxy client
+                  consumes (``krb5_config_path``, ``ccache``, and then either
+                  ``client_keytab_path`` or ``principal`` + ``password``)
     """
 
     required_input_keys = ("realm", "kdc", "principal")
     optional_input_keys = ("keytab_base64", "password")
-    required_output_keys = ()
+    required_output_keys = ("kerberos",)
     optional_output_keys = ()
 
     def _execute(self, step: TransformStep, state: PipelineState) -> None:
@@ -175,25 +147,25 @@ class PrepareKerberosTransform(Transform):
         # after the connection closes is exactly the exposure the MEMORY: ccache choice
         # was made to avoid.
         state.temp_files.append(krb5_conf_path)
-        os.environ[_KRB5_CONFIG] = krb5_conf_path
 
+        params: dict[str, str] = {"krb5_config_path": krb5_conf_path}
         if keytab_base64:
-            # Pointing the *client* keytab at the file makes GSSAPI acquire and refresh
-            # the TGT by itself whenever the cache is empty -- no kinit, no renewal
-            # daemon, and no ticket-lifecycle code in the agent (SDD §5.3). Because that
-            # happens in-process, an in-memory cache is sufficient and keeps the ticket
-            # off disk entirely.
-            os.environ[_KRB5CCNAME] = f"{_CCACHE_MEMORY_PREFIX}{uuid.uuid4().hex}"
+            # GSSAPI acquires from the client keytab in-process, so an in-memory cache is
+            # sufficient and the ticket never touches disk.
+            params["ccache"] = f"{_CCACHE_MEMORY_PREFIX}{uuid.uuid4().hex}"
             keytab_path = self._write_keytab(str(keytab_base64), step.type)
             state.temp_files.append(keytab_path)
-            os.environ[_KRB5_CLIENT_KTNAME] = keytab_path
+            params["client_keytab_path"] = keytab_path
         else:
-            # No library-managed equivalent exists for a stored password, so the caller
-            # runs kinit -- a separate process, which cannot share an in-memory cache.
-            # Hence a file cache here; see the cache-type comment above.
+            # kinit runs in a separate process and cannot share an in-memory cache, so
+            # the password form needs a file the two can both see.
             ccache_path = self._create_ccache_file()
             state.temp_files.append(ccache_path)
-            self._ensure_tgt(str(principal), str(password), step.type, ccache_path)
+            params["ccache"] = f"FILE:{ccache_path}"
+            params["principal"] = str(principal)
+            params["password"] = str(password)
+
+        state.derived[step.output["kerberos"]] = params
 
     @staticmethod
     def _render(step: TransformStep, state: PipelineState, key: str):
@@ -278,70 +250,6 @@ class PrepareKerberosTransform(Transform):
             if os.path.isdir(directory):
                 return cls._write_secure_temp_file_in(raw, ".keytab", directory)
         return cls._write_secure_temp_file(raw, ".keytab")
-
-    @classmethod
-    def _ensure_tgt(
-        cls, principal: str, password: str, step_name: str, ccache_path: str
-    ) -> None:
-        """Point KRB5CCNAME at this connection's cache and acquire a TGT from the password.
-
-        Only the password form needs this; the keytab form lets GSSAPI acquire from the
-        client keytab. Both steps run under one lock because KRB5CCNAME is process-global
-        and 8 gunicorn threads share it: a concurrent connection overwriting it between
-        them would send this kinit into the other connection's cache.
-
-        Acquisition is unconditional. The cache was created empty just above and is private
-        to this connection, so there is never an existing ticket to find -- a probe could
-        only ever hit a concurrent connection's cache and reuse it under a different
-        service principal.
-        """
-        with _TGT_LOCK:
-            os.environ[_KRB5CCNAME] = f"FILE:{ccache_path}"
-            # Clear any inherited keytab so a stale one from another connection cannot
-            # silently satisfy this one.
-            os.environ.pop(_KRB5_CLIENT_KTNAME, None)
-
-            try:
-                result = subprocess.run(
-                    ["kinit", principal],
-                    # stdin, never argv -- argv is readable via /proc by any local
-                    # process, so a password there leaks outside this process.
-                    input=password,
-                    text=True,
-                    capture_output=True,
-                    timeout=_KINIT_TIMEOUT_SECONDS,
-                )
-            except subprocess.TimeoutExpired:
-                raise CtpPipelineError(
-                    stage="transform_execute",
-                    step_name=step_name,
-                    message=(
-                        f"timed out acquiring a Kerberos ticket after "
-                        f"{_KINIT_TIMEOUT_SECONDS}s; the KDC may be unreachable "
-                        "(check network access to port 88 and that the realm's kdc "
-                        "hostname resolves)"
-                    ),
-                ) from None
-            except FileNotFoundError:
-                raise CtpPipelineError(
-                    stage="transform_execute",
-                    step_name=step_name,
-                    message=(
-                        "kinit not found: the krb5 client tools are required for "
-                        "Windows authentication (install krb5-user)"
-                    ),
-                ) from None
-
-            if result.returncode != 0:
-                # kinit reports the reason on stderr and never echoes the password, so
-                # this is safe to surface -- and it is the difference between a bad
-                # password, an unknown principal and a clock-skew failure.
-                detail = (result.stderr or result.stdout or "").strip()
-                raise CtpPipelineError(
-                    stage="transform_execute",
-                    step_name=step_name,
-                    message=f"could not acquire a Kerberos ticket: {detail}",
-                )
 
 
 TransformRegistry.register("prepare_kerberos", PrepareKerberosTransform)

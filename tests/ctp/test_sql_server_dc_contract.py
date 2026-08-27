@@ -99,11 +99,9 @@ class SqlServerDcContractTest(TestCase):
         return resolved["connect_args"]
 
     def test_password_form_resolves_to_valid_connect_args(self):
-        with patch(
-            "apollo.integrations.ctp.transforms.prepare_kerberos.subprocess.run",
-            _ok_kinit,
-        ):
-            args = self._resolve(_dc_payload(password="s3cret"))
+        # No kinit stub needed: the pipeline only materializes files now. Acquisition
+        # happens in sql_server_kerberos_env, around the connect.
+        args = self._resolve(_dc_payload(password="s3cret"))
 
         self.assertEqual("yes", args["Trusted_Connection"])
         self.assertNotIn("UID", args)

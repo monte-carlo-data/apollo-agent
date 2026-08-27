@@ -21,7 +21,7 @@ from apollo.common.agent.constants import (
 )
 from apollo.agent.logging_utils import LoggingUtils
 from apollo.integrations.db.sql_server_proxy_client import SqlServerProxyClient
-from apollo.integrations.ctp.transforms import prepare_kerberos
+from apollo.integrations.db import sql_server_kerberos_env
 from apollo.interfaces.lambda_function.json_log_formatter import JsonLogFormatter
 
 _SQL_SERVER_CREDENTIALS = (
@@ -510,7 +510,9 @@ class SqlServerKerberosCredentialSafetyTests(TestCase):
         self.assertIn("Login failed", error)
         self._assert_no_credential_leak(response)
 
-    @patch.object(prepare_kerberos.subprocess, "run", return_value=Mock(returncode=0))
+    @patch.object(
+        sql_server_kerberos_env.subprocess, "run", return_value=Mock(returncode=0)
+    )
     @patch("pyodbc.connect")
     def test_password_form_password_never_reaches_the_response(
         self, mock_connect, _mock_subprocess
@@ -755,10 +757,18 @@ class SqlServerKerberosErrorTaxonomyTests(TestCase):
         the pipeline's temp files in an `except BaseException` — this asserts the
         enriched re-raise from the error taxonomy does not bypass that.
         """
+        # Captured during the connect, not after: the environment is scoped to the
+        # connect and restored on the way out, so KRB5_CLIENT_KTNAME is gone by the time
+        # execute_operation returns. Reading it here also proves it was set when the
+        # driver ran.
+        observed: dict[str, Optional[str]] = {}
+
+        def _fail_and_capture(*args, **kwargs):
+            observed["keytab"] = os.environ.get("KRB5_CLIENT_KTNAME")
+            raise pyodbc.Error("HY000", "[HY000] Cannot generate SSPI context")
+
         with patch("pyodbc.connect") as mock_connect:
-            mock_connect.side_effect = pyodbc.Error(
-                "HY000", "[HY000] Cannot generate SSPI context"
-            )
+            mock_connect.side_effect = _fail_and_capture
             self._agent.execute_operation(
                 "sql-server",
                 "run_query",
@@ -766,8 +776,13 @@ class SqlServerKerberosErrorTaxonomyTests(TestCase):
                 {"connect_args": self._kerberos_credentials()},
             )
 
-        keytab_path = os.environ.get("KRB5_CLIENT_KTNAME")
+        keytab_path = observed.get("keytab")
         self.assertIsNotNone(keytab_path, "the pipeline should have written a keytab")
+        self.assertNotIn(
+            "KRB5_CLIENT_KTNAME",
+            os.environ,
+            "the connection must not leave KRB5_* set for other integrations",
+        )
         self.assertFalse(
             os.path.exists(keytab_path),
             f"keytab survived a failed connection: {keytab_path}",
