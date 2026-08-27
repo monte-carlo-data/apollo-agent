@@ -2,6 +2,7 @@ import datetime
 import json
 import logging
 import os
+from contextlib import suppress
 from typing import (
     Iterable,
     List,
@@ -21,6 +22,8 @@ from apollo.common.agent.constants import (
 )
 from apollo.agent.logging_utils import LoggingUtils
 from apollo.integrations.db.sql_server_proxy_client import SqlServerProxyClient
+from apollo.common.agent.redact import AgentRedactUtilities
+from apollo.integrations.ctp.registry import CtpRegistry
 from apollo.integrations.db import sql_server_kerberos_env
 from apollo.interfaces.lambda_function.json_log_formatter import JsonLogFormatter
 
@@ -538,6 +541,46 @@ class SqlServerKerberosCredentialSafetyTests(TestCase):
 
         mock_connect.assert_called_once()
         self._assert_no_credential_leak(response)
+
+    def test_password_survives_in_connect_args_but_not_through_the_redactor(self):
+        """The password form now carries its secret in the resolved connect_args.
+
+        Before the environment moved to the proxy client, the transform consumed the
+        password to run kinit and the mapper emitted no credential at all -- the resolved
+        structure was inherently clean. It is not any more: kinit runs at connect time, so
+        the password rides in connect_args["kerberos"] until then.
+
+        That makes the redactor load-bearing rather than incidental. It only holds because
+        redact_attributes recurses into nested dicts and "pass" is in its attribute list;
+        renaming the key or flattening the recursion would silently expose the secret.
+        """
+        temp_files: list[str] = []
+        resolved = CtpRegistry.resolve(
+            "sql-server",
+            {
+                "auth_type": "kerberos",
+                "host": "labsql.mclab.internal",
+                "port": 1433,
+                "realm": "MCLAB.INTERNAL",
+                "kdc": "labdc.mclab.internal",
+                "principal": "svc-mc@MCLAB.INTERNAL",
+                "password": self._PASSWORD,
+            },
+            temp_files=temp_files,
+        )
+        for path in temp_files:
+            with suppress(OSError):
+                os.unlink(path)
+
+        # Documents the exposure rather than asserting it is absent -- the design needs it.
+        self.assertEqual(
+            self._PASSWORD, resolved["connect_args"]["kerberos"]["password"]
+        )
+        # ...and pins the control that keeps it out of logs and responses.
+        redacted = json.dumps(
+            AgentRedactUtilities.standard_redact(resolved), default=str
+        )
+        self.assertNotIn(self._PASSWORD, redacted)
 
     # ── Log safety (Lambda / Datadog path) ────────────────────────────
 
