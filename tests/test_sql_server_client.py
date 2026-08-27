@@ -517,10 +517,10 @@ class SqlServerKerberosCredentialSafetyTests(TestCase):
     ):
         """The password is for kinit against the KDC; it must not appear anywhere.
 
-        subprocess is stubbed to report an existing valid ticket. Without that the CTP's
-        TGT guard fails first (no reachable KDC in a unit test) and pyodbc.connect is
-        never reached -- the assertion would still pass while testing nothing about the
-        driver path, so mock_connect.assert_called_once() holds it honest.
+        subprocess is stubbed so kinit succeeds. Without that the CTP's TGT acquisition
+        fails first (no reachable KDC in a unit test) and pyodbc.connect is never reached
+        -- the assertion would still pass while testing nothing about the driver path, so
+        mock_connect.assert_called_once() holds it honest.
         """
 
         def _raise_echoing_connection_string(connection_string, *args, **kwargs):

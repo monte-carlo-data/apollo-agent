@@ -4,6 +4,7 @@ import pathlib
 import stat
 import subprocess
 import threading
+import unittest
 import time
 from contextlib import suppress
 from unittest import TestCase
@@ -33,19 +34,15 @@ def _resolve(config, credentials: dict) -> dict:
     return CtpPipeline().execute(config, credentials)
 
 
-def _release_tgt_lock_if_held() -> None:
-    """Clear ``_TGT_LOCK`` if a previous test left it held.
+def _assert_tgt_lock_not_held(test: unittest.TestCase) -> None:
+    """Fail loudly if a previous test left ``_TGT_LOCK`` held.
 
-    Lives here rather than in the production module: ``threading.Lock`` has no ownership,
-    so a helper that releases it unconditionally would let any caller destroy the
-    single-flight guarantee for a thread mid-kinit.
+    Asserts rather than releases: ``_ensure_tgt`` uses ``with``, so a held lock means a
+    real leak, and quietly releasing it would turn the next run's hang into a pass.
     """
-    lock = prepare_kerberos._TGT_LOCK
-    if lock.locked():
-        try:
-            lock.release()
-        except RuntimeError:
-            pass
+    test.assertFalse(
+        prepare_kerberos._TGT_LOCK.locked(), "_TGT_LOCK leaked from a prior test"
+    )
 
 
 class TestSqlServerCtp(TestCase):
@@ -202,7 +199,7 @@ class TestSqlServerKerberosCtp(TestCase):
         )
         patcher.start()
         self.addCleanup(patcher.stop)
-        _release_tgt_lock_if_held()
+        _assert_tgt_lock_not_held(self)
 
     def tearDown(self):
         for key, value in self._saved_env.items():
@@ -256,6 +253,9 @@ class TestSqlServerKerberosCtp(TestCase):
         args = self._resolve_kerberos()
         self.assertEqual("tcp:labsql.mclab.internal,1433", args["SERVER"])
         self.assertEqual("{ODBC Driver 17 for SQL Server}", args["DRIVER"])
+        # The collector sends `database` in connect_args, so dropping it here silently
+        # lands every Windows-auth session in master instead of failing.
+        self.assertEqual("mcdemo", args["DATABASE"])
 
     def test_credential_with_neither_user_nor_username_does_not_explode(self):
         """`{{ raw.user | default(raw.username) }}` evaluates its argument eagerly, so a
@@ -607,7 +607,7 @@ class TestSqlServerKerberosTgtGuard(TestCase):
         for key in self._saved_env:
             os.environ.pop(key, None)
         self._temp_paths: list[str] = []
-        _release_tgt_lock_if_held()
+        _assert_tgt_lock_not_held(self)
 
     def tearDown(self):
         for key, value in self._saved_env.items():
@@ -618,7 +618,7 @@ class TestSqlServerKerberosTgtGuard(TestCase):
         for path in self._temp_paths:
             with suppress(OSError):
                 os.unlink(path)
-        _release_tgt_lock_if_held()
+        _assert_tgt_lock_not_held(self)
 
     def _credentials(self, **overrides) -> dict:
         creds = {
@@ -725,12 +725,17 @@ class TestSqlServerKerberosTgtGuard(TestCase):
         """Every connection gets its own ccache, so every one must acquire -- the lock keeps
         each KRB5CCNAME write paired with its own kinit rather than skipping work."""
         kinit_calls = []
-        ccache_at_kinit = []
+        ccache_stayed_put = []
 
         def _fake_run(argv, **kwargs):
             kinit_calls.append(argv)
-            ccache_at_kinit.append(os.environ.get("KRB5CCNAME"))
-            time.sleep(0.05)  # widen the window a race would exploit
+            # Sample either side of the sleep. Distinctness alone would prove nothing --
+            # the residual is a uuid4, so it is distinct whether or not the lock is held.
+            # What the lock buys is that no other thread repoints KRB5CCNAME while this
+            # kinit is in flight, which is exactly what the sleep gives them room to do.
+            before = os.environ.get("KRB5CCNAME")
+            time.sleep(0.05)
+            ccache_stayed_put.append(before == os.environ.get("KRB5CCNAME"))
             return Mock(returncode=0, stdout="", stderr="")
 
         mock_run.side_effect = _fake_run
@@ -751,6 +756,4 @@ class TestSqlServerKerberosTgtGuard(TestCase):
 
         self.assertEqual([], errors)
         self.assertEqual(8, len(kinit_calls))
-        # The pairing is what the lock buys: an interleaved env write would make two kinits
-        # target the same cache.
-        self.assertEqual(8, len(set(ccache_at_kinit)))
+        self.assertEqual([True] * 8, ccache_stayed_put)

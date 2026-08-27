@@ -83,6 +83,10 @@ SQL_SERVER_DEFAULT_CTP = CtpConfig(
         field_map={
             **_SQL_SERVER_BASE_FIELD_MAP,
             "MARS_Connection": "Yes",
+            # The collector sends `database` in connect_args on the kerberos path. Omitting
+            # it here dropped the value silently and landed the session in master; the
+            # legacy sql path never surfaced this because it sent a pre-built ODBC string.
+            "DATABASE": "{{ raw.database | default(raw.db_name | default(none)) }}",
         },
     ),
 )

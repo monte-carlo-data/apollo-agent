@@ -35,7 +35,9 @@ from apollo.integrations.ctp.registry import CtpRegistry
 # out here rather than normalised, because the point is to test what it actually sends.
 _DC_PORT = "1433"
 
-_DC_LOGIN_TIMEOUT = 15
+# Non-default for the same reason as the query timeout below: 15 is the shared
+# fallback on both sides, so it could not distinguish survival from a default.
+_DC_LOGIN_TIMEOUT = 22
 # Deliberately NOT the 840s default both sides fall back to -- a default here would
 # pass whether or not the value actually survived the hop.
 _DC_QUERY_TIMEOUT = 600
@@ -53,6 +55,7 @@ def _dc_payload(**connect_args_overrides) -> dict:
     }
     connect_args.update(connect_args_overrides)
     connect_args = {k: v for k, v in connect_args.items() if v is not None}
+    connect_args.setdefault("database", "mcdemo")
     return {
         "connect_args": connect_args,
         "login_timeout": _DC_LOGIN_TIMEOUT,
@@ -119,6 +122,9 @@ class SqlServerDcContractTest(TestCase):
         SqlServerOdbcArgs did not declare fields the base field map emits."""
         args = self._resolve(_dc_payload(keytab_base64="a2V5dGFi"))
         self.assertEqual(_DC_LOGIN_TIMEOUT, args["login_timeout"])
+        # The collector sends `database` inside connect_args; the mapper has to emit it or
+        # the session silently lands in master.
+        self.assertEqual("mcdemo", args["DATABASE"])
         # The collector spells this `query_timeout` while the mapper reads
         # `query_timeout_in_seconds`. Asserted with a NON-default value: both sides default
         # to 840, so a default would pass whether or not the value actually survived.

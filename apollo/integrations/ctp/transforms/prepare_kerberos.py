@@ -96,13 +96,22 @@ class PrepareKerberosTransform(Transform):
     for and the required fields are genuinely required.
 
     KNOWN LIMITATION. ``KRB5_CONFIG`` / ``KRB5CCNAME`` / ``KRB5_CLIENT_KTNAME`` are
-    process-global and the agent runs 8 threads per worker. Setting them and running kinit
-    is serialized (``_TGT_LOCK``), but the later ``pyodbc.connect`` reads the same variables
-    without the lock, so two concurrent connections under *different* principals or realms
-    can have one read the other's values. Same-principal traffic -- the common case -- is
-    unaffected, since every connection writes identical values. Closing it properly means
-    handing the paths to the proxy client and setting the environment around the connect
-    call instead of here.
+    process-global, are never restored, and the agent runs 8 threads per worker. Two
+    consequences:
+
+    - Concurrency. Setting them and running kinit is serialized (``_TGT_LOCK``), but the
+      later ``pyodbc.connect`` reads them without the lock, so two connections under
+      *different* principals or realms can have one read the other's values. Same-principal
+      traffic -- the common case -- is unaffected, since every connection writes identical
+      values.
+    - Other Kerberos consumers. After the connection closes, ``state.temp_files`` cleanup
+      deletes the krb5.conf while the variable still points at it, leaving the process on a
+      dangling single-realm config. Hive/Impala with ``auth_mechanism=GSSAPI`` reads the same
+      variables, so a SQL Server connection can break an unrelated integration on the same
+      agent. The collector's twin (``kerberos_environment.py``) does save and restore.
+
+    Both close the same way: hand the paths to the proxy client and set/restore the
+    environment around the connect call instead of here.
 
     Input keys:
         realm:         Kerberos realm (required)
