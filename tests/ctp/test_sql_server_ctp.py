@@ -33,6 +33,21 @@ def _resolve(config, credentials: dict) -> dict:
     return CtpPipeline().execute(config, credentials)
 
 
+def _release_tgt_lock_if_held() -> None:
+    """Clear ``_TGT_LOCK`` if a previous test left it held.
+
+    Lives here rather than in the production module: ``threading.Lock`` has no ownership,
+    so a helper that releases it unconditionally would let any caller destroy the
+    single-flight guarantee for a thread mid-kinit.
+    """
+    lock = prepare_kerberos._TGT_LOCK
+    if lock.locked():
+        try:
+            lock.release()
+        except RuntimeError:
+            pass
+
+
 class TestSqlServerCtp(TestCase):
     def test_sql_server_variants_registered(self):
         for connection_type, _ in _ALL_CONFIGS:
@@ -180,15 +195,14 @@ class TestSqlServerKerberosCtp(TestCase):
         self._temp_paths: list[str] = []
 
         # These tests are about what the CTP *produces*; the password form's TGT
-        # acquisition is covered in TestSqlServerKerberosTgtGuard. Report a valid
-        # existing ticket so no real kinit is attempted here -- otherwise every
-        # password-form assertion depends on a reachable KDC.
+        # acquisition is covered in TestSqlServerKerberosTgtGuard. Make kinit succeed so
+        # no password-form assertion depends on a reachable KDC.
         patcher = patch.object(
             prepare_kerberos.subprocess, "run", return_value=Mock(returncode=0)
         )
         patcher.start()
         self.addCleanup(patcher.stop)
-        prepare_kerberos.reset_tgt_state_for_testing()
+        _release_tgt_lock_if_held()
 
     def tearDown(self):
         for key, value in self._saved_env.items():
@@ -356,7 +370,7 @@ class TestSqlServerKerberosCtp(TestCase):
         keytab, so nothing else needs to see the cache and the ticket never touches disk.
         """
         self._resolve_kerberos()
-        self.assertEqual("MEMORY:", os.environ.get("KRB5CCNAME"))
+        self.assertTrue((os.environ.get("KRB5CCNAME") or "").startswith("MEMORY:"))
 
     def test_password_form_uses_a_file_ccache_not_memory(self):
         """Regression: MEMORY: cannot work for the password form.
@@ -593,7 +607,7 @@ class TestSqlServerKerberosTgtGuard(TestCase):
         for key in self._saved_env:
             os.environ.pop(key, None)
         self._temp_paths: list[str] = []
-        prepare_kerberos.reset_tgt_state_for_testing()
+        _release_tgt_lock_if_held()
 
     def tearDown(self):
         for key, value in self._saved_env.items():
@@ -604,7 +618,7 @@ class TestSqlServerKerberosTgtGuard(TestCase):
         for path in self._temp_paths:
             with suppress(OSError):
                 os.unlink(path)
-        prepare_kerberos.reset_tgt_state_for_testing()
+        _release_tgt_lock_if_held()
 
     def _credentials(self, **overrides) -> dict:
         creds = {
@@ -641,49 +655,44 @@ class TestSqlServerKerberosTgtGuard(TestCase):
 
     @patch.object(prepare_kerberos.subprocess, "run")
     def test_password_form_acquires_a_tgt(self, mock_run):
-        mock_run.side_effect = [
-            Mock(returncode=1, stdout="", stderr=""),  # klist -s: no valid ticket
-            Mock(returncode=0, stdout="", stderr=""),  # kinit: success
-        ]
+        mock_run.return_value = Mock(returncode=0, stdout="", stderr="")  # kinit
         self._resolve(password=self._PASSWORD)
 
-        self.assertEqual(2, mock_run.call_count)
-        kinit_argv = mock_run.call_args_list[1].args[0]
+        self.assertEqual(1, mock_run.call_count)
+        kinit_argv = mock_run.call_args_list[0].args[0]
         self.assertEqual("kinit", kinit_argv[0])
         self.assertIn(self._PRINCIPAL, kinit_argv)
 
     @patch.object(prepare_kerberos.subprocess, "run")
     def test_password_is_passed_on_stdin_never_in_argv(self, mock_run):
         """argv is world-readable via /proc; a password there leaks to any local process."""
-        mock_run.side_effect = [
-            Mock(returncode=1, stdout="", stderr=""),
-            Mock(returncode=0, stdout="", stderr=""),
-        ]
+        mock_run.return_value = Mock(returncode=0, stdout="", stderr="")
         self._resolve(password=self._PASSWORD)
 
-        kinit_call = mock_run.call_args_list[1]
+        kinit_call = mock_run.call_args_list[0]
         self.assertNotIn(self._PASSWORD, kinit_call.args[0])
         self.assertIn(self._PASSWORD, kinit_call.kwargs.get("input", ""))
 
     @patch.object(prepare_kerberos.subprocess, "run")
-    def test_valid_existing_ticket_skips_acquisition(self, mock_run):
-        """Tickets last ~10h; re-acquiring per connection would hammer the KDC."""
-        mock_run.return_value = Mock(
-            returncode=0, stdout="", stderr=""
-        )  # klist -s: valid
+    def test_a_ticket_is_always_acquired_rather_than_reused(self, mock_run):
+        """No reuse probe. Each connection gets a fresh NamedTemporaryFile ccache, so a
+        probe could only ever hit a *concurrent* connection's cache via the shared
+        KRB5CCNAME and reuse its ticket under a different service principal."""
+        mock_run.return_value = Mock(returncode=0, stdout="", stderr="")
+        self._resolve(password=self._PASSWORD)
         self._resolve(password=self._PASSWORD)
 
-        self.assertEqual(1, mock_run.call_count, "expected only the klist probe")
-        self.assertEqual("klist", mock_run.call_args_list[0].args[0][0])
+        self.assertEqual(2, mock_run.call_count)
+        for call in mock_run.call_args_list:
+            self.assertEqual("kinit", call.args[0][0])
 
     # ── Failure handling ──────────────────────────────────────────────
 
     @patch.object(prepare_kerberos.subprocess, "run")
     def test_kinit_failure_raises_without_echoing_the_password(self, mock_run):
-        mock_run.side_effect = [
-            Mock(returncode=1, stdout="", stderr=""),
-            Mock(returncode=1, stdout="", stderr="kinit: Password incorrect"),
-        ]
+        mock_run.return_value = Mock(
+            returncode=1, stdout="", stderr="kinit: Password incorrect"
+        )
         with self.assertRaises(CtpPipelineError) as ctx:
             self._resolve(password=self._PASSWORD)
 
@@ -693,10 +702,7 @@ class TestSqlServerKerberosTgtGuard(TestCase):
 
     @patch.object(prepare_kerberos.subprocess, "run")
     def test_kinit_timeout_is_reported_as_a_kdc_reachability_problem(self, mock_run):
-        mock_run.side_effect = [
-            Mock(returncode=1, stdout="", stderr=""),
-            subprocess.TimeoutExpired(cmd="kinit", timeout=30),
-        ]
+        mock_run.side_effect = subprocess.TimeoutExpired(cmd="kinit", timeout=30)
         with self.assertRaises(CtpPipelineError) as ctx:
             self._resolve(password=self._PASSWORD)
 
@@ -707,10 +713,7 @@ class TestSqlServerKerberosTgtGuard(TestCase):
     @patch.object(prepare_kerberos.subprocess, "run")
     def test_missing_kinit_binary_is_actionable(self, mock_run):
         """krb5-user is a deployment prerequisite; say so rather than surfacing ENOENT."""
-        mock_run.side_effect = [
-            Mock(returncode=1, stdout="", stderr=""),
-            FileNotFoundError("kinit"),
-        ]
+        mock_run.side_effect = FileNotFoundError("kinit")
         with self.assertRaises(CtpPipelineError) as ctx:
             self._resolve(password=self._PASSWORD)
         self.assertIn("krb5", str(ctx.exception).lower())
@@ -718,18 +721,15 @@ class TestSqlServerKerberosTgtGuard(TestCase):
     # ── Single-flight ─────────────────────────────────────────────────
 
     @patch.object(prepare_kerberos.subprocess, "run")
-    def test_concurrent_threads_acquire_only_once(self, mock_run):
-        """SDD §5.3: threads in one worker can hit a cold cache together. Without a lock
-        they each kinit, hammering the KDC and racing on the same ccache file."""
+    def test_concurrent_threads_each_acquire_into_their_own_cache(self, mock_run):
+        """Every connection gets its own ccache, so every one must acquire -- the lock keeps
+        each KRB5CCNAME write paired with its own kinit rather than skipping work."""
         kinit_calls = []
+        ccache_at_kinit = []
 
         def _fake_run(argv, **kwargs):
-            if argv[0] == "klist":
-                # Cold until the first kinit completes.
-                return Mock(
-                    returncode=1 if not kinit_calls else 0, stdout="", stderr=""
-                )
             kinit_calls.append(argv)
+            ccache_at_kinit.append(os.environ.get("KRB5CCNAME"))
             time.sleep(0.05)  # widen the window a race would exploit
             return Mock(returncode=0, stdout="", stderr="")
 
@@ -750,6 +750,7 @@ class TestSqlServerKerberosTgtGuard(TestCase):
             t.join()
 
         self.assertEqual([], errors)
-        self.assertEqual(
-            1, len(kinit_calls), f"expected one kinit, got {len(kinit_calls)}"
-        )
+        self.assertEqual(8, len(kinit_calls))
+        # The pairing is what the lock buys: an interleaved env write would make two kinits
+        # target the same cache.
+        self.assertEqual(8, len(set(ccache_at_kinit)))

@@ -36,7 +36,9 @@ from apollo.integrations.ctp.registry import CtpRegistry
 _DC_PORT = "1433"
 
 _DC_LOGIN_TIMEOUT = 15
-_DC_QUERY_TIMEOUT = 14 * 60
+# Deliberately NOT the 840s default both sides fall back to -- a default here would
+# pass whether or not the value actually survived the hop.
+_DC_QUERY_TIMEOUT = 600
 
 
 def _dc_payload(**connect_args_overrides) -> dict:
@@ -117,6 +119,10 @@ class SqlServerDcContractTest(TestCase):
         SqlServerOdbcArgs did not declare fields the base field map emits."""
         args = self._resolve(_dc_payload(keytab_base64="a2V5dGFi"))
         self.assertEqual(_DC_LOGIN_TIMEOUT, args["login_timeout"])
+        # The collector spells this `query_timeout` while the mapper reads
+        # `query_timeout_in_seconds`. Asserted with a NON-default value: both sides default
+        # to 840, so a default would pass whether or not the value actually survived.
+        self.assertEqual(_DC_QUERY_TIMEOUT, args["query_timeout_in_seconds"])
 
     def test_a_string_port_is_accepted(self):
         """The collector types port as a string. The mapper interpolates it into SERVER,

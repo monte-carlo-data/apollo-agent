@@ -38,7 +38,11 @@ _SQL_SERVER_BASE_FIELD_MAP = {
     "PWD": "{{ raw.password }}",
     # Timeout fields — not ODBC params; proxy clients pop these before building the connection string
     "login_timeout": "{{ raw.login_timeout | default(none) }}",
-    "query_timeout_in_seconds": "{{ raw.query_timeout_in_seconds | default(none) }}",
+    # The collector sends `query_timeout`; accept both so an override is not silently
+    # dropped back to the 840s default that happens to match on each side.
+    "query_timeout_in_seconds": (
+        "{{ raw.query_timeout_in_seconds | default(raw.query_timeout | default(none)) }}"
+    ),
 }
 
 # Windows Authentication (Kerberos) — PRO-3016.
@@ -177,8 +181,9 @@ _SQL_SERVER_CONNECT_ARGS_DICT_SCHEMA = {
             "keytab_base64": {"type": "string", "required": True, "empty": False},
         },
         # Windows Authentication, password form — for customers who cannot readily
-        # produce a keytab. oneof_schema also gives us the keytab/password mutual
-        # exclusion for free: supplying both matches neither variant.
+        # produce a keytab. oneof_schema also gives the keytab/password mutual exclusion
+        # for free: allow_unknown propagates, so supplying both satisfies two variants and
+        # oneof requires exactly one.
         {
             **_SQL_SERVER_KERBEROS_FIELDS,
             "password": {"type": "string", "required": True, "empty": False},

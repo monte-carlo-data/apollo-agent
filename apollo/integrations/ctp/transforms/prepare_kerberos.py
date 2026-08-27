@@ -5,6 +5,7 @@ import stat
 import subprocess
 import tempfile
 import threading
+import uuid
 
 from apollo.integrations.ctp.errors import CtpPipelineError
 from apollo.integrations.ctp.models import PipelineState, TransformStep
@@ -33,28 +34,23 @@ _KRB5CCNAME = "KRB5CCNAME"
 #
 # The password form therefore needs a file cache the two processes can share. Prefer a
 # tmpfs directory so the TGT still stays off durable disk.
-_CCACHE_MEMORY = "MEMORY:"
+#
+# The MEMORY residual is per-connection: a bare "MEMORY:" resolves to the same in-process
+# cache, so a later connection would find the previous TGT and the client-keytab
+# auto-acquire -- which only fires on an empty cache -- would never run.
+_CCACHE_MEMORY_PREFIX = "MEMORY:"
 _TMPFS_DIRS = ("/dev/shm", "/run/shm")
 
-# Single-flight lock for TGT acquisition. SDD §5.3: DB operations run in long-lived
-# workers with many threads, so several can find a cold cache at the same moment. Without
-# this they each shell out to kinit -- hammering the KDC and racing to write the same
-# ccache file. One lock per process is the whole coordination requirement; there is
-# deliberately no cross-process or cross-pod renewer.
+# Serializes pointing KRB5CCNAME at a connection's cache and running kinit against it.
+# Both are needed: KRB5CCNAME is process-global and the agent runs 8 gunicorn threads per
+# worker, so a concurrent connection overwriting it between the two would send kinit into
+# the wrong cache. Note this does not cover the later pyodbc.connect, which reads the same
+# variable -- see the class docstring.
 _TGT_LOCK = threading.Lock()
 
 # Bounded so an unreachable KDC surfaces as a clear error instead of hanging a worker
 # thread for the operation's whole timeout.
 _KINIT_TIMEOUT_SECONDS = 30
-
-
-def reset_tgt_state_for_testing() -> None:
-    """Release the acquisition lock if a test left it held. Tests only."""
-    if _TGT_LOCK.locked():  # pragma: no cover - defensive
-        try:
-            _TGT_LOCK.release()
-        except RuntimeError:
-            pass
 
 
 # dns_lookup_kdc=false with an explicit kdc means no SRV lookups; rdns=false means no
@@ -84,8 +80,10 @@ class PrepareKerberosTransform(Transform):
     """Assemble the Kerberos runtime for a Windows-authentication connection.
 
     Writes a krb5.conf, materialises the keytab when one is supplied, and exports the
-    MIT environment variables that point libkrb5 at both. Sets ``derived[<enabled>]``
-    so the mapper can emit ``Trusted_Connection`` and drop ``UID``/``PWD``.
+    MIT environment variables that point libkrb5 at both. The connection-string change
+    (``Trusted_Connection`` on, ``UID``/``PWD`` dropped) comes from the step's own
+    ``field_map`` rather than a derived value -- see ``_KERBEROS_STEP`` in
+    ``ctp/defaults/sql_server.py``.
 
     One transform rather than a composition of ``write_ini_file`` + ``tmp_file_write``
     for two reasons: krb5.conf is not the flat ``[section]`` shape ``write_ini_file``
@@ -96,6 +94,15 @@ class PrepareKerberosTransform(Transform):
     Conditionality is the step's job, not this transform's -- the config guards it with
     ``when``, so reaching ``_execute`` already means Windows authentication was asked
     for and the required fields are genuinely required.
+
+    KNOWN LIMITATION. ``KRB5_CONFIG`` / ``KRB5CCNAME`` / ``KRB5_CLIENT_KTNAME`` are
+    process-global and the agent runs 8 threads per worker. Setting them and running kinit
+    is serialized (``_TGT_LOCK``), but the later ``pyodbc.connect`` reads the same variables
+    without the lock, so two concurrent connections under *different* principals or realms
+    can have one read the other's values. Same-principal traffic -- the common case -- is
+    unaffected, since every connection writes identical values. Closing it properly means
+    handing the paths to the proxy client and setting the environment around the connect
+    call instead of here.
 
     Input keys:
         realm:         Kerberos realm (required)
@@ -167,21 +174,17 @@ class PrepareKerberosTransform(Transform):
             # daemon, and no ticket-lifecycle code in the agent (SDD §5.3). Because that
             # happens in-process, an in-memory cache is sufficient and keeps the ticket
             # off disk entirely.
-            os.environ[_KRB5CCNAME] = _CCACHE_MEMORY
+            os.environ[_KRB5CCNAME] = f"{_CCACHE_MEMORY_PREFIX}{uuid.uuid4().hex}"
             keytab_path = self._write_keytab(str(keytab_base64), step.type)
             state.temp_files.append(keytab_path)
             os.environ[_KRB5_CLIENT_KTNAME] = keytab_path
         else:
             # No library-managed equivalent exists for a stored password, so the caller
             # runs kinit -- a separate process, which cannot share an in-memory cache.
-            # Hence a file cache here; see the _CCACHE_MEMORY comment above.
+            # Hence a file cache here; see the cache-type comment above.
             ccache_path = self._create_ccache_file()
             state.temp_files.append(ccache_path)
-            os.environ[_KRB5CCNAME] = f"FILE:{ccache_path}"
-            # Clear any inherited keytab so a stale one from another connection cannot
-            # silently satisfy this one.
-            os.environ.pop(_KRB5_CLIENT_KTNAME, None)
-            self._ensure_tgt(str(principal), str(password), step.type)
+            self._ensure_tgt(str(principal), str(password), step.type, ccache_path)
 
     @staticmethod
     def _render(step: TransformStep, state: PipelineState, key: str):
@@ -260,24 +263,34 @@ class PrepareKerberosTransform(Transform):
                 step_name=step_name,
                 message="keytab decoded to zero bytes",
             )
+        # tmpfs first, like the ccache: the keytab outlives the ticket, so putting the
+        # ticket in memory while the keytab lands on the writable layer is backwards.
+        for directory in _TMPFS_DIRS:
+            if os.path.isdir(directory):
+                return cls._write_secure_temp_file_in(raw, ".keytab", directory)
         return cls._write_secure_temp_file(raw, ".keytab")
 
     @classmethod
-    def _ensure_tgt(cls, principal: str, password: str, step_name: str) -> None:
-        """Acquire a TGT from the password if the credential cache lacks a valid one.
+    def _ensure_tgt(
+        cls, principal: str, password: str, step_name: str, ccache_path: str
+    ) -> None:
+        """Point KRB5CCNAME at this connection's cache and acquire a TGT from the password.
 
-        Only the password form needs this. The keytab form relies on MIT Kerberos'
-        default *client* keytab, where GSSAPI acquires and refreshes the ticket itself.
+        Only the password form needs this; the keytab form lets GSSAPI acquire from the
+        client keytab. Both steps run under one lock because KRB5CCNAME is process-global
+        and 8 gunicorn threads share it: a concurrent connection overwriting it between
+        them would send this kinit into the other connection's cache.
 
-        Acquisition is a KDC round trip and tickets last ~10h, so this checks first and
-        usually does nothing: cost is bounded by process count x ticket lifetime, not by
-        connection count.
+        Acquisition is unconditional. The cache was created empty just above and is private
+        to this connection, so there is never an existing ticket to find -- a probe could
+        only ever hit a concurrent connection's cache and reuse it under a different
+        service principal.
         """
         with _TGT_LOCK:
-            # Re-check inside the lock: another thread may have acquired while this one
-            # waited, which is the entire point of holding it.
-            if cls._has_valid_tgt():
-                return
+            os.environ[_KRB5CCNAME] = f"FILE:{ccache_path}"
+            # Clear any inherited keytab so a stale one from another connection cannot
+            # silently satisfy this one.
+            os.environ.pop(_KRB5_CLIENT_KTNAME, None)
 
             try:
                 result = subprocess.run(
@@ -320,26 +333,6 @@ class PrepareKerberosTransform(Transform):
                     step_name=step_name,
                     message=f"could not acquire a Kerberos ticket: {detail}",
                 )
-
-    @staticmethod
-    def _has_valid_tgt() -> bool:
-        """True when the cache in KRB5CCNAME holds an unexpired ticket.
-
-        ``klist -s`` is the standard silent probe: exit 0 means a valid ticket. A missing
-        klist is treated as "no ticket" so the kinit path produces the actionable
-        krb5-user error rather than this one.
-        """
-        try:
-            return (
-                subprocess.run(
-                    ["klist", "-s"],
-                    capture_output=True,
-                    timeout=_KINIT_TIMEOUT_SECONDS,
-                ).returncode
-                == 0
-            )
-        except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
-            return False
 
 
 TransformRegistry.register("prepare_kerberos", PrepareKerberosTransform)
