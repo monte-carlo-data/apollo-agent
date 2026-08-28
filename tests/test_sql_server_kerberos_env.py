@@ -378,3 +378,70 @@ class TestKerberosParamsContract(TestCase):
         to something like "secret" would keep every other test green while exposing it.
         """
         self.assertIn("pass", kerberos_env._ATTR_PASSWORD)
+
+
+class TestOtherKerberosConsumersDuringTheWindow(_KerberosEnvTestBase):
+    """What a non-SQL-Server Kerberos consumer sees while a connect is in progress.
+
+    Answers review F1 on #379. The lock is private to sql_server_kerberos_env, so it
+    serializes SQL Server Windows-auth connects against each other and not against other
+    libkrb5 consumers -- Hive and Impala with auth_mechanism=GSSAPI read the same three
+    variables and nothing else in the agent manages them.
+
+    These tests pin the actual behaviour rather than leaving it as a hypothesis: the
+    exposure is real, and it is bounded to the connect window.
+    """
+
+    @staticmethod
+    def _other_consumer_view() -> dict:
+        """What libkrb5 reads at connect time for any other integration."""
+        return {k: os.environ.get(k) for k in _MANAGED}
+
+    @patch.object(kerberos_env.subprocess, "run")
+    def test_another_consumer_reads_our_config_during_the_connect(self, mock_run):
+        """CONFIRMED EXPOSURE, not a regression guard.
+
+        If this ever starts failing because another consumer no longer sees our values,
+        that is the shared-lock fix landing -- update the module docstring rather than
+        "fixing" the test.
+        """
+        mock_run.return_value = Mock(returncode=0, stdout="", stderr="")
+        inside, release = threading.Event(), threading.Event()
+        observed: dict = {}
+
+        def sql_server_connect():
+            with kerberos_environment(self._keytab_params()):
+                inside.set()
+                release.wait(timeout=5)
+
+        def other_consumer():
+            inside.wait(timeout=5)
+            observed.update(self._other_consumer_view())
+            release.set()
+
+        threads = [
+            threading.Thread(target=sql_server_connect),
+            threading.Thread(target=other_consumer),
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=10)
+
+        self.assertEqual("/tmp/krb5-test.conf", observed["KRB5_CONFIG"])
+        self.assertEqual("MEMORY:abc123", observed["KRB5CCNAME"])
+        self.assertEqual("/tmp/test.keytab", observed["KRB5_CLIENT_KTNAME"])
+
+    @patch.object(kerberos_env.subprocess, "run")
+    def test_the_exposure_is_bounded_to_the_connect(self, mock_run):
+        """The other half, and the reason this is a narrow window rather than a broken
+        agent: once the connect returns, another consumer sees the environment it had.
+        """
+        mock_run.return_value = Mock(returncode=0, stdout="", stderr="")
+        os.environ["KRB5_CONFIG"] = "/etc/krb5.conf"
+
+        with kerberos_environment(self._keytab_params()):
+            pass
+
+        self.assertEqual("/etc/krb5.conf", self._other_consumer_view()["KRB5_CONFIG"])
+        self.assertIsNone(self._other_consumer_view()["KRB5_CLIENT_KTNAME"])
