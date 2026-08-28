@@ -60,6 +60,12 @@ RUN echo "deb [arch=amd64,arm64 signed-by=/etc/apt/keyrings/microsoft.gpg] https
 RUN apt-get update
 RUN ACCEPT_EULA=Y apt-get install -y msodbcsql17 unixodbc unixodbc-dev
 
+# krb5-user provides kinit, which SQL Server Windows Authentication needs on the password
+# credential form -- there is no library auto-acquire for a stored password. The keytab
+# form does not need it (GSSAPI acquires in-process via KRB5_CLIENT_KTNAME), and the
+# GSSAPI libraries themselves already arrive as an msodbcsql17 dependency.
+RUN apt-get install -y --no-install-recommends krb5-user
+
 # Oracle Instant Client for thick mode. libaio is a runtime dependency; on Debian
 # trixie the time_t transition renamed libaio1 -> libaio1t64 (shipping
 # libaio.so.1t64), so add the libaio.so.1 symlink the Oracle libs link against.
@@ -207,6 +213,11 @@ RUN curl https://packages.microsoft.com/config/rhel/7/prod.repo \
     | tee /etc/yum.repos.d/mssql-release.repo
 RUN ACCEPT_EULA=Y dnf install -y msodbcsql17
 
+# kinit, for SQL Server Windows Authentication on the password credential form. This stage
+# has its own base (AL2023, dnf) rather than system-base, so it needs its own install and
+# the package is krb5-workstation, not krb5-user.
+RUN dnf -y install krb5-workstation
+
 # Oracle Instant Client for thick mode.
 ARG ORACLE_IC_ZIP
 ARG ORACLE_IC_URL
@@ -296,6 +307,11 @@ RUN apt-get install -y --no-install-recommends libcrypt1
 # old Debian 12 base the ODBC stack had to be held at 2.3.11-2+deb12u1 to keep
 # msodbcsql17 installable, which also blocked security updates for those packages.
 RUN ACCEPT_EULA=Y apt-get install -y --no-install-recommends msodbcsql17 unixodbc unixodbc-dev
+
+# kinit, for SQL Server Windows Authentication on the password credential form. Needed
+# here as well as in system-base and lambda: this stage has its own base image, so nothing
+# is inherited. Three bases, three installs; see integrations/db/CLAUDE.md.
+RUN apt-get install -y --no-install-recommends krb5-user
 
 # Upgrade everything else to pick up OS security fixes (glibc, dpkg, xorg-server,
 # etc.) on every rebuild rather than waiting for the base image to be republished.

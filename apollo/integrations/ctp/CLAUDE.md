@@ -70,17 +70,30 @@ than stringifying it. `OracleProxyClient` then pops `ssl_options` out of `connec
 an `oracledb.connect` arg) and builds the thin `ssl.SSLContext` / thick wallet from it — the
 resolution can't happen in the CTP because it depends on runtime/process state (thin vs thick).
 
+**SQL Server Windows authentication** (`sql-server` with `auth_type: kerberos`) — the
+reference for a transform whose artefacts are consumed as **process state**. The
+`prepare_kerberos` step writes the krb5.conf, the keytab and the credential cache, then
+passes their locations through as a nested `kerberos` dict (the same passthrough shape as
+Oracle's `ssl_options` above). It deliberately sets **no environment variables**:
+`KRB5_CONFIG` / `KRB5CCNAME` / `KRB5_CLIENT_KTNAME` are process-global and are also read by
+Hive and Impala with `auth_mechanism=GSSAPI`, so setting them at CTP time left them
+pointing at a single-realm config that gets deleted when the client closes.
+`integrations/db/sql_server_kerberos_env.py` sets them around `pyodbc.connect` and restores
+the previous values, and holds a lock for that whole scope because the variables are
+shared. **If you write a transform whose output is environment, follow this split** — the
+transform produces paths, the proxy client owns the mutation and its undo.
+
 **Power BI** (`power-bi` connection type) — the reference for the **deferred / host-scoped auth
-pattern**. Unlike every other enrolled connector, the CTP does *not* resolve a token: its config
+pattern**. Unlike every other enrolled connector, the CTP does _not_ resolve a token: its config
 in `defaults/power_bi.py` has `steps=[]` and simply passes the raw MSAL credentials
 (`auth_mode` + `client_id`/`tenant_id`/`client_secret` or `username`/`password`) — or a legacy
-pre-shaped `token` — straight through to `connect_args`. Token acquisition happens *per request*
+pre-shaped `token` — straight through to `connect_args`. Token acquisition happens _per request_
 in `PowerBiProxyClient` (`apollo/integrations/powerbi/`), which overrides
 `HttpProxyClient._attach_auth_header(headers, url)` and delegates to `PowerBiTokenProvider`
 (`apollo/integrations/powerbi/msal_auth.py`). The provider selects the MSAL scope by destination
 host — `api.powerbi.com` → the Power BI API scope, `api.fabric.microsoft.com` → the Microsoft
 Fabric scope, any other host → no token — minting and caching a token per scope. This is the
-precedent for connectors whose credential *audience* is only known at request time, not CTP time.
+precedent for connectors whose credential _audience_ is only known at request time, not CTP time.
 (The generic `resolve_msal_token` transform that previously minted the Power BI token at CTP time
 was removed with this change; `msal_auth.acquire_token` is now the single home for the MSAL logic.)
 
