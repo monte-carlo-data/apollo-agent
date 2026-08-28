@@ -19,10 +19,8 @@ import -- the repos have no shared package -- so they must be updated alongside 
 function. The mirror test on the collector side asserts it produces this shape.
 """
 
-import subprocess
 from contextlib import suppress
 from unittest import TestCase
-from unittest.mock import patch
 
 from cerberus import Validator
 
@@ -61,10 +59,6 @@ def _dc_payload(**connect_args_overrides) -> dict:
         "login_timeout": _DC_LOGIN_TIMEOUT,
         "query_timeout": _DC_QUERY_TIMEOUT,
     }
-
-
-def _ok_kinit(*args, **kwargs):
-    return subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
 
 
 class SqlServerDcContractTest(TestCase):

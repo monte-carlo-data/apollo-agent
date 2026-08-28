@@ -2,13 +2,9 @@
 import os
 import pathlib
 import stat
-import subprocess
-import threading
-import unittest
-import time
 from contextlib import suppress
 from unittest import TestCase
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 from apollo.integrations.ctp.errors import CtpPipelineError
 from apollo.integrations.ctp.transforms import prepare_kerberos
@@ -447,6 +443,48 @@ class TestSqlServerKerberosCtp(TestCase):
         self.assertEqual(
             set(flat["kerberos"]), set(wrapped["connect_args"]["kerberos"])
         )
+
+    # ── Identifier validation ─────────────────────────────────────────
+
+    def test_a_newline_in_the_realm_cannot_inject_krb5_conf_directives(self):
+        """realm/kdc are interpolated into a krb5.conf that libkrb5 then reads.
+
+        A newline would let a caller append arbitrary directives -- e.g. redirecting
+        default_ccache_name to a path they control. The monolith validates these, but
+        self-hosted credentials never pass through it: they go from the customer's secret
+        store straight to the agent, so this is the only check on that path.
+        """
+        with self.assertRaises(CtpPipelineError) as ctx:
+            self._resolve_kerberos(
+                realm="EVIL\n    default_ccache_name = FILE:/tmp/stolen",
+            )
+        self.assertIn("realm", str(ctx.exception))
+
+    def test_a_newline_in_the_kdc_is_rejected(self):
+        with self.assertRaises(CtpPipelineError) as ctx:
+            self._resolve_kerberos(kdc="kdc.example.com\n    udp_preference_limit = 1")
+        self.assertIn("kdc", str(ctx.exception))
+
+    def test_a_principal_starting_with_a_dash_is_rejected(self):
+        """kinit would parse it as an option rather than a principal."""
+        with self.assertRaises(CtpPipelineError) as ctx:
+            self._resolve_kerberos(principal="-X")
+        self.assertIn("principal", str(ctx.exception))
+
+    def test_validation_errors_never_echo_the_offending_value(self):
+        """These errors reach the DC and are forwarded to Sentry."""
+        with self.assertRaises(CtpPipelineError) as ctx:
+            self._resolve_kerberos(realm="EVIL\n  default_ccache_name = FILE:/tmp/x")
+        self.assertNotIn("/tmp/x", str(ctx.exception))
+
+    def test_legitimate_identifier_shapes_are_accepted(self):
+        """The guard must not reject real AD values -- a kdc may carry a :port."""
+        params = self._kerberos_params(
+            realm="CORP.EXAMPLE.COM",
+            kdc="dc1.corp.example.com:88",
+            principal="svc-mc/host@CORP.EXAMPLE.COM",
+        )
+        self.assertTrue(params["krb5_config_path"])
 
     # ── Storage medium ────────────────────────────────────────────────
 

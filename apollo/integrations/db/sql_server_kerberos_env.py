@@ -120,7 +120,10 @@ def _acquire_ticket_with_password(principal: str, password: str) -> None:
     """
     try:
         result = subprocess.run(
-            ["kinit", principal],
+            # "--" so a principal beginning with a dash cannot be parsed as an option.
+            # The transform also rejects that shape; both, because self-hosted credentials
+            # reach this path without passing through the transform's validation.
+            ["kinit", "--", principal],
             # stdin, never argv -- argv is readable via /proc by any local process, so a
             # password there leaks outside this one.
             input=password,

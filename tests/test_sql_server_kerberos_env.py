@@ -149,8 +149,10 @@ class TestKerberosTicketAcquisition(_KerberosEnvTestBase):
 
         self.assertEqual(1, mock_run.call_count)
         kinit_argv = mock_run.call_args_list[0].args[0]
-        self.assertEqual("kinit", kinit_argv[0])
-        self.assertIn(_PRINCIPAL, kinit_argv)
+        # Exact argv, not assertIn: the "--" is a security control (a principal beginning
+        # with a dash would otherwise be parsed as an option), and assertIn passes with or
+        # without it.
+        self.assertEqual(["kinit", "--", _PRINCIPAL], kinit_argv)
 
     @patch.object(kerberos_env.subprocess, "run")
     def test_password_is_passed_on_stdin_never_in_argv(self, mock_run):

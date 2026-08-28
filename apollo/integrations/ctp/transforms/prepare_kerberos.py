@@ -1,6 +1,7 @@
 import base64
 import binascii
 import os
+import re
 import stat
 import tempfile
 import uuid
@@ -30,6 +31,18 @@ from apollo.integrations.ctp.transforms.registry import TransformRegistry
 # The MEMORY residual is per-connection: a bare "MEMORY:" resolves to the same in-process
 # cache, so a later connection would find the previous TGT and the client-keytab
 # auto-acquire -- which only fires on an empty cache -- would never run.
+# Kerberos identifiers are interpolated into a krb5.conf that libkrb5 reads, and the
+# principal becomes a kinit argv entry. A newline in realm/kdc would append arbitrary
+# directives (e.g. redirecting default_ccache_name); a leading dash in a principal would be
+# parsed by kinit as an option. Mirrors _KERBEROS_FIELD_PATTERNS in the monolith's
+# credentials.py -- duplicated deliberately, because self-hosted credentials never pass
+# through the monolith: they go from the customer's secret store straight to the agent.
+_IDENTIFIER_PATTERNS = {
+    "realm": re.compile(r"\A[A-Za-z0-9][A-Za-z0-9._-]*\Z"),
+    "kdc": re.compile(r"\A[A-Za-z0-9][A-Za-z0-9._-]*(?::[0-9]{1,5})?\Z"),
+    "principal": re.compile(r"\A[A-Za-z0-9][A-Za-z0-9._/@-]*\Z"),
+}
+
 _CCACHE_MEMORY_PREFIX = "MEMORY:"
 _TMPFS_DIRS = ("/dev/shm", "/run/shm")
 
@@ -117,6 +130,16 @@ class PrepareKerberosTransform(Transform):
                         f"'{name}' is required when auth_type is kerberos "
                         "(Windows authentication)"
                     ),
+                )
+
+        for name, value in (("realm", realm), ("kdc", kdc), ("principal", principal)):
+            if not _IDENTIFIER_PATTERNS[name].match(str(value)):
+                # Names the field but never echoes the value: CTP errors reach the DC and
+                # are forwarded to Sentry.
+                raise CtpPipelineError(
+                    stage="transform_execute",
+                    step_name=step.type,
+                    message=f"'{name}' contains characters that are not valid in a Kerberos identifier",
                 )
 
         # Both forms authenticate as the same principal, so accepting both leaves it
