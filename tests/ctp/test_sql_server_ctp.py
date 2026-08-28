@@ -519,6 +519,28 @@ class TestSqlServerKerberosCtp(TestCase):
         )
         self.assertTrue(params["krb5_config_path"])
 
+    def test_principals_ending_in_a_dollar_are_accepted(self):
+        """gMSA and machine accounts end in "$".
+
+        Microsoft recommends group Managed Service Accounts for SQL Server precisely
+        because AD rotates their passwords, so rejecting them would block a recommended
+        configuration -- a worse outcome than the injection this validation defends against.
+        A "$" cannot inject anything: it is not special to krb5.conf and not an option to
+        kinit.
+        """
+        for principal in (
+            "mssql-gmsa$@CORP.EXAMPLE.COM",
+            "SQLHOST$@CORP.EXAMPLE.COM",
+        ):
+            with self.subTest(principal=principal):
+                params = self._kerberos_params(principal=principal)
+                self.assertTrue(params["krb5_config_path"])
+
+    def test_a_realm_with_an_underscore_is_accepted(self):
+        """Legacy AD domains carry underscores."""
+        params = self._kerberos_params(realm="CORP_LEGACY.EXAMPLE.COM")
+        self.assertTrue(params["krb5_config_path"])
+
     # ── Storage medium ────────────────────────────────────────────────
 
     def test_artifacts_prefer_tmpfs_when_available(self):
