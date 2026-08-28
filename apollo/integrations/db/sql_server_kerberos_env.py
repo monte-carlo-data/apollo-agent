@@ -26,10 +26,19 @@ Server Windows-auth connects against *each other* only. It does not protect othe
 consumers in the same process: a Hive or Impala connect with ``auth_mechanism=GSSAPI`` on
 another thread during the locked window reads this connection's single-realm config and
 its ccache, and would fail. Restoration closes the gap between connections, not the one
-during a connection. Closing that too means sharing one lock across every Kerberos
-consumer in the agent, which is only worth doing if those integrations are actually used
-concurrently with SQL Server Windows auth on one agent -- unknown at the time of writing,
-and stated here rather than implied away.
+during a connection. Both halves of this are now confirmed rather than hypothesised, and pinned by
+``TestOtherKerberosConsumersDuringTheWindow``:
+
+- The exposure is real. A consumer reading the environment during the window sees this
+  connection's config, ccache and client keytab -- not its own.
+- It is reachable by configuration, not by rare timing. ``_CLIENT_FACTORY_MAPPING`` serves
+  every connection type from any agent with no per-type gating, and the worker runs 8
+  threads, so one agent holding both a Hive/Impala GSSAPI connection and a SQL Server
+  Windows-auth connection is an ordinary deployment rather than a corner case.
+
+What is *not* established is whether any customer runs that combination today. Closing the
+gap means sharing one lock across every Kerberos consumer in the agent; until then this is
+a known, bounded exposure rather than an unknown one.
 
 The collector has a twin of this module (``kerberos_environment.py`` in data-collector).
 The two are deliberately separate implementations; see that module's docstring.
