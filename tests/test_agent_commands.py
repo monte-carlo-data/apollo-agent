@@ -153,32 +153,44 @@ class AgentCommandsTests(TestCase):
 
 class AgentCommandDunderHardeningTests(TestCase):
     """
-    The command dispatch resolves method names via getattr on the target. Without
-    filtering, an attacker with invoker credentials can walk dunder attributes
-    (``__init__.__globals__["os"].system(...)``) to reach arbitrary code
-    execution. ``_resolve_method`` must reject double-underscore (dunder) method
-    names except a small allow-list the client legitimately dispatches (dict
-    subscript + stringify), while leaving single-underscore method names callable.
+    Pins the dunder guard in ``_resolve_method``: double-underscore method names
+    are rejected except the allow-list the client dispatches (``__getitem__`` /
+    ``__setitem__`` / ``__str__`` / ``__repr__``); single-underscore names pass
+    through. See the guard comment in ``apollo/agent/evaluation_utils.py`` for
+    the full rationale.
     """
 
-    _GADGET_METHOD_NAMES = (
+    # Dunder names that DO resolve on a plain instance. Deleting the guard would
+    # let these through the getattr, so they discriminate the guard from the
+    # not-found fallback (names like ``__globals__``/``__subclasses__`` live on
+    # functions/classes, not instances, and would raise via the fallback with or
+    # without the guard — so they prove nothing here).
+    _INSTANCE_DUNDER_GADGETS = (
         "__init__",
         "__class__",
-        "__globals__",
-        "__builtins__",
-        "__subclasses__",
         "__dict__",
         "__getattribute__",
         "__reduce__",
-        "__mro__",
     )
 
-    def test_resolve_method_rejects_dunder_gadget_names(self):
+    def test_resolve_method_rejects_dunder_names_at_the_guard(self):
         client = SampleProxyClient()
-        for name in self._GADGET_METHOD_NAMES:
+        for name in self._INSTANCE_DUNDER_GADGETS:
             with self.subTest(method=name):
-                with self.assertRaises(AttributeError):
-                    AgentEvaluationUtils._resolve_method(client, name)
+                with self.assertLogs(
+                    _EVALUATION_LOGGER, level=logging.ERROR
+                ) as captured:
+                    with self.assertRaises(AttributeError):
+                        AgentEvaluationUtils._resolve_method(client, name)
+                # The guard rejected it, not the not-found fallback (which would
+                # log "Failed to resolve method"). This is what proves the guard.
+                self.assertTrue(
+                    any(
+                        "Refusing to resolve dunder method" in r.getMessage()
+                        and name in r.getMessage()
+                        for r in captured.records
+                    )
+                )
 
     def test_resolve_method_allows_single_underscore_private_names(self):
         # Single-underscore names cannot start an escape chain (that always
@@ -188,14 +200,6 @@ class AgentCommandDunderHardeningTests(TestCase):
         resolved = AgentEvaluationUtils._resolve_method(client, "_client")
         self.assertIs(resolved, client._client)
 
-    def test_dunder_rejection_logs_error_with_method_name(self):
-        with self.assertLogs(_EVALUATION_LOGGER, level=logging.ERROR) as captured:
-            with self.assertRaises(AttributeError):
-                AgentEvaluationUtils._resolve_method(SampleProxyClient(), "__init__")
-
-        self.assertEqual(1, len(captured.records))
-        self.assertIn("__init__", captured.records[0].getMessage())
-
     def test_resolve_method_allows_safe_dunders(self):
         # data-collector legitimately dispatches these (dict subscript writes,
         # subscript reads, and stringifying a call result).
@@ -204,6 +208,26 @@ class AgentCommandDunderHardeningTests(TestCase):
             with self.subTest(method=name):
                 method = AgentEvaluationUtils._resolve_method(target, name)
                 self.assertTrue(callable(method))
+
+    def test_allowlisted_dunder_dispatches_end_to_end(self):
+        # __setitem__/__getitem__ are load-bearing for aggregating query results;
+        # assert they dispatch through the command path, not just resolve.
+        context = {CONTEXT_VAR_CLIENT: SampleProxyClient()}
+        target = {"seed": 0}  # non-empty so it is used as the explicit target
+
+        set_command = AgentCommand.from_dict(
+            {"method": "__setitem__", "args": ["k", "v"]}
+        )
+        AgentEvaluationUtils._execute_single_command(
+            set_command, context, target=target
+        )
+        self.assertEqual("v", target["k"])
+
+        get_command = AgentCommand.from_dict({"method": "__getitem__", "args": ["k"]})
+        result = AgentEvaluationUtils._execute_single_command(
+            get_command, context, target=target
+        )
+        self.assertEqual("v", result)
 
     def test_exploit_chain_first_hop_rejected(self):
         # The gadget's first hop (`__init__`) must fail before anything runs.
