@@ -26,6 +26,9 @@ class SqlServerOdbcArgs(TypedDict):
     # output.
     login_timeout: NotRequired[int]
     query_timeout_in_seconds: NotRequired[int]
+    # Kerberos artefact locations, popped the same way. A dict, not a string: it is
+    # consumed as process environment, never serialized into the connection string.
+    kerberos: NotRequired[dict]
 
 
 _SQL_SERVER_BASE_FIELD_MAP = {
@@ -38,7 +41,11 @@ _SQL_SERVER_BASE_FIELD_MAP = {
     "PWD": "{{ raw.password }}",
     # Timeout fields — not ODBC params; proxy clients pop these before building the connection string
     "login_timeout": "{{ raw.login_timeout | default(none) }}",
-    "query_timeout_in_seconds": "{{ raw.query_timeout_in_seconds | default(none) }}",
+    # The collector sends `query_timeout`; accept both so an override is not silently
+    # dropped back to the 840s default that happens to match on each side.
+    "query_timeout_in_seconds": (
+        "{{ raw.query_timeout_in_seconds | default(raw.query_timeout | default(none)) }}"
+    ),
 }
 
 # Windows Authentication (Kerberos) — PRO-3016.
@@ -58,9 +65,13 @@ _KERBEROS_STEP = TransformStep(
         "keytab_base64": "{{ raw.keytab_base64 | default(none) }}",
         "password": "{{ raw.password | default(none) }}",
     },
-    output={},
+    output={"kerberos": "kerberos_env"},
     field_map={
         "Trusted_Connection": "yes",
+        # Nested-dict passthrough, following Oracle's ssl_options: SqlServerProxyClient
+        # pops this and sets the KRB5_* variables around pyodbc.connect. They are
+        # process-global and shared with Hive/Impala GSSAPI, so they cannot be set here.
+        "kerberos": "{{ derived.kerberos_env }}",
         # None removes the base field map's entry: AD vouches for the client, so no
         # credential is sent. Leaving PWD would additionally offer the AD service
         # account's password to SQL Server as a SQL login — the very thing customers
@@ -79,6 +90,10 @@ SQL_SERVER_DEFAULT_CTP = CtpConfig(
         field_map={
             **_SQL_SERVER_BASE_FIELD_MAP,
             "MARS_Connection": "Yes",
+            # The collector sends `database` in connect_args on the kerberos path. Omitting
+            # it here dropped the value silently and landed the session in master; the
+            # legacy sql path never surfaced this because it sent a pre-built ODBC string.
+            "DATABASE": "{{ raw.database | default(raw.db_name | default(none)) }}",
         },
     ),
 )
@@ -177,8 +192,9 @@ _SQL_SERVER_CONNECT_ARGS_DICT_SCHEMA = {
             "keytab_base64": {"type": "string", "required": True, "empty": False},
         },
         # Windows Authentication, password form — for customers who cannot readily
-        # produce a keytab. oneof_schema also gives us the keytab/password mutual
-        # exclusion for free: supplying both matches neither variant.
+        # produce a keytab. oneof_schema also gives the keytab/password mutual exclusion
+        # for free: allow_unknown propagates, so supplying both satisfies two variants and
+        # oneof requires exactly one.
         {
             **_SQL_SERVER_KERBEROS_FIELDS,
             "password": {"type": "string", "required": True, "empty": False},

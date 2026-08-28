@@ -2,6 +2,7 @@ import datetime
 import json
 import logging
 import os
+from contextlib import suppress
 from typing import (
     Iterable,
     List,
@@ -21,7 +22,9 @@ from apollo.common.agent.constants import (
 )
 from apollo.agent.logging_utils import LoggingUtils
 from apollo.integrations.db.sql_server_proxy_client import SqlServerProxyClient
-from apollo.integrations.ctp.transforms import prepare_kerberos
+from apollo.common.agent.redact import AgentRedactUtilities
+from apollo.integrations.ctp.registry import CtpRegistry
+from apollo.integrations.db import sql_server_kerberos_env
 from apollo.interfaces.lambda_function.json_log_formatter import JsonLogFormatter
 
 _SQL_SERVER_CREDENTIALS = (
@@ -510,17 +513,19 @@ class SqlServerKerberosCredentialSafetyTests(TestCase):
         self.assertIn("Login failed", error)
         self._assert_no_credential_leak(response)
 
-    @patch.object(prepare_kerberos.subprocess, "run", return_value=Mock(returncode=0))
+    @patch.object(
+        sql_server_kerberos_env.subprocess, "run", return_value=Mock(returncode=0)
+    )
     @patch("pyodbc.connect")
     def test_password_form_password_never_reaches_the_response(
         self, mock_connect, _mock_subprocess
     ):
         """The password is for kinit against the KDC; it must not appear anywhere.
 
-        subprocess is stubbed to report an existing valid ticket. Without that the CTP's
-        TGT guard fails first (no reachable KDC in a unit test) and pyodbc.connect is
-        never reached -- the assertion would still pass while testing nothing about the
-        driver path, so mock_connect.assert_called_once() holds it honest.
+        subprocess is stubbed so kinit succeeds. Without that the CTP's TGT acquisition
+        fails first (no reachable KDC in a unit test) and pyodbc.connect is never reached
+        -- the assertion would still pass while testing nothing about the driver path, so
+        mock_connect.assert_called_once() holds it honest.
         """
 
         def _raise_echoing_connection_string(connection_string, *args, **kwargs):
@@ -536,6 +541,46 @@ class SqlServerKerberosCredentialSafetyTests(TestCase):
 
         mock_connect.assert_called_once()
         self._assert_no_credential_leak(response)
+
+    def test_password_survives_in_connect_args_but_not_through_the_redactor(self):
+        """The password form now carries its secret in the resolved connect_args.
+
+        Before the environment moved to the proxy client, the transform consumed the
+        password to run kinit and the mapper emitted no credential at all -- the resolved
+        structure was inherently clean. It is not any more: kinit runs at connect time, so
+        the password rides in connect_args["kerberos"] until then.
+
+        That makes the redactor load-bearing rather than incidental. It only holds because
+        redact_attributes recurses into nested dicts and "pass" is in its attribute list;
+        renaming the key or flattening the recursion would silently expose the secret.
+        """
+        temp_files: list[str] = []
+        resolved = CtpRegistry.resolve(
+            "sql-server",
+            {
+                "auth_type": "kerberos",
+                "host": "labsql.mclab.internal",
+                "port": 1433,
+                "realm": "MCLAB.INTERNAL",
+                "kdc": "labdc.mclab.internal",
+                "principal": "svc-mc@MCLAB.INTERNAL",
+                "password": self._PASSWORD,
+            },
+            temp_files=temp_files,
+        )
+        for path in temp_files:
+            with suppress(OSError):
+                os.unlink(path)
+
+        # Documents the exposure rather than asserting it is absent -- the design needs it.
+        self.assertEqual(
+            self._PASSWORD, resolved["connect_args"]["kerberos"]["password"]
+        )
+        # ...and pins the control that keeps it out of logs and responses.
+        redacted = json.dumps(
+            AgentRedactUtilities.standard_redact(resolved), default=str
+        )
+        self.assertNotIn(self._PASSWORD, redacted)
 
     # ── Log safety (Lambda / Datadog path) ────────────────────────────
 
@@ -755,10 +800,18 @@ class SqlServerKerberosErrorTaxonomyTests(TestCase):
         the pipeline's temp files in an `except BaseException` — this asserts the
         enriched re-raise from the error taxonomy does not bypass that.
         """
+        # Captured during the connect, not after: the environment is scoped to the
+        # connect and restored on the way out, so KRB5_CLIENT_KTNAME is gone by the time
+        # execute_operation returns. Reading it here also proves it was set when the
+        # driver ran.
+        observed: dict[str, Optional[str]] = {}
+
+        def _fail_and_capture(*args, **kwargs):
+            observed["keytab"] = os.environ.get("KRB5_CLIENT_KTNAME")
+            raise pyodbc.Error("HY000", "[HY000] Cannot generate SSPI context")
+
         with patch("pyodbc.connect") as mock_connect:
-            mock_connect.side_effect = pyodbc.Error(
-                "HY000", "[HY000] Cannot generate SSPI context"
-            )
+            mock_connect.side_effect = _fail_and_capture
             self._agent.execute_operation(
                 "sql-server",
                 "run_query",
@@ -766,8 +819,13 @@ class SqlServerKerberosErrorTaxonomyTests(TestCase):
                 {"connect_args": self._kerberos_credentials()},
             )
 
-        keytab_path = os.environ.get("KRB5_CLIENT_KTNAME")
+        keytab_path = observed.get("keytab")
         self.assertIsNotNone(keytab_path, "the pipeline should have written a keytab")
+        self.assertNotIn(
+            "KRB5_CLIENT_KTNAME",
+            os.environ,
+            "the connection must not leave KRB5_* set for other integrations",
+        )
         self.assertFalse(
             os.path.exists(keytab_path),
             f"keytab survived a failed connection: {keytab_path}",
