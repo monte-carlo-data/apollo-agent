@@ -43,7 +43,10 @@ from contextlib import contextmanager
 from typing import (
     Any,
     Generator,
+    NotRequired,
     Optional,
+    Required,
+    TypedDict,
 )
 
 logger = logging.getLogger(__name__)
@@ -60,8 +63,30 @@ _KINIT_TIMEOUT_SECONDS = 30
 # Held for the entire scope, not just the kinit. See the module docstring.
 _KERBEROS_ENV_LOCK = threading.Lock()
 
-# Keys the transform passes through connect_args.
+# The contract with prepare_kerberos. Typed rather than stringly-keyed because it spans two
+# modules with no call edge between them, so a rename on one side would otherwise fail
+# silently at runtime with no type-checker signal. It also carries the password, which stays
+# out of logs only because AgentRedactUtilities matches the key substring "pass" -- naming
+# the key here makes that dependency visible instead of incidental.
+#
+# Follows the SslOptions precedent: a CTP transform importing a shared type from
+# integrations/db, rather than each side declaring its own copy.
 ATTR_KERBEROS = "kerberos"
+
+
+class KerberosConnectionParams(TypedDict):
+    """Locations of the artifacts prepare_kerberos materialized, plus the password form's
+    credential. ``client_keytab_path`` and ``principal``/``password`` are mutually
+    exclusive: the keytab form supplies the former, the password form the latter two."""
+
+    krb5_config_path: Required[str]
+    # "MEMORY:<uuid>" for the keytab form, "FILE:<path>" for the password form.
+    ccache: Required[str]
+    client_keytab_path: NotRequired[str]
+    principal: NotRequired[str]
+    password: NotRequired[str]
+
+
 _ATTR_KRB5_CONFIG_PATH = "krb5_config_path"
 _ATTR_CCACHE = "ccache"
 _ATTR_CLIENT_KEYTAB_PATH = "client_keytab_path"

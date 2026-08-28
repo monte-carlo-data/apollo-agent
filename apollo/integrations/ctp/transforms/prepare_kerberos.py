@@ -11,6 +11,7 @@ from apollo.integrations.ctp.models import PipelineState, TransformStep
 from apollo.integrations.ctp.template import TemplateEngine
 from apollo.integrations.ctp.transforms.base import Transform
 from apollo.integrations.ctp.transforms.registry import TransformRegistry
+from apollo.integrations.db.sql_server_kerberos_env import KerberosConnectionParams
 
 # Credential cache type depends on the credential form, and getting this wrong fails at
 # connect time with a message that does not name the cause.
@@ -171,7 +172,7 @@ class PrepareKerberosTransform(Transform):
         # was made to avoid.
         state.temp_files.append(krb5_conf_path)
 
-        params: dict[str, str] = {"krb5_config_path": krb5_conf_path}
+        params: KerberosConnectionParams = {"krb5_config_path": krb5_conf_path}
         if keytab_base64:
             # GSSAPI acquires from the client keytab in-process, so an in-memory cache is
             # sufficient and the ticket never touches disk.
