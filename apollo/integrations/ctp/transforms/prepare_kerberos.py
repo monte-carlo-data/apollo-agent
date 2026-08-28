@@ -38,10 +38,20 @@ from apollo.integrations.db.sql_server_kerberos_env import KerberosConnectionPar
 # parsed by kinit as an option. Mirrors _KERBEROS_FIELD_PATTERNS in the monolith's
 # credentials.py -- duplicated deliberately, because self-hosted credentials never pass
 # through the monolith: they go from the customer's secret store straight to the agent.
+# realm and kdc are DNS-shaped, so an allowlist is both safe and accurate for them --
+# neither legitimately carries anything outside this set. Underscores are included for
+# legacy AD domains.
+#
+# The principal is NOT DNS-shaped and an allowlist over-rejects: gMSA and machine accounts
+# end in "$", and Microsoft recommends gMSA for SQL Server because AD rotates the password.
+# Blocking a recommended configuration would be a worse outcome than the injection being
+# defended against, so the principal is checked against the actual threats instead -- a
+# leading dash (kinit reads it as an option) and whitespace or control characters (a
+# newline would inject krb5.conf directives).
 _IDENTIFIER_PATTERNS = {
     "realm": re.compile(r"\A[A-Za-z0-9][A-Za-z0-9._-]*\Z"),
     "kdc": re.compile(r"\A[A-Za-z0-9][A-Za-z0-9._-]*(?::[0-9]{1,5})?\Z"),
-    "principal": re.compile(r"\A[A-Za-z0-9][A-Za-z0-9._/@-]*\Z"),
+    "principal": re.compile(r"\A[^\s\x00-\x1f\x7f-][^\s\x00-\x1f\x7f]*\Z"),
 }
 
 _CCACHE_MEMORY_PREFIX = "MEMORY:"
