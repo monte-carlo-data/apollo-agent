@@ -7,6 +7,8 @@ from unittest import TestCase
 from unittest.mock import patch
 
 from apollo.integrations.ctp.errors import CtpPipelineError
+from apollo.integrations.ctp.models import PipelineState
+from apollo.integrations.ctp.template import TemplateEngine
 from apollo.integrations.ctp.transforms import prepare_kerberos
 
 from apollo.credentials.schema import validate
@@ -443,6 +445,37 @@ class TestSqlServerKerberosCtp(TestCase):
         self.assertEqual(
             set(flat["kerberos"]), set(wrapped["connect_args"]["kerberos"])
         )
+
+    # ── Credential values that look like absence ──────────────────────
+
+    def test_a_secret_of_literally_None_is_lost_in_the_template_engine(self):
+        """Documents a known limitation, and pins where it actually lives (review F3 on
+        #379).
+
+        A password or keytab of literally "None" is reported as absent. The reviewer
+        proposed fixing it by dropping the "None"-string case from this transform's
+        _render, but that is not the mechanism: CTP renders through a NativeEnvironment,
+        which literal_evals its output, so "None" becomes Python None inside the template
+        engine before _render is reached.
+
+        The fix therefore belongs in ctp/template.py and would affect every connector, so
+        it is out of scope here. This test exists so the next person does not repeat the
+        same dead-end investigation.
+        """
+        state = PipelineState(raw={"password": "None"}, derived={}, temp_files=[])
+        self.assertIsNone(
+            TemplateEngine.render("{{ raw.password | default(none) }}", state),
+            "if this starts returning the string 'None', template.py changed and the "
+            "transform-level guard is worth revisiting",
+        )
+
+    def test_an_absent_realm_rendering_as_None_is_still_rejected(self):
+        """The reason a naive fix would be worse than the bug: the literal string "None"
+        passes the identifier pattern, so letting it through would write it into the
+        krb5.conf as a real realm."""
+        with self.assertRaises(CtpPipelineError) as ctx:
+            self._resolve_kerberos(realm="None")
+        self.assertIn("realm", str(ctx.exception))
 
     # ── Identifier validation ─────────────────────────────────────────
 

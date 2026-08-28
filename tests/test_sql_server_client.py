@@ -718,6 +718,28 @@ class SqlServerKerberosErrorTaxonomyTests(TestCase):
         )
         self.assertIn("SPN", error)
 
+    def test_spn_derivation_degrades_rather_than_crashing(self):
+        """Review F7 on #379: only the happy path was exercised.
+
+        These branches exist precisely for the malformed-SERVER case, which is when a
+        support engineer most needs a hint rather than a traceback from inside our own
+        error handling.
+        """
+        cases = [
+            # (SERVER value, expected SPN)
+            ("tcp:sql.corp.example.com,1433", "MSSQLSvc/sql.corp.example.com:1433"),
+            # No tcp: prefix -- still recoverable.
+            ("sql.corp.example.com,1433", "MSSQLSvc/sql.corp.example.com:1433"),
+            # No port -- the driver defaults to 1433 and so does the hint.
+            ("tcp:sql.corp.example.com", "MSSQLSvc/sql.corp.example.com:1433"),
+            # Nothing usable: name the service class only.
+            (None, "MSSQLSvc/<host>:<port>"),
+            ("", "MSSQLSvc/<host>:<port>"),
+        ]
+        for server, expected in cases:
+            with self.subTest(server=server):
+                self.assertEqual(expected, SqlServerProxyClient._expected_spn(server))
+
     def test_spn_hint_names_the_expected_spn_so_it_can_be_compared(self):
         """The actionable step is comparing what we asked for against setspn -L."""
         error = self._error_for(

@@ -8,6 +8,7 @@ inherit from `BaseDbProxyClient` (which inherits `BaseProxyClient`).
 ### `connect_args` credential key
 
 The standard credential key for connection details is `connect_args`. The value may be:
+
 - A **string** — a pre-built driver-specific connection string (legacy path, sent by older DCs).
 - A **dict** — a structured map of connection parameters produced by the CTP pipeline
   (preferred path for new integrations).
@@ -19,6 +20,7 @@ See `odbc_string_from_dict` in `tsql_base_db_proxy_client.py` for the ODBC dict�
 ### pyodbc clients
 
 Several clients use `pyodbc` (fabric, azure_database, sql_server). They share:
+
 - `_DATETIMEOFFSET_SQL_TYPE_CODE = -155` — output converter for SQL Server's datetimeoffset type
 - `_handle_datetimeoffset(dto_value)` — converts the raw bytes to a timezone-aware `datetime`
 - `_process_description(col)` — overrides base class to use `col[1].__name__` (pyodbc returns
@@ -68,11 +70,44 @@ Client freezes its trust store at the first `init_oracle_client`, so the wallet 
 single client — per-client cleanup would delete a wallet still needed by later connections. See the
 `oracle_client_config` module docstring for the full rationale.
 
+### Process-global connection state (scoped and restored)
+
+Some drivers take configuration from the **process environment** rather than from
+connection arguments, so it cannot be scoped per client the way `connect_args` is. SQL
+Server Windows authentication is the reference: libkrb5 reads `KRB5_CONFIG` / `KRB5CCNAME`
+/ `KRB5_CLIENT_KTNAME`, and msodbcsql exposes no per-connection Kerberos settings.
+
+The pattern, in `sql_server_kerberos_env.py`:
+
+- The CTP transform materializes the files and passes their **paths** through
+  `connect_args` as a nested dict (the `ssl_options` passthrough shape). It sets no
+  environment variables.
+- The proxy client sets them **around the connect call only** and restores the previous
+  values in a `finally`, including on failure.
+- A module-level lock spans the whole scope, because the variables are shared.
+
+Two rules if you add another one:
+
+1. **Restore, don't just set.** Other integrations read the same variables — Hive and Impala
+   with `auth_mechanism=GSSAPI` read all three of the above. Leaving them set points an
+   unrelated connection at a config file that `register_temp_files` cleanup is about to
+   delete.
+2. **Hold the lock across the connect, not just the setup.** Setting the variables and then
+   connecting has to be atomic with respect to other connections, or one reads another's
+   values. Note the lock is private to that module, so it serializes SQL Server
+   Windows-auth connects against each other and _not_ against other Kerberos consumers in
+   the process — that limitation is documented in the module docstring.
+
+**Runtime dependency:** the password credential form shells out to `kinit`, so
+`krb5-user` / `krb5-workstation` must be installed in every runtime base — `system-base`,
+`lambda`, and `azure` each build independently and each needs its own install. A base
+missing it fails only on the password form, and only at connect time.
+
 ### Concurrent batch reads (agent-side fan-out)
 
 An op that would otherwise make the data-collector issue N sequential agent round-trips can instead
 expose a **single batched method that fans out concurrently inside the agent process**. The agent
-executes an op's recorded commands *sequentially* (`AgentClient._calls` is a shared list and is not
+executes an op's recorded commands _sequentially_ (`AgentClient._calls` is a shared list and is not
 thread-safe), so the DC cannot parallelize round-trips by recording several `ssot_get` commands —
 the parallelism has to live in one agent method. See
 `salesforce_data_cloud_proxy_client.ssot_get_offset_pages`, which pulls N consecutive offset pages
@@ -82,10 +117,10 @@ Rules for that pattern:
 
 - **The agent owns its bounds.** Clamp width (`_SSOT_OFFSET_PAGES_MAX`) and per-page limit inside the
   method — never trust the caller's numbers. Validate inputs (reject a base path that already carries
-  the paginated params) and fail the whole batch *before* any request when they're malformed.
+  the paginated params) and fail the whole batch _before_ any request when they're malformed.
 - **One page's failure is not the batch's failure.** Return a map keyed by page index where each entry
   is either `{"result": <body>}` or a structured `{"error", "error_type", "status_code",
-  "error_code"}`. The caller decides what a hole means; the op never turns a single 404/quota into a
+"error_code"}`. The caller decides what a hole means; the op never turns a single 404/quota into a
   batch-wide exception. Keep this envelope shape in lockstep with the consumer's translation tests.
 - **Retry transient, never quota.** Give each page one retry within its timeout envelope for
   network/5xx blips, but let quota errors (`_is_ssot_quota_error`) fall straight through — retrying an

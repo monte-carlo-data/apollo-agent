@@ -310,7 +310,7 @@ RUN ACCEPT_EULA=Y apt-get install -y --no-install-recommends msodbcsql17 unixodb
 
 # kinit, for SQL Server Windows Authentication on the password credential form. Needed
 # here as well as in system-base and lambda: this stage has its own base image, so nothing
-# is inherited. Three bases, three installs -- see the comment on the lambda stage.
+# is inherited. Three bases, three installs; see integrations/db/CLAUDE.md.
 RUN apt-get install -y --no-install-recommends krb5-user
 
 # Upgrade everything else to pick up OS security fixes (glibc, dpkg, xorg-server,

@@ -7,7 +7,9 @@ from unittest import TestCase
 from unittest.mock import Mock, patch
 
 from apollo.integrations.db import sql_server_kerberos_env as kerberos_env
+from apollo.integrations.ctp.registry import CtpRegistry
 from apollo.integrations.db.sql_server_kerberos_env import (
+    KerberosConnectionParams,
     KerberosEnvironmentError,
     kerberos_environment,
     pop_kerberos_params,
@@ -316,3 +318,63 @@ class TestPopKerberosParams(TestCase):
     def test_a_non_dict_block_is_rejected(self):
         with self.assertRaises(KerberosEnvironmentError):
             pop_kerberos_params({"kerberos": "MEMORY:x"})
+
+
+class TestKerberosParamsContract(TestCase):
+    """The transform and this module agree on the key names (review F4 on #379).
+
+    They span two modules with no call edge, so a rename on one side fails at runtime
+    rather than at type-check. These pin the names in one place.
+    """
+
+    def test_the_env_module_reads_exactly_the_keys_the_type_declares(self):
+        declared = set(KerberosConnectionParams.__required_keys__) | set(
+            KerberosConnectionParams.__optional_keys__
+        )
+        consumed = {
+            kerberos_env._ATTR_KRB5_CONFIG_PATH,
+            kerberos_env._ATTR_CCACHE,
+            kerberos_env._ATTR_CLIENT_KEYTAB_PATH,
+            kerberos_env._ATTR_PRINCIPAL,
+            kerberos_env._ATTR_PASSWORD,
+        }
+        self.assertEqual(declared, consumed)
+
+    def test_the_transform_emits_only_declared_keys(self):
+        """Catches a key added to the transform that this module would silently ignore."""
+        declared = set(KerberosConnectionParams.__required_keys__) | set(
+            KerberosConnectionParams.__optional_keys__
+        )
+        for creds in (
+            {"keytab_base64": "a2V5dGFiLWJ5dGVz"},
+            {"password": "pw"},
+        ):
+            with self.subTest(form=next(iter(creds))):
+                temp_files: list[str] = []
+                resolved = CtpRegistry.resolve(
+                    "sql-server",
+                    {
+                        "auth_type": "kerberos",
+                        "host": "labsql.mclab.internal",
+                        "port": 1433,
+                        "realm": "MCLAB.INTERNAL",
+                        "kdc": "labdc.mclab.internal",
+                        "principal": _PRINCIPAL,
+                        **creds,
+                    },
+                    temp_files=temp_files,
+                )
+                for path in temp_files:
+                    with suppress(OSError):
+                        os.unlink(path)
+                emitted = set(resolved["connect_args"][kerberos_env.ATTR_KERBEROS])
+                self.assertTrue(
+                    emitted <= declared,
+                    f"undeclared keys emitted: {emitted - declared}",
+                )
+
+    def test_the_password_key_is_the_one_the_redactor_matches(self):
+        """The password stays out of logs only because the key contains "pass". Renaming it
+        to something like "secret" would keep every other test green while exposing it.
+        """
+        self.assertIn("pass", kerberos_env._ATTR_PASSWORD)
