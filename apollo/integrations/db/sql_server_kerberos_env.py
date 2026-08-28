@@ -21,6 +21,16 @@ Two properties the transform could not provide:
   Kerberos connections. Holding the lock only over the kinit, as an earlier version did,
   left two connections under different principals able to read each other's values.
 
+SCOPE OF THE LOCK. ``_KERBEROS_ENV_LOCK`` is private to this module, so it serializes SQL
+Server Windows-auth connects against *each other* only. It does not protect other libkrb5
+consumers in the same process: a Hive or Impala connect with ``auth_mechanism=GSSAPI`` on
+another thread during the locked window reads this connection's single-realm config and
+its ccache, and would fail. Restoration closes the gap between connections, not the one
+during a connection. Closing that too means sharing one lock across every Kerberos
+consumer in the agent, which is only worth doing if those integrations are actually used
+concurrently with SQL Server Windows auth on one agent -- unknown at the time of writing,
+and stated here rather than implied away.
+
 The collector has a twin of this module (``kerberos_environment.py`` in data-collector).
 The two are deliberately separate implementations; see that module's docstring.
 """
