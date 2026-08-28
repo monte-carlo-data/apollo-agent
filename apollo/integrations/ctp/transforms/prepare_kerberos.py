@@ -172,22 +172,31 @@ class PrepareKerberosTransform(Transform):
         # was made to avoid.
         state.temp_files.append(krb5_conf_path)
 
-        params: KerberosConnectionParams = {"krb5_config_path": krb5_conf_path}
+        # Each branch builds the complete shape for its credential form rather than
+        # starting partial and filling in: the two are mutually exclusive, so stating each
+        # in one place makes that visible (and satisfies the TypedDict's required keys).
+        params: KerberosConnectionParams
         if keytab_base64:
-            # GSSAPI acquires from the client keytab in-process, so an in-memory cache is
-            # sufficient and the ticket never touches disk.
-            params["ccache"] = f"{_CCACHE_MEMORY_PREFIX}{uuid.uuid4().hex}"
             keytab_path = self._write_keytab(str(keytab_base64), step.type)
             state.temp_files.append(keytab_path)
-            params["client_keytab_path"] = keytab_path
+            params = {
+                "krb5_config_path": krb5_conf_path,
+                # GSSAPI acquires from the client keytab in-process, so an in-memory cache
+                # is sufficient and the ticket never touches disk.
+                "ccache": f"{_CCACHE_MEMORY_PREFIX}{uuid.uuid4().hex}",
+                "client_keytab_path": keytab_path,
+            }
         else:
-            # kinit runs in a separate process and cannot share an in-memory cache, so
-            # the password form needs a file the two can both see.
+            # kinit runs in a separate process and cannot share an in-memory cache, so the
+            # password form needs a file the two can both see.
             ccache_path = self._create_ccache_file()
             state.temp_files.append(ccache_path)
-            params["ccache"] = f"FILE:{ccache_path}"
-            params["principal"] = str(principal)
-            params["password"] = str(password)
+            params = {
+                "krb5_config_path": krb5_conf_path,
+                "ccache": f"FILE:{ccache_path}",
+                "principal": str(principal),
+                "password": str(password),
+            }
 
         state.derived[step.output["kerberos"]] = params
 
