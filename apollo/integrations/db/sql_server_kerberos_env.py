@@ -36,9 +36,16 @@ during a connection. Both halves of this are now confirmed rather than hypothesi
   threads, so one agent holding both a Hive/Impala GSSAPI connection and a SQL Server
   Windows-auth connection is an ordinary deployment rather than a corner case.
 
-What is *not* established is whether any customer runs that combination today. Closing the
-gap means sharing one lock across every Kerberos consumer in the agent; until then this is
-a known, bounded exposure rather than an unknown one.
+Accepted rather than fixed. Closing the gap means sharing one lock across every Kerberos
+consumer in the agent -- a change to an integration with nothing to do with SQL Server --
+and the combination is judged unlikely in practice: Hive/Impala and SQL Server Windows
+authentication serve different enough estates that few deployments would put both on one
+agent.
+
+So this is a known, bounded, accepted exposure. If it ever does occur the symptom is
+intermittent GSSAPI failures on the *other* integration, with nothing in its own error
+pointing here -- which is the reason this note and the tests exist. Someone debugging that
+should find this file rather than rediscover it.
 
 The collector has a twin of this module (``kerberos_environment.py`` in data-collector).
 The two are deliberately separate implementations; see that module's docstring.
