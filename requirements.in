@@ -89,6 +89,6 @@ backports-zstd>=1.7.0 ; python_version < "3.14"
 zeep>=4.3.3  # GHSA-4cc2-g9w2-fhf6 (SSRF via WSDL/XSD parsing); transitive via simple-salesforce
 requests>=2.34.0  # CVE-2026-25645; transitive HTTP client
 idna>=3.15  # CVE-2026-45409; transitive via requests/snowflake
-filelock>=3.20.3  # CVE-2026-22701, CVE-2025-68146; transitive via snowflake-connector-python
+filelock>=3.29.5  # CVE-2026-22701, CVE-2025-68146, AIKIDO-2026-228169; transitive via snowflake-connector-python
 marshmallow>=3.26.2  # CVE-2025-68480; transitive via dataclasses-json
 tomlkit>=0.15.1  # AIKIDO-2026-525182; transitive via snowflake-connector-python
