@@ -11,7 +11,7 @@ cerberus>=1.3.5
 click>=8.3.3  # transitive (clickhouse-connect, flask); pinned for CVE-2026-7246
 clickhouse-connect>=0.10.0  # cp314 wheels first shipped in 0.10.0 (YET-2254, azure image on Python 3.14); we only use the stable clickhouse_connect.dbapi facade
 cryptography>=50.0.0  # CVE-2026-26007; >=48.0.1 for GHSA-537c-gmf6-5ccf (bundled OpenSSL OOB read, fixed in 48.0.1); >=49.0.0 for AIKIDO-2026-94131; >=50.0.0 for CVE-2026-69247 (CVE-2026-69249 needs only 49)
-databricks-sql-connector==4.2.5  # highest 4.x compatible with impyla's thrift==0.16.0 pin (4.2.6+ require thrift>=0.22.0); 4.0.0 also capped numpy<2.0.0, which blocked the Python 3.13 numpy 2 bump
+databricks-sql-connector==4.5.0  # requires thrift>=0.24.0, which is what clears the thrift CVEs below; 4.2.5 held us at thrift 0.16.0 to match impyla's old pin. Default backend is still Thrift — the SEA/Rust kernel added in 4.3.0 is opt-in per connection (use_kernel=True) and we don't set it. 4.4.0 also raised the floor to Python 3.10 (we're on 3.13+) and started reporting cursor.rowcount for DML instead of a hardcoded -1
 databricks-sdk==0.39.0
 duckdb==1.5.3  # pinned to the exact version MotherDuck's server-side extension supports (it rejects both <1.5.3 and >1.5.3, e.g. 1.5.4)
 flask==3.1.3  # CVE-2026-27205: missing Vary: Cookie on some session accesses, fixed in 3.1.3
@@ -55,7 +55,8 @@ urllib3~=2.7  # CVE-2026-44431, CVE-2026-44432
 
 teradatasql>=20.0.0.66  # 20.0.0.66 is the first release built with the Go 1.26.6 toolchain, which resolves every remaining HIGH/CRITICAL in the daily scan: CVE-2026-39821 (9.6 CRITICAL), CVE-2026-56862, CVE-2026-56859, CVE-2026-56853, CVE-2026-46600, CVE-2026-33818 — all golang/stdlib, all fixed in 1.26.6. Bump on the *toolchain*, not the release number: 20.0.0.65 looked newer but was still Go 1.26.5, inside the affected range. Verify with `grep -aoE 'go1\.[0-9]+\.[0-9]+'` over the wheel's bundled binaries; all ten (.so/.dll/.dylib) report go1.26.6
 
-impyla==0.22.0
+impyla==0.24.0  # 0.22.0 and 0.23.0 hard-pin thrift==0.16.0; 0.24.0 is the first release to relax that to thrift>=0.23.0. `Connection.cursor(close_finished_queries=...)`, which hive_proxy_client depends on, is unchanged
+thrift>=0.24.0  # 13 Apache Thrift CVEs reported against 0.16.0. Fixed in 0.23.0: CVE-2026-41604, CVE-2026-41602, CVE-2026-41605, CVE-2026-43869, CVE-2026-43870, CVE-2025-48431. Fixed in 0.24.0: CVE-2026-41608 (Python THeaderTransport zlib bomb), CVE-2026-48586, CVE-2026-43871, CVE-2026-55968, CVE-2026-55969, CVE-2026-58389, CVE-2026-48145. Only three of the thirteen touch the Python bindings, but scanners flag the package by version. Pinned directly so a future databricks-sql-connector that relaxes its thrift floor can't silently drag us back
 werkzeug==3.1.6  # CVE-2026-27199, CVE-2026-21860, CVE-2025-66221 (was 3.1.0)
 
 # Transitive native deps forced up to their lowest Python 3.13 (cp313) wheel
