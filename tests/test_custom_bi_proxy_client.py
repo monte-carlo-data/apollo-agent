@@ -156,6 +156,61 @@ class TestCustomBiConnectorDiscovery(TestCase):
 
             self.assertEqual(registry, {})
 
+    def test_discovery_skips_malformed_manifest(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            # One connector dir with syntactically invalid JSON in manifest.json.
+            bad_dir = os.path.join(tmp_dir, "bad_json")
+            os.makedirs(bad_dir)
+            with open(os.path.join(bad_dir, "manifest.json"), "w") as f:
+                f.write("{not json")
+            with open(os.path.join(bad_dir, "connector.py"), "w") as f:
+                f.write("class Connector: pass\n")
+
+            # One valid connector dir alongside it.
+            _create_mock_bi_connector_dir(tmp_dir, "tableau", "custom-bi-connector-aaa")
+
+            with patch(
+                "apollo.integrations.custom_bi.custom_bi_connector_loader._CUSTOM_BI_CONNECTORS_BASE_PATH",
+                tmp_dir,
+            ):
+                # The loader logs and skips the bad dir; no exception escapes.
+                registry = _discover_custom_bi_connectors()
+
+            self.assertEqual(
+                registry,
+                {"custom-bi-connector-aaa": os.path.join(tmp_dir, "tableau")},
+            )
+
+    def test_discovery_duplicate_connection_type_last_wins(self):
+        """Duplicate connection_type: the alphabetically-later dir wins.
+
+        The loader iterates ``sorted(os.listdir(base_path))`` and assigns
+        ``registry[connection_type] = connector_dir`` for each dir, so the LAST
+        processed dir overwrites earlier ones. With sorted order, ``b-connector``
+        sorts after ``a-connector`` and therefore wins. This documents the
+        current contract (identical to the custom ETL loader); it is not a
+        recommendation — silent overwrite is the existing behavior.
+        """
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            _create_mock_bi_connector_dir(
+                tmp_dir, "a-connector", "custom-bi-connector-dup"
+            )
+            _create_mock_bi_connector_dir(
+                tmp_dir, "b-connector", "custom-bi-connector-dup"
+            )
+
+            with patch(
+                "apollo.integrations.custom_bi.custom_bi_connector_loader._CUSTOM_BI_CONNECTORS_BASE_PATH",
+                tmp_dir,
+            ):
+                registry = _discover_custom_bi_connectors()
+
+            self.assertEqual(len(registry), 1)
+            self.assertEqual(
+                registry["custom-bi-connector-dup"],
+                os.path.join(tmp_dir, "b-connector"),
+            )
+
 
 class TestLoadConnectorModule(TestCase):
     def test_successful_load(self):

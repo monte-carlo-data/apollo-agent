@@ -15,14 +15,36 @@ logger = logging.getLogger(__name__)
 
 _ATTR_CONNECT_ARGS = "connect_args"
 
+# Keys that look like secret material.  ``_serialize`` drops them (matched
+# case-insensitively) so decrypted secrets stored on the connector can never
+# leak into the metadata response sent to the data-collector.
+_SECRET_KEY_DENYLIST = frozenset(
+    {
+        "credentials",
+        "connect_args",
+        "password",
+        "passwd",
+        "secret",
+        "token",
+        "api_key",
+        "apikey",
+        "access_key",
+        "private_key",
+    }
+)
+
+
+def _is_secret_key(key: Any) -> bool:
+    return isinstance(key, str) and key.lower() in _SECRET_KEY_DENYLIST
+
 
 def _serialize(obj: Any) -> Any:
     """Serialize connector model objects to JSON-compatible dicts.
 
     Handles dataclasses (via ``dataclasses.asdict``), objects with ``__dict__``,
-    and primitive/collection types.  ``None`` values are stripped from the
-    top-level dict so the response stays compact — downstream consumers treat
-    absent keys as null anyway.
+    and primitive/collection types.  ``None`` values are stripped at every
+    level so the response stays compact — downstream consumers treat absent
+    keys as null anyway.
 
     Serialization is fully recursive and field-name-agnostic: it preserves the
     nested structure of whatever the connector returns.  Because it never
@@ -43,13 +65,17 @@ def _serialize(obj: Any) -> Any:
     if isinstance(obj, list):
         return [_serialize(item) for item in obj]
     if isinstance(obj, dict):
-        return {k: _serialize(v) for k, v in obj.items() if v is not None}
+        return {
+            k: _serialize(v)
+            for k, v in obj.items()
+            if v is not None and not _is_secret_key(k)
+        }
     try:
         if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
             return {
                 k: _serialize(v)
                 for k, v in dataclasses.asdict(obj).items()
-                if v is not None
+                if v is not None and not _is_secret_key(k)
             }
     except Exception:
         pass
@@ -57,7 +83,7 @@ def _serialize(obj: Any) -> Any:
         return {
             k: _serialize(v)
             for k, v in obj.__dict__.items()
-            if not k.startswith("_") and v is not None
+            if not k.startswith("_") and v is not None and not _is_secret_key(k)
         }
     return str(obj)
 
@@ -110,6 +136,9 @@ class CustomBiProxyClient(BaseProxyClient):
 
         Delegates to the connector's ``fetch_metadata`` and serializes the
         returned model objects into dicts for the data-collector.
+
+        The data-collector dispatches to this method by name via getattr —
+        renaming it is a cross-repo break.
         """
         assets = self._connector.fetch_metadata(limit=limit, offset=offset)
         return {"all_results": [_serialize(a) for a in assets]}
@@ -153,8 +182,7 @@ class CustomBiProxyClient(BaseProxyClient):
                 "custom-bi-connector-de8d7c2": {
                     "manifest": {
                         "connection_type": "custom-bi-connector-de8d7c2",
-                        "name": "tableau",
-                        "terminology": {...},
+                        "connection_name": "tableau",
                         "icon_url": "..."
                     }
                 }
