@@ -13,11 +13,12 @@ Three paths:
    as a ``SELF_HOSTED_CREDENTIALS_SCHEMA`` class attribute. Lazy imports
    avoid pulling heavyweight drivers into this module's import path.
 
-3. **Custom connectors** (``custom-connector-*`` and
-   ``custom-etl-connector-*``): the schema is declared as an optional
-   ``credentials_schema`` key in the connector's ``manifest.json``, read
-   from disk at ``/opt/custom-connectors/<name>/`` or
-   ``/opt/custom-etl-connectors/<name>/``. The lookup reuses the existing
+3. **Custom connectors** (``custom-connector-*``,
+   ``custom-etl-connector-*``, and ``custom-bi-connector-*``): the schema
+   is declared as an optional ``credentials_schema`` key in the connector's
+   ``manifest.json``, read from disk at ``/opt/custom-connectors/<name>/``,
+   ``/opt/custom-etl-connectors/<name>/``, or
+   ``/opt/custom-bi-connectors/<name>/``. The lookup reuses the existing
    connector loader registries and ``load_manifest()`` helpers.
 """
 
@@ -129,6 +130,21 @@ def _resolve_custom_etl_connector(connection_type: str) -> dict[str, Any] | None
     )
 
 
+def _resolve_custom_bi_connector(connection_type: str) -> dict[str, Any] | None:
+    """Return ``credentials_schema`` from a custom BI connector's manifest."""
+    from apollo.integrations.custom_bi.custom_bi_connector_loader import (
+        get_custom_bi_connector_registry,
+        load_manifest,
+    )
+
+    return _resolve_custom_schema(
+        connection_type,
+        get_registry_fn=get_custom_bi_connector_registry,
+        load_manifest_fn=load_manifest,
+        label="custom BI connector",
+    )
+
+
 def get_credentials_schema(connection_type: str) -> dict[str, Any] | None:
     """Return the cerberus schema dict for ``connection_type``, or ``None``.
 
@@ -158,6 +174,10 @@ def get_credentials_schema(connection_type: str) -> dict[str, Any] | None:
         return schema
 
     schema = _resolve_custom_etl_connector(connection_type)
+    if schema is not None:
+        return schema
+
+    schema = _resolve_custom_bi_connector(connection_type)
     if schema is not None:
         return schema
 

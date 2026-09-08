@@ -43,12 +43,15 @@ checks this before falling through to any custom connector path.
 {
   "connection_type": "custom-bi-connector-<hash>",
   "connection_name": "tableau",
-  "asset_class": "bi",
   "icon_url": "https://example.com/icon.png"
 }
 ```
 
 The optional `credentials_schema` key accepts a cerberus schema dict for self-hosted credential validation.
+
+The agent reads `connection_type` (registry routing) and `connection_name` (display), and passes the
+rest of the manifest through to the backend untouched (stripping only `credentials_schema`) — the
+backend is what reads keys like `asset_class` to route the manifest class.
 
 ## Connector interface
 

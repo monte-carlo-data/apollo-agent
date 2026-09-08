@@ -32,7 +32,7 @@ without a `metadata` field. `Enum` members serialize to their `.value` (e.g. `sc
 
 Custom ETL connectors share the same gate as custom connectors: the env var
 `MCD_CUSTOM_CONNECTORS_ENABLED=true`. The factory in `apollo/agent/proxy_client_factory.py`
-checks this before falling through to either custom connector path.
+checks this before falling through to any custom connector path.
 
 ## Connector directory structure
 
