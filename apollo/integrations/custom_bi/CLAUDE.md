@@ -33,7 +33,7 @@ checks this before falling through to any custom connector path.
 
 ```
 /opt/custom-bi-connectors/<name>/
-├── manifest.json        # connection_type, connection_name, terminology, icon_url, credentials_schema (optional)
+├── manifest.json        # connection_type, connection_name, icon_url, credentials_schema (optional)
 └── connector.py         # Connector class
 ```
 
@@ -44,9 +44,6 @@ checks this before falling through to any custom connector path.
   "connection_type": "custom-bi-connector-<hash>",
   "connection_name": "tableau",
   "asset_class": "bi",
-  "terminology": {
-    "asset": "Workbook"
-  },
   "icon_url": "https://example.com/icon.png"
 }
 ```
