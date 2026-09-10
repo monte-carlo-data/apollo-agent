@@ -29,6 +29,25 @@ Several clients use `pyodbc` (fabric, azure_database, sql_server). They share:
 
 These are shared via `TSqlBaseDbProxyClient` in `tsql_base_db_proxy_client.py`, which all three clients inherit from.
 
+### Row serialization (`_process_row` overrides)
+
+The base class's `_process_row` passes each row value through `AgentSerializer.serialize`,
+which returns unknown types **unchanged** — so driver-specific row types that aren't
+JSON-serializable silently survive until the transport's `json.dumps`, where the failure
+is far from the real cause. The fix pattern is a per-client `_process_row` override that
+converts the driver type before serializing. Precedent: `OracleProxyClient` reads
+`oracledb.LOB` values in full (CLOB/NCLOB → `str`, BLOB → `bytes`, which rides the
+existing `__type__: "bytes"` wire form). Read/convert the value here — `process_result`
+runs inside `_execute` while the connection is still open, so connection-bound values
+(e.g. LOB reads) are still valid; they would not be later on the results-push path.
+
+If the driver type is unbounded in size (LOBs can be gigabytes), also enforce a loud
+ceiling **before** reading the value: an oversized value fails later anyway (agent
+memory, push body limits) and that failure is swallowed on the push path. Oracle checks
+`LOB.size()` on the locator in its `process_result` override and raises a named-column
+error above `MCD_ORACLE_MAX_LOB_BYTES` (default 50 MiB) — an operation error beats an
+OOM-killed agent.
+
 ### Connection lifecycle
 
 Connections are opened in `__init__` and closed in `__del__` (via `BaseProxyClient.close`).
