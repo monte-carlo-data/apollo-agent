@@ -231,7 +231,7 @@ marshmallow==3.26.2
     #   dataclasses-json
 more-itertools==10.7.0
     # via simple-salesforce
-msal==1.37.0
+msal==1.38.0
     # via
     #   -r requirements.in
     #   azure-identity
