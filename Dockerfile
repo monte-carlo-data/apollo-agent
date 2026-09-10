@@ -92,6 +92,12 @@ COPY --from=oracle-pki-builder /opt/oracle-pki /opt/oracle-pki
 # it — no runtime stage uses jq (only README examples and CircleCI CI scripts do).
 RUN apt-get purge -y jq || true
 
+# VULN-1687: busybox carries low-severity CVEs; the fixed upstream version
+# (1.37.0-r58) is an Alpine package — Debian bookworm ships an older revision
+# with no patched backport available via apt-get upgrade. Remove it; no runtime
+# code uses busybox directly (shell built-ins and /bin/sh come from bash/dash).
+RUN apt-get purge -y busybox busybox-static || true
+
 # clean up all unused libraries
 RUN apt-get autoremove -y && apt-get clean && rm -rf /var/lib/apt/lists/*
 
@@ -364,6 +370,10 @@ COPY --from=oracle-pki-builder /opt/oracle-pki /opt/oracle-pki
 # vulnerable version. Remove if present — no runtime code uses jq.
 # clean up all unused libraries
 RUN apt-get purge -y jq || true
+# VULN-1687: busybox carries low-severity CVEs; the fixed upstream version
+# (1.37.0-r58) is an Alpine package — Ubuntu 24.04 noble has no patched backport
+# available via apt-get upgrade. Remove if present; no runtime code uses it directly.
+RUN apt-get purge -y busybox busybox-static || true
 RUN apt-get purge -y --auto-remove \
         xvfb xserver-common x11-common x11-utils x11-xkb-utils x11-xserver-utils \
         libxext6 libxft2 libxi6 libxinerama1 libxpm4 libxrender1 libxrender-dev \
