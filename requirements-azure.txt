@@ -100,7 +100,7 @@ markupsafe==3.0.3
     # via
     #   -c requirements.txt
     #   werkzeug
-msal==1.37.0
+msal==1.38.0
     # via
     #   -c requirements.txt
     #   azure-identity
