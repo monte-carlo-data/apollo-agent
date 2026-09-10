@@ -2,6 +2,8 @@ import socket
 from unittest import TestCase
 from unittest.mock import patch, Mock, MagicMock
 
+from apollo.agent.agent import Agent
+from apollo.agent.logging_utils import LoggingUtils
 from apollo.integrations.bigquery.bq_proxy_client import (
     _BIGQUERY_SCOPES,
     BqProxyClient,
@@ -270,4 +272,75 @@ class BigQueryClientTests(TestCase):
             None,
             scopes=_BIGQUERY_SCOPES,
             timeout=None,
+        )
+
+
+class BigQueryConnectionMetadataTests(TestCase):
+    """`get_connection_metadata` returns the service account key's project_id so the
+    DC can default the billing project when the connection omits bq_project_id."""
+
+    _MODULE = "apollo.integrations.bigquery.bq_proxy_client"
+
+    def _patched_client(self, credentials):
+        with (
+            patch(f"{self._MODULE}.build_authorized_http"),
+            patch(f"{self._MODULE}.googleapiclient.discovery.build"),
+            patch(f"{self._MODULE}.Credentials.from_service_account_info"),
+        ):
+            return BqProxyClient(credentials=credentials)
+
+    def test_direct_credentials_return_project_id(self):
+        client = self._patched_client(_SERVICE_ACCOUNT_CREDENTIALS)
+
+        metadata = client.get_connection_metadata()
+
+        # Exact key set: only project_id may ever be returned — the contract is
+        # whitelist-by-implementation, and this is the boundary to the key material.
+        self.assertEqual({"project_id"}, set(metadata.keys()))
+        self.assertEqual("test-project", metadata["project_id"])
+
+    def test_connect_args_credentials_return_project_id(self):
+        """Self-hosted format: the CTP mapper puts project_id in connect_args."""
+        client = self._patched_client({"connect_args": _SERVICE_ACCOUNT_CREDENTIALS})
+
+        self.assertEqual(
+            {"project_id": "test-project"}, client.get_connection_metadata()
+        )
+
+    def test_no_project_id_returns_empty_dict(self):
+        """The DC's fallback depends on project_id being absent, not empty."""
+        credentials = dict(_SERVICE_ACCOUNT_CREDENTIALS)
+        del credentials["project_id"]
+        client = self._patched_client(credentials)
+
+        self.assertEqual({}, client.get_connection_metadata())
+
+    def test_no_credentials_returns_empty_dict(self):
+        client = self._patched_client(None)
+
+        self.assertEqual({}, client.get_connection_metadata())
+
+    def test_dispatches_through_execute_route(self):
+        """The DC calls this as an agent operation over the generic execute endpoint."""
+        agent = Agent(LoggingUtils())
+        operation = {
+            "trace_id": "test",
+            "skip_cache": True,
+            "commands": [{"method": "get_connection_metadata", "kwargs": {}}],
+        }
+
+        with (
+            patch(f"{self._MODULE}.build_authorized_http"),
+            patch(f"{self._MODULE}.googleapiclient.discovery.build"),
+            patch(f"{self._MODULE}.Credentials.from_service_account_info"),
+        ):
+            response = agent.execute_operation(
+                "bigquery",
+                "get_connection_metadata",
+                operation,
+                {"connect_args": _SERVICE_ACCOUNT_CREDENTIALS},
+            )
+
+        self.assertEqual(
+            {"project_id": "test-project"}, response.result["__mcd_result__"]
         )
