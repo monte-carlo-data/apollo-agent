@@ -361,6 +361,30 @@ class TestSerialize(TestCase):
         obj = {"a": {"b": [1, 2, {"c": None}]}, "d": None}
         self.assertEqual(_serialize(obj), {"a": {"b": [1, 2, {}]}})
 
+    def test_serialize_drops_secret_like_keys(self):
+        """Secret-looking keys (exact or substring marker) are stripped."""
+        obj = {
+            "name": "dash-1",
+            "auth_token": "tok",
+            "client_secret": "sec",
+            "access_token": "acc",
+            "api_key": "k",
+            "nested": {"password": "pw", "view_count": 3},
+        }
+        self.assertEqual(
+            _serialize(obj),
+            {"name": "dash-1", "nested": {"view_count": 3}},
+        )
+
+    def test_serialize_keeps_benign_key_named_fields(self):
+        """The denylist must not strip legitimate metadata like the
+        ``{"key", "value"}`` properties entries or display_name-ish keys."""
+        obj = {
+            "properties": [{"key": "owner_team", "value": "analytics"}],
+            "display_key": "dash-1",
+        }
+        self.assertEqual(_serialize(obj), obj)
+
 
 # ---------------------------------------------------------------------------
 # Proxy client tests
