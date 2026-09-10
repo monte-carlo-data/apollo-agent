@@ -15,17 +15,16 @@ logger = logging.getLogger(__name__)
 
 _ATTR_CONNECT_ARGS = "connect_args"
 
-# Keys that look like secret material.  ``_serialize`` drops them (matched
-# case-insensitively) so decrypted secrets stored on the connector can never
-# leak into the metadata response sent to the data-collector.
-_SECRET_KEY_DENYLIST = frozenset(
+# Keys that look like secret material.  ``_serialize`` drops them so decrypted
+# secrets stored on the connector do not leak into the metadata response sent
+# to the data-collector.  Unambiguous markers (token / secret / password /
+# passwd / credential) match case-insensitively as substrings (``client_secret``,
+# ``auth_token``, ...); short ambiguous names (``api_key`` …) match exactly so a
+# benign ``key``/``display_key``-style attribute is never stripped.
+_SECRET_KEY_SUBSTRINGS = ("token", "secret", "password", "passwd", "credential")
+_SECRET_KEY_EXACT = frozenset(
     {
-        "credentials",
         "connect_args",
-        "password",
-        "passwd",
-        "secret",
-        "token",
         "api_key",
         "apikey",
         "access_key",
@@ -35,7 +34,12 @@ _SECRET_KEY_DENYLIST = frozenset(
 
 
 def _is_secret_key(key: Any) -> bool:
-    return isinstance(key, str) and key.lower() in _SECRET_KEY_DENYLIST
+    if not isinstance(key, str):
+        return False
+    lowered = key.lower()
+    return lowered in _SECRET_KEY_EXACT or any(
+        marker in lowered for marker in _SECRET_KEY_SUBSTRINGS
+    )
 
 
 def _serialize(obj: Any) -> Any:
