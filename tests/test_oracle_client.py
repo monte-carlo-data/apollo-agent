@@ -1,3 +1,4 @@
+import base64
 import datetime
 import json
 import logging
@@ -14,9 +15,12 @@ from typing import (
 from unittest import TestCase
 from unittest.mock import Mock, call, patch, MagicMock
 
+import oracledb
 from oracledb.base_impl import (
     DB_TYPE_VARCHAR,
     DB_TYPE_NUMBER,
+    DB_TYPE_CLOB,
+    DB_TYPE_BLOB,
     DbType,
 )
 
@@ -26,6 +30,7 @@ from apollo.common.agent.constants import (
     ATTRIBUTE_NAME_RESULT,
     ATTRIBUTE_NAME_ERROR_TYPE,
 )
+from apollo.common.agent.serde import AgentSerializer
 from apollo.agent.logging_utils import LoggingUtils
 from apollo.integrations.db import oracle_client_config
 from apollo.integrations.db.oracle_client_config import (
@@ -71,6 +76,81 @@ class OracleDbClientTests(TestCase):
         self._test_run_query(
             mock_connect, query, args, expected_data, expected_description
         )
+
+    @patch("oracledb.connect")
+    def test_query_with_lob_columns(self, mock_connect: Mock) -> None:
+        """CLOB/BLOB columns arrive as oracledb.LOB objects (fetch_lobs defaults to
+        True). The agent must read them into str/bytes during process_result, while
+        the connection is still open, or the result is not JSON-serializable on the
+        push path — which the egress agent swallows and the DC misreports as an 860s
+        orchestrator timeout (YET-2739)."""
+        clob = Mock(spec=oracledb.LOB)
+        clob.read.return_value = "clob text"
+        blob = Mock(spec=oracledb.LOB)
+        blob.read.return_value = b"\x00\x01blob"
+        query = "SELECT name, clob_col, blob_col FROM table"
+        data = [["name_1", clob, blob]]
+        description = [
+            ["name", DB_TYPE_VARCHAR, None, None, None, None, None],
+            ["clob_col", DB_TYPE_CLOB, None, None, None, None, None],
+            ["blob_col", DB_TYPE_BLOB, None, None, None, None, None],
+        ]
+
+        response = self._test_run_query(mock_connect, query, [], data, description)
+
+        clob.read.assert_called()
+        blob.read.assert_called()
+        result = response.result[ATTRIBUTE_NAME_RESULT]
+        # Proof the push-path serialization (BackendClient._push_results_with_retries)
+        # now succeeds — before the fix this raised
+        # TypeError: Object of type LOB is not JSON serializable.
+        json.dumps({"result": result}, cls=AgentSerializer)
+
+    @patch("oracledb.connect")
+    def test_query_lob_read_failure_returns_error(self, mock_connect: Mock) -> None:
+        """A failed LOB read (e.g. transient connection issue) must surface as a
+        real operation error via the standard envelope, not escape to the push
+        path where it would be swallowed."""
+        lob = Mock(spec=oracledb.LOB)
+        lob.read.side_effect = Exception("ORA-22922: nonexistent LOB value")
+        mock_connect.return_value = self._mock_connection
+        query = "SELECT clob_col FROM table"
+        self._mock_cursor.fetchall.return_value = [[lob]]
+        self._mock_cursor.description.return_value = [
+            ["clob_col", DB_TYPE_CLOB, None, None, None, None, None]
+        ]
+        self._mock_cursor.rowcount.return_value = 1
+
+        response = self._agent.execute_operation(
+            "oracle",
+            "run_query",
+            {
+                "trace_id": "1234",
+                "skip_cache": True,
+                "commands": [
+                    {"method": "cursor", "store": "_cursor"},
+                    {"target": "_cursor", "method": "execute", "args": [query, []]},
+                    {"target": "_cursor", "method": "fetchall", "store": "tmp_1"},
+                    {"target": "_cursor", "method": "description", "store": "tmp_2"},
+                    {"target": "_cursor", "method": "rowcount", "store": "tmp_3"},
+                    {
+                        "target": "__utils",
+                        "method": "build_dict",
+                        "kwargs": {
+                            "all_results": {"__reference__": "tmp_1"},
+                            "description": {"__reference__": "tmp_2"},
+                            "rowcount": {"__reference__": "tmp_3"},
+                        },
+                    },
+                ],
+            },
+            {
+                "connect_args": _ORACLE_DB_CREDENTIALS,
+            },
+        )
+
+        error = response.result.get(ATTRIBUTE_NAME_ERROR, "")
+        self.assertIn("ORA-22922", error)
 
     def _test_run_query(
         self,
@@ -161,6 +241,8 @@ class OracleDbClientTests(TestCase):
         self.assertTrue("rowcount" in result)
         self.assertEqual(expected_rows, result["rowcount"])
 
+        return response
+
     @classmethod
     def _serialized_data(cls, data: List) -> List:
         return [cls._serialized_row(v) for v in data]
@@ -179,6 +261,10 @@ class OracleDbClientTests(TestCase):
 
     @classmethod
     def _serialized_value(cls, value: Any) -> Any:
+        if isinstance(value, oracledb.LOB):
+            # LOB values are read in full during process_result (CLOB/NCLOB ->
+            # str, BLOB -> bytes); fall through to serialize the read result.
+            value = value.read()
         if isinstance(value, datetime.datetime):
             return {
                 "__type__": "datetime",
@@ -188,6 +274,11 @@ class OracleDbClientTests(TestCase):
             return {
                 "__type__": "date",
                 "__data__": value.isoformat(),
+            }
+        elif isinstance(value, bytes):
+            return {
+                "__type__": "bytes",
+                "__data__": base64.b64encode(value).decode("utf-8"),
             }
         elif isinstance(value, DbType):
             return value.name
