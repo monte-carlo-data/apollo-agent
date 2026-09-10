@@ -1,4 +1,5 @@
 import logging
+import os
 from typing import (
     Any,
     Dict,
@@ -19,7 +20,27 @@ from apollo.integrations.db.oracle_client_config import create_oracle_ssl_contex
 
 _ATTR_CONNECT_ARGS = "connect_args"
 
+# A single LOB larger than this fails the operation instead of being read into
+# memory: beyond a point the value cannot survive the result path anyway
+# (agent pod memory holds ~2.5x the raw size after base64 + the JSON copy, and
+# the orchestrator caps the push body), and every one of those failures is
+# swallowed on the push path — the same silent-timeout symptom as YET-2739.
+# LOB.size() is in characters for CLOB/NCLOB, bytes for BLOB; we compare
+# directly, so multi-byte CLOB content is allowed somewhat more wire bytes.
+_ENV_VAR_MAX_LOB_BYTES = "MCD_ORACLE_MAX_LOB_BYTES"
+_DEFAULT_MAX_LOB_BYTES = 50 * 1024 * 1024
+
 logger = logging.getLogger(__name__)
+
+
+def _max_lob_bytes() -> int:
+    try:
+        return int(os.getenv(_ENV_VAR_MAX_LOB_BYTES) or _DEFAULT_MAX_LOB_BYTES)
+    except ValueError:
+        logger.warning(
+            f"Invalid {_ENV_VAR_MAX_LOB_BYTES} value, using default {_DEFAULT_MAX_LOB_BYTES}"
+        )
+        return _DEFAULT_MAX_LOB_BYTES
 
 
 class OracleProxyClient(BaseDbProxyClient):
@@ -72,6 +93,36 @@ class OracleProxyClient(BaseDbProxyClient):
     def wrapped_client(self):
         return self._connection
 
+    def process_result(self, value: Any) -> Any:
+        # Enforce the per-LOB size ceiling before super() reads LOB values in
+        # _process_row: size() is checked on the locator, so an oversized LOB
+        # fails here — naming the column from the description — without the
+        # value ever being loaded into agent memory.
+        if isinstance(value, Dict) and value.get("all_results"):
+            column_names = [col[0] for col in value.get("description") or []]
+            max_lob_bytes = _max_lob_bytes()
+            for row in value["all_results"]:
+                self._raise_on_oversized_lob(row, column_names, max_lob_bytes)
+        return super().process_result(value)
+
+    @staticmethod
+    def _raise_on_oversized_lob(
+        row: List, column_names: List, max_lob_bytes: int
+    ) -> None:
+        for idx, v in enumerate(row):
+            if isinstance(v, oracledb.LOB):
+                size = v.size()
+                if size > max_lob_bytes:
+                    column = (
+                        column_names[idx] if idx < len(column_names) else f"#{idx + 1}"
+                    )
+                    raise ValueError(
+                        f"LOB value in column '{column}' has size {size}, exceeds the "
+                        f"agent's per-LOB limit of {max_lob_bytes}; narrow the query "
+                        f"(e.g. DBMS_LOB.SUBSTR) or raise the limit via "
+                        f"{_ENV_VAR_MAX_LOB_BYTES}"
+                    )
+
     @staticmethod
     def _process_row(row: List) -> List:
         # oracledb returns LOB columns (CLOB/BLOB/NCLOB) as LOB objects
@@ -81,9 +132,11 @@ class OracleProxyClient(BaseDbProxyClient):
         # is valid here; it would not be later on the results-push path.
         # Read-in-full is deliberate: CLOB/NCLOB read to str (natively serializable)
         # and BLOB to bytes (existing __type__ "bytes" wire form the DC decoder
-        # reconstructs) — no new serialization contract. A failed read propagates
-        # to the operation error handler, so the caller gets a real error rather
-        # than a swallowed push failure. (YET-2739)
+        # reconstructs) — no new serialization contract. Values above the
+        # MCD_ORACLE_MAX_LOB_BYTES ceiling are rejected in process_result before
+        # reaching this point. A failed read propagates to the operation error
+        # handler, so the caller gets a real error rather than a swallowed push
+        # failure. (YET-2739)
         return [
             AgentSerializer.serialize(v.read() if isinstance(v, oracledb.LOB) else v)
             for v in row
