@@ -72,6 +72,23 @@ class OracleProxyClient(BaseDbProxyClient):
     def wrapped_client(self):
         return self._connection
 
+    @staticmethod
+    def _process_row(row: List) -> List:
+        # oracledb returns LOB columns (CLOB/BLOB/NCLOB) as LOB objects
+        # (oracledb.defaults.fetch_lobs is True by default); LOB objects are not
+        # JSON-serializable, so read them in full before serializing. This runs
+        # inside process_result while the connection is still open, so LOB.read()
+        # is valid here; it would not be later on the results-push path.
+        # Read-in-full is deliberate: CLOB/NCLOB read to str (natively serializable)
+        # and BLOB to bytes (existing __type__ "bytes" wire form the DC decoder
+        # reconstructs) — no new serialization contract. A failed read propagates
+        # to the operation error handler, so the caller gets a real error rather
+        # than a swallowed push failure. (YET-2739)
+        return [
+            AgentSerializer.serialize(v.read() if isinstance(v, oracledb.LOB) else v)
+            for v in row
+        ]
+
     @classmethod
     def _process_description(cls, description: List) -> List:
         return [cls._serialize_description(v) for v in description]
