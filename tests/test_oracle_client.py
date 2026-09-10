@@ -85,8 +85,10 @@ class OracleDbClientTests(TestCase):
         push path — which the egress agent swallows and the DC misreports as an 860s
         orchestrator timeout (YET-2739)."""
         clob = Mock(spec=oracledb.LOB)
+        clob.size.return_value = 9
         clob.read.return_value = "clob text"
         blob = Mock(spec=oracledb.LOB)
+        blob.size.return_value = 6
         blob.read.return_value = b"\x00\x01blob"
         query = "SELECT name, clob_col, blob_col FROM table"
         data = [["name_1", clob, blob]]
@@ -112,6 +114,7 @@ class OracleDbClientTests(TestCase):
         real operation error via the standard envelope, not escape to the push
         path where it would be swallowed."""
         lob = Mock(spec=oracledb.LOB)
+        lob.size.return_value = 5
         lob.read.side_effect = Exception("ORA-22922: nonexistent LOB value")
         mock_connect.return_value = self._mock_connection
         query = "SELECT clob_col FROM table"
@@ -124,26 +127,7 @@ class OracleDbClientTests(TestCase):
         response = self._agent.execute_operation(
             "oracle",
             "run_query",
-            {
-                "trace_id": "1234",
-                "skip_cache": True,
-                "commands": [
-                    {"method": "cursor", "store": "_cursor"},
-                    {"target": "_cursor", "method": "execute", "args": [query, []]},
-                    {"target": "_cursor", "method": "fetchall", "store": "tmp_1"},
-                    {"target": "_cursor", "method": "description", "store": "tmp_2"},
-                    {"target": "_cursor", "method": "rowcount", "store": "tmp_3"},
-                    {
-                        "target": "__utils",
-                        "method": "build_dict",
-                        "kwargs": {
-                            "all_results": {"__reference__": "tmp_1"},
-                            "description": {"__reference__": "tmp_2"},
-                            "rowcount": {"__reference__": "tmp_3"},
-                        },
-                    },
-                ],
-            },
+            self._query_operation_dict(query),
             {
                 "connect_args": _ORACLE_DB_CREDENTIALS,
             },
@@ -151,6 +135,90 @@ class OracleDbClientTests(TestCase):
 
         error = response.result.get(ATTRIBUTE_NAME_ERROR, "")
         self.assertIn("ORA-22922", error)
+
+    @patch("oracledb.connect")
+    def test_query_oversized_lob_returns_error(self, mock_connect: Mock) -> None:
+        """A LOB larger than the agent's ceiling must fail fast with a real
+        operation error naming the column — before read() loads it into memory.
+        An oversized value pushed whole would OOM the agent or be rejected by the
+        orchestrator, and that push-path failure is swallowed (the same 860s
+        symptom this ticket fixes)."""
+        lob = Mock(spec=oracledb.LOB)
+        lob.size.return_value = 51 * 1024 * 1024  # 1 MiB over the 50 MiB default
+        query = "SELECT name, blob_col FROM table"
+        data = [["name_1", lob]]
+        description = [
+            ["name", DB_TYPE_VARCHAR, None, None, None, None, None],
+            ["blob_col", DB_TYPE_BLOB, None, None, None, None, None],
+        ]
+        mock_connect.return_value = self._mock_connection
+        self._mock_cursor.fetchall.return_value = data
+        self._mock_cursor.description.return_value = description
+        self._mock_cursor.rowcount.return_value = len(data)
+
+        response = self._agent.execute_operation(
+            "oracle",
+            "run_query",
+            self._query_operation_dict(query),
+            {"connect_args": _ORACLE_DB_CREDENTIALS},
+        )
+
+        error = response.result.get(ATTRIBUTE_NAME_ERROR, "")
+        self.assertIn("blob_col", error)
+        self.assertIn("exceeds", error)
+        lob.read.assert_not_called()
+
+    @patch("oracledb.connect")
+    def test_query_oversized_lob_limit_env_override(self, mock_connect: Mock) -> None:
+        """MCD_ORACLE_MAX_LOB_BYTES overrides the default ceiling."""
+        clob = Mock(spec=oracledb.LOB)
+        clob.size.return_value = 9  # len("clob text")
+        clob.read.return_value = "clob text"
+        query = "SELECT clob_col FROM table"
+        data = [[clob]]
+        description = [
+            ["clob_col", DB_TYPE_CLOB, None, None, None, None, None],
+        ]
+        with patch.dict(os.environ, {"MCD_ORACLE_MAX_LOB_BYTES": "8"}):
+            mock_connect.return_value = self._mock_connection
+            self._mock_cursor.fetchall.return_value = data
+            self._mock_cursor.description.return_value = description
+            self._mock_cursor.rowcount.return_value = len(data)
+
+            response = self._agent.execute_operation(
+                "oracle",
+                "run_query",
+                self._query_operation_dict(query),
+                {"connect_args": _ORACLE_DB_CREDENTIALS},
+            )
+
+        error = response.result.get(ATTRIBUTE_NAME_ERROR, "")
+        self.assertIn("clob_col", error)
+        self.assertIn("exceeds", error)
+        clob.read.assert_not_called()
+
+    @staticmethod
+    def _query_operation_dict(query: str) -> dict:
+        return {
+            "trace_id": "1234",
+            "skip_cache": True,
+            "commands": [
+                {"method": "cursor", "store": "_cursor"},
+                {"target": "_cursor", "method": "execute", "args": [query, []]},
+                {"target": "_cursor", "method": "fetchall", "store": "tmp_1"},
+                {"target": "_cursor", "method": "description", "store": "tmp_2"},
+                {"target": "_cursor", "method": "rowcount", "store": "tmp_3"},
+                {
+                    "target": "__utils",
+                    "method": "build_dict",
+                    "kwargs": {
+                        "all_results": {"__reference__": "tmp_1"},
+                        "description": {"__reference__": "tmp_2"},
+                        "rowcount": {"__reference__": "tmp_3"},
+                    },
+                },
+            ],
+        }
 
     def _test_run_query(
         self,

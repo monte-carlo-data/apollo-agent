@@ -29,7 +29,7 @@ jinja2>=3.1.6
 lxml>=6.1.0  # CVE-2026-41066 (XXE)
 lambda-git==0.1.1
 looker-sdk==24.2.0
-msal>=1.37.0  # allow cryptography>=49 (AIKIDO-2026-94131); 1.36.0 capped cryptography<49, 1.31.0 capped <46
+msal>=1.38.0  # VULN-1806 (AIKIDO-2026-10042); allow cryptography>=49 (AIKIDO-2026-94131); 1.36.0 capped cryptography<49, 1.31.0 capped <46
 numpy>=2.1.0  # numpy 2 required for Python 3.13: cp313 wheels first shipped in 2.1.0. The old "numpy.dtype size changed" ABI risk (https://github.com/numpy/numpy/issues/26710) is moot once every native dep is built against numpy 2.
 oracledb>=3.3.0  # cp314 wheels first shipped in 3.3.0 (YET-2254, azure image on Python 3.14). Resolves to 3.3.0, not 4.x: oracledb 4 requires typing_extensions>=4.14 and ours is held at 4.12.2 by the azure/snowflake stack. 4.x also drops Oracle Client <19c for thick mode (the image ships Instant Client 23.8, so that part is fine).
 orjson>=3.11.6  # CVE-2025-67221: recursion DoS in orjson.dumps thru 3.11.4
