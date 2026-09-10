@@ -105,7 +105,7 @@ duckdb==1.5.3
     # via -r requirements.in
 et-xmlfile==1.1.0
     # via openpyxl
-filelock==3.20.3
+filelock==3.29.5
     # via
     #   -r requirements.in
     #   snowflake-connector-python
