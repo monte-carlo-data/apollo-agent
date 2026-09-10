@@ -388,6 +388,16 @@ def _get_proxy_client_custom_etl(
     return CustomEtlProxyClient(credentials=credentials, connector_dir=connector_dir)
 
 
+def _get_proxy_client_custom_bi(
+    credentials: Optional[Dict], connector_dir: str, **kwargs  # type: ignore
+) -> BaseProxyClient:
+    from apollo.integrations.custom_bi.custom_bi_proxy_client import (
+        CustomBiProxyClient,
+    )
+
+    return CustomBiProxyClient(credentials=credentials, connector_dir=connector_dir)
+
+
 def _get_proxy_client_gcp_dataform(
     credentials: Optional[Dict], **kwargs  # type: ignore
 ) -> BaseProxyClient:
@@ -590,6 +600,19 @@ class ProxyClientFactory:
                 connector_dir = custom_etl_registry.get(connection_type)
                 if connector_dir:
                     client = _get_proxy_client_custom_etl(
+                        credentials, connector_dir=connector_dir
+                    )
+                    client.register_temp_files(temp_files)
+                    return client
+
+                from apollo.integrations.custom_bi.custom_bi_connector_loader import (
+                    get_custom_bi_connector_registry,
+                )
+
+                custom_bi_registry = get_custom_bi_connector_registry()
+                connector_dir = custom_bi_registry.get(connection_type)
+                if connector_dir:
+                    client = _get_proxy_client_custom_bi(
                         credentials, connector_dir=connector_dir
                     )
                     client.register_temp_files(temp_files)

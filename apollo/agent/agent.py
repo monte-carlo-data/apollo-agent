@@ -415,7 +415,7 @@ class Agent:
     def get_supported_connector_types(self, trace_id: Optional[str]) -> AgentResponse:
         """
         Returns the connector types this agent supports, split into
-        native (built-in), custom, and custom_etl categories.
+        native (built-in), custom, custom_etl, and custom_bi categories.
         """
         with self._inject_log_context("get_supported_connector_types", trace_id):
             try:
@@ -429,6 +429,9 @@ class Agent:
                 from apollo.integrations.custom_etl.custom_etl_proxy_client import (
                     CustomEtlProxyClient,
                 )
+                from apollo.integrations.custom_bi.custom_bi_proxy_client import (
+                    CustomBiProxyClient,
+                )
 
                 return AgentUtils.agent_ok_response(
                     {
@@ -436,6 +439,7 @@ class Agent:
                             "native": get_native_connection_types(),
                             "custom": CustomProxyClient.get_custom_connector_types(),
                             "custom_etl": CustomEtlProxyClient.get_custom_etl_connector_types(),
+                            "custom_bi": CustomBiProxyClient.get_custom_bi_connector_types(),
                         }
                     },
                     trace_id,
@@ -448,7 +452,7 @@ class Agent:
     def get_connection_manifests(self, trace_id: Optional[str]) -> AgentResponse:
         """
         Returns manifests, capabilities, and templates for all custom
-        connectors (warehouse and ETL) installed on this agent.
+        connectors (warehouse, ETL, and BI) installed on this agent.
         """
         with self._inject_log_context("get_connection_manifests", trace_id):
             try:
@@ -459,9 +463,13 @@ class Agent:
                 from apollo.integrations.custom_etl.custom_etl_proxy_client import (
                     CustomEtlProxyClient,
                 )
+                from apollo.integrations.custom_bi.custom_bi_proxy_client import (
+                    CustomBiProxyClient,
+                )
 
                 manifests = CustomProxyClient.get_connection_manifests()
                 manifests.update(CustomEtlProxyClient.get_connection_manifests())
+                manifests.update(CustomBiProxyClient.get_connection_manifests())
                 return AgentUtils.agent_ok_response(manifests, trace_id)
             except Exception:  # noqa
                 return AgentUtils.agent_response_for_last_exception(

@@ -88,6 +88,7 @@ def test_infrastructure_connectors_return_none() -> None:
 
 _CC_LOADER = "apollo.integrations.custom.custom_connector_loader"
 _ETL_LOADER = "apollo.integrations.custom_etl.custom_etl_connector_loader"
+_BI_LOADER = "apollo.integrations.custom_bi.custom_bi_connector_loader"
 
 
 @patch(
@@ -177,6 +178,38 @@ def test_custom_connector_not_in_registry_returns_none(
     _mock_etl_registry: MagicMock,
 ) -> None:
     assert get_credentials_schema("custom-connector-unknown") is None
+
+
+@patch(
+    f"{_BI_LOADER}.load_manifest",
+    return_value={
+        "connection_type": "custom-bi-connector-abc1234",
+        "credentials_schema": {"connect_args": {"type": "dict", "required": True}},
+    },
+)
+@patch(
+    f"{_BI_LOADER}.get_custom_bi_connector_registry",
+    return_value={
+        "custom-bi-connector-abc1234": "/fake/bi/path",
+    },
+)
+def test_custom_bi_connector_with_credentials_schema(
+    _mock_registry: MagicMock,
+    _mock_manifest: MagicMock,
+) -> None:
+    schema = get_credentials_schema("custom-bi-connector-abc1234")
+    assert schema == {"connect_args": {"type": "dict", "required": True}}
+
+
+@patch(f"{_BI_LOADER}.get_custom_bi_connector_registry", return_value={})
+@patch(f"{_ETL_LOADER}.get_custom_etl_connector_registry", return_value={})
+@patch(f"{_CC_LOADER}.get_custom_connector_registry", return_value={})
+def test_custom_bi_connector_not_in_registry_returns_none(
+    _mock_cc_registry: MagicMock,
+    _mock_etl_registry: MagicMock,
+    _mock_bi_registry: MagicMock,
+) -> None:
+    assert get_credentials_schema("custom-bi-connector-unknown") is None
 
 
 @patch(
