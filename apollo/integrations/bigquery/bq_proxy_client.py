@@ -49,8 +49,8 @@ class BqProxyClient(BaseProxyClient):
                 _ATTR_SOCKET_TIMEOUT, None
             )
             if service_account_info:
-                # Only the project id is kept; the key material is discarded after
-                # the Credentials object is built.
+                # Copy only the project id onto the client; the rest of the key stays in
+                # the Credentials object.
                 self._project_id = service_account_info.get(_ATTR_PROJECT_ID)
                 bq_credentials = Credentials.from_service_account_info(
                     service_account_info
