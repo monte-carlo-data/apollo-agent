@@ -40,7 +40,7 @@ class BaseDbProxyClient(BaseProxyClient, ABC):
         Converts "Column" objects in the description into a list of objects that can be serialized to JSON.
         From the DBAPI standard, description is supposed to return tuples with 7 elements, so we're returning
         those 7 elements back for each element in description.
-        Results are serialized using `AgentUtils.serialize_value`, this allows us to properly serialize
+        Results are serialized using `AgentSerializer.serialize`, this allows us to properly serialize
         date, datetime and any other data type that requires a custom serialization in the future.
         """
         if isinstance(value, Dict):
