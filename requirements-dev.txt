@@ -72,6 +72,7 @@ packaging==24.1
     #   -c requirements.txt
     #   black
     #   pytest
+    #   wheel
 pathspec==0.12.1
     # via black
 platformdirs==4.3.6
@@ -119,3 +120,5 @@ werkzeug==3.1.6
     # via
     #   -c requirements.txt
     #   flask
+wheel==0.48.0
+    # via -r requirements-dev.in
