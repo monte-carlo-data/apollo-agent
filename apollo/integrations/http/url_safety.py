@@ -36,6 +36,12 @@ addresses the agent never has a legitimate reason to reach:
   - ::1/128         IPv6 loopback
   - fd00:ec2::/64   AWS IMDSv2 IPv6 endpoint (fd00:ec2::254)
 
+IPv6 encodings of an IPv4 address — IPv4-mapped ``::ffff:a.b.c.d``, 6to4
+``2002::/16`` and the NAT64 well-known prefix ``64:ff9b::/96`` — are
+unwrapped to the embedded IPv4 address before any check, under both tiers,
+so ``::ffff:169.254.169.254`` gets the same verdict as ``169.254.169.254``
+(YET-2764). The prefixes themselves are not blocked.
+
 Operators can extend the default block list via the
 ``MCD_HTTP_BLOCKED_CIDRS`` env var: a comma-separated list of CIDRs
 (e.g. ``"100.64.0.0/10,10.50.0.0/16"``). Invalid entries are logged
@@ -119,8 +125,40 @@ _DEFAULT_BLOCKED_CIDRS: Tuple[str, ...] = (
     "fd00:ec2::/64",  # AWS IMDSv2 IPv6 endpoint (fd00:ec2::254)
 )
 
+# RFC 6052 well-known NAT64 prefix: the low 32 bits carry an IPv4 address.
+_NAT64_WELL_KNOWN_PREFIX = ipaddress.ip_network("64:ff9b::/96")
+
 _Network = Union[ipaddress.IPv4Network, ipaddress.IPv6Network]
 _Address = Union[ipaddress.IPv4Address, ipaddress.IPv6Address]
+
+
+def _embedded_ipv4(ip: _Address) -> _Address:
+    """Return the IPv4 address an IPv6 address encodes, or ``ip`` unchanged.
+
+    ``ipaddress`` network containment is False across address families, so
+    an IPv6 encoding of a blocked IPv4 address (``::ffff:169.254.169.254``)
+    would match none of the IPv4 CIDRs in the block list. On Linux an
+    ``AF_INET6`` connect to a v4-mapped address is delivered to the IPv4
+    target, so the encoding must be judged as that target. Three encodings
+    are unwrapped:
+
+      - IPv4-mapped ``::ffff:a.b.c.d`` (RFC 4291)
+      - 6to4 ``2002:AABB:CCDD::/48`` (RFC 3056)
+      - NAT64 well-known prefix ``64:ff9b::/96`` (RFC 6052)
+
+    Only the embedded address decides — the prefixes themselves stay open,
+    so an IPv6-only network reaching a public IPv4 service through DNS64 /
+    NAT64 keeps working.
+    """
+    if isinstance(ip, ipaddress.IPv4Address):
+        return ip
+    if ip.ipv4_mapped is not None:
+        return ip.ipv4_mapped
+    if ip.sixtofour is not None:
+        return ip.sixtofour
+    if ip in _NAT64_WELL_KNOWN_PREFIX:
+        return ipaddress.IPv4Address(int(ip) & 0xFFFFFFFF)
+    return ip
 
 
 def _parse_cidrs(cidrs: Tuple[str, ...], *, source: str) -> List[_Network]:
@@ -189,8 +227,10 @@ def _ip_is_rejected(ip: _Address, *, strict_ip_policy: bool) -> bool:
     """Return True if ``ip`` is disallowed by the active policy tier.
 
     The env-var extra list applies under both tiers; the strict tier
-    adds the broader "non-public" rejection on top.
+    adds the broader "non-public" rejection on top. IPv6 encodings of an
+    IPv4 address are judged as that IPv4 address (see ``_embedded_ipv4``).
     """
+    ip = _embedded_ipv4(ip)
     if any(ip in net for net in _DEFAULT_NETWORKS):
         return True
     if any(ip in net for net in _EXTRA_NETWORKS):
