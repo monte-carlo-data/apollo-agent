@@ -123,6 +123,9 @@ You can use `BqProxyClient` as a reference, basically you just need to:
     and there's no need to create an "extension" method for it.
   - You can return `None` in `wrapped_client` if there's no wrapped object and all operations are implemented as 
     methods in the proxy client class.
+  - If the Data Collector needs non-secret values resolved during client construction (e.g. a project id read from
+    the credentials), override `get_connection_metadata()` to return them — see `BqProxyClient` and
+    `GcpDataformProxyClient`. Return only the specific fields the caller needs.
 - Register the new client in `ProxyClientFactory`.
 
 ## Dev environment
