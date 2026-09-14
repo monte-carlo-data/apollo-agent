@@ -36,11 +36,9 @@ addresses the agent never has a legitimate reason to reach:
   - ::1/128         IPv6 loopback
   - fd00:ec2::/64   AWS IMDSv2 IPv6 endpoint (fd00:ec2::254)
 
-IPv6 encodings of an IPv4 address — IPv4-mapped ``::ffff:a.b.c.d``, 6to4
-``2002::/16`` and the NAT64 well-known prefix ``64:ff9b::/96`` — are
-unwrapped to the embedded IPv4 address before any check, under both tiers,
-so ``::ffff:169.254.169.254`` gets the same verdict as ``169.254.169.254``
-(YET-2764). The prefixes themselves are not blocked.
+IPv6 encodings of an IPv4 address (IPv4-mapped, 6to4, NAT64 well-known
+prefix) are judged as that IPv4 address under both tiers; the prefixes
+themselves are not blocked.
 
 Operators can extend the default block list via the
 ``MCD_HTTP_BLOCKED_CIDRS`` env var: a comma-separated list of CIDRs
@@ -133,22 +131,14 @@ _Address = Union[ipaddress.IPv4Address, ipaddress.IPv6Address]
 
 
 def _embedded_ipv4(ip: _Address) -> _Address:
-    """Return the IPv4 address an IPv6 address encodes, or ``ip`` unchanged.
+    """Return the IPv4 address an IPv6 address encodes (IPv4-mapped, 6to4 or
+    NAT64 well-known prefix), or ``ip`` unchanged.
 
-    ``ipaddress`` network containment is False across address families, so
-    an IPv6 encoding of a blocked IPv4 address (``::ffff:169.254.169.254``)
-    would match none of the IPv4 CIDRs in the block list. On Linux an
-    ``AF_INET6`` connect to a v4-mapped address is delivered to the IPv4
-    target, so the encoding must be judged as that target. Three encodings
-    are unwrapped:
-
-      - IPv4-mapped ``::ffff:a.b.c.d`` (RFC 4291)
-      - 6to4 ``2002:AABB:CCDD::/48`` (RFC 3056)
-      - NAT64 well-known prefix ``64:ff9b::/96`` (RFC 6052)
-
-    Only the embedded address decides — the prefixes themselves stay open,
-    so an IPv6-only network reaching a public IPv4 service through DNS64 /
-    NAT64 keeps working.
+    CIDR containment is False across address families, so a v4-mapped
+    ``::ffff:169.254.169.254`` would otherwise slip past every IPv4 entry in
+    the block list — and the kernel delivers it to the IPv4 target. Only the
+    embedded address is judged; the prefixes stay open so DNS64/NAT64 to
+    public IPv4 keeps working.
     """
     if isinstance(ip, ipaddress.IPv4Address):
         return ip
