@@ -8,6 +8,7 @@ from apollo.integrations.http.httplib2_client import build_authorized_http
 _API_SERVICE_NAME = "bigquery"
 _API_VERSION = "v2"
 _ATTR_CONNECT_ARGS = "connect_args"
+_ATTR_PROJECT_ID = "project_id"
 _ATTR_SOCKET_TIMEOUT = "socket_timeout_in_seconds"
 # Applied by build_authorized_http. discovery.build() would instead apply all seven
 # scopes the discovery document declares (adding bigquery.insertdata,
@@ -38,6 +39,7 @@ class BqProxyClient(BaseProxyClient):
     def __init__(self, credentials: Optional[Dict], **kwargs):  # type: ignore
         bq_credentials: Optional[Credentials] = None
         socket_timeout_in_seconds: Optional[float] = None
+        self._project_id: Optional[str] = None
         if credentials:
             # Support both direct credentials and connect_args format (for self-hosted credentials)
             service_account_info: Dict[str, Any] = dict(
@@ -47,6 +49,9 @@ class BqProxyClient(BaseProxyClient):
                 _ATTR_SOCKET_TIMEOUT, None
             )
             if service_account_info:
+                # Copy only the project id onto the client; the rest of the key stays in
+                # the Credentials object.
+                self._project_id = service_account_info.get(_ATTR_PROJECT_ID)
                 bq_credentials = Credentials.from_service_account_info(
                     service_account_info
                 )
@@ -72,3 +77,10 @@ class BqProxyClient(BaseProxyClient):
     @property
     def wrapped_client(self):
         return self._client
+
+    def get_connection_metadata(self) -> Dict[str, Any]:
+        """The key's project_id, used by the DC as the default billing project.
+        Empty when the key has none (or ADC is used)."""
+        if not self._project_id:
+            return {}
+        return {_ATTR_PROJECT_ID: self._project_id}
