@@ -36,6 +36,10 @@ addresses the agent never has a legitimate reason to reach:
   - ::1/128         IPv6 loopback
   - fd00:ec2::/64   AWS IMDSv2 IPv6 endpoint (fd00:ec2::254)
 
+IPv6 encodings of an IPv4 address (IPv4-mapped, 6to4, NAT64 well-known
+prefix) are judged as that IPv4 address under both tiers; the prefixes
+themselves are not blocked.
+
 Operators can extend the default block list via the
 ``MCD_HTTP_BLOCKED_CIDRS`` env var: a comma-separated list of CIDRs
 (e.g. ``"100.64.0.0/10,10.50.0.0/16"``). Invalid entries are logged
@@ -119,8 +123,32 @@ _DEFAULT_BLOCKED_CIDRS: Tuple[str, ...] = (
     "fd00:ec2::/64",  # AWS IMDSv2 IPv6 endpoint (fd00:ec2::254)
 )
 
+# RFC 6052 well-known NAT64 prefix: the low 32 bits carry an IPv4 address.
+_NAT64_WELL_KNOWN_PREFIX = ipaddress.ip_network("64:ff9b::/96")
+
 _Network = Union[ipaddress.IPv4Network, ipaddress.IPv6Network]
 _Address = Union[ipaddress.IPv4Address, ipaddress.IPv6Address]
+
+
+def _embedded_ipv4(ip: _Address) -> _Address:
+    """Return the IPv4 address an IPv6 address encodes (IPv4-mapped, 6to4 or
+    NAT64 well-known prefix), or ``ip`` unchanged.
+
+    CIDR containment is False across address families, so a v4-mapped
+    ``::ffff:169.254.169.254`` would otherwise slip past every IPv4 entry in
+    the block list — and the kernel delivers it to the IPv4 target. Only the
+    embedded address is judged; the prefixes stay open so DNS64/NAT64 to
+    public IPv4 keeps working.
+    """
+    if isinstance(ip, ipaddress.IPv4Address):
+        return ip
+    if ip.ipv4_mapped is not None:
+        return ip.ipv4_mapped
+    if ip.sixtofour is not None:
+        return ip.sixtofour
+    if ip in _NAT64_WELL_KNOWN_PREFIX:
+        return ipaddress.IPv4Address(int(ip) & 0xFFFFFFFF)
+    return ip
 
 
 def _parse_cidrs(cidrs: Tuple[str, ...], *, source: str) -> List[_Network]:
@@ -189,8 +217,10 @@ def _ip_is_rejected(ip: _Address, *, strict_ip_policy: bool) -> bool:
     """Return True if ``ip`` is disallowed by the active policy tier.
 
     The env-var extra list applies under both tiers; the strict tier
-    adds the broader "non-public" rejection on top.
+    adds the broader "non-public" rejection on top. IPv6 encodings of an
+    IPv4 address are judged as that IPv4 address (see ``_embedded_ipv4``).
     """
+    ip = _embedded_ipv4(ip)
     if any(ip in net for net in _DEFAULT_NETWORKS):
         return True
     if any(ip in net for net in _EXTRA_NETWORKS):

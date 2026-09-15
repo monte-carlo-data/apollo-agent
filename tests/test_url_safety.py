@@ -796,3 +796,139 @@ class TestAssertSafeDestination(TestCase):
         rejected by the fe80::/10 IP-literal fast-path — no DNS call needed."""
         with self.assertRaises(HttpClientError):
             assert_safe_destination("fe80::1%eth0", 80)
+
+
+class TestIpv4EmbeddedInIpv6(TestCase):
+    """YET-2764: IPv6 encodings of a blocked IPv4 address must be judged as
+    that IPv4 address. `ipaddress` CIDR containment is False across address
+    families, so without normalization `::ffff:169.254.169.254` (IPv4-mapped),
+    `2002:a9fe:a9fe::1` (6to4) and `64:ff9b::169.254.169.254` (NAT64
+    well-known prefix) matched none of the default CIDRs and passed both the
+    connect-time hook and `assert_safe_destination`. Legitimate embedded IPv4
+    (RFC1918, public) must keep the same verdict as the plain IPv4 would."""
+
+    MAPPED_IMDS = "::ffff:169.254.169.254"
+    MAPPED_LOOPBACK = "::ffff:127.0.0.1"
+    SIXTOFOUR_IMDS = "2002:a9fe:a9fe::1"
+    NAT64_IMDS = "64:ff9b::169.254.169.254"
+    NAT64_LOOPBACK = "64:ff9b::7f00:1"
+    MAPPED_RFC1918 = "::ffff:10.0.0.5"
+    NAT64_PUBLIC = "64:ff9b::93.184.216.34"
+
+    def tearDown(self):
+        _policy.active = False
+        _policy.strict_ip_policy = False
+
+    # --- assert_safe_destination (IP literal path) --------------------------
+
+    def test_destination_rejects_mapped_imds(self):
+        with self.assertRaises(HttpClientError) as ctx:
+            assert_safe_destination(self.MAPPED_IMDS, 80)
+        self.assertIn("blocked address", str(ctx.exception))
+
+    def test_destination_rejects_mapped_loopback(self):
+        with self.assertRaises(HttpClientError):
+            assert_safe_destination(self.MAPPED_LOOPBACK, 443)
+
+    def test_destination_rejects_sixtofour_imds(self):
+        with self.assertRaises(HttpClientError):
+            assert_safe_destination(self.SIXTOFOUR_IMDS, 80)
+
+    def test_destination_rejects_nat64_imds(self):
+        with self.assertRaises(HttpClientError):
+            assert_safe_destination(self.NAT64_IMDS, 80)
+
+    def test_destination_rejects_nat64_loopback(self):
+        with self.assertRaises(HttpClientError):
+            assert_safe_destination(self.NAT64_LOOPBACK, 80)
+
+    def test_destination_rejects_bracketed_mapped_imds(self):
+        with self.assertRaises(HttpClientError):
+            assert_safe_destination(f"[{self.MAPPED_IMDS}]", 80)
+
+    def test_destination_default_tier_allows_mapped_rfc1918(self):
+        # The embedded IPv4 gets the IPv4 verdict: RFC1918 stays open by default.
+        self.assertEqual(
+            assert_safe_destination(self.MAPPED_RFC1918, 443), self.MAPPED_RFC1918
+        )
+
+    def test_destination_strict_tier_rejects_mapped_rfc1918(self):
+        with self.assertRaises(HttpClientError):
+            assert_safe_destination(self.MAPPED_RFC1918, 443, strict_ip_policy=True)
+
+    def test_destination_allows_nat64_public(self):
+        # NAT64 is how IPv6-only networks reach IPv4 services; only the
+        # embedded address decides, the prefix itself is not blocked. The
+        # return value is the normalized literal, so compare as addresses.
+        self.assertEqual(
+            ipaddress.ip_address(assert_safe_destination(self.NAT64_PUBLIC, 443)),
+            ipaddress.ip_address(self.NAT64_PUBLIC),
+        )
+
+    def test_destination_strict_tier_allows_nat64_public(self):
+        self.assertEqual(
+            ipaddress.ip_address(
+                assert_safe_destination(self.NAT64_PUBLIC, 443, strict_ip_policy=True)
+            ),
+            ipaddress.ip_address(self.NAT64_PUBLIC),
+        )
+
+    # --- assert_safe_destination (DNS path) ---------------------------------
+
+    @patch("apollo.integrations.http.url_safety.socket.getaddrinfo")
+    def test_destination_rejects_hostname_with_mapped_imds_aaaa(self, mock_gai):
+        mock_gai.return_value = [
+            _addrinfo(self.MAPPED_IMDS, port=80, family=socket.AF_INET6)
+        ]
+        with self.assertRaises(HttpClientError) as ctx:
+            assert_safe_destination("attacker.example.com", 80)
+        self.assertIn("blocked address resolved from hostname", str(ctx.exception))
+
+    # --- connect-time hook ---------------------------------------------------
+
+    def _connect_blocked(self, host: str, *, strict: bool = False):
+        _policy.active = True
+        _policy.strict_ip_policy = strict
+        with patch.object(url_safety, "_original_create_connection") as called:
+            with self.assertRaises(HttpClientError):
+                _safe_create_connection((host, 443), timeout=1)
+        called.assert_not_called()
+
+    def test_hook_blocks_mapped_imds_literal(self):
+        self._connect_blocked(self.MAPPED_IMDS)
+
+    def test_hook_blocks_mapped_loopback_literal(self):
+        self._connect_blocked(self.MAPPED_LOOPBACK)
+
+    def test_hook_blocks_sixtofour_imds_literal(self):
+        self._connect_blocked(self.SIXTOFOUR_IMDS)
+
+    def test_hook_blocks_nat64_imds_literal(self):
+        self._connect_blocked(self.NAT64_IMDS)
+
+    @patch("apollo.integrations.http.url_safety.socket.getaddrinfo")
+    def test_hook_blocks_hostname_resolving_to_mapped_loopback(self, mock_gai):
+        mock_gai.return_value = [
+            _addrinfo(self.MAPPED_LOOPBACK, port=443, family=socket.AF_INET6)
+        ]
+        _policy.active = True
+        _policy.strict_ip_policy = False
+        with patch.object(url_safety, "_original_create_connection") as called:
+            with self.assertRaises(HttpClientError) as ctx:
+                _safe_create_connection(("attacker.example.com", 443), timeout=1)
+        self.assertIn("blocked address resolved from hostname", str(ctx.exception))
+        called.assert_not_called()
+
+    def test_hook_default_tier_allows_mapped_rfc1918(self):
+        _policy.active = True
+        _policy.strict_ip_policy = False
+        with patch.object(url_safety, "_original_create_connection") as called:
+            _safe_create_connection((self.MAPPED_RFC1918, 443), timeout=1)
+        called.assert_called_once()
+
+    def test_hook_strict_tier_allows_nat64_public(self):
+        _policy.active = True
+        _policy.strict_ip_policy = True
+        with patch.object(url_safety, "_original_create_connection") as called:
+            _safe_create_connection((self.NAT64_PUBLIC, 443), timeout=1)
+        called.assert_called_once()
