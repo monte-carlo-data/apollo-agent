@@ -419,6 +419,16 @@ RUN pip install --no-cache-dir setuptools
 # brings back whatever pip it currently bundles).
 RUN rm -f /opt/python/*/lib/python*/site-packages/pip/_vendor/bom.cdx.json
 
+# AIKIDO-2026-625366: the MS base image ships its own gunicorn (26.1.0 at the
+# time of writing) in the interpreter's site-packages, separate from the copy
+# requirements.txt puts under .python_packages. Our pin can't reach it, so
+# upgrade it in place. pip replaces the dist-info rather than writing over it,
+# so the flagged 26.1.0 metadata is gone from the final image. Unpinned base
+# tag, so a refresh may reintroduce an older one until MS ships >=26.2.0.
+# PYTHONPATH points at .python_packages, which already has our 26.2.0 — without
+# clearing it pip calls the requirement satisfied and skips /opt/python.
+RUN PYTHONPATH= pip install --no-cache-dir -U "gunicorn>=26.2.0"
+
 # VULN-1818: same vendored-wheel removal as in the `base` and `lambda` stages.
 RUN rm -rf /opt/python/*/lib/python*/site-packages/setuptools/_vendor/wheel \
            /opt/python/*/lib/python*/site-packages/setuptools/_vendor/wheel-*.dist-info
