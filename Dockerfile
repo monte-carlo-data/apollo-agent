@@ -412,7 +412,9 @@ RUN rm -f /opt/python/*/lib/python*/site-packages/pip/_vendor/bom.cdx.json
 # upgrade it in place. pip replaces the dist-info rather than writing over it,
 # so the flagged 26.1.0 metadata is gone from the final image. Unpinned base
 # tag, so a refresh may reintroduce an older one until MS ships >=26.2.0.
-RUN pip install --no-cache-dir -U "gunicorn>=26.2.0"
+# PYTHONPATH points at .python_packages, which already has our 26.2.0 — without
+# clearing it pip calls the requirement satisfied and skips /opt/python.
+RUN PYTHONPATH= pip install --no-cache-dir -U "gunicorn>=26.2.0"
 
 COPY --chown=mcdagent:mcdagent apollo /home/site/wwwroot/apollo
 
