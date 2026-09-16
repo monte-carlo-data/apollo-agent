@@ -133,6 +133,14 @@ RUN . $VENV_DIR/bin/activate && pip install -U pip setuptools
 # and never imported at runtime. Drop it, like the _manifest removals below.
 RUN rm -f $VENV_DIR/lib/python*/site-packages/pip/_vendor/bom.cdx.json
 
+# VULN-1818 (GHSA-vgq5-9859-3mmw): setuptools vendors wheel 0.46.3, vulnerable
+# to the `wheel convert` path traversal (0.9.6-0.47.0, fixed in 0.48.0). It pins
+# what it vendors, so installing a patched wheel wouldn't replace this copy.
+# Nothing here builds wheels, so drop it outright — code included, not just the
+# dist-info, or convert.py stays on disk with only its metadata hidden.
+RUN rm -rf $VENV_DIR/lib/python*/site-packages/setuptools/_vendor/wheel \
+           $VENV_DIR/lib/python*/site-packages/setuptools/_vendor/wheel-*.dist-info
+
 # copy sources in the last step so we don't install python libraries due to a change in source code
 COPY --chown=mcdagent:mcdagent apollo/ ./apollo
 
@@ -238,6 +246,11 @@ RUN rm -rf /var/lib/rpm/rpmdb.sqlite*
 
 # Same pip vendored-SBOM noise as in the `base` stage, for the Lambda interpreter.
 RUN rm -f /var/lang/lib/python*/site-packages/pip/_vendor/bom.cdx.json
+
+# VULN-1818: same vendored-wheel removal as in the `base` stage, for the Lambda
+# interpreter.
+RUN rm -rf /var/lang/lib/python*/site-packages/setuptools/_vendor/wheel \
+           /var/lang/lib/python*/site-packages/setuptools/_vendor/wheel-*.dist-info
 
 # The Runtime Interface Emulator is only for local `docker run` testing —
 # /lambda-entrypoint.sh execs it when AWS_LAMBDA_RUNTIME_API is unset, which
@@ -405,6 +418,10 @@ RUN pip install --no-cache-dir setuptools
 # interpreter the MS base image ships (the base tag is unpinned, so a refresh
 # brings back whatever pip it currently bundles).
 RUN rm -f /opt/python/*/lib/python*/site-packages/pip/_vendor/bom.cdx.json
+
+# VULN-1818: same vendored-wheel removal as in the `base` and `lambda` stages.
+RUN rm -rf /opt/python/*/lib/python*/site-packages/setuptools/_vendor/wheel \
+           /opt/python/*/lib/python*/site-packages/setuptools/_vendor/wheel-*.dist-info
 
 COPY --chown=mcdagent:mcdagent apollo /home/site/wwwroot/apollo
 
