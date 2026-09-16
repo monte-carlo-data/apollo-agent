@@ -125,20 +125,21 @@ COPY --chown=mcdagent:mcdagent requirements.txt ./
 
 RUN python -m venv $VENV_DIR
 RUN . $VENV_DIR/bin/activate && pip install --no-cache-dir -r requirements.txt
-# VULN-423; VULN-1818: also pin wheel>=0.48.0 (CVE-2026-24049)
-RUN . $VENV_DIR/bin/activate && pip install -U pip setuptools "wheel>=0.48.0"
+# VULN-423
+RUN . $VENV_DIR/bin/activate && pip install -U pip setuptools
 
 # Docker Scout reads pip's vendored SBOM (_vendor/bom.cdx.json) and flags its
 # bundled deps (setuptools, msgpack) as image CVEs, though they're pip-internal
 # and never imported at runtime. Drop it, like the _manifest removals below.
 RUN rm -f $VENV_DIR/lib/python*/site-packages/pip/_vendor/bom.cdx.json
 
-# VULN-1818 (CVE-2026-24049): setuptools vendors an old wheel version internally
-# (wheel-0.46.3.dist-info inside setuptools/_vendor/). Removing just the dist-info
-# directory clears the scanner finding; the actual wheel code under _vendor/wheel/
-# is retained so setuptools' bdist_wheel functionality is unaffected. This mirrors
-# the bom.cdx.json removal above.
-RUN rm -rf $VENV_DIR/lib/python*/site-packages/setuptools/_vendor/wheel-*.dist-info
+# VULN-1818 (GHSA-vgq5-9859-3mmw): setuptools vendors wheel 0.46.3, vulnerable
+# to the `wheel convert` path traversal (0.9.6-0.47.0, fixed in 0.48.0). It pins
+# what it vendors, so installing a patched wheel wouldn't replace this copy.
+# Nothing here builds wheels, so drop it outright — code included, not just the
+# dist-info, or convert.py stays on disk with only its metadata hidden.
+RUN rm -rf $VENV_DIR/lib/python*/site-packages/setuptools/_vendor/wheel \
+           $VENV_DIR/lib/python*/site-packages/setuptools/_vendor/wheel-*.dist-info
 
 # copy sources in the last step so we don't install python libraries due to a change in source code
 COPY --chown=mcdagent:mcdagent apollo/ ./apollo
@@ -208,8 +209,7 @@ RUN echo "mcdagent:x:1000:1000:mcdagent:${LAMBDA_TASK_ROOT}:/sbin/nologin" >> /e
 # VULN-369: Base ECR image includes urllib3-1.26.18 which is vulnerable (CVE-2024-37891).
 # Note that this is the system install, not our app.
 # Added setuptools as distutils is required by the git module we use for Looker
-# VULN-1818: also pin wheel>=0.48.0 (CVE-2026-24049)
-RUN pip install --no-cache-dir -U urllib3 setuptools "wheel>=0.48.0"
+RUN pip install --no-cache-dir -U urllib3 setuptools
 
 COPY --from=lambda-builder --chown=mcdagent:mcdagent "${LAMBDA_TASK_ROOT}" "${LAMBDA_TASK_ROOT}"
 
@@ -247,9 +247,10 @@ RUN rm -rf /var/lib/rpm/rpmdb.sqlite*
 # Same pip vendored-SBOM noise as in the `base` stage, for the Lambda interpreter.
 RUN rm -f /var/lang/lib/python*/site-packages/pip/_vendor/bom.cdx.json
 
-# VULN-1818 (CVE-2026-24049): same setuptools/_vendor/wheel dist-info removal as in
-# the `base` stage — clears the scanner finding without removing the wheel code.
-RUN rm -rf /var/lang/lib/python*/site-packages/setuptools/_vendor/wheel-*.dist-info
+# VULN-1818: same vendored-wheel removal as in the `base` stage, for the Lambda
+# interpreter.
+RUN rm -rf /var/lang/lib/python*/site-packages/setuptools/_vendor/wheel \
+           /var/lang/lib/python*/site-packages/setuptools/_vendor/wheel-*.dist-info
 
 # The Runtime Interface Emulator is only for local `docker run` testing —
 # /lambda-entrypoint.sh execs it when AWS_LAMBDA_RUNTIME_API is unset, which
@@ -418,9 +419,9 @@ RUN pip install --no-cache-dir setuptools
 # brings back whatever pip it currently bundles).
 RUN rm -f /opt/python/*/lib/python*/site-packages/pip/_vendor/bom.cdx.json
 
-# VULN-1818 (CVE-2026-24049): same setuptools/_vendor/wheel dist-info removal as
-# in the `base` and `lambda` stages.
-RUN rm -rf /opt/python/*/lib/python*/site-packages/setuptools/_vendor/wheel-*.dist-info
+# VULN-1818: same vendored-wheel removal as in the `base` and `lambda` stages.
+RUN rm -rf /opt/python/*/lib/python*/site-packages/setuptools/_vendor/wheel \
+           /opt/python/*/lib/python*/site-packages/setuptools/_vendor/wheel-*.dist-info
 
 COPY --chown=mcdagent:mcdagent apollo /home/site/wwwroot/apollo
 
