@@ -12,9 +12,9 @@ class AzureUtils:
 
     @staticmethod
     def get_default_credential() -> DefaultAzureCredential:
-        # excluding env credential to prevent an annoying warning log message because only AZURE_CLIENT_ID
-        # is specified, which we need for user-managed identities.
-        return DefaultAzureCredential(exclude_environment_credential=True)
+        # Outside Azure there is no IMDS, so AZURE_TENANT_ID/AZURE_CLIENT_ID/AZURE_CLIENT_SECRET
+        # is the only Entra credential an on-premises agent has.
+        return DefaultAzureCredential()
 
     @staticmethod
     def get_resource_group() -> str:
