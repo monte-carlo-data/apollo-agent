@@ -32,6 +32,7 @@ _SENSITIVE_ENV_VAR_NAME_SUBSTRINGS = (
     "token",
     "key",
     "credential",
+    "connection_string",  # MCD_STORAGE_CONNECTION_STRING embeds AccountKey=...
 )
 
 
