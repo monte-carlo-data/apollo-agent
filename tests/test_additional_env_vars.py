@@ -93,9 +93,16 @@ class IsSensitiveEnvVarNameTests(TestCase):
             "MCD_API_TOKEN",
             "MCD_STORAGE_ACCESS_KEY",
             "MCD_SVC_CREDENTIAL",
+            "MCD_STORAGE_CONNECTION_STRING",
         ]:
             self.assertTrue(is_sensitive_env_var_name(name), name)
 
     def test_non_matches(self):
-        for name in ["MCD_ORACLE_THICK_MODE", "MCD_AGENT_WRAPPER_TYPE"]:
+        for name in [
+            "MCD_ORACLE_THICK_MODE",
+            "MCD_AGENT_WRAPPER_TYPE",
+            # "connection_string" must not be shortened to "connection", or timeout-style vars
+            # would be hidden from health info too.
+            "MCD_DB_CONNECTION_TIMEOUT",
+        ]:
             self.assertFalse(is_sensitive_env_var_name(name), name)

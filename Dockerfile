@@ -414,6 +414,11 @@ RUN pip install --no-cache-dir \
 ENV SETUPTOOLS_USE_DISTUTILS=local
 RUN pip install --no-cache-dir setuptools
 
+# Same pip vendored-SBOM noise as in the `base` and `lambda` stages, for the
+# interpreter the MS base image ships (the base tag is unpinned, so a refresh
+# brings back whatever pip it currently bundles).
+RUN rm -f /opt/python/*/lib/python*/site-packages/pip/_vendor/bom.cdx.json
+
 # AIKIDO-2026-625366: the MS base image ships its own gunicorn (26.1.0 at the
 # time of writing) in the interpreter's site-packages, separate from the copy
 # requirements.txt puts under .python_packages. Our pin can't reach it, so
@@ -423,11 +428,6 @@ RUN pip install --no-cache-dir setuptools
 # PYTHONPATH points at .python_packages, which already has our 26.2.0 — without
 # clearing it pip calls the requirement satisfied and skips /opt/python.
 RUN PYTHONPATH= pip install --no-cache-dir -U "gunicorn>=26.2.0"
-
-# Same pip vendored-SBOM noise as in the `base` and `lambda` stages, for the
-# interpreter the MS base image ships (the base tag is unpinned, so a refresh
-# brings back whatever pip it currently bundles).
-RUN rm -f /opt/python/*/lib/python*/site-packages/pip/_vendor/bom.cdx.json
 
 # VULN-1818: same vendored-wheel removal as in the `base` and `lambda` stages.
 RUN rm -rf /opt/python/*/lib/python*/site-packages/setuptools/_vendor/wheel \
