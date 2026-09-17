@@ -306,6 +306,13 @@ class AzureBlobBaseReaderWriter(BaseStorageClient):
     def _generate_sas_token(
         self, blob_client: BlobClient, expiry: datetime, permission: BlobSasPermissions
     ):
+        # Signing needs a shared key. A connection string can carry a SAS token instead of an
+        # account key, which leaves nothing to sign with.
+        if not getattr(blob_client.credential, "account_key", None):
+            raise ValueError(
+                "Unable to generate a pre-signed url, the connection string must include "
+                "an account key"
+            )
         return generate_blob_sas(
             account_name=blob_client.credential.account_name,
             account_key=blob_client.credential.account_key,

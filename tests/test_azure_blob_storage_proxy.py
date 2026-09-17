@@ -29,6 +29,10 @@ from apollo.common.agent.env_vars import (
 )
 from apollo.agent.logging_utils import LoggingUtils
 from apollo.agent.utils import AgentUtils
+from apollo.common.agent.models import AgentConfigurationError
+from apollo.integrations.azure_blob.azure_blob_reader_writer import (
+    AzureBlobReaderWriter,
+)
 from tests.platform_provider import TestPlatformProvider
 
 _TEST_BUCKET_NAME = "test_bucket"
@@ -342,3 +346,137 @@ class StorageAzureTests(TestCase):
         )
         self._mock_blob_client.download_blob.assert_called_once_with()
         mock_temp_file_path.assert_called_once()
+
+
+_TEST_ACCOUNT_KEY = "dGVzdC1hY2NvdW50LWtleQ=="
+_TEST_CONNECTION_STRING = (
+    "DefaultEndpointsProtocol=https;"
+    f"AccountName={_TEST_ACCOUNT_NAME};"
+    f"AccountKey={_TEST_ACCOUNT_KEY};"
+    "EndpointSuffix=core.windows.net"
+)
+# Spelled out rather than imported from the integration, so that renaming the env var (a
+# documented, customer-facing name) fails here.
+_CONNECTION_STRING_ENV_VAR = "MCD_STORAGE_CONNECTION_STRING"
+_TEST_ENVIRON_CONNECTION_STRING = {
+    STORAGE_BUCKET_NAME_ENV_VAR: _TEST_BUCKET_NAME,
+    _CONNECTION_STRING_ENV_VAR: _TEST_CONNECTION_STRING,
+}
+
+
+class StorageAzureConnectionStringTests(TestCase):
+    """
+    Connection-string authentication, used when the agent has no access to Entra. The account name
+    and shared key come from the string, so the Entra-only code paths in `AzureBlobReaderWriter`
+    must all defer to the base class.
+    """
+
+    @patch.dict(os.environ, _TEST_ENVIRON_CONNECTION_STRING, clear=True)
+    @patch(
+        "apollo.integrations.azure_blob.azure_blob_base_reader_writer.BlobServiceClient"
+    )
+    def test_client_is_built_from_the_connection_string(self, mock_client_type):
+        AzureBlobReaderWriter()
+
+        mock_client_type.from_connection_string.assert_called_once_with(
+            conn_str=_TEST_CONNECTION_STRING
+        )
+        # The base class checks account_url/credential first, so passing those alongside a
+        # connection string would silently ignore the string.
+        mock_client_type.assert_not_called()
+
+    @patch.dict(
+        os.environ,
+        {**_TEST_ENVIRON_CONNECTION_STRING, STORAGE_ACCOUNT_NAME_ENV_VAR: "ignored"},
+        clear=True,
+    )
+    @patch(
+        "apollo.integrations.azure_blob.azure_blob_base_reader_writer.BlobServiceClient"
+    )
+    def test_connection_string_takes_precedence_over_the_account_name(
+        self, mock_client_type
+    ):
+        AzureBlobReaderWriter()
+
+        mock_client_type.from_connection_string.assert_called_once_with(
+            conn_str=_TEST_CONNECTION_STRING
+        )
+        mock_client_type.assert_not_called()
+
+    @patch.dict(
+        os.environ, {STORAGE_BUCKET_NAME_ENV_VAR: _TEST_BUCKET_NAME}, clear=True
+    )
+    def test_neither_connection_string_nor_account_name_is_a_configuration_error(self):
+        with self.assertRaises(AgentConfigurationError) as context:
+            AzureBlobReaderWriter()
+        self.assertIn(STORAGE_ACCOUNT_NAME_ENV_VAR, str(context.exception))
+
+    @patch.dict(os.environ, _TEST_ENVIRON_CONNECTION_STRING, clear=True)
+    @patch(
+        "apollo.integrations.azure_blob.azure_blob_base_reader_writer.generate_blob_sas"
+    )
+    @patch(
+        "apollo.integrations.azure_blob.azure_blob_base_reader_writer.BlobServiceClient"
+    )
+    def test_presigned_url_is_signed_with_the_account_key(
+        self, mock_client_type, mock_generate_blob_sas
+    ):
+        service_client = mock_client_type.from_connection_string.return_value
+        blob_client = service_client.get_blob_client.return_value
+        blob_client.credential.account_name = _TEST_ACCOUNT_NAME
+        blob_client.credential.account_key = _TEST_ACCOUNT_KEY
+        blob_client.url = (
+            f"https://{_TEST_ACCOUNT_NAME}.blob.core.windows.net/"
+            f"{_TEST_BUCKET_NAME}/{STORAGE_PREFIX_DEFAULT_VALUE}/file.txt"
+        )
+        mock_generate_blob_sas.return_value = "sig=abc"
+
+        url = AzureBlobReaderWriter().generate_presigned_url(
+            "file.txt", datetime.timedelta(hours=1)
+        )
+
+        signing_kwargs = mock_generate_blob_sas.call_args.kwargs
+        self.assertEqual(_TEST_ACCOUNT_KEY, signing_kwargs["account_key"])
+        self.assertNotIn("user_delegation_key", signing_kwargs)
+        # A user delegation key needs an Entra token, which is exactly what this mode lacks.
+        service_client.get_user_delegation_key.assert_not_called()
+        self.assertTrue(url.endswith("?sig=abc"))
+
+    @patch.dict(os.environ, _TEST_ENVIRON_CONNECTION_STRING, clear=True)
+    @patch(
+        "apollo.integrations.azure_blob.azure_blob_base_reader_writer.BlobServiceClient"
+    )
+    def test_presigned_url_without_an_account_key_is_rejected(self, mock_client_type):
+        # A connection string can carry a SAS token instead of a shared key, leaving nothing to
+        # sign with. The base class guards its own signing precondition.
+        service_client = mock_client_type.from_connection_string.return_value
+        service_client.get_blob_client.return_value.credential.account_key = None
+
+        with self.assertRaises(ValueError) as context:
+            AzureBlobReaderWriter().generate_presigned_url(
+                "file.txt", datetime.timedelta(hours=1)
+            )
+        self.assertIn("account key", str(context.exception))
+
+    @patch.dict(os.environ, _TEST_ENVIRON_CONNECTION_STRING, clear=True)
+    @patch(
+        "apollo.integrations.azure_blob.azure_blob_reader_writer.StorageManagementClient"
+    )
+    @patch(
+        "apollo.integrations.azure_blob.azure_blob_base_reader_writer.BlobServiceClient"
+    )
+    def test_is_bucket_private_uses_the_shared_key_client(
+        self, mock_client_type, mock_management_client_type
+    ):
+        service_client = mock_client_type.from_connection_string.return_value
+        container_client = service_client.get_container_client.return_value
+        container_client.get_container_access_policy.return_value = {
+            "public_access": None
+        }
+
+        self.assertTrue(AzureBlobReaderWriter().is_bucket_private())
+
+        service_client.get_container_client.assert_called_once_with(_TEST_BUCKET_NAME)
+        # The management API needs both an Entra token and the WEBSITE_* vars that only exist on
+        # App Service, so it must not be reached here.
+        mock_management_client_type.assert_not_called()
