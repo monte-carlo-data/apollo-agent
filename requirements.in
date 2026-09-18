@@ -1,4 +1,4 @@
-agent-base @ git+https://github.com/monte-carlo-data/agent-base.git@v0.0.6
+agent-base @ git+https://github.com/monte-carlo-data/agent-base.git@v0.0.7
 
 azure-identity==1.18.0
 azure-core==1.41.0  # YET-463 VULN-1827

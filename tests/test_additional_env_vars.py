@@ -86,6 +86,12 @@ class SanitizedBlobForHealthTests(TestCase):
 
 
 class IsSensitiveEnvVarNameTests(TestCase):
+    """
+    The predicate itself lives in agent-base, which owns its full test matrix.
+    These cases pin the re-export, so a broken import surfaces here rather than
+    as a silent redaction gap in health output.
+    """
+
     def test_matches(self):
         for name in [
             "MCD_DB_PASSWORD",
@@ -93,9 +99,14 @@ class IsSensitiveEnvVarNameTests(TestCase):
             "MCD_API_TOKEN",
             "MCD_STORAGE_ACCESS_KEY",
             "MCD_SVC_CREDENTIAL",
+            "MCD_STORAGE_CONNECTION_STRING",
         ]:
             self.assertTrue(is_sensitive_env_var_name(name), name)
 
     def test_non_matches(self):
-        for name in ["MCD_ORACLE_THICK_MODE", "MCD_AGENT_WRAPPER_TYPE"]:
+        for name in [
+            "MCD_ORACLE_THICK_MODE",
+            "MCD_AGENT_WRAPPER_TYPE",
+            "MCD_DB_CONNECTION_TIMEOUT",
+        ]:
             self.assertFalse(is_sensitive_env_var_name(name), name)
