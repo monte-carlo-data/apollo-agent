@@ -85,6 +85,22 @@ class HealthNetworkTests(TestCase):
 
     @patch.dict(
         os.environ,
+        {"AWS_SECRET_ACCESS_KEY": "shh", "AWS_REGION": "us-west-2"},
+    )
+    @patch(
+        "apollo.agent.agent.HEALTH_ENV_VARS",
+        ["AWS_SECRET_ACCESS_KEY", "AWS_REGION"],
+    )
+    def test_env_dictionary_filters_sensitive_names_from_the_allowlist(self):
+        # Being on HEALTH_ENV_VARS must not bypass the predicate. Non-MCD_ names
+        # isolate that path: the MCD_-prefixed sweep cannot reach either of these,
+        # so the allowlist is the only thing that could surface them.
+        env = Agent._env_dictionary()
+        self.assertEqual("us-west-2", env["AWS_REGION"])
+        self.assertNotIn("AWS_SECRET_ACCESS_KEY", env)
+
+    @patch.dict(
+        os.environ,
         {
             "MCD_ADDITIONAL_ENV_VARS": (
                 '{"MCD_ORACLE_THICK_MODE":"true","MCD_API_TOKEN":"t0ken"}'

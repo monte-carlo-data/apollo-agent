@@ -411,6 +411,40 @@ class StorageAzureConnectionStringTests(TestCase):
             AzureBlobReaderWriter()
         self.assertIn(STORAGE_ACCOUNT_NAME_ENV_VAR, str(context.exception))
 
+    @patch.dict(
+        os.environ,
+        {
+            STORAGE_BUCKET_NAME_ENV_VAR: _TEST_BUCKET_NAME,
+            # Parses cleanly and yields a client with no credential at all, which
+            # would otherwise only surface as a 403 on the first storage call.
+            _CONNECTION_STRING_ENV_VAR: (
+                "DefaultEndpointsProtocol=https;"
+                f"AccountName={_TEST_ACCOUNT_NAME};"
+                "EndpointSuffix=core.windows.net"
+            ),
+        },
+        clear=True,
+    )
+    def test_connection_string_without_a_credential_is_rejected(self):
+        with self.assertRaises(AgentConfigurationError) as context:
+            AzureBlobReaderWriter()
+        self.assertIn(_CONNECTION_STRING_ENV_VAR, str(context.exception))
+
+    @patch.dict(
+        os.environ,
+        {
+            STORAGE_BUCKET_NAME_ENV_VAR: _TEST_BUCKET_NAME,
+            _CONNECTION_STRING_ENV_VAR: "not a connection string",
+        },
+        clear=True,
+    )
+    def test_malformed_connection_string_is_a_configuration_error(self):
+        # The SDK raises a bare ValueError; it should surface like the neighbouring
+        # configuration checks instead.
+        with self.assertRaises(AgentConfigurationError) as context:
+            AzureBlobReaderWriter()
+        self.assertIn(_CONNECTION_STRING_ENV_VAR, str(context.exception))
+
     @patch.dict(os.environ, _TEST_ENVIRON_CONNECTION_STRING, clear=True)
     @patch(
         "apollo.integrations.azure_blob.azure_blob_base_reader_writer.generate_blob_sas"
