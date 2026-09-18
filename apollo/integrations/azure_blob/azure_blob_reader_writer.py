@@ -28,6 +28,11 @@ _WRAPPER_TYPE_KUBERNETES = "KUBERNETES"
 # reach Entra, so it is the only option when the agent has no public internet egress.
 _ENV_VAR_STORAGE_CONNECTION_STRING = "MCD_STORAGE_CONNECTION_STRING"
 
+# A connection string parses fine with neither of these, yielding a client with no credential
+# that only fails on the first storage operation. Checked up front so the misconfiguration is
+# reported where it is made.
+_CONNECTION_STRING_CREDENTIAL_KEYS = ("accountkey=", "sharedaccesssignature=")
+
 
 class AzureBlobReaderWriter(AzureBlobBaseReaderWriter):
     """
@@ -41,9 +46,9 @@ class AzureBlobReaderWriter(AzureBlobBaseReaderWriter):
       resolves a managed identity (set `AZURE_CLIENT_ID` when it is user-assigned) or a service
       principal (set `AZURE_TENANT_ID`, `AZURE_CLIENT_ID` and `AZURE_CLIENT_SECRET`), the latter
       being the option for agents running outside Azure, where there is no IMDS. The identity needs
-      the `Storage Blob Data Contributor` role at the storage account level. Checking whether public
-      access to the container is disabled requires a shared key, so it additionally needs the
-      `Storage Account Key Operator Service Role` role.
+      the `Storage Blob Data Contributor` role at the storage account level. Reading the container's
+      public-access setting is not supported with an Entra token, so that check goes through the
+      management API and additionally needs the `Storage Account Key Operator Service Role` role.
     """
 
     def __init__(self, prefix: Optional[str] = None, **kwargs):  # type: ignore
@@ -55,15 +60,31 @@ class AzureBlobReaderWriter(AzureBlobBaseReaderWriter):
 
         self._connection_string = os.getenv(_ENV_VAR_STORAGE_CONNECTION_STRING)
         if self._connection_string:
+            if not any(
+                key in self._connection_string.lower()
+                for key in _CONNECTION_STRING_CREDENTIAL_KEYS
+            ):
+                raise AgentConfigurationError(
+                    f"{_ENV_VAR_STORAGE_CONNECTION_STRING} must include AccountKey or "
+                    "SharedAccessSignature"
+                )
             # The account name comes from the connection string, so `MCD_STORAGE_ACCOUNT_NAME` is
             # not required. `_account_name` and `_account_url` are left unset: every method that
             # reads them authenticates with a token, and those all defer to the base class here.
-            super().__init__(
-                bucket_name=bucket_name,
-                prefix=prefix,
-                connection_string=self._connection_string,
-                **kwargs,
-            )
+            try:
+                super().__init__(
+                    bucket_name=bucket_name,
+                    prefix=prefix,
+                    connection_string=self._connection_string,
+                    **kwargs,
+                )
+            except ValueError as error:
+                # The SDK raises a bare ValueError for a malformed string; convert it so this
+                # fails like the checks above rather than as an unexpected error. The message is
+                # not included: it is the operator's own input that is malformed.
+                raise AgentConfigurationError(
+                    f"{_ENV_VAR_STORAGE_CONNECTION_STRING} is malformed"
+                ) from error
             return
 
         self._account_name = os.getenv(STORAGE_ACCOUNT_NAME_ENV_VAR, "")
