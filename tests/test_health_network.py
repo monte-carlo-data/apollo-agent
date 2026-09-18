@@ -63,6 +63,7 @@ class HealthNetworkTests(TestCase):
             "MCD_CUSTOM_TOGGLE": "on",
             "MCD_SOME_SECRET": "shh",
             "MCD_STORAGE_ACCESS_KEY": "AKIAEXAMPLE",
+            "MCD_STORAGE_CONNECTION_STRING": "AccountName=a;AccountKey=sekrit",
             "MCD_API_TOKEN": "t0ken",
             "MCD_DB_PASSWORD": "pw",
             "NON_MCD_VAR": "x",
@@ -76,6 +77,7 @@ class HealthNetworkTests(TestCase):
         # Sensitive-looking names (secret/password/token/key/credential) excluded.
         self.assertNotIn("MCD_SOME_SECRET", env)
         self.assertNotIn("MCD_STORAGE_ACCESS_KEY", env)  # caught by "key"
+        self.assertNotIn("MCD_STORAGE_CONNECTION_STRING", env)  # embeds AccountKey=...
         self.assertNotIn("MCD_API_TOKEN", env)
         self.assertNotIn("MCD_DB_PASSWORD", env)
         # Non-MCD_ vars are not swept in.
