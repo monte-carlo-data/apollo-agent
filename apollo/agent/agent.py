@@ -531,11 +531,13 @@ class Agent:
             "PYTHON_SYS_VERSION": sys.version,
             "CPU_COUNT": str(os.cpu_count()),
         }
+        # Filtered as well, so a credential-named var added to agent-base's
+        # HEALTH_ENV_VARS cannot bypass the predicate by being on the allowlist.
         env.update(
             {
                 env_var: os.getenv(env_var)
                 for env_var in HEALTH_ENV_VARS
-                if os.getenv(env_var)
+                if os.getenv(env_var) and not is_sensitive_env_var_name(env_var)
             }
         )
         # Also surface any MCD_-prefixed env var not already covered by the
