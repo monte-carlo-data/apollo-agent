@@ -4,7 +4,7 @@
 #
 #    pip-compile --output-file=requirements.txt --strip-extras requirements.in
 #
-agent-base @ git+https://github.com/monte-carlo-data/agent-base.git@v0.0.6
+agent-base @ git+https://github.com/monte-carlo-data/agent-base.git@v0.0.7
     # via -r requirements.in
 asn1crypto==1.5.1
     # via snowflake-connector-python
@@ -256,7 +256,6 @@ orjson==3.11.7
     #   trino
 packaging==24.1
     # via
-    #   gunicorn
     #   marshmallow
     #   snowflake-connector-python
     #   tableauserverclient
