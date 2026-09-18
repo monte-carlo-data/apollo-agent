@@ -17,28 +17,20 @@ from typing import Any, Dict, Optional
 
 from apollo.common.agent.constants import ATTRIBUTE_VALUE_REDACTED
 
+# Re-exported: agent-common applies the same predicate to its own health output,
+# so the substring list lives in agent-base rather than in both repos.
+from apollo.common.agent.redact import is_sensitive_env_var_name
+
 logger = logging.getLogger(__name__)
 
 ADDITIONAL_ENV_VARS_ENV_VAR = "MCD_ADDITIONAL_ENV_VARS"
 
-# Substrings (case-insensitive) that mark an env var NAME as sensitive. Used both
-# to keep such vars out of health info and to redact them when echoing the
-# MCD_ADDITIONAL_ENV_VARS blob back in health. Broader than agent-common's
-# LocalConfig._is_sensitive (secret/password only): "key"/"token"/"credential"
-# also catch e.g. MCD_STORAGE_ACCESS_KEY.
-_SENSITIVE_ENV_VAR_NAME_SUBSTRINGS = (
-    "secret",
-    "pass",  # password, passwd, passphrase
-    "token",
-    "key",
-    "credential",
-    "connection_string",  # MCD_STORAGE_CONNECTION_STRING embeds AccountKey=...
-)
-
-
-def is_sensitive_env_var_name(name: str) -> bool:
-    name_lower = name.lower()
-    return any(s in name_lower for s in _SENSITIVE_ENV_VAR_NAME_SUBSTRINGS)
+__all__ = [
+    "ADDITIONAL_ENV_VARS_ENV_VAR",
+    "apply_additional_env_vars",
+    "is_sensitive_env_var_name",
+    "sanitized_blob_for_health",
+]
 
 
 def _parse_blob(raw: str) -> Optional[Dict[str, Any]]:
