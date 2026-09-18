@@ -1,8 +1,7 @@
 import os
 from datetime import datetime
-from typing import Optional, cast
+from typing import Optional
 
-from azure.identity import DefaultAzureCredential
 from azure.mgmt.storage import StorageManagementClient
 from azure.storage.blob import (
     BlobClient,
@@ -24,20 +23,32 @@ from apollo.integrations.azure_blob.utils import AzureUtils
 
 _WRAPPER_TYPE_KUBERNETES = "KUBERNETES"
 
+# Connection string for the storage account, as labeled on the portal's "Access keys" blade. It
+# carries the account name and a shared key, and is the only authentication mode that doesn't
+# reach Entra, so it is the only option when the agent has no public internet egress.
+_ENV_VAR_STORAGE_CONNECTION_STRING = "MCD_STORAGE_CONNECTION_STRING"
+
+# A connection string parses fine with neither of these, yielding a client with no credential
+# that only fails on the first storage operation. Checked up front so the misconfiguration is
+# reported where it is made.
+_CONNECTION_STRING_CREDENTIAL_KEYS = ("accountkey=", "sharedaccesssignature=")
+
 
 class AzureBlobReaderWriter(AzureBlobBaseReaderWriter):
     """
     Azure Storage client implementation used in the agent, it initializes the client using the
-    account and container names specified through `MCD_STORAGE_ACCOUNT_NAME` and `MCD_STORAGE_BUCKET_NAME`
-    environment variables.
-    For authentication a `DefaultAzureCredential` object is used which requires the Azure Function to be running
-    with a managed identity. If the identity is user-managed (instead of system-managed) the env variable
-    AZURE_CLIENT_ID needs to be set with the client-id from the identity.
-    Additionally, the identity needs to have access to the storage account, for example by having the
-    `Storage Blob Data Contributor` role assigned at the storage account level.
-    For checking if public access is disabled to the container, we need to authenticate with a shared key
-    and thus the identity needs to have the `Storage Account Key Operator Service Role` role assigned, also at the
-    storage account level.
+    container name specified through `MCD_STORAGE_BUCKET_NAME` and one of two authentication modes:
+
+    - A connection string in `MCD_STORAGE_CONNECTION_STRING`, which carries the account name and a
+      shared key. No Entra access is needed, so this is the mode for agents that can't reach
+      `login.microsoftonline.com`.
+    - A `DefaultAzureCredential` against the account named by `MCD_STORAGE_ACCOUNT_NAME`. This
+      resolves a managed identity (set `AZURE_CLIENT_ID` when it is user-assigned) or a service
+      principal (set `AZURE_TENANT_ID`, `AZURE_CLIENT_ID` and `AZURE_CLIENT_SECRET`), the latter
+      being the option for agents running outside Azure, where there is no IMDS. The identity needs
+      the `Storage Blob Data Contributor` role at the storage account level. Reading the container's
+      public-access setting is not supported with an Entra token, so that check goes through the
+      management API and additionally needs the `Storage Account Key Operator Service Role` role.
     """
 
     def __init__(self, prefix: Optional[str] = None, **kwargs):  # type: ignore
@@ -46,6 +57,36 @@ class AzureBlobReaderWriter(AzureBlobBaseReaderWriter):
             raise AgentConfigurationError(
                 f"Bucket not configured, {STORAGE_BUCKET_NAME_ENV_VAR} env var expected"
             )
+
+        self._connection_string = os.getenv(_ENV_VAR_STORAGE_CONNECTION_STRING)
+        if self._connection_string:
+            if not any(
+                key in self._connection_string.lower()
+                for key in _CONNECTION_STRING_CREDENTIAL_KEYS
+            ):
+                raise AgentConfigurationError(
+                    f"{_ENV_VAR_STORAGE_CONNECTION_STRING} must include AccountKey or "
+                    "SharedAccessSignature"
+                )
+            # The account name comes from the connection string, so `MCD_STORAGE_ACCOUNT_NAME` is
+            # not required. `_account_name` and `_account_url` are left unset: every method that
+            # reads them authenticates with a token, and those all defer to the base class here.
+            try:
+                super().__init__(
+                    bucket_name=bucket_name,
+                    prefix=prefix,
+                    connection_string=self._connection_string,
+                    **kwargs,
+                )
+            except ValueError as error:
+                # The SDK raises a bare ValueError for a malformed string; convert it so this
+                # fails like the checks above rather than as an unexpected error. The message is
+                # not included: it is the operator's own input that is malformed.
+                raise AgentConfigurationError(
+                    f"{_ENV_VAR_STORAGE_CONNECTION_STRING} is malformed"
+                ) from error
+            return
+
         self._account_name = os.getenv(STORAGE_ACCOUNT_NAME_ENV_VAR, "")
         if not self._account_name:
             raise AgentConfigurationError(
@@ -71,6 +112,13 @@ class AzureBlobReaderWriter(AzureBlobBaseReaderWriter):
     def _generate_sas_token(
         self, blob_client: BlobClient, expiry: datetime, permission: BlobSasPermissions
     ):
+        if self._connection_string:
+            # `from_connection_string` builds a shared-key credential, which is what super() signs
+            # with.
+            return super()._generate_sas_token(
+                blob_client=blob_client, expiry=expiry, permission=permission
+            )
+
         # the code in super() uses the account_key from the credentials, as we're using
         # a token here we need to pass a user_delegation_key
         return generate_blob_sas(
@@ -86,6 +134,11 @@ class AzureBlobReaderWriter(AzureBlobBaseReaderWriter):
         )
 
     def _get_client_to_get_access_policy(self) -> BlobServiceClient:
+        if self._connection_string:
+            # The connection string already authenticates with a shared key, so the client can
+            # read the container ACL without going through the management API.
+            return super()._get_client_to_get_access_policy()
+
         # the client created with a token cannot be used to get the access policy according to:
         # https://learn.microsoft.com/en-us/rest/api/storageservices/authorize-with-azure-active-directory#
         # permissions-for-blob-service-operations ("Get Container ACL" not supported).
