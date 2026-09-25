@@ -111,8 +111,9 @@ msal-extensions==1.2.0
     #   azure-identity
 msrest==0.7.1
     # via azure-monitor-opentelemetry-exporter
-multidict==6.7.1
+multidict==6.9.1
     # via
+    #   -r requirements-azure.in
     #   aiohttp
     #   yarl
 oauthlib==3.2.2
