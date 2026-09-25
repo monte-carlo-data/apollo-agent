@@ -162,8 +162,9 @@ grpc-google-iam-v1==0.14.3
     # via
     #   google-cloud-dataform
     #   google-cloud-secret-manager
-grpcio==1.76.0
+grpcio==1.84.0
     # via
+    #   -r requirements.in
     #   google-api-core
     #   google-cloud-secret-manager
     #   googleapis-common-protos
