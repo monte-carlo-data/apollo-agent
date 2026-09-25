@@ -3,7 +3,6 @@ from typing import NotRequired, Required, TypedDict
 from apollo.integrations.ctp.models import CtpConfig, MapperConfig, TransformStep
 from apollo.integrations.ctp.registry import CtpRegistry
 
-
 # Common Snowflake identity + session fields shared by every auth mode.
 # Spread into each ``oneof_schema`` variant below so each variant is a
 # complete, independently-valid schema (a requirement for ``oneof_schema``).

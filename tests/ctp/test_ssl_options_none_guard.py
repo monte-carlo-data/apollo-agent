@@ -38,7 +38,6 @@ from apollo.integrations.ctp.defaults.teradata import TERADATA_DEFAULT_CTP
 from apollo.integrations.ctp.models import CtpConfig
 from apollo.integrations.ctp.pipeline import CtpPipeline
 
-
 _MYSQL_FLAT = {
     "host": "db.example.com",
     "port": "3306",
