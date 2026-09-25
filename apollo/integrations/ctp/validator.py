@@ -8,6 +8,7 @@ Validates a caller-supplied CtpConfig dict without executing the pipeline:
   - Checks Jinja2 template syntax in field_map values and step when-expressions
   - Confirms the mapper field_map covers all TypedDict required keys
 """
+
 from typing import Any
 
 from jinja2 import TemplateSyntaxError
