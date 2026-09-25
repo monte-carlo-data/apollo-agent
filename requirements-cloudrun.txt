@@ -4,26 +4,30 @@
 #
 #    pip-compile --max-rounds=30 --output-file=requirements-cloudrun.txt --strip-extras requirements-cloudrun.in
 #
-cachetools==5.3.3
+certifi==2026.7.22
+    # via
+    #   -c requirements.txt
+    #   requests
+cffi==2.1.1
+    # via
+    #   -c requirements.txt
+    #   cryptography
+charset-normalizer==3.5.1
+    # via
+    #   -c requirements.txt
+    #   requests
+cryptography==50.0.1
     # via
     #   -c requirements.txt
     #   google-auth
-certifi==2024.8.30
-    # via
-    #   -c requirements.txt
-    #   requests
-charset-normalizer==3.3.2
-    # via
-    #   -c requirements.txt
-    #   requests
-google-api-core==2.19.1
+google-api-core==2.34.0
     # via
     #   -c requirements.txt
     #   google-cloud-appengine-logging
     #   google-cloud-core
     #   google-cloud-logging
     #   google-cloud-run
-google-auth==2.30.0
+google-auth==2.58.1
     # via
     #   -c requirements.txt
     #   google-api-core
@@ -31,11 +35,11 @@ google-auth==2.30.0
     #   google-cloud-core
     #   google-cloud-logging
     #   google-cloud-run
-google-cloud-appengine-logging==1.4.5
+google-cloud-appengine-logging==1.10.0
     # via google-cloud-logging
 google-cloud-audit-log==0.3.2
     # via google-cloud-logging
-google-cloud-core==2.4.1
+google-cloud-core==2.7.0
     # via
     #   -c requirements.txt
     #   google-cloud-logging
@@ -43,14 +47,14 @@ google-cloud-logging==3.12.1
     # via -r requirements-cloudrun.in
 google-cloud-run==0.10.18
     # via -r requirements-cloudrun.in
-googleapis-common-protos==1.63.2
+googleapis-common-protos==1.75.4
     # via
     #   -c requirements.txt
     #   google-api-core
     #   google-cloud-audit-log
     #   grpc-google-iam-v1
     #   grpcio-status
-grpc-google-iam-v1==0.14.3
+grpc-google-iam-v1==0.14.5
     # via
     #   -c requirements.txt
     #   google-cloud-logging
@@ -59,6 +63,7 @@ grpcio==1.84.0
     # via
     #   -c requirements.txt
     #   google-api-core
+    #   google-cloud-appengine-logging
     #   googleapis-common-protos
     #   grpc-google-iam-v1
     #   grpcio-status
@@ -66,7 +71,7 @@ grpcio-status==1.84.0
     # via
     #   -c requirements.txt
     #   google-api-core
-idna==3.15
+idna==3.20
     # via
     #   -c requirements.txt
     #   requests
@@ -78,14 +83,14 @@ opentelemetry-api==1.40.0
     # via
     #   -r requirements-cloudrun.in
     #   google-cloud-logging
-proto-plus==1.28.0
+proto-plus==1.28.4
     # via
     #   -c requirements.txt
     #   google-api-core
     #   google-cloud-appengine-logging
     #   google-cloud-logging
     #   google-cloud-run
-protobuf==5.29.6
+protobuf==6.33.6
     # via
     #   -c requirements.txt
     #   google-api-core
@@ -101,25 +106,24 @@ pyasn1==0.6.4
     # via
     #   -c requirements.txt
     #   pyasn1-modules
-    #   rsa
-pyasn1-modules==0.4.0
+pyasn1-modules==0.4.2
     # via
     #   -c requirements.txt
     #   google-auth
-requests==2.34.0
+pycparser==3.0
+    # via
+    #   -c requirements.txt
+    #   cffi
+requests==2.34.2
     # via
     #   -c requirements.txt
     #   google-api-core
-rsa==4.9
-    # via
-    #   -c requirements.txt
-    #   google-auth
-typing-extensions==4.12.2
+typing-extensions==4.16.0
     # via
     #   -c requirements.txt
     #   grpcio
     #   opentelemetry-api
-urllib3==2.7.0
+urllib3==2.8.0
     # via
     #   -c requirements.txt
     #   requests

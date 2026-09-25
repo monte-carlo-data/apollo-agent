@@ -10,7 +10,6 @@ import pytest
 
 from apollo.credentials.schema import validate
 
-
 # A schema mirroring the Snowflake shape — required identity fields plus
 # multiple mutually-exclusive auth modes expressed via cerberus's
 # ``oneof_schema``. Used by the variant-selection tests below.

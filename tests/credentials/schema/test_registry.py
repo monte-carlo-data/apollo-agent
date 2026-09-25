@@ -15,7 +15,6 @@ import pytest
 
 from apollo.credentials.schema import get_credentials_schema
 
-
 # Source of truth: the connection types listed under "Which integrations
 # support self-hosted credentials?" in
 # docs-website/docs/Architecture/arch-resources/self-hosted-credentials/index.md.

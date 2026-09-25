@@ -19,7 +19,6 @@ from apollo.integrations.azure_blob.utils import AzureUtils
 from apollo.interfaces.azure.azure_updater import AzureUpdater
 from apollo.interfaces.generic.utils import AgentPlatformUtils
 
-
 logger = logging.getLogger(__name__)
 
 
