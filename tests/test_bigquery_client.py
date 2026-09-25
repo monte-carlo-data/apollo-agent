@@ -9,7 +9,6 @@ from apollo.integrations.bigquery.bq_proxy_client import (
     BqProxyClient,
 )
 
-
 _SERVICE_ACCOUNT_CREDENTIALS = {
     "type": "service_account",
     "project_id": "test-project",
