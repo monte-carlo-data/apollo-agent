@@ -35,7 +35,7 @@ oracledb>=3.3.0  # cp314 wheels first shipped in 3.3.0 (YET-2254, azure image on
 orjson>=3.11.6  # CVE-2025-67221: recursion DoS in orjson.dumps thru 3.11.4
 presto-python-client==0.8.3
 trino==0.336.0
-protobuf==5.29.6
+protobuf>=6.33.5,<7.0.0  # VULN-2183: grpcio-status>=1.84.0 requires protobuf>=6.33.5; <7.0.0 keeps compatibility with google-cloud-dataform==0.6.2 and google-cloud-secret-manager==2.25.0
 psycopg2-binary==2.9.12  # latest 2.9.x; bumped from 2.9.9 which had no Python 3.13 (cp313) wheels
 pyarrow==23.0.1  # CVE-2026-25087 (Python bindings unaffected per GHSA-rgxp-2hwp-jwgg, but Trivy/Scout flag <23.0.1)
 pyasn1>=0.6.4  # CVE-2026-30922 (uncontrolled recursion), CVE-2026-23490, CVE-2026-59884/59885/59886
@@ -95,3 +95,4 @@ marshmallow>=3.26.2  # CVE-2025-68480; transitive via dataclasses-json
 tomlkit>=0.15.1  # AIKIDO-2026-525182; transitive via snowflake-connector-python
 grpcio>=1.84.0  # AIKIDO-2026-473995 (VULN-2183); no_proxy bypass via suffix match; transitive via google-api-core/google-cloud-secret-manager
 grpcio-status>=1.84.0  # AIKIDO-2026-473995 (VULN-2183); must match grpcio version; transitive via google-api-core
+google-api-core>=2.30.0,<2.36.0  # VULN-2183: >=2.19.1 requires protobuf<6.0.0 which conflicts with grpcio-status>=1.84.0 (needs protobuf>=6.33.5); 2.30.0–2.35.x accept protobuf 6.x without adding new opentelemetry-api dep (2.36+ adds it, conflicting with cloudrun/azure pins)
