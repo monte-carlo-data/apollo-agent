@@ -264,7 +264,7 @@ pandas==2.3.3
     #   -r requirements.in
     #   databricks-sql-connector
     #   salesforce-cdp-connector
-platformdirs==4.3.6
+platformdirs==4.11.12
     # via
     #   snowflake-connector-python
     #   zeep
