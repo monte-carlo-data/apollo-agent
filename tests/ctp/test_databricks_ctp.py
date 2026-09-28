@@ -100,15 +100,21 @@ class TestDatabricksSqlCtp(TestCase):
     # ── Self-hosted PAT (customer-facing databricks_token) ────────────
 
     def test_self_hosted_pat_maps_databricks_token_to_access_token(self):
-        # DC connect_args merged with a PAT-shaped self-hosted secret (YET-2904).
+        # DC connect_args merged with a PAT-shaped self-hosted secret.
         args = _resolve_sql(_SQL_SELF_HOSTED_PAT_CREDS)
         self.assertEqual("dapi_customer_pat", args["access_token"])
         self.assertEqual("adb-123.0.azuredatabricks.net", args["server_hostname"])
         self.assertNotIn("credentials_provider", args)
-
-    def test_self_hosted_pat_raw_token_key_not_in_connect_args(self):
-        args = _resolve_sql(_SQL_SELF_HOSTED_PAT_CREDS)
         self.assertNotIn("databricks_token", args)
+
+    def test_pat_used_when_oauth_incomplete(self):
+        # client_id without a matching client_secret means the OAuth step's own `when`
+        # predicate doesn't fire, so the self-hosted PAT should still be used.
+        args = _resolve_sql(
+            {**_SQL_SELF_HOSTED_PAT_CREDS, "databricks_client_id": "client-id"}
+        )
+        self.assertEqual("dapi_customer_pat", args["access_token"])
+        self.assertNotIn("credentials_provider", args)
 
     def test_pre_shaped_access_token_takes_priority_over_databricks_token(self):
         args = _resolve_sql({**_SQL_PAT_CREDS, "databricks_token": "other-pat"})

@@ -28,8 +28,6 @@ _DATABRICKS_NO_AUTH_CONNECT_ARGS = {
 class DatabricksSqlWarehouseProxyClientAuthTests(TestCase):
     @patch("databricks.sql.connect")
     def test_missing_credential_fails_fast(self, mock_connect: Mock):
-        # Without a credential, sql.connect falls back to interactive browser OAuth and
-        # hangs a headless agent until timeout (YET-2904) — fail before calling it.
         with self.assertRaises(ValueError) as ctx:
             DatabricksSqlWarehouseProxyClient(
                 credentials={"connect_args": _DATABRICKS_NO_AUTH_CONNECT_ARGS}
@@ -51,12 +49,30 @@ class DatabricksSqlWarehouseProxyClientAuthTests(TestCase):
         mock_connect.assert_not_called()
 
     @patch("databricks.sql.connect")
+    def test_interactive_or_ignored_auth_fails_fast(self, mock_connect: Mock):
+        for auth_args in (
+            {"auth_type": "databricks-oauth"},
+            {"auth_type": "azure-oauth"},
+            {"use_cert_as_auth": True, "tls_client_cert_file": "/cert.pem"},
+        ):
+            with self.subTest(auth=auth_args):
+                mock_connect.reset_mock()
+                with self.assertRaises(ValueError):
+                    DatabricksSqlWarehouseProxyClient(
+                        credentials={
+                            "connect_args": {
+                                **_DATABRICKS_NO_AUTH_CONNECT_ARGS,
+                                **auth_args,
+                            }
+                        }
+                    )
+                mock_connect.assert_not_called()
+
+    @patch("databricks.sql.connect")
     def test_supported_credentials_connect(self, mock_connect: Mock):
         for auth_args in (
             {"access_token": "dapi_token"},
             {"credentials_provider": Mock()},
-            {"auth_type": "databricks-oauth"},
-            {"use_cert_as_auth": True, "tls_client_cert_file": "/cert.pem"},
         ):
             with self.subTest(auth=next(iter(auth_args))):
                 mock_connect.reset_mock()
@@ -69,7 +85,7 @@ class DatabricksSqlWarehouseProxyClientAuthTests(TestCase):
     @patch("databricks.sql.connect")
     def test_self_hosted_pat_reaches_sql_connect(self, mock_connect: Mock):
         # End to end through the factory + default CTP: DC connect_args merged with a
-        # customer's self-hosted PAT secret (YET-2904).
+        # customer's self-hosted PAT secret.
         ProxyClientFactory._create_proxy_client(
             "databricks",
             {

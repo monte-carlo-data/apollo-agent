@@ -10,15 +10,10 @@ logger = logging.getLogger(__name__)
 
 _ATTR_CONNECT_ARGS = "connect_args"
 
-# connect_args keys that give sql.connect a non-interactive way to authenticate. Without
-# any of them the connector falls back to interactive browser OAuth, which hangs a headless
-# agent until the request times out instead of failing.
-_AUTH_CONNECT_ARGS = (
-    "access_token",
-    "credentials_provider",
-    "auth_type",
-    "use_cert_as_auth",
-)
+# The only connect_args our CTPs produce that give sql.connect a non-interactive
+# credential. Anything else (no credential, or auth_type=databricks-oauth/azure-oauth)
+# makes the connector open a browser login, which hangs a headless agent until timeout.
+_AUTH_CONNECT_ARGS = ("access_token", "credentials_provider")
 
 
 class DatabricksSqlWarehouseProxyClient(BaseDbProxyClient):

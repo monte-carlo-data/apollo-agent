@@ -88,11 +88,9 @@ DATABRICKS_DEFAULT_CTP = CtpConfig(
     name="databricks-default",
     raw_credentials_schema=DATABRICKS_CREDENTIALS_SCHEMA,
     steps=[
-        # OAuth path: build credentials_provider callable and contribute it to connect_args.
+        # OAuth path: build a credentials_provider callable and contribute it to connect_args.
         # databricks_client_id / databricks_client_secret are intentionally excluded from the
-        # mapper field_map so they are not passed to sql.connect, which means the proxy
-        # client's own _credentials_use_oauth check is False and it will not overwrite the
-        # CTP-provided callable.
+        # mapper field_map so they are not passed to sql.connect.
         TransformStep(
             type="resolve_databricks_oauth",
             when=(
@@ -118,14 +116,15 @@ DATABRICKS_DEFAULT_CTP = CtpConfig(
         field_map={
             "server_hostname": "{{ raw.server_hostname if raw.server_hostname is defined else (raw.databricks_workspace_url | replace('https://', '') | replace('http://', '') | trim('/')) }}",
             "http_path": "{{ raw.http_path }}",
-            # PAT auth — absent when using OAuth (step contributes credentials_provider instead).
-            # A pre-shaped access_token (DC-managed path) wins; otherwise map the customer-facing
-            # self-hosted databricks_token. OAuth keys take priority over a stale PAT left behind
-            # by a PAT→OAuth migration, matching the databricks-rest CTP.
+            # PAT auth — absent under OAuth (the step above contributes credentials_provider).
+            # A pre-shaped access_token (DC-managed path) wins; a self-hosted databricks_token
+            # is dropped only when the OAuth step runs (stale PAT after a PAT→OAuth migration),
+            # matching databricks-rest.
             "access_token": (
                 "{{ raw.access_token if raw.access_token is defined"
                 " else (raw.databricks_token if raw.databricks_token is defined"
-                " and raw.databricks_client_id is not defined else none) }}"
+                " and not (raw.databricks_client_id is defined"
+                " and raw.databricks_client_secret is defined) else none) }}"
             ),
             "_use_arrow_native_complex_types": "{{ raw._use_arrow_native_complex_types | default(none) }}",
             "_user_agent_entry": "{{ raw._user_agent_entry | default(none) }}",
