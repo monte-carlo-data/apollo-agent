@@ -118,8 +118,15 @@ DATABRICKS_DEFAULT_CTP = CtpConfig(
         field_map={
             "server_hostname": "{{ raw.server_hostname if raw.server_hostname is defined else (raw.databricks_workspace_url | replace('https://', '') | replace('http://', '') | trim('/')) }}",
             "http_path": "{{ raw.http_path }}",
-            # PAT auth — absent when using OAuth (step contributes credentials_provider instead)
-            "access_token": "{{ raw.access_token | default(none) }}",
+            # PAT auth — absent when using OAuth (step contributes credentials_provider instead).
+            # A pre-shaped access_token (DC-managed path) wins; otherwise map the customer-facing
+            # self-hosted databricks_token. OAuth keys take priority over a stale PAT left behind
+            # by a PAT→OAuth migration, matching the databricks-rest CTP.
+            "access_token": (
+                "{{ raw.access_token if raw.access_token is defined"
+                " else (raw.databricks_token if raw.databricks_token is defined"
+                " and raw.databricks_client_id is not defined else none) }}"
+            ),
             "_use_arrow_native_complex_types": "{{ raw._use_arrow_native_complex_types | default(none) }}",
             "_user_agent_entry": "{{ raw._user_agent_entry | default(none) }}",
         },

@@ -24,6 +24,15 @@ _SQL_PAT_CREDS = {
     "access_token": "dapi_pat_token",
 }
 
+_SQL_SELF_HOSTED_PAT_CREDS = {
+    "databricks_warehouse_id": "abc123",
+    "http_path": "/sql/1.0/warehouses/abc123",
+    "_use_arrow_native_complex_types": False,
+    "_user_agent_entry": "monte-carlo-data-collector",
+    "databricks_workspace_url": "https://adb-123.0.azuredatabricks.net",
+    "databricks_token": "dapi_customer_pat",
+}
+
 _SQL_OAUTH_CREDS = {
     "server_hostname": "workspace.azuredatabricks.net",
     "http_path": "/sql/1.0/warehouses/abc123",
@@ -87,6 +96,32 @@ class TestDatabricksSqlCtp(TestCase):
         }
         args = _resolve_sql(creds)
         self.assertEqual("workspace.azuredatabricks.net", args["server_hostname"])
+
+    # ── Self-hosted PAT (customer-facing databricks_token) ────────────
+
+    def test_self_hosted_pat_maps_databricks_token_to_access_token(self):
+        # DC connect_args merged with a PAT-shaped self-hosted secret (YET-2904).
+        args = _resolve_sql(_SQL_SELF_HOSTED_PAT_CREDS)
+        self.assertEqual("dapi_customer_pat", args["access_token"])
+        self.assertEqual("adb-123.0.azuredatabricks.net", args["server_hostname"])
+        self.assertNotIn("credentials_provider", args)
+
+    def test_self_hosted_pat_raw_token_key_not_in_connect_args(self):
+        args = _resolve_sql(_SQL_SELF_HOSTED_PAT_CREDS)
+        self.assertNotIn("databricks_token", args)
+
+    def test_pre_shaped_access_token_takes_priority_over_databricks_token(self):
+        args = _resolve_sql({**_SQL_PAT_CREDS, "databricks_token": "other-pat"})
+        self.assertEqual("dapi_pat_token", args["access_token"])
+
+    @patch("apollo.integrations.ctp.transforms.resolve_databricks_oauth.Config")
+    @patch(
+        "apollo.integrations.ctp.transforms.resolve_databricks_oauth.oauth_service_principal"
+    )
+    def test_oauth_takes_priority_over_stale_pat(self, mock_provider, mock_config):
+        args = _resolve_sql({**_SQL_OAUTH_CREDS, "databricks_token": "stale-pat"})
+        self.assertIn("credentials_provider", args)
+        self.assertNotIn("access_token", args)
 
     # ── Databricks-managed OAuth ──────────────────────────────────────
 
