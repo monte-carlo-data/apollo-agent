@@ -10,6 +10,11 @@ logger = logging.getLogger(__name__)
 
 _ATTR_CONNECT_ARGS = "connect_args"
 
+# The only connect_args our CTPs produce that give sql.connect a non-interactive
+# credential. Anything else (no credential, or auth_type=databricks-oauth/azure-oauth)
+# makes the connector open a browser login, which hangs a headless agent until timeout.
+_AUTH_CONNECT_ARGS = ("access_token", "credentials_provider")
+
 
 class DatabricksSqlWarehouseProxyClient(BaseDbProxyClient):
     """
@@ -25,8 +30,15 @@ class DatabricksSqlWarehouseProxyClient(BaseDbProxyClient):
             raise ValueError(
                 f"Databricks agent client requires {_ATTR_CONNECT_ARGS} in credentials"
             )
+        connect_args = credentials[_ATTR_CONNECT_ARGS]
+        if not any(connect_args.get(key) for key in _AUTH_CONNECT_ARGS):
+            raise ValueError(
+                "Databricks credentials are missing authentication: provide "
+                "databricks_token (PAT) or databricks_client_id and "
+                "databricks_client_secret (OAuth)"
+            )
         t0 = time.monotonic()
-        self._connection = sql.connect(**credentials[_ATTR_CONNECT_ARGS])
+        self._connection = sql.connect(**connect_args)
         connect_s = time.monotonic() - t0
         logger.info(f"Databricks sql.connect() completed, duration_s={connect_s:.3f}")
 

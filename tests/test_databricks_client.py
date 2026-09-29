@@ -5,13 +5,108 @@ from unittest.mock import patch, Mock, call
 
 from apollo.agent.agent import Agent
 from apollo.agent.logging_utils import LoggingUtils
+from apollo.agent.proxy_client_factory import ProxyClientFactory
 from apollo.common.agent.constants import ATTRIBUTE_NAME_ERROR, ATTRIBUTE_NAME_RESULT
+from apollo.integrations.databricks.databricks_sql_warehouse_proxy_client import (
+    DatabricksSqlWarehouseProxyClient,
+)
 
 _DATABRICKS_CREDENTIALS = {
     "server_hostname": "www.test.com",
     "http_path": "/path",
+    "access_token": "dapi_token",
     "_use_arrow_native_complex_types": False,
 }
+
+_DATABRICKS_NO_AUTH_CONNECT_ARGS = {
+    "server_hostname": "www.test.com",
+    "http_path": "/path",
+    "_use_arrow_native_complex_types": False,
+}
+
+
+class DatabricksSqlWarehouseProxyClientAuthTests(TestCase):
+    @patch("databricks.sql.connect")
+    def test_missing_credential_fails_fast(self, mock_connect: Mock):
+        with self.assertRaises(ValueError) as ctx:
+            DatabricksSqlWarehouseProxyClient(
+                credentials={"connect_args": _DATABRICKS_NO_AUTH_CONNECT_ARGS}
+            )
+        self.assertIn("databricks_token", str(ctx.exception))
+        mock_connect.assert_not_called()
+
+    @patch("databricks.sql.connect")
+    def test_none_access_token_fails_fast(self, mock_connect: Mock):
+        with self.assertRaises(ValueError):
+            DatabricksSqlWarehouseProxyClient(
+                credentials={
+                    "connect_args": {
+                        **_DATABRICKS_NO_AUTH_CONNECT_ARGS,
+                        "access_token": None,
+                    }
+                }
+            )
+        mock_connect.assert_not_called()
+
+    @patch("databricks.sql.connect")
+    def test_interactive_or_ignored_auth_fails_fast(self, mock_connect: Mock):
+        for auth_args in (
+            {"auth_type": "databricks-oauth"},
+            {"auth_type": "azure-oauth"},
+            {"use_cert_as_auth": True, "tls_client_cert_file": "/cert.pem"},
+        ):
+            with self.subTest(auth=auth_args):
+                mock_connect.reset_mock()
+                with self.assertRaises(ValueError):
+                    DatabricksSqlWarehouseProxyClient(
+                        credentials={
+                            "connect_args": {
+                                **_DATABRICKS_NO_AUTH_CONNECT_ARGS,
+                                **auth_args,
+                            }
+                        }
+                    )
+                mock_connect.assert_not_called()
+
+    @patch("databricks.sql.connect")
+    def test_supported_credentials_connect(self, mock_connect: Mock):
+        for auth_args in (
+            {"access_token": "dapi_token"},
+            {"credentials_provider": Mock()},
+        ):
+            with self.subTest(auth=next(iter(auth_args))):
+                mock_connect.reset_mock()
+                connect_args = {**_DATABRICKS_NO_AUTH_CONNECT_ARGS, **auth_args}
+                DatabricksSqlWarehouseProxyClient(
+                    credentials={"connect_args": connect_args}
+                )
+                mock_connect.assert_called_once_with(**connect_args)
+
+    @patch("databricks.sql.connect")
+    def test_self_hosted_pat_reaches_sql_connect(self, mock_connect: Mock):
+        # End to end through the factory + default CTP: DC connect_args merged with a
+        # customer's self-hosted PAT secret.
+        ProxyClientFactory._create_proxy_client(
+            "databricks",
+            {
+                "connect_args": {
+                    "databricks_warehouse_id": "abc123",
+                    "http_path": "/sql/1.0/warehouses/abc123",
+                    "_use_arrow_native_complex_types": False,
+                    "_user_agent_entry": "monte-carlo-data-collector",
+                    "databricks_workspace_url": "https://adb-123.0.azuredatabricks.net",
+                    "databricks_token": "dapi_customer_pat",
+                }
+            },
+            "local",
+        )
+        mock_connect.assert_called_once_with(
+            server_hostname="adb-123.0.azuredatabricks.net",
+            http_path="/sql/1.0/warehouses/abc123",
+            access_token="dapi_customer_pat",
+            _use_arrow_native_complex_types=False,
+            _user_agent_entry="monte-carlo-data-collector",
+        )
 
 
 class DatabricksClientTests(TestCase):
