@@ -91,7 +91,7 @@ class SnowflakeProxyClient(BaseDbProxyClient):
         """
         Execute a SQL query synchronously and collect results.
         """
-        with self._connection.cursor() as cursor:
+        with self.cursor() as cursor:
             cursor.execute(sql_query, timeout=query_timeout)
             results = cursor.fetchmany(max_results + 1)
             if len(results) > max_results:
