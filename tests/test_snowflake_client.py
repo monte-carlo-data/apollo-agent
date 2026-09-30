@@ -3,7 +3,7 @@ import datetime
 import json
 from typing import List, Any, Optional, Dict
 from unittest import TestCase
-from unittest.mock import Mock, call, patch
+from unittest.mock import MagicMock, Mock, call, patch
 from snowflake.connector.cursor import SnowflakeCursor
 from snowflake.connector.errors import OperationalError, ProgrammingError
 from snowflake.connector.vendored.requests.exceptions import SSLError
@@ -548,12 +548,28 @@ class SnowflakeClientTests(TestCase):
             cursor_class=QueryTimeoutCursor
         )
 
+    @patch("snowflake.connector.connect")
+    def test_execute_sql_query_uses_query_timeout_cursor(self, mock_connect):
+        mock_connection = MagicMock()
+        mock_connect.return_value = mock_connection
+        cursor = mock_connection.cursor.return_value.__enter__.return_value
+        cursor.fetchmany.return_value = []
+        cursor.description = []
+        client = ProxyClientFactory.get_proxy_client(
+            "snowflake", {"connect_args": _SF_CREDENTIALS}, True, "AWS"
+        )
+
+        client.execute_sql_query("SELECT 1", max_results=10, query_timeout=0)
+
+        mock_connection.cursor.assert_called_once_with(cursor_class=QueryTimeoutCursor)
+
     def test_query_timeout_cursor_defaults_missing_timeout(self):
         cursor = object.__new__(QueryTimeoutCursor)
         with patch.object(SnowflakeCursor, "execute") as mock_execute:
             cursor.execute("SELECT 1")
             cursor.execute("SELECT 2", timeout=30)
             cursor.execute("SELECT 3", None, None, 45)
+            cursor.execute("SELECT 4", timeout=0)
 
         self.assertEqual(
             [
@@ -565,6 +581,12 @@ class SnowflakeClientTests(TestCase):
                 ),
                 call("SELECT 2", None, _bind_stage=None, timeout=30),
                 call("SELECT 3", None, _bind_stage=None, timeout=45),
+                call(
+                    "SELECT 4",
+                    None,
+                    _bind_stage=None,
+                    timeout=DEFAULT_QUERY_TIMEOUT_SECONDS,
+                ),
             ],
             mock_execute.call_args_list,
         )
