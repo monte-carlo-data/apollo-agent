@@ -4,7 +4,9 @@ import json
 from typing import List, Any, Optional, Dict
 from unittest import TestCase
 from unittest.mock import Mock, call, patch
-from snowflake.connector.errors import ProgrammingError
+from snowflake.connector.cursor import SnowflakeCursor
+from snowflake.connector.errors import OperationalError, ProgrammingError
+from snowflake.connector.vendored.requests.exceptions import SSLError
 
 from apollo.agent.agent import Agent
 from apollo.common.agent.constants import (
@@ -15,10 +17,18 @@ from apollo.common.agent.constants import (
 )
 from apollo.agent.logging_utils import LoggingUtils
 from apollo.agent.proxy_client_factory import ProxyClientFactory
+from apollo.integrations.snowflake.snowflake_proxy_client import (
+    DEFAULT_QUERY_TIMEOUT_SECONDS,
+    QueryTimeoutCursor,
+)
 
 _SF_CREDENTIALS = {"user": "u", "password": "p", "account": "a", "warehouse": "w"}
-# Expected connect() kwargs after CTP applies connect_args_defaults (application injected).
-_SF_EXPECTED_CONNECT_ARGS = {**_SF_CREDENTIALS, "application": "Monte Carlo"}
+# Expected connect() kwargs after CTP applies connect_args_defaults.
+_SF_EXPECTED_CONNECT_ARGS = {
+    **_SF_CREDENTIALS,
+    "application": "Monte Carlo",
+    "network_timeout": 60,
+}
 
 
 class SnowflakeClientTests(TestCase):
@@ -52,6 +62,7 @@ class SnowflakeClientTests(TestCase):
         self.assertIsNotNone(client)
         mock_connect.assert_called_once_with(
             application="Monte Carlo",
+            network_timeout=60,
             user="u",
             account="a",
             warehouse="w",
@@ -474,3 +485,94 @@ class SnowflakeClientTests(TestCase):
                 response.result.get(ATTRIBUTE_NAME_ERROR), f"expected error for {bad!r}"
             )
         mock_request.assert_not_called()
+
+    @patch("snowflake.connector.connect")
+    def test_network_timeout_can_be_overridden(self, mock_connect):
+        ProxyClientFactory.get_proxy_client(
+            "snowflake",
+            {"connect_args": {**_SF_CREDENTIALS, "network_timeout": 5}},
+            True,
+            "AWS",
+        )
+        mock_connect.assert_called_once_with(
+            **{**_SF_EXPECTED_CONNECT_ARGS, "network_timeout": 5}
+        )
+
+    def test_login_gives_up_when_every_attempt_gets_econnreset(self):
+        """A login whose TLS handshake is always reset fails instead of retrying forever."""
+        clock_ms = [1_000_000]
+        requests_made = [0]
+
+        def reset_connection(*args, **kwargs):
+            requests_made[0] += 1
+            if requests_made[0] > _MAX_LOGIN_REQUESTS:
+                raise _StillRetrying()
+            raise SSLError("bad handshake: SysCallError(104, 'ECONNRESET')")
+
+        def advance_clock(seconds):
+            clock_ms[0] += int(seconds * 1000)
+
+        with (
+            patch(
+                "snowflake.connector.vendored.requests.Session.request",
+                side_effect=reset_connection,
+            ),
+            patch("snowflake.connector.network.time.sleep", side_effect=advance_clock),
+            patch(
+                "snowflake.connector.network.get_time_millis",
+                side_effect=lambda: clock_ms[0],
+            ),
+            patch(
+                "snowflake.connector.time_util.get_time_millis",
+                side_effect=lambda: clock_ms[0],
+            ),
+        ):
+            with self.assertRaises(OperationalError):
+                ProxyClientFactory.get_proxy_client(
+                    "snowflake",
+                    {"connect_args": {**_SF_CREDENTIALS, "login_timeout": 120}},
+                    True,
+                    "AWS",
+                )
+
+    @patch("snowflake.connector.connect")
+    def test_cursor_uses_default_query_timeout(self, mock_connect):
+        mock_connect.return_value = self._mock_connection
+        client = ProxyClientFactory.get_proxy_client(
+            "snowflake", {"connect_args": _SF_CREDENTIALS}, True, "AWS"
+        )
+
+        client.cursor()
+
+        self._mock_connection.cursor.assert_called_once_with(
+            cursor_class=QueryTimeoutCursor
+        )
+
+    def test_query_timeout_cursor_defaults_missing_timeout(self):
+        cursor = object.__new__(QueryTimeoutCursor)
+        with patch.object(SnowflakeCursor, "execute") as mock_execute:
+            cursor.execute("SELECT 1")
+            cursor.execute("SELECT 2", timeout=30)
+            cursor.execute("SELECT 3", None, None, 45)
+
+        self.assertEqual(
+            [
+                call(
+                    "SELECT 1",
+                    None,
+                    _bind_stage=None,
+                    timeout=DEFAULT_QUERY_TIMEOUT_SECONDS,
+                ),
+                call("SELECT 2", None, _bind_stage=None, timeout=30),
+                call("SELECT 3", None, _bind_stage=None, timeout=45),
+            ],
+            mock_execute.call_args_list,
+        )
+
+
+# Bounds the regression test if the connector keeps retrying the login.
+_MAX_LOGIN_REQUESTS = 200
+
+
+class _StillRetrying(Exception):
+    pass
