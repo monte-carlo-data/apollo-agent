@@ -15,6 +15,7 @@ _SNOWFLAKE_COMMON_CONNECT_ARGS = {
     "schema": {"type": "string"},
     "role": {"type": "string"},
     "login_timeout": {"type": "integer"},
+    "network_timeout": {"type": "integer"},
     "application": {"type": "string"},
     "session_parameters": {"type": "dict"},
     "authenticator": {"type": "string"},
@@ -31,6 +32,7 @@ class SnowflakeClientArgs(TypedDict):
     schema: NotRequired[str]
     role: NotRequired[str]
     login_timeout: NotRequired[int]  # seconds; default 60
+    network_timeout: NotRequired[int]  # seconds; default 60, see connect_args_defaults
     application: NotRequired[str]
     session_parameters: NotRequired[dict]
     # Auth — exactly one of the following groups should be present:
@@ -137,6 +139,7 @@ SNOWFLAKE_DEFAULT_CTP = CtpConfig(
             "schema": "{{ raw.schema | default(none) }}",
             "role": "{{ raw.role | default(none) }}",
             "login_timeout": "{{ raw.login_timeout | default(none) }}",
+            "network_timeout": "{{ raw.network_timeout | default(none) }}",
             "application": "{{ raw.application | default(none) }}",  # overrides connect_args_defaults when set
             "session_parameters": "{{ raw.session_parameters | default(none) }}",
             # Auth fields — omit when absent so the connector selects the auth mode
@@ -152,7 +155,9 @@ SNOWFLAKE_DEFAULT_CTP = CtpConfig(
     ),
     # Partner application name for Snowflake's usage tracking; always "Monte Carlo"
     # unless overridden explicitly via raw.application in a custom CTP config.
-    connect_args_defaults={"application": "Monte Carlo"},
+    # network_timeout bounds request retries. Without it, a login whose TLS handshake
+    # keeps getting reset (ECONNRESET) is retried forever, regardless of login_timeout.
+    connect_args_defaults={"application": "Monte Carlo", "network_timeout": 60},
 )
 
 CtpRegistry.register("snowflake", SNOWFLAKE_DEFAULT_CTP)

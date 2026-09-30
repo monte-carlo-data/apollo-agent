@@ -1,8 +1,9 @@
 import json
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import requests
 import snowflake.connector
+from snowflake.connector.cursor import SnowflakeCursor
 from snowflake.connector.errors import DatabaseError, ProgrammingError
 
 from apollo.common.agent.models import AgentExecuteSqlQueryResponse
@@ -10,6 +11,32 @@ from apollo.integrations.db.base_db_proxy_client import BaseDbProxyClient
 from apollo.integrations.http.relative_path import validate_relative_rest_path
 
 _ATTR_CONNECT_ARGS = "connect_args"
+
+# Just under the orchestrator's 14.5-minute operation timeout.
+DEFAULT_QUERY_TIMEOUT_SECONDS = 14 * 60
+
+
+class QueryTimeoutCursor(SnowflakeCursor):
+    """
+    Cursor whose `execute` defaults `timeout` to `DEFAULT_QUERY_TIMEOUT_SECONDS`.
+    Without it the connector falls back to `network_timeout` as the query timeout.
+    """
+
+    def execute(  # type: ignore[override]
+        self,
+        command: str,
+        params: Optional[Any] = None,
+        _bind_stage: Optional[str] = None,
+        timeout: Optional[int] = None,
+        **kwargs: Any,
+    ):
+        return super().execute(
+            command,
+            params,
+            _bind_stage=_bind_stage,
+            timeout=timeout or DEFAULT_QUERY_TIMEOUT_SECONDS,
+            **kwargs,
+        )
 
 
 class SnowflakeProxyClient(BaseDbProxyClient):
@@ -33,6 +60,9 @@ class SnowflakeProxyClient(BaseDbProxyClient):
     @property
     def wrapped_client(self):
         return self._connection
+
+    def cursor(self) -> QueryTimeoutCursor:
+        return self._connection.cursor(cursor_class=QueryTimeoutCursor)
 
     def get_error_type(self, error: Exception) -> Optional[str]:
         """
@@ -61,7 +91,7 @@ class SnowflakeProxyClient(BaseDbProxyClient):
         """
         Execute a SQL query synchronously and collect results.
         """
-        with self._connection.cursor() as cursor:
+        with self.cursor() as cursor:
             cursor.execute(sql_query, timeout=query_timeout)
             results = cursor.fetchmany(max_results + 1)
             if len(results) > max_results:
