@@ -119,7 +119,7 @@ typing-extensions==4.12.2
     #   -c requirements.txt
     #   grpcio
     #   opentelemetry-api
-urllib3==2.7.0
+urllib3==2.8.0
     # via
     #   -c requirements.txt
     #   requests

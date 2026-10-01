@@ -229,7 +229,7 @@ pycparser==2.22
     # via
     #   -c requirements.txt
     #   cffi
-pyjwt==2.13.0
+pyjwt==2.15.1
     # via
     #   -c requirements.txt
     #   msal
@@ -264,7 +264,7 @@ typing-extensions==4.12.2
     #   opentelemetry-api
     #   opentelemetry-sdk
     #   opentelemetry-semantic-conventions
-urllib3==2.7.0
+urllib3==2.8.0
     # via
     #   -c requirements.txt
     #   requests
