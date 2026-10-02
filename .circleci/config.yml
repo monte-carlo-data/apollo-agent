@@ -111,9 +111,12 @@ jobs:
       # buildx driver — the default docker driver writes single manifests, not
       # the OCI image index that holds attestation manifests alongside the
       # platform image. Set up once; reused by every buildx call below.
+      # QEMU is registered first so the builder starts with arm64 available
+      # (only the multi-arch oracle-pki build uses it).
       - run:
           name: Set up buildx (docker-container driver)
           command: |
+            docker run --privileged --rm tonistiigi/binfmt --install arm64
             docker buildx create --use --name apollo-builder --driver docker-container
             docker buildx inspect --bootstrap
       # Each target is built TWICE per the BuildKit-attestations workflow:
@@ -140,6 +143,21 @@ jobs:
               --build-arg build_number=<< pipeline.number >> \
               --tag montecarlodata/<< parameters.docker_hub_repository >>:latest-system-base \
               --tag montecarlodata/<< parameters.docker_hub_repository >>:<< parameters.code_version >>-system-base \
+              --sbom=true \
+              --provenance=mode=max \
+              --push \
+              .
+      # Publish `/opt/oracle-pki` alone as a multi-arch `<version>-oracle-pki`
+      # image, so arm64 consumers can `COPY --from` it (system-base is
+      # amd64-only). The arm64 half builds under QEMU; it's only jlink + curl.
+      - run:
+          name: Build and push multi-arch oracle-pki with SBOM + SLSA provenance
+          command: |
+            docker buildx build \
+              --platform linux/amd64,linux/arm64 \
+              --target oracle-pki \
+              --tag montecarlodata/<< parameters.docker_hub_repository >>:latest-oracle-pki \
+              --tag montecarlodata/<< parameters.docker_hub_repository >>:<< parameters.code_version >>-oracle-pki \
               --sbom=true \
               --provenance=mode=max \
               --push \
