@@ -4,6 +4,7 @@ import pyodbc
 
 from apollo.integrations.db.tsql_base_db_proxy_client import (
     TSqlBaseDbProxyClient,
+    normalize_odbc_driver,
     odbc_string_from_dict,
 )
 
@@ -47,7 +48,7 @@ class AzureDatabaseProxyClient(TSqlBaseDbProxyClient):
             )
             connection_string = connect_args
         self._connection = pyodbc.connect(
-            connection_string,
+            normalize_odbc_driver(connection_string),
             # Set timeout for establishing connection to db
             timeout=login_timeout,
         )  # type: ignore

@@ -26,6 +26,10 @@ Several clients use `pyodbc` (fabric, azure_database, sql_server). They share:
 - `_process_description(col)` — overrides base class to use `col[1].__name__` (pyodbc returns
   the Python type object, not a type code)
 - Default timeouts: `login_timeout=15s`, `query_timeout_in_seconds=840s` (14 minutes). These keys are passed inside `connect_args` and popped before the dict is serialized to an ODBC string.
+- `normalize_odbc_driver(connection_string)` — call on the final string right before `pyodbc.connect`.
+  Where only ODBC Driver 18 is installed (e.g. arm64, which has no Driver 17 build), it rewrites a
+  Driver 17 string to 18 and adds `Encrypt=no` unless `Encrypt` is set; strings are unchanged
+  wherever Driver 17 is installed.
 
 These are shared via `TSqlBaseDbProxyClient` in `tsql_base_db_proxy_client.py`, which all three clients inherit from.
 

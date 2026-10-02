@@ -27,6 +27,12 @@ RUN dnf install -y binutils \
     && curl -fsSLo /opt/oracle-pki/lib/osdt_core.jar $M/osdt_core/${ORACLE_OSDT_VERSION}/osdt_core-${ORACLE_OSDT_VERSION}.jar \
     && curl -fsSLo /opt/oracle-pki/lib/osdt_cert.jar $M/osdt_cert/${ORACLE_OSDT_VERSION}/osdt_cert-${ORACLE_OSDT_VERSION}.jar
 
+# oracle-pki — just /opt/oracle-pki, published multi-arch as `<version>-oracle-pki`
+# for images that copy it in (e.g. data-collector's arm64 CaaS image), since
+# system-base is amd64-only.
+FROM scratch AS oracle-pki
+COPY --from=oracle-pki-builder /opt/oracle-pki /opt/oracle-pki
+
 # system-base — system-level dependencies only (apt packages, no venv).
 # Published as `<version>-system-base` so downstream consumers (e.g. hermes-agent)
 # can build their own venv against the same native libs without inheriting
