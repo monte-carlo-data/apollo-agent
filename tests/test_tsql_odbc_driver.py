@@ -1,6 +1,8 @@
 from unittest import TestCase
 from unittest.mock import Mock, patch
 
+import pytest
+
 from apollo.integrations.db import tsql_base_db_proxy_client
 from apollo.integrations.db.azure_database_proxy_client import (
     AzureDatabaseProxyClient,
@@ -14,6 +16,7 @@ _DRIVER_18 = "ODBC Driver 18 for SQL Server"
 _LEGACY = f"DRIVER={{{_DRIVER_17}}};SERVER=tcp:db.example.com,1433;UID=user;PWD=pass"
 
 
+@pytest.mark.real_odbc_driver_lookup
 class NormalizeOdbcDriverTests(TestCase):
     def setUp(self) -> None:
         tsql_base_db_proxy_client._installed_odbc_drivers.cache_clear()
@@ -68,7 +71,53 @@ class NormalizeOdbcDriverTests(TestCase):
                 connection_string, normalize_odbc_driver(connection_string)
             )
 
+    def test_brace_not_at_value_start_is_literal(self):
+        self._with_drivers(_DRIVER_18)
+        for password in ("p{ss", "a={b"):
+            with self.subTest(password=password):
+                self.assertEqual(
+                    f"DRIVER={{{_DRIVER_18}}};PWD={password};Encrypt=yes",
+                    normalize_odbc_driver(
+                        f"DRIVER={{{_DRIVER_17}}};PWD={password};Encrypt=yes"
+                    ),
+                )
 
+    def test_driver_key_without_equals_returned_unchanged(self):
+        self._with_drivers(_DRIVER_18)
+        connection_string = "DRIVER;SERVER=x"
+        self.assertEqual(connection_string, normalize_odbc_driver(connection_string))
+
+    def test_unbraced_driver_value(self):
+        self._with_drivers(_DRIVER_18)
+        self.assertEqual(
+            f"DRIVER={{{_DRIVER_18}}};SERVER=x;Encrypt=no",
+            normalize_odbc_driver(f"DRIVER={_DRIVER_17};SERVER=x"),
+        )
+
+    def test_trailing_semicolon(self):
+        self._with_drivers(_DRIVER_18)
+        self.assertEqual(
+            f"DRIVER={{{_DRIVER_18}}};SERVER=x;Encrypt=no",
+            normalize_odbc_driver(f"DRIVER={{{_DRIVER_17}}};SERVER=x;"),
+        )
+
+    def test_whitespace_around_keys_and_values(self):
+        self._with_drivers(_DRIVER_18)
+        for connection_string, expected in (
+            (
+                f"DRIVER = {{{_DRIVER_17}}} ; SERVER=x; Encrypt = yes ",
+                f"DRIVER={{{_DRIVER_18}}}; SERVER=x; Encrypt = yes ",
+            ),
+            (
+                f"DRIVER={{{_DRIVER_17}}};SERVER=x",
+                f"DRIVER={{{_DRIVER_18}}};SERVER=x;Encrypt=no",
+            ),
+        ):
+            with self.subTest(connection_string=connection_string):
+                self.assertEqual(expected, normalize_odbc_driver(connection_string))
+
+
+@pytest.mark.real_odbc_driver_lookup
 class ProxyClientsNormalizeDriverTests(TestCase):
     """Each T-SQL proxy client connects with the normalized connection string."""
 
@@ -85,17 +134,15 @@ class ProxyClientsNormalizeDriverTests(TestCase):
         return mock_connect.call_args.args[0]
 
     def test_sql_server_legacy_string(self):
-        self.assertTrue(
-            self._connected_string(SqlServerProxyClient, _LEGACY).startswith(
-                f"DRIVER={{{_DRIVER_18}}};"
-            )
+        self.assertEqual(
+            f"DRIVER={{{_DRIVER_18}}};SERVER=tcp:db.example.com,1433;UID=user;PWD=pass;Encrypt=no",
+            self._connected_string(SqlServerProxyClient, _LEGACY),
         )
 
     def test_azure_database_legacy_string(self):
-        self.assertTrue(
-            self._connected_string(AzureDatabaseProxyClient, _LEGACY).endswith(
-                ";Encrypt=no"
-            )
+        self.assertEqual(
+            f"DRIVER={{{_DRIVER_18}}};SERVER=tcp:db.example.com,1433;UID=user;PWD=pass;Encrypt=no",
+            self._connected_string(AzureDatabaseProxyClient, _LEGACY),
         )
 
     def test_fabric_dict(self):

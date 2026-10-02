@@ -36,10 +36,15 @@ def _installed_odbc_drivers() -> FrozenSet[str]:
 
 
 def _split_odbc_pairs(connection_string: str) -> List[str]:
-    """Split a connection string on ``;``, except inside ``{...}`` values (``}}`` is an escaped brace)."""
+    """Split a connection string on ``;``, except inside a braced value (``}}`` is an escaped brace).
+
+    Per MS-ODBCSTR, ``{`` opens a braced value only as the first character of a value.
+    """
     pairs: List[str] = []
     current: List[str] = []
     in_braces = False
+    seen_equals = False
+    at_value_start = False
     i = 0
     while i < len(connection_string):
         char = connection_string[i]
@@ -47,15 +52,21 @@ def _split_odbc_pairs(connection_string: str) -> List[str]:
             current.append("}}")
             i += 2
             continue
-        if char == "{":
+        if char == "{" and at_value_start:
             in_braces = True
-        elif char == "}":
+            at_value_start = False
+        elif char == "}" and in_braces:
             in_braces = False
         elif char == ";" and not in_braces:
             pairs.append("".join(current))
             current = []
+            seen_equals = at_value_start = False
             i += 1
             continue
+        elif char == "=" and not seen_equals:
+            seen_equals = at_value_start = True
+        elif not char.isspace():
+            at_value_start = False
         current.append(char)
         i += 1
     if current:
@@ -75,7 +86,10 @@ def normalize_odbc_driver(connection_string: str) -> str:
     if "driver" not in keys:
         return connection_string
     driver_index = keys.index("driver")
-    driver = pairs[driver_index].split("=", 1)[1].strip().strip("{}").strip()
+    driver_parts = pairs[driver_index].split("=", 1)
+    if len(driver_parts) != 2:
+        return connection_string
+    driver = driver_parts[1].strip().strip("{}").strip()
     if driver.lower() != _ODBC_DRIVER_17.lower():
         return connection_string
 

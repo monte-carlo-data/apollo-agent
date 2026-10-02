@@ -105,18 +105,22 @@ jobs:
         type: string
     steps:
       - checkout
+      # arm64 emulation for the multi-arch oracle-pki build. Pinned, and run
+      # before docker/check so this privileged third-party image never sees
+      # the push credentials.
+      - run:
+          name: Register QEMU for arm64 builds
+          command: |
+            docker run --privileged --rm tonistiigi/binfmt:qemu-v10.2.3@sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0 --install arm64
       - docker/check:
           use-docker-credentials-store: true
       # Attestations (SBOM + SLSA provenance) require the docker-container
       # buildx driver — the default docker driver writes single manifests, not
       # the OCI image index that holds attestation manifests alongside the
       # platform image. Set up once; reused by every buildx call below.
-      # QEMU is registered first so the builder starts with arm64 available
-      # (only the multi-arch oracle-pki build uses it).
       - run:
           name: Set up buildx (docker-container driver)
           command: |
-            docker run --privileged --rm tonistiigi/binfmt --install arm64
             docker buildx create --use --name apollo-builder --driver docker-container
             docker buildx inspect --bootstrap
       # Each target is built TWICE per the BuildKit-attestations workflow:
