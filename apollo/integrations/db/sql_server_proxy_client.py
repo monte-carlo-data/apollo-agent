@@ -11,6 +11,7 @@ from apollo.integrations.db.sql_server_kerberos_env import (
 )
 from apollo.integrations.db.tsql_base_db_proxy_client import (
     TSqlBaseDbProxyClient,
+    normalize_odbc_driver,
     odbc_string_from_dict,
 )
 
@@ -141,6 +142,7 @@ class SqlServerProxyClient(TSqlBaseDbProxyClient):
                 "query_timeout_in_seconds", self._DEFAULT_QUERY_TIMEOUT_IN_SECONDS
             )
             connection_string = connect_args
+        connection_string = normalize_odbc_driver(connection_string)
         try:
             if kerberos_params is None:
                 self._connection = pyodbc.connect(

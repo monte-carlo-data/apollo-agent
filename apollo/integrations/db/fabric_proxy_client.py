@@ -4,6 +4,7 @@ import pyodbc
 
 from apollo.integrations.db.tsql_base_db_proxy_client import (
     TSqlBaseDbProxyClient,
+    normalize_odbc_driver,
     odbc_string_from_dict,
 )
 
@@ -48,7 +49,7 @@ class MsFabricProxyClient(TSqlBaseDbProxyClient):
         connection_string = odbc_string_from_dict(connect_args)
 
         self._connection = pyodbc.connect(
-            connection_string,
+            normalize_odbc_driver(connection_string),
             timeout=login_timeout,
         )
         self._connection.add_output_converter(
