@@ -1,8 +1,12 @@
+import functools
 import struct
 from datetime import datetime, timezone, timedelta
-from typing import List
+from typing import FrozenSet, List
 
 from apollo.integrations.db.base_db_proxy_client import BaseDbProxyClient
+
+_ODBC_DRIVER_17 = "ODBC Driver 17 for SQL Server"
+_ODBC_DRIVER_18 = "ODBC Driver 18 for SQL Server"
 
 
 def odbc_escape(value: str) -> str:
@@ -22,6 +26,67 @@ def odbc_escape(value: str) -> str:
 def odbc_string_from_dict(connect_args: dict) -> str:
     """Serialize a dict of ODBC key-value pairs to a connection string."""
     return ";".join(f"{k}={odbc_escape(str(v))}" for k, v in connect_args.items())
+
+
+@functools.cache
+def _installed_odbc_drivers() -> FrozenSet[str]:
+    import pyodbc
+
+    return frozenset(pyodbc.drivers())
+
+
+def _split_odbc_pairs(connection_string: str) -> List[str]:
+    """Split a connection string on ``;``, except inside ``{...}`` values (``}}`` is an escaped brace)."""
+    pairs: List[str] = []
+    current: List[str] = []
+    in_braces = False
+    i = 0
+    while i < len(connection_string):
+        char = connection_string[i]
+        if in_braces and connection_string.startswith("}}", i):
+            current.append("}}")
+            i += 2
+            continue
+        if char == "{":
+            in_braces = True
+        elif char == "}":
+            in_braces = False
+        elif char == ";" and not in_braces:
+            pairs.append("".join(current))
+            current = []
+            i += 1
+            continue
+        current.append(char)
+        i += 1
+    if current:
+        pairs.append("".join(current))
+    return pairs
+
+
+def normalize_odbc_driver(connection_string: str) -> str:
+    """Run a Driver 17 connection string on Driver 18 when only 18 is installed.
+
+    Stored and self-hosted connection strings name Driver 17, which has no arm64 build.
+    Driver 18 defaults to ``Encrypt=yes``, so ``Encrypt=no`` (Driver 17's default) is
+    added when the string doesn't set it. Returned unchanged whenever Driver 17 is installed.
+    """
+    pairs = _split_odbc_pairs(connection_string)
+    keys = [pair.split("=", 1)[0].strip().lower() for pair in pairs]
+    if "driver" not in keys:
+        return connection_string
+    driver_index = keys.index("driver")
+    driver = pairs[driver_index].split("=", 1)[1].strip().strip("{}").strip()
+    if driver.lower() != _ODBC_DRIVER_17.lower():
+        return connection_string
+
+    installed = _installed_odbc_drivers()
+    if _ODBC_DRIVER_17 in installed or _ODBC_DRIVER_18 not in installed:
+        return connection_string
+
+    pairs[driver_index] = f"DRIVER={{{_ODBC_DRIVER_18}}}"
+    if "encrypt" not in keys:
+        pairs.append("Encrypt=no")
+    return ";".join(pairs)
 
 
 class TSqlBaseDbProxyClient(BaseDbProxyClient):
