@@ -55,7 +55,7 @@ grpc-google-iam-v1==0.14.3
     #   -c requirements.txt
     #   google-cloud-logging
     #   google-cloud-run
-grpcio==1.76.0
+grpcio==1.84.0
     # via
     #   -c requirements.txt
     #   google-api-core
