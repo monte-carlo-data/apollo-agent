@@ -125,7 +125,7 @@ def assume_role(
     params: Dict[str, Any] = {
         "RoleArn": role_arn,
         "RoleSessionName": f"mcd_mcp_{int(time.time())}",
-        "DurationSeconds": 900,
+        "DurationSeconds": 3600,
     }
     if external_id:
         params["ExternalId"] = external_id
