@@ -255,7 +255,7 @@ six==1.16.0
     #   isodate
     #   orderedmultidict
     #   python-dateutil
-typing-extensions==4.12.2
+typing-extensions==4.16.0
     # via
     #   -c requirements.txt
     #   azure-core

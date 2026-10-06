@@ -6,6 +6,8 @@
 #
 agent-base @ git+https://github.com/monte-carlo-data/agent-base.git@v0.0.7
     # via -r requirements.in
+annotated-types==0.8.0
+    # via pydantic
 asn1crypto==1.5.1
     # via snowflake-connector-python
 attrs==23.2.0
@@ -313,6 +315,10 @@ pycryptodome==3.21.0
     # via
     #   -r requirements.in
     #   teradatasql
+pydantic==2.13.5
+    # via -r requirements.in
+pydantic-core==2.46.5
+    # via pydantic
 pyjwt==2.15.1
     # via
     #   -r requirements.in
@@ -405,20 +411,26 @@ tomlkit==0.15.1
     #   snowflake-connector-python
 trino==0.336.0
     # via -r requirements.in
-typing-extensions==4.12.2
+typing-extensions==4.16.0
     # via
+    #   -r requirements.in
     #   azure-core
     #   azure-identity
     #   azure-keyvault-secrets
     #   azure-storage-blob
     #   grpcio
     #   looker-sdk
+    #   pydantic
+    #   pydantic-core
     #   simple-salesforce
     #   snowflake-connector-python
     #   tableauserverclient
     #   typing-inspect
+    #   typing-inspection
 typing-inspect==0.9.0
     # via dataclasses-json
+typing-inspection==0.4.4
+    # via pydantic
 tzdata==2024.1
     # via pandas
 tzlocal==5.3.1
