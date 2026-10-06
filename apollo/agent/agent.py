@@ -763,7 +763,9 @@ class Agent:
         if operation.can_use_pre_signed_url() or operation.can_compress_response():
             size = response.calculate_result_size()
 
-            if operation.must_use_pre_signed_url(size):
+            if client.allows_result_location and operation.must_use_pre_signed_url(
+                size
+            ):
                 key = f"responses/{operation.trace_id}"
                 storage_client = StorageProxyClient(self.platform)
                 contents = response.serialize_result(
