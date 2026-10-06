@@ -159,11 +159,13 @@ FROM base AS tests
 COPY --chown=mcdagent:mcdagent requirements-dev.txt ./
 COPY --chown=mcdagent:mcdagent requirements-cloudrun.txt ./
 COPY --chown=mcdagent:mcdagent requirements-azure.txt ./
+COPY --chown=mcdagent:mcdagent requirements-aws.txt ./
 RUN . $VENV_DIR/bin/activate \
     && pip install --no-cache-dir \
     -r requirements-dev.txt \
     -r requirements-cloudrun.txt \
-    -r requirements-azure.txt
+    -r requirements-azure.txt \
+    -r requirements-aws.txt
 
 COPY --chown=mcdagent:mcdagent tests ./tests
 ARG CACHEBUST=1
@@ -176,6 +178,10 @@ CMD . $VENV_DIR/bin/activate \
     && gunicorn --bind :$PORT --workers $GUNICORN_WORKERS --threads $GUNICORN_THREADS --timeout $GUNICORN_TIMEOUT apollo.interfaces.generic.main:app
 
 FROM base AS aws_proxied
+
+# AWS-only deps (MCP SDK); the generic, cloudrun and azure images don't get them.
+COPY --chown=mcdagent:mcdagent requirements-aws.txt ./
+RUN . $VENV_DIR/bin/activate && pip install --no-cache-dir -r requirements-aws.txt
 
 CMD . $VENV_DIR/bin/activate \
     && gunicorn --bind :$PORT --workers $GUNICORN_WORKERS --threads $GUNICORN_THREADS --timeout $GUNICORN_TIMEOUT apollo.interfaces.aws.main:app
@@ -198,9 +204,11 @@ RUN dnf install -y libxcrypt-compat
 
 COPY requirements.txt ./
 COPY requirements-lambda.txt ./
+COPY requirements-aws.txt ./
 RUN pip install --no-cache-dir --target "${LAMBDA_TASK_ROOT}" \
     -r requirements.txt \
-    -r requirements-lambda.txt
+    -r requirements-lambda.txt \
+    -r requirements-aws.txt
 
 FROM public.ecr.aws/lambda/python:3.13 AS lambda
 
