@@ -4,6 +4,7 @@ import logging
 import os
 from dataclasses import dataclass
 from datetime import datetime
+from importlib.util import find_spec
 from typing import List, Optional, Dict
 
 from apollo.common.agent.env_vars import CLIENT_CACHE_EXPIRATION_SECONDS_ENV_VAR
@@ -70,6 +71,14 @@ def _get_proxy_client_mulesoft(
     from apollo.integrations.http.mulesoft_proxy_client import MulesoftHttpProxyClient
 
     return MulesoftHttpProxyClient(credentials=credentials, platform=platform)
+
+
+def _get_proxy_client_mcp(
+    credentials: Optional[Dict], **kwargs  # type: ignore
+) -> BaseProxyClient:
+    from apollo.integrations.mcp.mcp_proxy_client import McpProxyClient
+
+    return McpProxyClient(credentials=credentials)
 
 
 def _get_proxy_client_s3(
@@ -428,6 +437,7 @@ _CLIENT_FACTORY_MAPPING = {
     "databricks-rest": _get_proxy_client_databricks_rest,
     "db2": _get_proxy_client_db2,
     "http": _get_proxy_client_http,
+    "mcp": _get_proxy_client_mcp,
     "s3": _get_proxy_client_s3,
     "storage": _get_proxy_client_storage,
     "looker": _get_proxy_client_looker,
@@ -471,9 +481,19 @@ _CLIENT_FACTORY_MAPPING = {
 }
 
 
+# Connection types whose Python dependency ships only in some agent images
+# (requirements-aws.txt); advertised only where it's installed.
+_OPTIONAL_DEPENDENCIES = {"mcp": "mcp"}
+
+
 def get_native_connection_types() -> list[str]:
     """Return a sorted list of all native (built-in) connection type identifiers."""
-    return sorted(_CLIENT_FACTORY_MAPPING.keys())
+    return sorted(
+        connection_type
+        for connection_type in _CLIENT_FACTORY_MAPPING
+        if connection_type not in _OPTIONAL_DEPENDENCIES
+        or find_spec(_OPTIONAL_DEPENDENCIES[connection_type]) is not None
+    )
 
 
 class ProxyClientFactory:
