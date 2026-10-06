@@ -1,13 +1,9 @@
 import json
 from unittest import TestCase
 
-import pytest
+from mcp import types
 
-pytest.importorskip("mcp")
-
-from mcp import types  # noqa: E402
-
-from apollo.integrations.mcp.results import (  # noqa: E402
+from apollo.integrations.mcp.results import (
     cap_call_result,
     cap_tools_result,
     convert_call_result,

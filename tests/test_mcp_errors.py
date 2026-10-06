@@ -1,15 +1,11 @@
 import asyncio
 from unittest import TestCase
 
-import pytest
+import httpx
+from mcp.shared.exceptions import McpError
+from mcp.types import ErrorData
 
-pytest.importorskip("mcp")
-
-import httpx  # noqa: E402
-from mcp.shared.exceptions import McpError  # noqa: E402
-from mcp.types import ErrorData  # noqa: E402
-
-from apollo.integrations.mcp.errors import (  # noqa: E402
+from apollo.integrations.mcp.errors import (
     McpClientError,
     McpErrorCode,
     map_exception,

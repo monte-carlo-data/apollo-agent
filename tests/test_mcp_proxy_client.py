@@ -6,25 +6,26 @@ from unittest.mock import ANY, Mock, patch
 
 import pytest
 
-pytest.importorskip("mcp")
-
-from apollo.agent.agent import Agent  # noqa: E402
-from apollo.agent.logging_utils import LoggingUtils  # noqa: E402
-from apollo.agent.proxy_client_factory import ProxyClientFactory  # noqa: E402
-from apollo.common.agent.constants import (  # noqa: E402
+from apollo.agent.agent import Agent
+from apollo.agent.logging_utils import LoggingUtils
+from apollo.agent.proxy_client_factory import (
+    ProxyClientFactory,
+    get_native_connection_types,
+)
+from apollo.common.agent.constants import (
     ATTRIBUTE_NAME_ERROR,
     ATTRIBUTE_NAME_ERROR_TYPE,
     ATTRIBUTE_NAME_RESULT,
     ATTRIBUTE_NAME_RESULT_LOCATION,
 )
-from apollo.common.agent.models import AgentCommands  # noqa: E402
-from apollo.integrations.aws.aws_utils import AwsSession  # noqa: E402
-from apollo.integrations.http.url_safety import HttpClientError  # noqa: E402
-from apollo.integrations.mcp.auth import SigV4HttpxAuth  # noqa: E402
-from apollo.integrations.mcp.errors import McpClientError, McpErrorCode  # noqa: E402
-from apollo.integrations.mcp.mcp_proxy_client import McpProxyClient  # noqa: E402
-from apollo.integrations.mcp.session import McpLimits  # noqa: E402
-from tests.test_mcp_session import _memory_server, _memory_streams  # noqa: E402
+from apollo.common.agent.models import AgentCommands
+from apollo.integrations.aws.aws_utils import AwsSession
+from apollo.integrations.http.url_safety import HttpClientError
+from apollo.integrations.mcp.auth import SigV4HttpxAuth
+from apollo.integrations.mcp.errors import McpClientError, McpErrorCode
+from apollo.integrations.mcp.mcp_proxy_client import McpProxyClient
+from apollo.integrations.mcp.session import McpLimits
+from tests.test_mcp_session import _memory_server, _memory_streams
 
 _URL = "https://aws-mcp.us-east-1.api.aws/mcp"
 _ROLE = "arn:aws:iam::123456789012:role/narrow"
@@ -74,7 +75,7 @@ def _call_tool_operation(**kwargs: Any) -> Dict[str, Any]:
 
 @patch("apollo.integrations.mcp.mcp_proxy_client.assert_safe_destination")
 @patch("apollo.integrations.mcp.auth.assume_role")
-@patch("apollo.integrations.mcp.session.run_operation")
+@patch("apollo.integrations.mcp.mcp_proxy_client.run_operation")
 class TestMcpProxyClientThroughAgent(TestCase):
     def setUp(self):
         self._agent = Agent(LoggingUtils())
@@ -231,7 +232,7 @@ class TestMcpProxyClient(TestCase):
         "os.environ", {"MCD_MCP_ALLOWED_HOSTS": "idp.example.com,mcp.example.com"}
     )
     @patch("apollo.integrations.mcp.mcp_proxy_client.assert_safe_destination")
-    @patch("apollo.integrations.mcp.session.run_operation")
+    @patch("apollo.integrations.mcp.mcp_proxy_client.run_operation")
     @patch("apollo.integrations.mcp.auth.safe_request")
     def test_oauth_tokens_fetched_per_call_and_not_kept(
         self, mock_token, mock_run, mock_safe
@@ -265,6 +266,9 @@ class TestMcpProxyClient(TestCase):
             mock_run.call_args.args[1].headers,
         )
         self.assertNotIn("tok-secret-1", json.dumps(vars(client), default=str))
+
+    def test_advertised_as_a_native_connection_type(self):
+        self.assertIn("mcp", get_native_connection_types())
 
     def test_log_payload_redacts_tool_arguments(self):
         client = McpProxyClient(_CREDENTIALS)

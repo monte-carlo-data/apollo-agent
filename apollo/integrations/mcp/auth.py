@@ -16,7 +16,7 @@ import requests
 from botocore.auth import SigV4Auth
 from botocore.awsrequest import AWSRequest
 from botocore.credentials import Credentials
-from botocore.exceptions import ClientError
+from botocore.exceptions import BotoCoreError, ClientError
 
 from apollo.integrations.aws.aws_utils import assume_role
 from apollo.integrations.http.url_safety import HttpClientError, safe_request
@@ -135,6 +135,13 @@ def _aws_sigv4(
                 else McpErrorCode.AUTH_CONFIG
             ),
             f"Could not assume {role}: {error_code}",
+        ) from exc
+    except BotoCoreError as exc:
+        # e.g. NoCredentialsError on a GCP or Azure agent
+        raise McpClientError(
+            McpErrorCode.AUTH_CONFIG,
+            f"Could not assume {role}: no AWS credentials available to the agent "
+            f"({type(exc).__name__})",
         ) from exc
     credentials = Credentials(
         session.access_key_id, session.secret_key, session.session_token
