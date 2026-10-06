@@ -206,6 +206,40 @@ variables allow operators to tune this behaviour:
   permitted in the default tier). The strict download tier always requires HTTPS regardless of this
   setting.
 
+- **`MCD_MCP_ALLOWED_HOSTS`** — comma-separated host patterns of remote MCP servers the agent may
+  connect to, in addition to the built-in `aws-mcp.*.api.aws` (AWS MCP Server regional endpoints).
+  `*` matches exactly one DNS label. Set it through `MCD_ADDITIONAL_ENV_VARS`. Example:
+  `MCD_MCP_ALLOWED_HOSTS=mcp.example.com,*.mcp.corp.internal`
+
+### MCP servers
+
+The `mcp` connection type is a generic client for remote MCP servers (streamable HTTP only; no
+stdio, and no legacy HTTP+SSE transport). It runs `tools/list` and `tools/call` and contains no
+server-specific logic. It ships in the AWS images only (`lambda`, and `aws_proxied`, published as
+both the `aws-proxied` and `aws-generic` tags); other images don't list it in
+`/api/v1/agent/connectors/types` and fail calls with error type `mcp_unsupported`. The minimum
+agent version is the first release that includes it (expected `1.14.0`).
+
+- **Operations:** `list_tools(limits, session_id, protocol_version, keep_session)` and
+  `call_tool(tool, arguments, limits, session_id, protocol_version, keep_session)`, called through
+  `/api/v1/agent/execute/mcp/<operation>` like any other connection type.
+- **Server:** `connect_args.server` = `{"url", "transport": "streamable_http", "auth": {...}}`. The
+  URL must be https and match the allowlist (`MCD_MCP_ALLOWED_HOSTS`); the host also goes through the
+  SSRF check on every call.
+- **Auth types:** `none`; `secret_header` (`header_name`, value from `header_value` in the
+  customer's secret store); `aws_sigv4` (`assumable_role` required, AWS MCP Server hosts only; the
+  agent never signs with its own role); `oauth_client_credentials` (`token_url`, `client_id`,
+  `client_secret` from the secret store, optional `scope`/`audience`).
+- **Sessions:** with `keep_session: true` the result includes the server's `session_id` and
+  `protocol_version`; passing them back on a later call resumes the session (on the AWS MCP Server,
+  ~2 s instead of ~9 s, and required for `aws___get_tasks`). If the session expired, a new one is
+  started and `session_resumed` is `false`. Without `keep_session` the session is closed.
+- **Limits:** `timeout_seconds` (default 20, 1–300) for the whole operation and `max_result_bytes`
+  (default 200 000, 1 000–1 000 000). Results over the cap are cut and marked `truncated`; they are
+  never written to the agent's storage for a pre-signed URL.
+- **Network:** the agent needs outbound HTTPS to the server, e.g. `aws-mcp.<region>.api.aws:443`
+  (AWS offers no PrivateLink endpoint for it).
+
 ### Response decompression limits
 
 Google API clients (currently BigQuery) reject a gzip'd response that decompresses to more than a
