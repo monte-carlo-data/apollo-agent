@@ -1,0 +1,6 @@
+# AWS-only dependencies, installed in the lambda and aws_proxied images (and the
+# tests image) on top of requirements.txt. Keep them out of requirements.in so
+# the cloudrun, generic and azure images don't carry them.
+-c requirements.txt
+-c requirements-lambda.txt
+mcp==1.30.0  # K2-1344: generic MCP client (apollo/integrations/mcp). 1.x, not 2.x: 2.x moved to httpx2 and a new client API. Also pulls server-side packages (starlette, uvicorn, sse-starlette, python-multipart, pydantic-settings) that the agent never imports
