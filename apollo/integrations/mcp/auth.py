@@ -4,6 +4,7 @@ server registration; secrets come from `connect_args` after the agent resolves
 self-hosted credentials, never from the model.
 """
 
+import base64
 import hashlib
 import re
 import time
@@ -11,17 +12,26 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, Generator, Optional
 
 import httpx
+import requests
 from botocore.auth import SigV4Auth
 from botocore.awsrequest import AWSRequest
 from botocore.credentials import Credentials
 from botocore.exceptions import ClientError
 
 from apollo.integrations.aws.aws_utils import assume_role
+from apollo.integrations.http.url_safety import HttpClientError, safe_request
+from apollo.integrations.mcp.allowlist import (
+    check_server_url,
+    get_allowed_host_patterns,
+)
 from apollo.integrations.mcp.errors import McpClientError, McpErrorCode
 
 AUTH_NONE = "none"
 AUTH_SECRET_HEADER = "secret_header"
 AUTH_AWS_SIGV4 = "aws_sigv4"
+AUTH_OAUTH_CLIENT_CREDENTIALS = "oauth_client_credentials"
+
+_TOKEN_REQUEST_TIMEOUT_SECONDS = 10
 
 AWS_MCP_SIGNING_SERVICE = "aws-mcp"
 _AWS_MCP_HOST = re.compile(r"^aws-mcp\.([a-z0-9-]+)\.api\.aws$")
@@ -60,6 +70,8 @@ def resolve_auth(
         return _secret_header(auth_config, connect_args)
     if auth_type == AUTH_AWS_SIGV4:
         return _aws_sigv4(auth_config, connect_args, host)
+    if auth_type == AUTH_OAUTH_CLIENT_CREDENTIALS:
+        return _oauth_client_credentials(auth_config, connect_args)
     raise McpClientError(
         McpErrorCode.AUTH_CONFIG, f"Unsupported MCP auth type: {auth_type}"
     )
@@ -133,6 +145,69 @@ def _aws_sigv4(
         meta={"AWS_REGION": region},
         assume_role_ms=int((time.perf_counter() - start) * 1000),
     )
+
+
+def _oauth_client_credentials(
+    auth_config: Dict[str, Any], connect_args: Dict[str, Any]
+) -> ResolvedAuth:
+    """
+    OAuth 2.0 client credentials grant, fetched per call (no token cache). The
+    client secret comes from the customer's secret store; the client
+    authenticates with HTTP Basic, like the CTP OAuth transform.
+    """
+    token_url = auth_config.get("token_url") or ""
+    client_id = connect_args.get("client_id") or auth_config.get("client_id")
+    client_secret = connect_args.get("client_secret")
+    if not client_id or not client_secret:
+        raise McpClientError(
+            McpErrorCode.AUTH_CONFIG,
+            "oauth_client_credentials requires client_id and client_secret",
+        )
+    # the token endpoint receives the client secret, so it must be allowlisted too
+    check_server_url(token_url, get_allowed_host_patterns())
+
+    data = {"grant_type": "client_credentials"}
+    for key in ("scope", "audience"):
+        if auth_config.get(key):
+            data[key] = auth_config[key]
+    basic = base64.b64encode(f"{client_id}:{client_secret}".encode("utf-8")).decode()
+    try:
+        response = safe_request(
+            "POST",
+            token_url,
+            data=data,
+            headers={"Authorization": f"Basic {basic}", "Accept": "application/json"},
+            timeout=_TOKEN_REQUEST_TIMEOUT_SECONDS,
+            # a redirect would carry the client secret past the allowlist
+            allow_redirects=False,
+        )
+    except HttpClientError as exc:
+        raise McpClientError(McpErrorCode.SERVER_NOT_ALLOWED, str(exc)) from exc
+    except requests.RequestException as exc:
+        raise McpClientError(
+            McpErrorCode.AUTH_FAILED, f"Token request failed: {type(exc).__name__}"
+        ) from exc
+
+    if response.status_code != 200:
+        raise McpClientError(
+            McpErrorCode.AUTH_FAILED,
+            f"Token endpoint returned HTTP {response.status_code}",
+        )
+    try:
+        body = response.json()
+    except ValueError as exc:
+        raise McpClientError(
+            McpErrorCode.AUTH_FAILED, "Token endpoint returned invalid JSON"
+        ) from exc
+    token = body.get("access_token") if isinstance(body, dict) else None
+    token_type = (
+        body.get("token_type") if isinstance(body, dict) else None
+    ) or "Bearer"
+    if not token or token_type.lower() != "bearer":
+        raise McpClientError(
+            McpErrorCode.AUTH_FAILED, "Token endpoint returned no bearer token"
+        )
+    return ResolvedAuth(headers={"Authorization": f"Bearer {token}"})
 
 
 def aws_role_session_name(role_arn: str) -> str:

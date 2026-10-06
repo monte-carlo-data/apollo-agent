@@ -227,6 +227,45 @@ class TestMcpProxyClientThroughAgent(TestCase):
 
 
 class TestMcpProxyClient(TestCase):
+    @patch.dict(
+        "os.environ", {"MCD_MCP_ALLOWED_HOSTS": "idp.example.com,mcp.example.com"}
+    )
+    @patch("apollo.integrations.mcp.mcp_proxy_client.assert_safe_destination")
+    @patch("apollo.integrations.mcp.session.run_operation")
+    @patch("apollo.integrations.mcp.auth.safe_request")
+    def test_oauth_tokens_fetched_per_call_and_not_kept(
+        self, mock_token, mock_run, mock_safe
+    ):
+        token_response = Mock(status_code=200)
+        token_response.json.return_value = {"access_token": "tok-secret-1"}
+        mock_token.return_value = token_response
+        mock_run.return_value = dict(_RESULT)
+        client = McpProxyClient(
+            {
+                "connect_args": {
+                    "server": {
+                        "url": "https://mcp.example.com/mcp",
+                        "auth": {
+                            "type": "oauth_client_credentials",
+                            "token_url": "https://idp.example.com/token",
+                            "client_id": "c",
+                        },
+                    },
+                    "client_secret": "s",
+                }
+            }
+        )
+
+        client.call_tool("t")
+        client.call_tool("t")
+
+        self.assertEqual(2, mock_token.call_count)
+        self.assertEqual(
+            {"Authorization": "Bearer tok-secret-1"},
+            mock_run.call_args.args[1].headers,
+        )
+        self.assertNotIn("tok-secret-1", json.dumps(vars(client), default=str))
+
     def test_log_payload_redacts_tool_arguments(self):
         client = McpProxyClient(_CREDENTIALS)
         for command in (
