@@ -1,4 +1,45 @@
+import time
+from dataclasses import dataclass
+from typing import Any, Dict, Optional
+
+import boto3
 from botocore.config import Config
+from dataclasses_json import DataClassJsonMixin
+
+from apollo.agent.utils import AgentUtils
+
+
+@dataclass
+class AwsSession(DataClassJsonMixin):
+    access_key_id: str
+    secret_key: str
+    session_token: str
+
+
+def assume_role(
+    role_arn: str,
+    external_id: Optional[str] = None,
+    session_name: Optional[str] = None,
+) -> AwsSession:
+    """
+    Assumes `role_arn` with the agent's own credentials and returns the temporary
+    credentials. STS errors (e.g. AccessDenied) propagate to the caller.
+    :param session_name: RoleSessionName to use, a unique random name by default.
+    """
+    params: Dict[str, Any] = {
+        "RoleArn": role_arn,
+        "RoleSessionName": session_name
+        or f"mcd_{AgentUtils.generate_random_str(rand_len=5)}_{time.time()}",
+    }
+    if external_id:
+        params["ExternalId"] = external_id
+
+    credentials = boto3.client("sts").assume_role(**params)["Credentials"]
+    return AwsSession(
+        credentials["AccessKeyId"],
+        credentials["SecretAccessKey"],
+        credentials["SessionToken"],
+    )
 
 
 def get_boto_config(connect_timeout: int, max_attempts: int = 3) -> Config:

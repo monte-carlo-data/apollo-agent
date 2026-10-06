@@ -1,20 +1,10 @@
-import time
-from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
 import boto3
-from dataclasses_json import DataClassJsonMixin
 
-from apollo.agent.utils import AgentUtils
+from apollo.integrations.aws.aws_utils import AwsSession, assume_role
 from apollo.integrations.base_proxy_client import BaseProxyClient
 from apollo.integrations.db.base_db_proxy_client import SslOptions
-
-
-@dataclass
-class AwsSession(DataClassJsonMixin):
-    access_key_id: str
-    secret_key: str
-    session_token: str
 
 
 class BaseAwsProxyClient(BaseProxyClient):
@@ -78,18 +68,4 @@ class BaseAwsProxyClient(BaseProxyClient):
     def _assume_role(
         assumable_role: str, external_id: Optional[str] = None
     ) -> AwsSession:
-        session_name = f"mcd_{AgentUtils.generate_random_str(rand_len=5)}_{time.time()}"
-        assume_role_params = {
-            "RoleArn": assumable_role,
-            "RoleSessionName": session_name,
-        }
-
-        if external_id:
-            assume_role_params["ExternalId"] = external_id
-
-        assumed_role = boto3.client("sts").assume_role(**assume_role_params)
-        return AwsSession(
-            assumed_role["Credentials"]["AccessKeyId"],
-            assumed_role["Credentials"]["SecretAccessKey"],
-            assumed_role["Credentials"]["SessionToken"],
-        )
+        return assume_role(assumable_role, external_id=external_id)
