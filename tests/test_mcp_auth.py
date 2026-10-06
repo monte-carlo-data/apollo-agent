@@ -1,3 +1,6 @@
+import base64
+import json
+from typing import Any
 from unittest import TestCase
 from unittest.mock import patch
 
@@ -6,10 +9,12 @@ import pytest
 pytest.importorskip("mcp")
 
 import httpx  # noqa: E402
+import requests  # noqa: E402
 from botocore.credentials import Credentials  # noqa: E402
 from botocore.exceptions import ClientError  # noqa: E402
 
 from apollo.integrations.aws.aws_utils import AwsSession  # noqa: E402
+from apollo.integrations.http.url_safety import HttpClientError  # noqa: E402
 from apollo.integrations.mcp.auth import (  # noqa: E402
     SigV4HttpxAuth,
     aws_role_session_name,
@@ -153,3 +158,113 @@ class TestSigV4HttpxAuth(TestCase):
         self.assertIn("content-type", signed_headers.split(";"))
         self.assertEqual("token", signed.headers["x-amz-security-token"])
         self.assertIn("x-amz-date", signed.headers)
+
+
+def _token_response(status: int, body: Any = None, headers=None) -> requests.Response:
+    response = requests.Response()
+    response.status_code = status
+    response._content = json.dumps(body).encode() if body is not None else b""
+    response.headers.update(headers or {})
+    return response
+
+
+_OAUTH = {
+    "type": "oauth_client_credentials",
+    "token_url": "https://idp.example.com/oauth/token",
+    "client_id": "client-1",
+    "scope": "mcp.read",
+}
+
+
+@patch.dict("os.environ", {"MCD_MCP_ALLOWED_HOSTS": "idp.example.com"})
+@patch("apollo.integrations.mcp.auth.safe_request")
+class TestOAuthClientCredentials(TestCase):
+    def test_fetches_a_bearer_token(self, mock_request):
+        mock_request.return_value = _token_response(
+            200, {"access_token": "tok-1", "token_type": "Bearer", "expires_in": 3600}
+        )
+
+        resolved = resolve_auth(
+            {**_OAUTH, "audience": "https://mcp.example.com"},
+            {"client_secret": "s3cret"},
+            "mcp.example.com",
+        )
+
+        self.assertEqual({"Authorization": "Bearer tok-1"}, resolved.headers)
+        mock_request.assert_called_once()
+        args, kwargs = mock_request.call_args
+        self.assertEqual(("POST", "https://idp.example.com/oauth/token"), args)
+        self.assertFalse(kwargs["allow_redirects"])
+        self.assertEqual(
+            {
+                "grant_type": "client_credentials",
+                "scope": "mcp.read",
+                "audience": "https://mcp.example.com",
+            },
+            kwargs["data"],
+        )
+        expected = base64.b64encode(b"client-1:s3cret").decode()
+        self.assertEqual(f"Basic {expected}", kwargs["headers"]["Authorization"])
+
+    def test_client_id_from_connect_args_wins(self, mock_request):
+        mock_request.return_value = _token_response(200, {"access_token": "t"})
+        resolve_auth(
+            _OAUTH,
+            {"client_id": "self-hosted", "client_secret": "s"},
+            "mcp.example.com",
+        )
+        header = mock_request.call_args.kwargs["headers"]["Authorization"]
+        self.assertEqual(
+            base64.b64encode(b"self-hosted:s").decode(), header.split(" ")[1]
+        )
+
+    def test_token_errors(self, mock_request):
+        for response in (
+            _token_response(401, {"error": "invalid_client"}),
+            _token_response(307, headers={"location": "https://evil.example.com/t"}),
+            _token_response(200, {"token_type": "Bearer"}),
+            _token_response(200, {"access_token": "t", "token_type": "mac"}),
+        ):
+            mock_request.return_value = response
+            with self.assertRaises(McpClientError, msg=response.status_code) as ctx:
+                resolve_auth(_OAUTH, {"client_secret": "s"}, "mcp.example.com")
+            self.assertEqual(McpErrorCode.AUTH_FAILED, ctx.exception.code)
+            self.assertNotIn("s3cret", str(ctx.exception))
+
+    def test_request_failure(self, mock_request):
+        mock_request.side_effect = requests.ConnectionError("down")
+        with self.assertRaises(McpClientError) as ctx:
+            resolve_auth(_OAUTH, {"client_secret": "s"}, "mcp.example.com")
+        self.assertEqual(McpErrorCode.AUTH_FAILED, ctx.exception.code)
+
+    def test_ssrf_block(self, mock_request):
+        mock_request.side_effect = HttpClientError(
+            "Destination resolves to 169.254.169.254"
+        )
+        with self.assertRaises(McpClientError) as ctx:
+            resolve_auth(_OAUTH, {"client_secret": "s"}, "mcp.example.com")
+        self.assertEqual(McpErrorCode.SERVER_NOT_ALLOWED, ctx.exception.code)
+
+    def test_config_errors(self, mock_request):
+        for auth, connect_args in (
+            (
+                {**_OAUTH, "token_url": "https://other.example.com/token"},
+                {"client_secret": "s"},
+            ),
+            (
+                {**_OAUTH, "token_url": "http://idp.example.com/token"},
+                {"client_secret": "s"},
+            ),
+            (_OAUTH, {}),
+            (
+                {k: v for k, v in _OAUTH.items() if k != "client_id"},
+                {"client_secret": "s"},
+            ),
+        ):
+            with self.assertRaises(McpClientError) as ctx:
+                resolve_auth(auth, connect_args, "mcp.example.com")
+            self.assertIn(
+                ctx.exception.code,
+                (McpErrorCode.AUTH_CONFIG, McpErrorCode.SERVER_NOT_ALLOWED),
+            )
+        mock_request.assert_not_called()
