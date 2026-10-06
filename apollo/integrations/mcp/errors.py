@@ -1,6 +1,9 @@
 import asyncio
 from typing import Optional
 
+import httpx
+from mcp.shared.exceptions import McpError
+
 # JSON-RPC error codes the AWS MCP Server and spec-compliant servers use for a
 # session they no longer know: AWS answers HTTP 200 with -30001; the SDK turns a
 # spec 404 ("Session terminated") into 32600.
@@ -18,7 +21,6 @@ class McpErrorCode:
     BAD_REQUEST = "bad_request"
     CONNECTION_ERROR = "connection_error"
     INTERNAL_ERROR = "internal_error"
-    MCP_UNSUPPORTED = "mcp_unsupported"
     SERVER_ERROR = "server_error"
     SERVER_NOT_ALLOWED = "server_not_allowed"
     SESSION_EXPIRED = "session_expired"
@@ -69,10 +71,6 @@ def _is_cancellation(exc: BaseException) -> bool:
 
 
 def _map_http_error(exc: BaseException, resumed: bool) -> Optional[McpClientError]:
-    try:
-        import httpx
-    except ImportError:
-        return None
     if isinstance(exc, httpx.TimeoutException):
         return McpClientError(McpErrorCode.AGENT_TIMEOUT, "MCP operation timed out")
     if isinstance(exc, httpx.HTTPStatusError):
@@ -96,10 +94,6 @@ def _map_http_error(exc: BaseException, resumed: bool) -> Optional[McpClientErro
 
 
 def _map_mcp_error(exc: BaseException, resumed: bool) -> Optional[McpClientError]:
-    try:
-        from mcp.shared.exceptions import McpError
-    except ImportError:
-        return None
     if not isinstance(exc, McpError):
         return None
     if resumed and exc.error.code in (_AWS_SESSION_NOT_FOUND, _SDK_SESSION_TERMINATED):

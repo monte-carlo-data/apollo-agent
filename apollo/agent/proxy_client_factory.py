@@ -4,7 +4,6 @@ import logging
 import os
 from dataclasses import dataclass
 from datetime import datetime
-from importlib.util import find_spec
 from typing import List, Optional, Dict
 
 from apollo.common.agent.env_vars import CLIENT_CACHE_EXPIRATION_SECONDS_ENV_VAR
@@ -481,19 +480,9 @@ _CLIENT_FACTORY_MAPPING = {
 }
 
 
-# Connection types whose Python dependency ships only in some agent images
-# (requirements-aws.txt); advertised only where it's installed.
-_OPTIONAL_DEPENDENCIES = {"mcp": "mcp"}
-
-
 def get_native_connection_types() -> list[str]:
     """Return a sorted list of all native (built-in) connection type identifiers."""
-    return sorted(
-        connection_type
-        for connection_type in _CLIENT_FACTORY_MAPPING
-        if connection_type not in _OPTIONAL_DEPENDENCIES
-        or find_spec(_OPTIONAL_DEPENDENCIES[connection_type]) is not None
-    )
+    return sorted(_CLIENT_FACTORY_MAPPING.keys())
 
 
 class ProxyClientFactory:

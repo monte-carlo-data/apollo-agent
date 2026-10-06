@@ -215,10 +215,9 @@ variables allow operators to tune this behaviour:
 
 The `mcp` connection type is a generic client for remote MCP servers (streamable HTTP only; no
 stdio, and no legacy HTTP+SSE transport). It runs `tools/list` and `tools/call` and contains no
-server-specific logic. It ships in the AWS images only (`lambda`, and `aws_proxied`, published as
-both the `aws-proxied` and `aws-generic` tags); other images don't list it in
-`/api/v1/agent/connectors/types` and fail calls with error type `mcp_unsupported`. The minimum
-agent version is the first release that includes it (expected `1.14.0`).
+server-specific logic. Every agent image includes it and lists it in
+`/api/v1/agent/connectors/types`. The minimum agent version is the first release that includes it
+(expected `1.14.0`).
 
 - **Operations:** `list_tools(limits, session_id, protocol_version, keep_session)` and
   `call_tool(tool, arguments, limits, session_id, protocol_version, keep_session)`, called through
@@ -228,7 +227,8 @@ agent version is the first release that includes it (expected `1.14.0`).
   SSRF check on every call.
 - **Auth types:** `none`; `secret_header` (`header_name`, value from `header_value` in the
   customer's secret store); `aws_sigv4` (`assumable_role` required, AWS MCP Server hosts only; the
-  agent never signs with its own role); `oauth_client_credentials` (`token_url`, `client_id`,
+  agent never signs with its own role, but assumes it with its own AWS credentials, so in practice
+  an AWS agent); `oauth_client_credentials` (`token_url`, `client_id`,
   `client_secret` from the secret store, optional `scope`/`audience`).
 - **Sessions:** with `keep_session: true` the result includes the server's `session_id` and
   `protocol_version`; passing them back on a later call resumes the session (on the AWS MCP Server,

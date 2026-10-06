@@ -4,23 +4,19 @@ from typing import Any
 from unittest import TestCase
 from unittest.mock import patch
 
-import pytest
+import httpx
+import requests
+from botocore.credentials import Credentials
+from botocore.exceptions import ClientError, NoCredentialsError
 
-pytest.importorskip("mcp")
-
-import httpx  # noqa: E402
-import requests  # noqa: E402
-from botocore.credentials import Credentials  # noqa: E402
-from botocore.exceptions import ClientError  # noqa: E402
-
-from apollo.integrations.aws.aws_utils import AwsSession  # noqa: E402
-from apollo.integrations.http.url_safety import HttpClientError  # noqa: E402
-from apollo.integrations.mcp.auth import (  # noqa: E402
+from apollo.integrations.aws.aws_utils import AwsSession
+from apollo.integrations.http.url_safety import HttpClientError
+from apollo.integrations.mcp.auth import (
     SigV4HttpxAuth,
     aws_role_session_name,
     resolve_auth,
 )
-from apollo.integrations.mcp.errors import McpClientError, McpErrorCode  # noqa: E402
+from apollo.integrations.mcp.errors import McpClientError, McpErrorCode
 
 _AWS_HOST = "aws-mcp.us-east-1.api.aws"
 _ROLE = "arn:aws:iam::123456789012:role/narrow"
@@ -127,6 +123,14 @@ class TestAwsSigV4(TestCase):
         with self.assertRaises(McpClientError) as ctx:
             resolve_auth(_SIGV4, {}, _AWS_HOST)
         self.assertEqual(McpErrorCode.AWS_ACCESS_DENIED, ctx.exception.code)
+
+    def test_agent_without_aws_credentials(self, mock_assume):
+        # e.g. a GCP or Azure agent: nothing to assume the role with
+        mock_assume.side_effect = NoCredentialsError()
+        with self.assertRaises(McpClientError) as ctx:
+            resolve_auth(_SIGV4, {}, _AWS_HOST)
+        self.assertEqual(McpErrorCode.AUTH_CONFIG, ctx.exception.code)
+        self.assertIn("no AWS credentials", str(ctx.exception))
 
     def test_session_name(self, _):
         name = aws_role_session_name(_ROLE)

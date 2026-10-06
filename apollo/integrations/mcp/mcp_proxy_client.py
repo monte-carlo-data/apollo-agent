@@ -9,7 +9,9 @@ from apollo.integrations.mcp.allowlist import (
     check_server_url,
     get_allowed_host_patterns,
 )
+from apollo.integrations.mcp.auth import resolve_auth
 from apollo.integrations.mcp.errors import McpClientError, McpErrorCode
+from apollo.integrations.mcp.session import McpLimits, run_operation
 
 _logger = logging.getLogger(__name__)
 
@@ -103,15 +105,6 @@ class McpProxyClient(BaseProxyClient):
             assert_safe_destination(host, port)
         except HttpClientError as exc:
             raise McpClientError(McpErrorCode.SERVER_NOT_ALLOWED, str(exc)) from exc
-
-        try:
-            from apollo.integrations.mcp.auth import resolve_auth
-            from apollo.integrations.mcp.session import McpLimits, run_operation
-        except ImportError as exc:
-            raise McpClientError(
-                McpErrorCode.MCP_UNSUPPORTED,
-                "MCP is not supported on this agent image (MCP SDK not installed)",
-            ) from exc
 
         result = run_operation(
             self._url,

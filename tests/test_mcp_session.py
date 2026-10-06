@@ -3,21 +3,17 @@ from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional
 from unittest import TestCase
 
-import pytest
+import anyio
+import httpx
+from botocore.credentials import Credentials
+from mcp import types
+from mcp.server.lowlevel import Server
+from mcp.shared.exceptions import McpError
+from mcp.shared.memory import create_client_server_memory_streams
 
-pytest.importorskip("mcp")
-
-import anyio  # noqa: E402
-import httpx  # noqa: E402
-from botocore.credentials import Credentials  # noqa: E402
-from mcp import types  # noqa: E402
-from mcp.server.lowlevel import Server  # noqa: E402
-from mcp.shared.exceptions import McpError  # noqa: E402
-from mcp.shared.memory import create_client_server_memory_streams  # noqa: E402
-
-from apollo.integrations.mcp.auth import ResolvedAuth, SigV4HttpxAuth  # noqa: E402
-from apollo.integrations.mcp.errors import McpClientError, McpErrorCode  # noqa: E402
-from apollo.integrations.mcp.session import (  # noqa: E402
+from apollo.integrations.mcp.auth import ResolvedAuth, SigV4HttpxAuth
+from apollo.integrations.mcp.errors import McpClientError, McpErrorCode
+from apollo.integrations.mcp.session import (
     DEFAULT_MAX_RESULT_BYTES,
     DEFAULT_TIMEOUT_SECONDS,
     McpLimits,
