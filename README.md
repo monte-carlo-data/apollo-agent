@@ -288,7 +288,7 @@ teradatasql==20.0.0.30
 pip-compile requirements.in
 ```
 
-`requirements.txt` constrains the image-specific files (`requirements-lambda`, `-aws`, `-cloudrun`, `-azure`, `-dev`), so recompile it first, then the ones that use it. `requirements-aws.txt` holds AWS-only dependencies (the MCP SDK) and is installed in the `lambda` and `aws_proxied` images only. Compile with Python 3.13 on `linux/amd64` (e.g. inside `docker run --platform linux/amd64 python:3.13`): on an arm64 host, platform markers such as `ibm-db`'s `platform_machine != "aarch64"` evaluate false and silently drop the package from the lock.
+`requirements.txt` constrains the image-specific files (`requirements-lambda`, `-cloudrun`, `-azure`, `-dev`), so recompile it first, then the ones that use it. Compile with Python 3.13 on `linux/amd64` (e.g. inside `docker run --platform linux/amd64 python:3.13`): on an arm64 host, platform markers such as `ibm-db`'s `platform_machine != "aarch64"` evaluate false and silently drop the package from the lock.
 
 ### 2. Rebuilding the Docker Image
 After updating dependencies, rebuild the Docker image to ensure the new versions are installed:
