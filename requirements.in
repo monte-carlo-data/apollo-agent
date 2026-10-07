@@ -55,7 +55,7 @@ tableauserverclient==0.25 ; python_version < "3.10"
 tableauserverclient==0.38 ; python_version >= "3.10"
 urllib3~=2.8  # CVE-2026-44431, CVE-2026-44432, CVE-2026-97687, CVE-2026-97688, CVE-2026-97689
 
-typing-extensions==4.16.0  # K2-1344: 4.12.2 was a stale transitive pin; pydantic>=2.12 needs >=4.14.1 and the MCP SDK 2.x needs >=4.13
+typing-extensions==4.16.0  # K2-1344: floor is pydantic>=2.12 (cp314 pydantic-core wheels for the azure image), which needs >=4.14.1
 
 teradatasql>=20.0.0.66  # 20.0.0.66 is the first release built with the Go 1.26.6 toolchain, which resolves every remaining HIGH/CRITICAL in the daily scan: CVE-2026-39821 (9.6 CRITICAL), CVE-2026-56862, CVE-2026-56859, CVE-2026-56853, CVE-2026-46600, CVE-2026-33818 — all golang/stdlib, all fixed in 1.26.6. Bump on the *toolchain*, not the release number: 20.0.0.65 looked newer but was still Go 1.26.5, inside the affected range. Verify with `grep -aoE 'go1\.[0-9]+\.[0-9]+'` over the wheel's bundled binaries; all ten (.so/.dll/.dylib) report go1.26.6
 
