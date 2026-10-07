@@ -284,9 +284,18 @@ If a vulnerability is reported in a dependency (e.g., via Aikido, Snyk, or anoth
 # Edit requirements.in and set the desired version, e.g.:
 teradatasql==20.0.0.30
 
-# Recompile requirements.txt:
-pip-compile requirements.in
+# Recompile the locks, requirements.txt first (the others are constrained by it).
+# Run on linux/amd64 with Python 3.13 so platform markers resolve like the images:
+docker run --rm --platform linux/amd64 -v "$PWD":/src -w /src python:3.13 sh -c '
+  pip install pip-tools==7.6.1 &&
+  pip-compile --output-file=requirements.txt --strip-extras requirements.in &&
+  pip-compile --output-file=requirements-lambda.txt --strip-extras requirements-lambda.in &&
+  pip-compile --max-rounds=30 --output-file=requirements-cloudrun.txt --strip-extras requirements-cloudrun.in &&
+  pip-compile --output-file=requirements-azure.txt --strip-extras requirements-azure.in &&
+  pip-compile --output-file=requirements-dev.txt --strip-extras requirements-dev.in'
 ```
+
+`requirements.txt` constrains the image-specific files (`requirements-lambda`, `-cloudrun`, `-azure`, `-dev`), so compile it first. pip-tools 7.6 also writes `--no-index` into each file's header comment; that line is cosmetic and can be left out of the diff. pip-compile keeps existing pins, so to bump a single package add `--upgrade-package <name>` to the relevant command. Don't compile on an arm64 host directly: platform markers such as `ibm-db`'s `platform_machine != "aarch64"` evaluate false there and silently drop the package from the lock.
 
 ### 2. Rebuilding the Docker Image
 After updating dependencies, rebuild the Docker image to ensure the new versions are installed:

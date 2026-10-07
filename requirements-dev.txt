@@ -102,7 +102,7 @@ responses==0.23.3
     # via -r requirements-dev.in
 types-pyyaml==6.0.12.20250516
     # via responses
-typing-extensions==4.12.2
+typing-extensions==4.16.0
     # via
     #   -c requirements.txt
     #   pyright

@@ -114,7 +114,7 @@ rsa==4.9
     # via
     #   -c requirements.txt
     #   google-auth
-typing-extensions==4.12.2
+typing-extensions==4.16.0
     # via
     #   -c requirements.txt
     #   grpcio
