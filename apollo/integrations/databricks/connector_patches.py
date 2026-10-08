@@ -6,8 +6,10 @@ Since 4.2.6 the connector concatenates Arrow result chunks with
 (``ArrowInvalid: Can't unify schema with duplicate field names``) even for a single chunk.
 4.2.5's plain concat accepted them but caps thrift below its CVE fixes, so we fall back to
 it when every chunk shares a schema that contains a duplicate name. Every module that imports
-``databricks.sql`` must call ``install_connector_patches()`` at module level. When to remove
-this: see the version checks in ``tests/test_databricks_connector_patches.py``.
+``databricks.sql`` must call ``install_connector_patches()`` at module level. Other packages
+import ``install_connector_patches()`` from here, so its name and path must stay: retiring the
+patch means turning it into a no-op. When to retire it: see the version checks in
+``tests/test_databricks_connector_patches.py``.
 """
 
 import functools
