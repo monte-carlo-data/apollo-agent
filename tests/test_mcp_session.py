@@ -1,4 +1,6 @@
 import json
+import logging
+import time
 from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional
 from unittest import TestCase
@@ -415,6 +417,79 @@ class TestHttp(TestCase):
         )
         self.assertEqual({"AWS_REGION": "us-east-1"}, call["params"]["_meta"])
         self.assertEqual(7, result["timings"]["assume_role_ms"])
+
+    def test_unparseable_post_response_fails_fast_with_server_error(self):
+        bad_responses = {
+            "html_content_type": httpx.Response(
+                200, headers={"content-type": "text/html"}, text="<html>hello</html>"
+            ),
+            "invalid_json_body": httpx.Response(
+                200, headers={"content-type": "application/json"}, text="not json"
+            ),
+        }
+        for name, bad in bad_responses.items():
+
+            def handler(request: httpx.Request, bad=bad) -> httpx.Response:
+                if request.method == "GET":
+                    return httpx.Response(405)
+                if request.method == "DELETE":
+                    return httpx.Response(200)
+                return bad
+
+            with self.subTest(name):
+                started = time.monotonic()
+                with self.assertRaises(McpClientError) as ctx:
+                    run_operation(
+                        _URL,
+                        ResolvedAuth(),
+                        "call_tool",
+                        tool="x",
+                        transport=httpx.MockTransport(handler),
+                        limits=McpLimits(timeout_seconds=5),
+                    )
+                elapsed = time.monotonic() - started
+                self.assertEqual(McpErrorCode.SERVER_ERROR, ctx.exception.code)
+                self.assertLess(elapsed, 3)
+
+    def test_resumed_auth_failure_does_not_fall_back(self):
+        fake = _FakeHttpServer(status=401)
+        with self.assertRaises(McpClientError) as ctx:
+            _http_run(fake, session_id="sess-1", protocol_version="2025-06-18")
+        self.assertEqual(McpErrorCode.AUTH_FAILED, ctx.exception.code)
+        self.assertNotIn("initialize", " ".join(fake.methods()))
+
+    def test_resume_without_keep_session_closes_it(self):
+        fake = _FakeHttpServer()
+        result = _http_run(fake, session_id="sess-1", protocol_version="2025-06-18")
+        self.assertTrue(result["session_resumed"])
+        self.assertIsNone(result["session_id"])
+        self.assertEqual(
+            ["POST tools/call sess-1", "DELETE sess-1"],
+            [m for m in fake.methods() if not m.startswith("GET")],
+        )
+
+    def test_sdk_debug_logging_is_suppressed(self):
+        # assertNoLogs would reset the logger's level and defeat the pin
+        records: List[logging.LogRecord] = []
+        handler = logging.Handler(logging.DEBUG)
+        handler.emit = records.append  # type: ignore[method-assign]
+        root = logging.getLogger()
+        previous_level = root.level
+        root.addHandler(handler)
+        root.setLevel(logging.DEBUG)  # debug mode
+        try:
+            _http_run(_FakeHttpServer())
+        finally:
+            root.removeHandler(handler)
+            root.setLevel(previous_level)
+        sdk_records = [r for r in records if r.name == "mcp.client.streamable_http"]
+        # the capture works (INFO records are expected) ...
+        self.assertTrue([r for r in sdk_records if r.levelno == logging.INFO])
+        # ... and nothing below INFO is emitted
+        self.assertEqual(
+            [],
+            [r.getMessage() for r in sdk_records if r.levelno < logging.INFO],
+        )
 
     def test_redirects_are_not_followed(self):
         def redirect(request: httpx.Request) -> httpx.Response:

@@ -1,6 +1,8 @@
 from unittest import TestCase
 from unittest.mock import Mock, patch
 
+from botocore.config import Config
+
 from apollo.integrations.aws.aws_utils import AwsSession, assume_role
 from apollo.integrations.aws.base_aws_proxy_client import BaseAwsProxyClient
 
@@ -28,7 +30,15 @@ class TestAssumeRole(TestCase):
         session = assume_role(_ROLE)
 
         self.assertEqual(AwsSession("AKIA_TEST", "secret", "token"), session)
-        mock_client.assert_called_once_with("sts")
+        mock_client.assert_called_once_with("sts", config=None)
+
+    def test_config_is_passed_to_the_sts_client(self, mock_client: Mock):
+        self._sts(mock_client)
+        config = Config(connect_timeout=3, read_timeout=3)
+
+        assume_role(_ROLE, config=config)
+
+        mock_client.assert_called_once_with("sts", config=config)
 
     def test_explicit_session_name_and_external_id(self, mock_client: Mock):
         sts = self._sts(mock_client)

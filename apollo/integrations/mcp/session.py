@@ -1,15 +1,11 @@
 """
 Runs one MCP operation (`tools/list` or `tools/call`) against a remote server
-over streamable HTTP.
-
-Each agent request runs its own short-lived event loop (agent request threads,
-Lambda and Azure activities have none), so nothing async outlives a call.
-Session reuse is native to MCP: the server's `Mcp-Session-Id` is returned to the
-caller, which can pass it back on a later request to resume the session
-(skipping `initialize` and, on the AWS MCP Server, the sandbox start). The
-agent itself caches nothing.
+over streamable HTTP. Each call runs its own short-lived event loop (agent
+request threads, Lambda and Azure activities have none), so nothing async
+outlives a call; session reuse is native MCP (see `run_operation`).
 """
 
+import logging
 import time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -23,14 +19,18 @@ from typing import (
     List,
     Optional,
     Tuple,
+    Union,
 )
 
 import anyio
 import httpx
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
 from mcp import ClientSession, types
+from mcp.client.session import MessageHandlerFnT
+from mcp.shared.exceptions import McpError
 from mcp.client.streamable_http import StreamableHTTPTransport
 from mcp.shared.message import SessionMessage
+from mcp.shared.session import RequestResponder
 
 from apollo.integrations.mcp.auth import ResolvedAuth
 from apollo.integrations.mcp.errors import McpClientError, McpErrorCode, map_exception
@@ -40,6 +40,10 @@ from apollo.integrations.mcp.results import (
     convert_call_result,
     convert_tools,
 )
+
+# the SDK logs full JSON-RPC messages (tool arguments and results) at DEBUG,
+# which would bypass log_payload redaction when an entry point enables debug mode
+logging.getLogger("mcp.client.streamable_http").setLevel(logging.INFO)
 
 OPERATION_LIST_TOOLS = "list_tools"
 OPERATION_CALL_TOOL = "call_tool"
@@ -135,8 +139,6 @@ def run_operation(
     try:
         return anyio.run(run.execute, session_id, protocol_version)
     except BaseException as exc:
-        # anyio raises TimeoutError for fail_after and exception groups for
-        # failures inside the transport's task group
         raise map_exception(exc, resumed=run.resumed) from exc
 
 
@@ -198,22 +200,33 @@ class _Run:
             async with self.streams_factory(
                 client, self.url, session_id, protocol_version, not self.keep_session
             ) as (read, write, get_session_id):
-                async with _PassthroughClientSession(read, write) as session:
-                    if session_id is None:
-                        initialized = await session.initialize()
-                        protocol_version = str(initialized.protocolVersion)
-                        timings["initialize_ms"] = _ms_since(start)
-                    operation_start = time.perf_counter()
-                    if self.operation == OPERATION_LIST_TOOLS:
-                        result = await self._list_tools(session)
-                    else:
-                        result = await self._call_tool(session)
-                    timings["operation_ms"] = _ms_since(operation_start)
-                    result["session_id"] = (
-                        get_session_id() if self.keep_session else None
-                    )
-                    result["protocol_version"] = protocol_version
-                    return result
+                transport_errors: List[Exception] = []
+                try:
+                    async with _PassthroughClientSession(
+                        read,
+                        write,
+                        message_handler=_fail_on_transport_error(transport_errors),
+                    ) as session:
+                        if session_id is None:
+                            initialized = await session.initialize()
+                            protocol_version = str(initialized.protocolVersion)
+                            timings["initialize_ms"] = _ms_since(start)
+                        operation_start = time.perf_counter()
+                        if self.operation == OPERATION_LIST_TOOLS:
+                            result = await self._list_tools(session)
+                        else:
+                            result = await self._call_tool(session)
+                        timings["operation_ms"] = _ms_since(operation_start)
+                        result["session_id"] = (
+                            get_session_id() if self.keep_session else None
+                        )
+                        result["protocol_version"] = protocol_version
+                        return result
+                except McpError:
+                    if transport_errors:
+                        # the pending request only saw "Connection closed"
+                        raise transport_errors[0]
+                    raise
 
     async def _list_tools(self, session: ClientSession) -> Dict[str, Any]:
         tools: List[types.Tool] = []
@@ -242,6 +255,32 @@ class _Run:
 
     def _content_budget(self) -> int:
         return self.limits.max_result_bytes - _METADATA_RESERVE_BYTES
+
+
+def _fail_on_transport_error(
+    transport_errors: List[Exception],
+) -> MessageHandlerFnT:
+    """
+    Message handler for failures the transport reports by sending an Exception
+    into the read stream (unparseable response, unexpected content type); the
+    SDK ignores them by default, so the pending request would hang until the
+    timeout. Raising ends the session's receive loop (the SDK logs and swallows
+    it), which fails pending requests with "Connection closed"; `_attempt`
+    swaps that for the recorded exception.
+    """
+
+    async def handler(
+        message: Union[
+            RequestResponder[types.ServerRequest, types.ClientResult],
+            types.ServerNotification,
+            Exception,
+        ],
+    ) -> None:
+        if isinstance(message, Exception):
+            transport_errors.append(message)
+            raise message
+
+    return handler
 
 
 class _PassthroughClientSession(ClientSession):

@@ -3,6 +3,7 @@ from typing import Optional
 
 import httpx
 from mcp.shared.exceptions import McpError
+from pydantic import ValidationError
 
 # JSON-RPC error codes the AWS MCP Server and spec-compliant servers use for a
 # session they no longer know: AWS answers HTTP 200 with -30001; the SDK turns a
@@ -50,6 +51,13 @@ def map_exception(exc: BaseException, resumed: bool = False) -> McpClientError:
     mapped = _map_http_error(leaf, resumed) or _map_mcp_error(leaf, resumed)
     if mapped:
         return mapped
+    # a response the SDK could not parse (JSONDecodeError is a ValueError); the
+    # server is at fault, so never `session_expired`, even when resuming
+    if isinstance(leaf, (ValueError, ValidationError)):
+        return McpClientError(
+            McpErrorCode.SERVER_ERROR,
+            f"MCP server sent an invalid response: {type(leaf).__name__}",
+        )
     return McpClientError(
         McpErrorCode.INTERNAL_ERROR, f"MCP client error: {type(leaf).__name__}"
     )

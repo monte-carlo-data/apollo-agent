@@ -1,6 +1,7 @@
 import fnmatch
 import os
-from typing import List, Sequence, Tuple
+import re
+from typing import List, Optional, Sequence, Tuple
 from urllib.parse import urlparse
 
 from apollo.integrations.mcp.errors import McpClientError, McpErrorCode
@@ -12,6 +13,13 @@ MCP_ALLOWED_HOSTS_ENV_VAR = "MCD_MCP_ALLOWED_HOSTS"
 
 # Regional AWS MCP Server endpoints, e.g. https://aws-mcp.us-east-1.api.aws/mcp
 DEFAULT_ALLOWED_HOST_PATTERNS = ("aws-mcp.*.api.aws",)
+_AWS_MCP_HOST = re.compile(r"^aws-mcp\.([a-z0-9-]+)\.api\.aws$")
+
+
+def aws_mcp_region(host: str) -> Optional[str]:
+    """:return: the region of an `aws-mcp.<region>.api.aws` host, None for any other."""
+    match = _AWS_MCP_HOST.match(host.lower().rstrip("."))
+    return match.group(1) if match else None
 
 
 def get_allowed_host_patterns() -> List[str]:

@@ -6,7 +6,6 @@ self-hosted credentials, never from the model.
 
 import base64
 import hashlib
-import re
 import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, Generator, Optional
@@ -15,12 +14,20 @@ import httpx
 import requests
 from botocore.auth import SigV4Auth
 from botocore.awsrequest import AWSRequest
+from botocore.config import Config
 from botocore.credentials import Credentials
-from botocore.exceptions import BotoCoreError, ClientError
+from botocore.exceptions import (
+    BotoCoreError,
+    ClientError,
+    ConnectTimeoutError,
+    EndpointConnectionError,
+    ReadTimeoutError,
+)
 
 from apollo.integrations.aws.aws_utils import assume_role
 from apollo.integrations.http.url_safety import HttpClientError, safe_request
 from apollo.integrations.mcp.allowlist import (
+    aws_mcp_region,
     check_server_url,
     get_allowed_host_patterns,
 )
@@ -32,9 +39,10 @@ AUTH_AWS_SIGV4 = "aws_sigv4"
 AUTH_OAUTH_CLIENT_CREDENTIALS = "oauth_client_credentials"
 
 _TOKEN_REQUEST_TIMEOUT_SECONDS = 10
+# cap on each STS connect/read when the call has a deadline
+_STS_TIMEOUT_SECONDS = 10
 
 AWS_MCP_SIGNING_SERVICE = "aws-mcp"
-_AWS_MCP_HOST = re.compile(r"^aws-mcp\.([a-z0-9-]+)\.api\.aws$")
 
 # Headers the MCP transport or SigV4 own; a registration can't set them.
 _RESERVED_HEADERS = frozenset(
@@ -61,17 +69,24 @@ class ResolvedAuth:
 
 
 def resolve_auth(
-    auth_config: Dict[str, Any], connect_args: Dict[str, Any], host: str
+    auth_config: Dict[str, Any],
+    connect_args: Dict[str, Any],
+    host: str,
+    timeout_seconds: Optional[float] = None,
 ) -> ResolvedAuth:
+    """
+    :param timeout_seconds: the call's time budget; the network requests made to
+    authenticate (STS, token endpoint) are bounded by it when given.
+    """
     auth_type = auth_config.get("type") or AUTH_NONE
     if auth_type == AUTH_NONE:
         return ResolvedAuth()
     if auth_type == AUTH_SECRET_HEADER:
         return _secret_header(auth_config, connect_args)
     if auth_type == AUTH_AWS_SIGV4:
-        return _aws_sigv4(auth_config, connect_args, host)
+        return _aws_sigv4(auth_config, connect_args, host, timeout_seconds)
     if auth_type == AUTH_OAUTH_CLIENT_CREDENTIALS:
-        return _oauth_client_credentials(auth_config, connect_args)
+        return _oauth_client_credentials(auth_config, connect_args, timeout_seconds)
     raise McpClientError(
         McpErrorCode.AUTH_CONFIG, f"Unsupported MCP auth type: {auth_type}"
     )
@@ -94,16 +109,18 @@ def _secret_header(
 
 
 def _aws_sigv4(
-    auth_config: Dict[str, Any], connect_args: Dict[str, Any], host: str
+    auth_config: Dict[str, Any],
+    connect_args: Dict[str, Any],
+    host: str,
+    timeout_seconds: Optional[float],
 ) -> ResolvedAuth:
-    match = _AWS_MCP_HOST.match(host.lower().rstrip("."))
-    if not match:
+    region = aws_mcp_region(host)
+    if not region:
         # SigV4 signatures for the assumed role only ever go to the AWS MCP Server
         raise McpClientError(
             McpErrorCode.AUTH_CONFIG,
             "aws_sigv4 is only supported for aws-mcp.<region>.api.aws",
         )
-    region = match.group(1)
     if auth_config.get("region") and auth_config["region"] != region:
         raise McpClientError(
             McpErrorCode.AUTH_CONFIG,
@@ -118,6 +135,15 @@ def _aws_sigv4(
             McpErrorCode.AUTH_CONFIG, "aws_sigv4 requires assumable_role"
         )
 
+    config = None
+    if timeout_seconds is not None:
+        sts_timeout = max(1, min(_STS_TIMEOUT_SECONDS, timeout_seconds))
+        config = Config(
+            connect_timeout=sts_timeout,
+            read_timeout=sts_timeout,
+            retries={"mode": "standard", "max_attempts": 2},
+        )
+
     start = time.perf_counter()
     try:
         session = assume_role(
@@ -125,6 +151,7 @@ def _aws_sigv4(
             external_id=connect_args.get("external_id")
             or auth_config.get("external_id"),
             session_name=aws_role_session_name(role),
+            config=config,
         )
     except ClientError as exc:
         error_code = exc.response.get("Error", {}).get("Code", "ClientError")
@@ -135,6 +162,14 @@ def _aws_sigv4(
                 else McpErrorCode.AUTH_CONFIG
             ),
             f"Could not assume {role}: {error_code}",
+        ) from exc
+    except (ConnectTimeoutError, ReadTimeoutError) as exc:
+        raise McpClientError(
+            McpErrorCode.AGENT_TIMEOUT, f"Timed out assuming {role}"
+        ) from exc
+    except EndpointConnectionError as exc:
+        raise McpClientError(
+            McpErrorCode.CONNECTION_ERROR, f"Could not reach STS to assume {role}"
         ) from exc
     except BotoCoreError as exc:
         # e.g. NoCredentialsError on a GCP or Azure agent
@@ -155,7 +190,9 @@ def _aws_sigv4(
 
 
 def _oauth_client_credentials(
-    auth_config: Dict[str, Any], connect_args: Dict[str, Any]
+    auth_config: Dict[str, Any],
+    connect_args: Dict[str, Any],
+    timeout_seconds: Optional[float],
 ) -> ResolvedAuth:
     """
     OAuth 2.0 client credentials grant, fetched per call (no token cache). The
@@ -177,6 +214,9 @@ def _oauth_client_credentials(
     for key in ("scope", "audience"):
         if auth_config.get(key):
             data[key] = auth_config[key]
+    token_timeout = _TOKEN_REQUEST_TIMEOUT_SECONDS
+    if timeout_seconds is not None:
+        token_timeout = min(token_timeout, timeout_seconds)
     basic = base64.b64encode(f"{client_id}:{client_secret}".encode("utf-8")).decode()
     try:
         response = safe_request(
@@ -184,7 +224,7 @@ def _oauth_client_credentials(
             token_url,
             data=data,
             headers={"Authorization": f"Basic {basic}", "Accept": "application/json"},
-            timeout=_TOKEN_REQUEST_TIMEOUT_SECONDS,
+            timeout=token_timeout,
             # a redirect would carry the client secret past the allowlist
             allow_redirects=False,
         )

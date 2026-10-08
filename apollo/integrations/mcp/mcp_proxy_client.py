@@ -1,4 +1,6 @@
+import dataclasses
 import logging
+import time
 from typing import Any, Dict, Optional
 
 from apollo.common.agent.models import AgentOperation
@@ -36,8 +38,10 @@ class McpProxyClient(BaseProxyClient):
 
     The client keeps only the parsed configuration: assumed-role credentials are
     obtained per call and each call opens its own connection, so a cached client
-    holds no credentials or live sessions. Results are capped in the agent and
-    never written to storage for a pre-signed URL.
+    holds no credentials or live sessions. `limits.timeout_seconds` bounds the
+    whole call, auth included. Results are capped in the agent and always returned
+    inline (see `allows_result_location`): tool output, e.g. log lines, must not
+    land in the customer's bucket.
     """
 
     def __init__(self, credentials: Optional[Dict], **kwargs: Any):
@@ -106,13 +110,29 @@ class McpProxyClient(BaseProxyClient):
         except HttpClientError as exc:
             raise McpClientError(McpErrorCode.SERVER_NOT_ALLOWED, str(exc)) from exc
 
+        mcp_limits = McpLimits.from_dict(limits)
+        start = time.perf_counter()
+        auth = resolve_auth(
+            self._auth_config,
+            self._connect_args,
+            host,
+            timeout_seconds=mcp_limits.timeout_seconds,
+        )
+        # the timeout bounds the whole call, so the operation gets what auth left
+        remaining = mcp_limits.timeout_seconds - (time.perf_counter() - start)
+        if remaining <= 0:
+            raise McpClientError(McpErrorCode.AGENT_TIMEOUT, "MCP operation timed out")
         result = run_operation(
             self._url,
-            resolve_auth(self._auth_config, self._connect_args, host),
+            auth,
             operation,
-            limits=McpLimits.from_dict(limits),
+            limits=dataclasses.replace(mcp_limits, timeout_seconds=remaining),
             **kwargs,
         )
+        # report the whole call, auth included
+        total_ms = int((time.perf_counter() - start) * 1000)
+        result["duration_ms"] = total_ms
+        result["timings"]["total_ms"] = total_ms
         _logger.info(
             f"MCP {operation} completed",
             extra={
