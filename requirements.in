@@ -32,7 +32,7 @@ looker-sdk==24.2.0
 mcp==1.30.0  # K2-1344: generic MCP client (apollo/integrations/mcp). 1.x, not 2.x: 2.x moved to httpx2 and a new client API. Also pulls server-side packages (starlette, uvicorn, sse-starlette, python-multipart, pydantic-settings) that the agent never imports
 msal>=1.38.0  # VULN-1806 (AIKIDO-2026-10042); allow cryptography>=49 (AIKIDO-2026-94131); 1.36.0 capped cryptography<49, 1.31.0 capped <46
 numpy>=2.1.0  # numpy 2 required for Python 3.13: cp313 wheels first shipped in 2.1.0. The old "numpy.dtype size changed" ABI risk (https://github.com/numpy/numpy/issues/26710) is moot once every native dep is built against numpy 2.
-oracledb>=3.3.0,<4  # cp314 wheels first shipped in 3.3.0 (YET-2254, azure image on Python 3.14). Capped below 4 so the typing-extensions bump (K2-1344) doesn't pull in a major upgrade on the side; 4.x drops Oracle Client <19c for thick mode (the image ships Instant Client 23.8, so that part is fine) and should land as its own change.
+oracledb>=3.3.0,<5  # cp314 wheels first shipped in 3.3.0 (YET-2254, azure image on Python 3.14). The upper bound is <5, not <4, because this file is mcd-agent's install_requires: a <4 cap would force data-collector, which already runs 4.0.1, back to 3.x. Our own lock stays on 3.3.0; moving the images to 4.x (drops Oracle Client <19c for thick mode, though the image ships Instant Client 23.8) should land as its own change. Releases after 4.0.2 switched to calendar versioning (26.x), which <5 also excludes
 orjson>=3.11.6  # CVE-2025-67221: recursion DoS in orjson.dumps thru 3.11.4
 presto-python-client==0.8.3
 trino==0.336.0
