@@ -217,8 +217,12 @@ variables allow operators to tune this behaviour:
 The `mcp` connection type is a generic client for remote MCP servers (streamable HTTP only; no
 stdio, and no legacy HTTP+SSE transport). It runs `tools/list` and `tools/call` and contains no
 server-specific logic. Every agent image includes it and lists it in
-`/api/v1/agent/connectors/types`. The minimum agent version is the first release that includes it
-(expected `1.14.0`).
+`/api/v1/agent/connectors/types`. Agents built before it reject `mcp` calls with "Connection type
+not supported by this agent". The data collector gates MCP calls on the agent's build number
+(`image_version` compared as an integer, the CircleCI build of the release), not on semver: its
+`MCP_AGENT_MIN_VERSION` is the build number of the first production release (not an rc) that
+includes the MCP client. That number is set once the release ships; until then the data collector
+treats every agent as unsupported.
 
 - **Operations:** `list_tools(limits, session_id, protocol_version, keep_session)` and
   `call_tool(tool, arguments, limits, session_id, protocol_version, keep_session)`, called through
