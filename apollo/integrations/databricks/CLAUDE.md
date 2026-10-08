@@ -30,5 +30,14 @@ the CVE-fixed 0.24.
 - **Re-check the patch on every connector bump.** `DatabricksConnectorVersionTests` in
   `tests/test_databricks_connector_patches.py` pins the connector to 4.5.x–4.6.x, so a bump
   outside that range fails. Then `test_unpatched_connector_still_rejects_duplicate_names`
-  tells you what to do: if it passes, the bug is still there, so re-validate the patch and
-  widen the range; if it fails, upstream fixed it, so delete `connector_patches.py`.
+  tells you what to do:
+  1. It passes: the bug is still there, so re-validate the patch and widen the range.
+  2. Its assertion fails: upstream fixed it, so retire the patch (see below).
+  3. It fails because `_concat_arrow_tables` is missing: the patch only logs a warning and
+     patches nothing. `DatabricksConcatDuplicateColumnNamesTests` decides between 1 and 2: if
+     they fail the bug is still there, so re-target the patch at the connector's new merge
+     helper; if they pass, upstream fixed it.
+- **Retire the patch as a no-op, never by deleting the module.** Other packages
+  (data-collector) import `install_connector_patches()` from `connector_patches.py`, so
+  deleting it would crash them with an `ImportError`. Keep the function's name and module
+  path, make it a no-op, and delete `_patch_concat_arrow_tables` and its helpers.

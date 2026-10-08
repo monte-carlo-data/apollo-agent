@@ -190,7 +190,11 @@ class DatabricksConnectorPatchWiringTests(TestCase):
         )
         env = {**os.environ, "PYTHONPATH": os.pathsep.join(sys.path)}
         completed = subprocess.run(
-            [sys.executable, "-c", code], env=env, capture_output=True, text=True
+            [sys.executable, "-c", code],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=60,
         )
         self.assertEqual(0, completed.returncode, completed.stderr)
 
@@ -199,16 +203,22 @@ class DatabricksConnectorPatchWiringTests(TestCase):
         # convention for any other module that imports databricks.sql.
         apollo_root = Path(__file__).resolve().parents[1] / "apollo"
         import_pattern = re.compile(
-            r"^\s*(from databricks import sql\b|from databricks\.sql\b|import databricks\.sql\b)",
+            r"^\s*(from databricks import (?:[\w ,]*,\s*)?sql\b"
+            r"|from databricks\.sql\b|import databricks\.sql\b)",
             re.MULTILINE,
         )
+        # Column 0 only: indented calls inside functions and comments don't count.
+        call_pattern = re.compile(r"^install_connector_patches\(\)", re.MULTILINE)
         patch_module = (
             apollo_root / "integrations" / "databricks" / "connector_patches.py"
         )
-        importers = [
-            path
+        texts = {
+            path: path.read_text()
             for path in apollo_root.rglob("*.py")
-            if path != patch_module and import_pattern.search(path.read_text())
+            if path != patch_module
+        }
+        importers = [
+            path for path, text in texts.items() if import_pattern.search(text)
         ]
 
         self.assertTrue(
@@ -217,7 +227,7 @@ class DatabricksConnectorPatchWiringTests(TestCase):
         offenders = sorted(
             str(path.relative_to(apollo_root))
             for path in importers
-            if "install_connector_patches()" not in path.read_text()
+            if not call_pattern.search(texts[path])
         )
         self.assertEqual(
             [],
@@ -230,18 +240,31 @@ class DatabricksConnectorPatchWiringTests(TestCase):
 class DatabricksConnectorVersionTests(TestCase):
     def test_connector_version_is_one_the_patch_was_validated_against(self):
         # When this fails after a connector bump, run
-        # test_unpatched_connector_still_rejects_duplicate_names: if it passes the bug is
-        # still there, so re-validate the patch and widen this range; if it fails upstream
-        # fixed it, so delete connector_patches.py.
+        # test_unpatched_connector_still_rejects_duplicate_names:
+        # 1. It passes: the bug is still there, so re-validate the patch and widen this range.
+        # 2. Its assertion fails: upstream fixed it, so make install_connector_patches() a
+        #    no-op. Keep the function and module: other packages import it.
+        # 3. The helper is missing: DatabricksConcatDuplicateColumnNamesTests decides
+        #    between 1 and 2. See the databricks CLAUDE.md.
         major, minor = (int(part) for part in sql.__version__.split(".")[:2])
         self.assertIn((major, minor), {(4, 5), (4, 6)}, sql.__version__)
 
     def test_unpatched_connector_still_rejects_duplicate_names(self):
         # The wrapper uses functools.wraps, so __wrapped__ is the connector's own helper.
-        original = utils._concat_arrow_tables.__wrapped__
+        helper = getattr(utils, "_concat_arrow_tables", None)
+        if helper is None:
+            self.fail(
+                "databricks.sql.utils._concat_arrow_tables is gone, so "
+                "install_connector_patches() no longer patches anything. If "
+                "DatabricksConcatDuplicateColumnNamesTests fail, the bug is still there: "
+                "re-target the patch at the connector's new merge helper. If they pass, "
+                "upstream fixed it: retire the patch."
+            )
+        original = helper.__wrapped__
         with self.assertRaisesRegex(
             pyarrow.ArrowInvalid,
             "duplicate field names",
-            msg="the connector no longer rejects duplicate column names; delete connector_patches.py",
+            msg="the connector no longer rejects duplicate column names; make "
+            "install_connector_patches() a no-op (keep the module, others import it)",
         ):
             original([_duplicate_name_table([1], ["a"])])
