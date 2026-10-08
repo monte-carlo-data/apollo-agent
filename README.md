@@ -208,7 +208,8 @@ variables allow operators to tune this behaviour:
 
 - **`MCD_MCP_ALLOWED_HOSTS`** — comma-separated host patterns of remote MCP servers the agent may
   connect to, in addition to the built-in `aws-mcp.*.api.aws` (AWS MCP Server regional endpoints).
-  `*` matches exactly one DNS label. Set it through `MCD_ADDITIONAL_ENV_VARS`. Example:
+  `*` matches exactly one DNS label. It also applies to OAuth token endpoints. Set it through
+  `MCD_ADDITIONAL_ENV_VARS`. Example:
   `MCD_MCP_ALLOWED_HOSTS=mcp.example.com,*.mcp.corp.internal`
 
 ### MCP servers
@@ -229,16 +230,21 @@ server-specific logic. Every agent image includes it and lists it in
   customer's secret store); `aws_sigv4` (`assumable_role` required, AWS MCP Server hosts only; the
   agent never signs with its own role, but assumes it with its own AWS credentials, so in practice
   an AWS agent); `oauth_client_credentials` (`token_url`, `client_id`,
-  `client_secret` from the secret store, optional `scope`/`audience`).
+  `client_secret` from the secret store, optional `scope`/`audience`; `token_url` must be https and
+  its host must also match `MCD_MCP_ALLOWED_HOSTS`, since the token endpoint receives the client
+  secret; token redirects are not followed).
 - **Sessions:** with `keep_session: true` the result includes the server's `session_id` and
   `protocol_version`; passing them back on a later call resumes the session (on the AWS MCP Server,
   ~2 s instead of ~9 s, and required for `aws___get_tasks`). If the session expired, a new one is
   started and `session_resumed` is `false`. Without `keep_session` the session is closed.
-- **Limits:** `timeout_seconds` (default 20, 1–300) for the whole operation and `max_result_bytes`
+- **Limits:** `timeout_seconds` (default 20, 1–300) for the whole call, including auth (assuming the role or fetching the OAuth
+  token), and `max_result_bytes`
   (default 200 000, 1 000–1 000 000). Results over the cap are cut and marked `truncated`; they are
   never written to the agent's storage for a pre-signed URL.
 - **Network:** the agent needs outbound HTTPS to the server, e.g. `aws-mcp.<region>.api.aws:443`
   (AWS offers no PrivateLink endpoint for it).
+
+Internals and invariants: `apollo/integrations/mcp/CLAUDE.md`.
 
 ### Response decompression limits
 

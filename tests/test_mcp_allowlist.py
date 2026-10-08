@@ -5,6 +5,7 @@ from unittest.mock import patch
 from apollo.integrations.mcp.allowlist import (
     DEFAULT_ALLOWED_HOST_PATTERNS,
     MCP_ALLOWED_HOSTS_ENV_VAR,
+    aws_mcp_region,
     check_server_url,
     get_allowed_host_patterns,
     host_matches,
@@ -32,6 +33,27 @@ class TestHostMatches(TestCase):
         self.assertTrue(host_matches("mcp-1.example.com", ["mcp-*.example.com"]))
         self.assertFalse(host_matches("mcp.example.com.evil", ["mcp.example.com"]))
         self.assertFalse(host_matches("", ["*"]))
+
+
+class TestAwsMcpRegion(TestCase):
+    def test_regional_hosts(self):
+        for host, region in (
+            ("aws-mcp.us-east-1.api.aws", "us-east-1"),
+            ("AWS-MCP.eu-west-1.api.aws.", "eu-west-1"),
+        ):
+            self.assertEqual(region, aws_mcp_region(host), host)
+
+    def test_other_hosts(self):
+        for host in (
+            "mcp.example.com",
+            "",
+            "aws-mcp.api.aws",
+            "aws-mcp..api.aws",
+            "aws-mcp.evil.com.api.aws",
+            "aws-mcp.us-east-1.api.aws.evil.com",
+            "evil.aws-mcp.us-east-1.api.aws",
+        ):
+            self.assertIsNone(aws_mcp_region(host), host)
 
 
 class TestAllowedHostPatterns(TestCase):

@@ -7,7 +7,13 @@ from unittest.mock import patch
 import httpx
 import requests
 from botocore.credentials import Credentials
-from botocore.exceptions import ClientError, NoCredentialsError
+from botocore.exceptions import (
+    ClientError,
+    ConnectTimeoutError,
+    EndpointConnectionError,
+    NoCredentialsError,
+    ReadTimeoutError,
+)
 
 from apollo.integrations.aws.aws_utils import AwsSession
 from apollo.integrations.http.url_safety import HttpClientError
@@ -79,7 +85,10 @@ class TestAwsSigV4(TestCase):
         )
 
         mock_assume.assert_called_once_with(
-            _ROLE, external_id="ext", session_name=aws_role_session_name(_ROLE)
+            _ROLE,
+            external_id="ext",
+            session_name=aws_role_session_name(_ROLE),
+            config=None,
         )
         self.assertIsInstance(resolved.httpx_auth, SigV4HttpxAuth)
         self.assertEqual({"AWS_REGION": "us-east-1"}, resolved.meta)
@@ -131,6 +140,38 @@ class TestAwsSigV4(TestCase):
             resolve_auth(_SIGV4, {}, _AWS_HOST)
         self.assertEqual(McpErrorCode.AUTH_CONFIG, ctx.exception.code)
         self.assertIn("no AWS credentials", str(ctx.exception))
+
+    def test_timeouts_bound_the_sts_call(self, mock_assume):
+        mock_assume.return_value = AwsSession("AKIA_TEST", "secret", "token")
+
+        resolve_auth(_SIGV4, {}, _AWS_HOST, timeout_seconds=30)
+        resolve_auth(_SIGV4, {}, _AWS_HOST, timeout_seconds=3)
+        resolve_auth(_SIGV4, {}, _AWS_HOST, timeout_seconds=0.2)
+
+        configs = [c.kwargs["config"] for c in mock_assume.call_args_list]
+        # capped at 10 s, floored at 1 s
+        self.assertEqual([10, 3, 1], [c.connect_timeout for c in configs])
+        self.assertEqual([10, 3, 1], [c.read_timeout for c in configs])
+        self.assertEqual({"mode": "standard", "max_attempts": 2}, configs[0].retries)
+
+    def test_sts_timeout(self, mock_assume):
+        for error in (
+            ConnectTimeoutError(endpoint_url="https://sts.amazonaws.com"),
+            ReadTimeoutError(endpoint_url="https://sts.amazonaws.com"),
+        ):
+            mock_assume.side_effect = error
+            with self.assertRaises(McpClientError, msg=type(error)) as ctx:
+                resolve_auth(_SIGV4, {}, _AWS_HOST, timeout_seconds=5)
+            self.assertEqual(McpErrorCode.AGENT_TIMEOUT, ctx.exception.code)
+            self.assertIn("Timed out assuming", str(ctx.exception))
+
+    def test_sts_endpoint_connection_error(self, mock_assume):
+        mock_assume.side_effect = EndpointConnectionError(
+            endpoint_url="https://sts.amazonaws.com"
+        )
+        with self.assertRaises(McpClientError) as ctx:
+            resolve_auth(_SIGV4, {}, _AWS_HOST, timeout_seconds=5)
+        self.assertEqual(McpErrorCode.CONNECTION_ERROR, ctx.exception.code)
 
     def test_session_name(self, _):
         name = aws_role_session_name(_ROLE)
@@ -209,6 +250,17 @@ class TestOAuthClientCredentials(TestCase):
         )
         expected = base64.b64encode(b"client-1:s3cret").decode()
         self.assertEqual(f"Basic {expected}", kwargs["headers"]["Authorization"])
+
+    def test_token_request_timeout_is_bounded_by_the_call_timeout(self, mock_request):
+        mock_request.return_value = _token_response(200, {"access_token": "t"})
+        for timeout_seconds, expected in ((None, 10), (30, 10), (4, 4)):
+            resolve_auth(
+                _OAUTH,
+                {"client_secret": "s"},
+                "mcp.example.com",
+                timeout_seconds=timeout_seconds,
+            )
+            self.assertEqual(expected, mock_request.call_args.kwargs["timeout"])
 
     def test_client_id_from_connect_args_wins(self, mock_request):
         mock_request.return_value = _token_response(200, {"access_token": "t"})

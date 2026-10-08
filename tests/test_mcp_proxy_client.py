@@ -1,3 +1,4 @@
+import copy
 import json
 import logging
 from typing import Any, Dict
@@ -52,6 +53,11 @@ _RESULT = {
 }
 
 
+def _without_durations(result: Dict[str, Any]) -> Dict[str, Any]:
+    # the client overwrites them with the whole call's duration
+    return {k: v for k, v in result.items() if k not in ("duration_ms", "timings")}
+
+
 def _call_tool_operation(**kwargs: Any) -> Dict[str, Any]:
     return {
         "trace_id": "trace-1",
@@ -82,7 +88,7 @@ class TestMcpProxyClientThroughAgent(TestCase):
 
     def _setup(self, mock_run: Mock, mock_assume: Mock) -> None:
         mock_assume.return_value = AwsSession("AKIA_TEST", "secret", "token")
-        mock_run.return_value = dict(_RESULT)
+        mock_run.return_value = copy.deepcopy(_RESULT)
 
     def test_call_tool(self, mock_run, mock_assume, mock_safe):
         self._setup(mock_run, mock_assume)
@@ -92,26 +98,38 @@ class TestMcpProxyClientThroughAgent(TestCase):
         )
 
         self.assertIsNone(response.result.get(ATTRIBUTE_NAME_ERROR))
-        self.assertEqual(_RESULT, response.result[ATTRIBUTE_NAME_RESULT])
+        self.assertEqual(
+            _without_durations(_RESULT),
+            _without_durations(response.result[ATTRIBUTE_NAME_RESULT]),
+        )
         mock_safe.assert_called_once_with("aws-mcp.us-east-1.api.aws", 443)
+        limits = mock_run.call_args.kwargs.pop("limits")
         mock_run.assert_called_once_with(
             _URL,
             ANY,
             "call_tool",
             tool="aws___run_script",
             arguments={"code": _SCRIPT},
-            limits=McpLimits(timeout_seconds=15, max_result_bytes=50_000),
             session_id="sess-1",
             protocol_version="2025-06-18",
             keep_session=True,
         )
+        # the operation gets what auth left of the 15 s budget
+        self.assertEqual(50_000, limits.max_result_bytes)
+        self.assertGreater(limits.timeout_seconds, 0)
+        self.assertLessEqual(limits.timeout_seconds, 15)
         auth = mock_run.call_args.args[1]
         self.assertIsInstance(auth.httpx_auth, SigV4HttpxAuth)
         self.assertEqual({"AWS_REGION": "us-east-1"}, auth.meta)
 
     def test_list_tools(self, mock_run, mock_assume, mock_safe):
         self._setup(mock_run, mock_assume)
-        mock_run.return_value = {"tools": [], "truncated": False}
+        mock_run.return_value = {
+            "tools": [],
+            "truncated": False,
+            "duration_ms": 10,
+            "timings": {"total_ms": 10},
+        }
 
         response = self._agent.execute_operation(
             "mcp",
@@ -124,18 +142,23 @@ class TestMcpProxyClientThroughAgent(TestCase):
             _CREDENTIALS,
         )
 
-        self.assertEqual(
-            {"tools": [], "truncated": False}, response.result[ATTRIBUTE_NAME_RESULT]
-        )
+        result = response.result[ATTRIBUTE_NAME_RESULT]
+        self.assertEqual({"tools": [], "truncated": False}, _without_durations(result))
+        self.assertEqual([], result["tools"])
+        self.assertIs(result["truncated"], False)
+        limits = mock_run.call_args.kwargs.pop("limits")
         mock_run.assert_called_once_with(
             _URL,
             ANY,
             "list_tools",
-            limits=McpLimits(),
             session_id=None,
             protocol_version=None,
             keep_session=False,
         )
+        default = McpLimits()
+        self.assertEqual(default.max_result_bytes, limits.max_result_bytes)
+        self.assertGreater(limits.timeout_seconds, 0)
+        self.assertLessEqual(limits.timeout_seconds, default.timeout_seconds)
 
     def test_errors_carry_their_type(self, mock_run, mock_assume, mock_safe):
         self._setup(mock_run, mock_assume)
@@ -209,8 +232,61 @@ class TestMcpProxyClientThroughAgent(TestCase):
         )
 
         self.assertNotIn(ATTRIBUTE_NAME_RESULT_LOCATION, response.result)
-        self.assertEqual(_RESULT, response.result[ATTRIBUTE_NAME_RESULT])
+        self.assertEqual(
+            _without_durations(_RESULT),
+            _without_durations(response.result[ATTRIBUTE_NAME_RESULT]),
+        )
         mock_storage.assert_not_called()
+
+    def test_auth_is_bounded_by_and_counted_against_the_timeout(
+        self, mock_run, mock_assume, mock_safe
+    ):
+        self._setup(mock_run, mock_assume)
+        clock = [100.0]
+
+        def slow_assume(*args, **kwargs):
+            clock[0] += 4
+            return AwsSession("AKIA_TEST", "secret", "token")
+
+        mock_assume.side_effect = slow_assume
+        client = McpProxyClient(_CREDENTIALS)
+
+        with patch(
+            "apollo.integrations.mcp.mcp_proxy_client.time.perf_counter",
+            side_effect=lambda: clock[0],
+        ):
+            result = client.call_tool("t", limits={"timeout_seconds": 15})
+
+        config = mock_assume.call_args.kwargs["config"]
+        self.assertEqual(10, config.connect_timeout)
+        self.assertEqual(10, config.read_timeout)
+        self.assertEqual(11, mock_run.call_args.kwargs["limits"].timeout_seconds)
+        # reported durations cover auth too
+        self.assertEqual(4000, result["duration_ms"])
+        self.assertEqual(4000, result["timings"]["total_ms"])
+
+    def test_auth_consuming_the_timeout_fails_without_running_the_operation(
+        self, mock_run, mock_assume, mock_safe
+    ):
+        self._setup(mock_run, mock_assume)
+        clock = [100.0]
+
+        def slow_assume(*args, **kwargs):
+            clock[0] += 20
+            return AwsSession("AKIA_TEST", "secret", "token")
+
+        mock_assume.side_effect = slow_assume
+        client = McpProxyClient(_CREDENTIALS)
+
+        with patch(
+            "apollo.integrations.mcp.mcp_proxy_client.time.perf_counter",
+            side_effect=lambda: clock[0],
+        ):
+            with self.assertRaises(McpClientError) as ctx:
+                client.call_tool("t", limits={"timeout_seconds": 15})
+
+        self.assertEqual(McpErrorCode.AGENT_TIMEOUT, ctx.exception.code)
+        mock_run.assert_not_called()
 
     def test_credentials_are_assumed_per_call_and_not_kept(
         self, mock_run, mock_assume, mock_safe
@@ -240,7 +316,7 @@ class TestMcpProxyClient(TestCase):
         token_response = Mock(status_code=200)
         token_response.json.return_value = {"access_token": "tok-secret-1"}
         mock_token.return_value = token_response
-        mock_run.return_value = dict(_RESULT)
+        mock_run.return_value = copy.deepcopy(_RESULT)
         client = McpProxyClient(
             {
                 "connect_args": {

@@ -20,11 +20,14 @@ def assume_role(
     role_arn: str,
     external_id: Optional[str] = None,
     session_name: Optional[str] = None,
+    config: Optional[Config] = None,
 ) -> AwsSession:
     """
     Assumes `role_arn` with the agent's own credentials and returns the temporary
     credentials. STS errors (e.g. AccessDenied) propagate to the caller.
     :param session_name: RoleSessionName to use, a unique random name by default.
+    :param config: botocore config for the STS client (e.g. timeouts), the boto3
+    defaults if not set.
     """
     params: Dict[str, Any] = {
         "RoleArn": role_arn,
@@ -34,7 +37,9 @@ def assume_role(
     if external_id:
         params["ExternalId"] = external_id
 
-    credentials = boto3.client("sts").assume_role(**params)["Credentials"]
+    credentials = boto3.client("sts", config=config).assume_role(**params)[
+        "Credentials"
+    ]
     return AwsSession(
         credentials["AccessKeyId"],
         credentials["SecretAccessKey"],

@@ -1,10 +1,4 @@
-"""
-Converts MCP SDK results to JSON-safe dicts and caps their size in the agent.
-
-The cap keeps results inline: MCP results never take the agent's pre-signed URL
-path, so tool output (log lines, for example) never lands in the customer's
-bucket.
-"""
+"""Converts MCP SDK results to JSON-safe dicts and caps their size in the agent."""
 
 import json
 from typing import Any, Dict, List, Optional, Sequence
