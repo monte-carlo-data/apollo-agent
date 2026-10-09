@@ -72,6 +72,14 @@ def _get_proxy_client_mulesoft(
     return MulesoftHttpProxyClient(credentials=credentials, platform=platform)
 
 
+def _get_proxy_client_mcp(
+    credentials: Optional[Dict], **kwargs  # type: ignore
+) -> BaseProxyClient:
+    from apollo.integrations.mcp.mcp_proxy_client import McpProxyClient
+
+    return McpProxyClient(credentials=credentials)
+
+
 def _get_proxy_client_s3(
     credentials: Optional[Dict], platform: str, **kwargs  # type: ignore
 ) -> BaseProxyClient:
@@ -428,6 +436,7 @@ _CLIENT_FACTORY_MAPPING = {
     "databricks-rest": _get_proxy_client_databricks_rest,
     "db2": _get_proxy_client_db2,
     "http": _get_proxy_client_http,
+    "mcp": _get_proxy_client_mcp,
     "s3": _get_proxy_client_s3,
     "storage": _get_proxy_client_storage,
     "looker": _get_proxy_client_looker,

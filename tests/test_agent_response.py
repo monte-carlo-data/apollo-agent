@@ -160,3 +160,53 @@ class AgentResponseTests(TestCase):
             response.result,
         )
         self.assertTrue(response.compressed)
+
+    @patch("apollo.agent.agent.StorageProxyClient")
+    def test_client_without_result_location_returns_inline(self, storage_mock: Mock):
+        response = self._agent._execute_client_operation(
+            connection_type="test",
+            client=_InlineOnlyProxyClient(),
+            operation_name="test",
+            operation=AgentCommands(
+                trace_id=self._trace_id,
+                commands=self._commands,
+                response_size_limit_bytes=5,
+            ),
+            func=lambda client: {"fizz": "buzz"},
+        )
+        self.assertEqual(
+            {"__mcd_result__": {"fizz": "buzz"}, "__mcd_trace_id__": self._trace_id},
+            response.result,
+        )
+        storage_mock.assert_not_called()
+
+    @patch("apollo.agent.agent.StorageProxyClient")
+    def test_client_without_result_location_still_compresses(self, storage_mock: Mock):
+        response = self._agent._execute_client_operation(
+            connection_type="test",
+            client=_InlineOnlyProxyClient(),
+            operation_name="test",
+            operation=AgentCommands(
+                trace_id=self._trace_id,
+                commands=self._commands,
+                response_size_limit_bytes=5,
+                compress_response_threshold_bytes=5,
+            ),
+            func=lambda client: {"fizz": "buzz"},
+        )
+        expected_result = {
+            "__mcd_result__": {"fizz": "buzz"},
+            "__mcd_trace_id__": self._trace_id,
+        }
+        self.assertEqual(
+            gzip.compress(json.dumps(expected_result).encode("utf-8")),
+            response.result,
+        )
+        self.assertTrue(response.compressed)
+        storage_mock.assert_not_called()
+
+
+class _InlineOnlyProxyClient(SampleProxyClient):
+    @property
+    def allows_result_location(self) -> bool:
+        return False
