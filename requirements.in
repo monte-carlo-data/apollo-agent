@@ -11,7 +11,7 @@ cerberus>=1.3.5
 click>=8.3.3  # transitive (clickhouse-connect, flask); pinned for CVE-2026-7246
 clickhouse-connect>=0.10.0  # cp314 wheels first shipped in 0.10.0 (YET-2254, azure image on Python 3.14); we only use the stable clickhouse_connect.dbapi facade
 cryptography>=50.0.0  # CVE-2026-26007; >=48.0.1 for GHSA-537c-gmf6-5ccf (bundled OpenSSL OOB read, fixed in 48.0.1); >=49.0.0 for AIKIDO-2026-94131; >=50.0.0 for CVE-2026-69247 (CVE-2026-69249 needs only 49)
-databricks-sql-connector==4.5.0  # requires thrift>=0.24.0, which is what clears the thrift CVEs below; 4.2.5 held us at thrift 0.16.0 to match impyla's old pin. Default backend is still Thrift — the SEA/Rust kernel added in 4.3.0 is opt-in per connection (use_kernel=True) and we don't set it. 4.4.0 also raised the floor to Python 3.10 (we're on 3.13+) and started reporting cursor.rowcount for DML instead of a hardcoded -1
+databricks-sql-connector==4.5.0  # requires thrift>=0.24.0, which is what clears the thrift CVEs below; 4.2.5 held us at thrift 0.16.0 to match impyla's old pin. Default backend is still Thrift — the SEA/Rust kernel added in 4.3.0 is opt-in per connection (use_kernel=True) and we don't set it. 4.4.0 also raised the floor to Python 3.10 (we're on 3.13+) and started reporting cursor.rowcount for DML instead of a hardcoded -1. 4.2.6+ rejects duplicate column names when concatenating Arrow results. Re-check the duplicate-column-name patch in apollo/integrations/databricks/connector_patches.py on every bump
 databricks-sdk==0.39.0
 duckdb==1.5.3  # pinned to the exact version MotherDuck's server-side extension supports (it rejects both <1.5.3 and >1.5.3, e.g. 1.5.4)
 flask==3.1.3  # CVE-2026-27205: missing Vary: Cookie on some session accesses, fixed in 3.1.3
@@ -32,7 +32,7 @@ looker-sdk==24.2.0
 mcp==1.30.0  # K2-1344: generic MCP client (apollo/integrations/mcp). 1.x, not 2.x: 2.x moved to httpx2 and a new client API. Also pulls server-side packages (starlette, uvicorn, sse-starlette, python-multipart, pydantic-settings) that the agent never imports
 msal>=1.38.0  # VULN-1806 (AIKIDO-2026-10042); allow cryptography>=49 (AIKIDO-2026-94131); 1.36.0 capped cryptography<49, 1.31.0 capped <46
 numpy>=2.1.0  # numpy 2 required for Python 3.13: cp313 wheels first shipped in 2.1.0. The old "numpy.dtype size changed" ABI risk (https://github.com/numpy/numpy/issues/26710) is moot once every native dep is built against numpy 2.
-oracledb>=3.3.0,<4  # cp314 wheels first shipped in 3.3.0 (YET-2254, azure image on Python 3.14). Capped below 4 so the typing-extensions bump (K2-1344) doesn't pull in a major upgrade on the side; 4.x drops Oracle Client <19c for thick mode (the image ships Instant Client 23.8, so that part is fine) and should land as its own change.
+oracledb>=3.3.0,<5  # cp314 wheels first shipped in 3.3.0 (YET-2254, azure image on Python 3.14). <5, not <4: this file is mcd-agent's install_requires, and data-collector already runs 4.x. Moving our images to 4.x (drops Oracle Client <19c for thick mode; the image ships Instant Client 23.8) is its own change. Releases after 4.0.2 are calendar-versioned (26.x), which <5 also excludes
 orjson>=3.11.6  # CVE-2025-67221: recursion DoS in orjson.dumps thru 3.11.4
 presto-python-client==0.8.3
 trino==0.336.0
@@ -55,7 +55,7 @@ tableauserverclient==0.25 ; python_version < "3.10"
 tableauserverclient==0.38 ; python_version >= "3.10"
 urllib3~=2.8  # CVE-2026-44431, CVE-2026-44432, CVE-2026-97687, CVE-2026-97688, CVE-2026-97689
 
-typing-extensions==4.16.0  # K2-1344: 4.12.2 was a stale transitive pin; pydantic>=2.12 needs >=4.14.1 and the MCP SDK 2.x needs >=4.13
+typing-extensions==4.16.0  # K2-1344: floor is pydantic>=2.12 (cp314 pydantic-core wheels for the azure image), which needs >=4.14.1
 
 teradatasql>=20.0.0.66  # 20.0.0.66 is the first release built with the Go 1.26.6 toolchain, which resolves every remaining HIGH/CRITICAL in the daily scan: CVE-2026-39821 (9.6 CRITICAL), CVE-2026-56862, CVE-2026-56859, CVE-2026-56853, CVE-2026-46600, CVE-2026-33818 — all golang/stdlib, all fixed in 1.26.6. Bump on the *toolchain*, not the release number: 20.0.0.65 looked newer but was still Go 1.26.5, inside the affected range. Verify with `grep -aoE 'go1\.[0-9]+\.[0-9]+'` over the wheel's bundled binaries; all ten (.so/.dll/.dylib) report go1.26.6
 
