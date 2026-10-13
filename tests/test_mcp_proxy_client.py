@@ -3,8 +3,9 @@ import json
 import logging
 from typing import Any, Dict
 from unittest import TestCase
-from unittest.mock import ANY, Mock, patch
+from unittest.mock import ANY, AsyncMock, Mock, patch
 
+import httpcore
 import pytest
 
 from apollo.agent.agent import Agent
@@ -26,6 +27,7 @@ from apollo.integrations.mcp.auth import SigV4HttpxAuth
 from apollo.integrations.mcp.errors import McpClientError, McpErrorCode
 from apollo.integrations.mcp.mcp_proxy_client import McpProxyClient
 from apollo.integrations.mcp.session import McpLimits
+from tests.test_httpx_safety import _addrinfo, _proxy_env
 from tests.test_mcp_session import _memory_server, _memory_streams
 
 _URL = "https://aws-mcp.us-east-1.api.aws/mcp"
@@ -436,3 +438,47 @@ def test_call_tool_route(mock_safe, flask_client):
     assert result["structured_content"] == {"echo": {"code": "result = 1"}}
     assert result["session_id"] == "memory-session"
     assert result["truncated"] is False
+
+
+class TestDnsRebinding(TestCase):
+    """YET-3164: the pre-call `assert_safe_destination` and the connection
+    httpx makes resolve the host separately. A host whose DNS answers a public
+    address for the check and the metadata service for the connection must
+    fail with `server_not_allowed`, without connecting."""
+
+    def test_rebinding_between_check_and_connect_is_blocked(self):
+        lookups = []
+
+        def getaddrinfo(host, port, *args, **kwargs):
+            lookups.append(host)
+            ip = "93.184.216.34" if len(lookups) == 1 else "169.254.169.254"
+            return [_addrinfo(ip, port)]
+
+        connect = AsyncMock(side_effect=httpcore.ConnectError("unreachable"))
+        credentials = {
+            "connect_args": {"server": {"url": "https://mcp.example.com/mcp"}}
+        }
+        with _proxy_env({"MCD_MCP_ALLOWED_HOSTS": "mcp.example.com"}), patch(
+            "socket.getaddrinfo", side_effect=getaddrinfo
+        ), patch.object(httpcore.AnyIOBackend, "connect_tcp", connect):
+            response = Agent(LoggingUtils()).execute_operation(
+                "mcp",
+                "list_tools",
+                {
+                    "trace_id": "t",
+                    "skip_cache": True,
+                    "commands": [
+                        {
+                            "method": "list_tools",
+                            "kwargs": {"limits": {"timeout_seconds": 1}},
+                        }
+                    ],
+                },
+                credentials,
+            )
+
+        self.assertEqual(
+            "server_not_allowed", response.result[ATTRIBUTE_NAME_ERROR_TYPE]
+        )
+        self.assertGreaterEqual(len(lookups), 2)
+        connect.assert_not_called()

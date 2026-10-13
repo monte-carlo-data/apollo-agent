@@ -32,6 +32,10 @@ from mcp.client.streamable_http import StreamableHTTPTransport
 from mcp.shared.message import SessionMessage
 from mcp.shared.session import RequestResponder
 
+from apollo.integrations.http.httpx_safety import (
+    SafeNetworkBackend,
+    harden_async_client,
+)
 from apollo.integrations.mcp.auth import ResolvedAuth
 from apollo.integrations.mcp.errors import McpClientError, McpErrorCode, map_exception
 from apollo.integrations.mcp.results import (
@@ -190,13 +194,42 @@ class _Run:
         timings: Dict[str, Any],
         start: float,
     ) -> Dict[str, Any]:
-        async with httpx.AsyncClient(
+        client = httpx.AsyncClient(
             auth=self.auth.httpx_auth,
             headers=self.auth.headers,
             timeout=httpx.Timeout(self.limits.timeout_seconds),
             follow_redirects=False,
             transport=self.transport,
-        ) as client:
+        )
+        if self.transport is not None:  # tests
+            return await self._session(
+                client, session_id, protocol_version, timings, start
+            )
+        # check every connection the SDK opens at connect time, so DNS can't
+        # rebind the host to a blocked address after McpProxyClient's pre-check
+        backend = SafeNetworkBackend()
+        harden_async_client(client, backend)
+        try:
+            result = await self._session(
+                client, session_id, protocol_version, timings, start
+            )
+        except BaseException as exc:
+            _raise_if_blocked(backend, exc)
+            raise
+        # the SDK swallows connect errors on notifications, the GET stream and
+        # DELETE, so a block there can leave the operation looking successful
+        _raise_if_blocked(backend, None)
+        return result
+
+    async def _session(
+        self,
+        client: httpx.AsyncClient,
+        session_id: Optional[str],
+        protocol_version: Optional[str],
+        timings: Dict[str, Any],
+        start: float,
+    ) -> Dict[str, Any]:
+        async with client:
             async with self.streams_factory(
                 client, self.url, session_id, protocol_version, not self.keep_session
             ) as (read, write, get_session_id):
@@ -255,6 +288,15 @@ class _Run:
 
     def _content_budget(self) -> int:
         return self.limits.max_result_bytes - _METADATA_RESERVE_BYTES
+
+
+def _raise_if_blocked(
+    backend: SafeNetworkBackend, cause: Optional[BaseException]
+) -> None:
+    if backend.blocked:
+        raise McpClientError(
+            McpErrorCode.SERVER_NOT_ALLOWED, str(backend.blocked[0])
+        ) from cause
 
 
 def _fail_on_transport_error(
