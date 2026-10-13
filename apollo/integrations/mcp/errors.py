@@ -5,6 +5,8 @@ import httpx
 from mcp.shared.exceptions import McpError
 from pydantic import ValidationError
 
+from apollo.integrations.http.url_safety import HttpClientError
+
 # JSON-RPC error codes the AWS MCP Server and spec-compliant servers use for a
 # session they no longer know: AWS answers HTTP 200 with -30001; the SDK turns a
 # spec 404 ("Session terminated") into 32600.
@@ -47,6 +49,9 @@ def map_exception(exc: BaseException, resumed: bool = False) -> McpClientError:
         return leaf
     if isinstance(leaf, TimeoutError):
         return McpClientError(McpErrorCode.AGENT_TIMEOUT, "MCP operation timed out")
+    # httpx_safety: a blocked connection, or a transport the guard can't be installed on
+    if isinstance(leaf, HttpClientError):
+        return McpClientError(McpErrorCode.SERVER_NOT_ALLOWED, str(leaf))
 
     mapped = _map_http_error(leaf, resumed) or _map_mcp_error(leaf, resumed)
     if mapped:

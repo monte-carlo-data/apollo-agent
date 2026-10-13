@@ -9,7 +9,10 @@ single wrapper on that function covers every hop without any special
 ``assert_safe_destination`` for non-HTTP raw-socket / telnet callers
 (the network troubleshooting validators in ``apollo/validators/``) that
 manage their own TCP layer and need the same block-list enforcement
-without going through ``requests``.
+without going through ``requests``. httpx clients (which bypass urllib3) are
+covered by ``httpx_safety.SafeNetworkBackend``, which reuses
+``preflight_host`` / ``is_blocked_ip`` / ``iter_connectable_ips`` from this
+module.
 
 Two policy tiers share one implementation:
 
@@ -73,7 +76,7 @@ import os
 import socket
 import threading
 from contextlib import contextmanager
-from typing import Any, Iterator, List, Tuple, Union
+from typing import Any, Iterable, Iterator, List, Tuple, Union
 from urllib.parse import urlsplit
 
 import requests
@@ -213,8 +216,11 @@ def _log_startup_summary() -> None:
 _log_startup_summary()
 
 
-def _ip_is_rejected(ip: _Address, *, strict_ip_policy: bool) -> bool:
+def is_blocked_ip(ip: _Address, *, strict_ip_policy: bool = False) -> bool:
     """Return True if ``ip`` is disallowed by the active policy tier.
+
+    The shared check used by every enforcement point (including the httpx
+    backend in ``httpx_safety``).
 
     The env-var extra list applies under both tiers; the strict tier
     adds the broader "non-public" rejection on top. IPv6 encodings of an
@@ -233,6 +239,61 @@ def _ip_is_rejected(ip: _Address, *, strict_ip_policy: bool) -> bool:
         if (not ip.is_global) or ip.is_multicast:
             return True
     return False
+
+
+def preflight_host(host: str) -> Union[_Address, None]:
+    """Pre-resolution checks shared by every enforcement point.
+
+    Rejects an empty host and ``localhost`` / ``localhost.`` with a clearer
+    message than the IP block would produce, then parses IP literals —
+    brackets and IPv6 zone IDs (e.g. ``fe80::1%eth0``) stripped. Returns the
+    parsed literal, or ``None`` when ``host`` is a hostname that must be
+    resolved. The literal is returned unvalidated; callers check it with
+    ``is_blocked_ip``.
+
+    Raises:
+        HttpClientError: empty or ``localhost`` host.
+    """
+    if not host:
+        raise HttpClientError("destination refuses '<empty>' host")
+    host_lower = host.lower()
+    if host_lower.rstrip(".") == "localhost":
+        raise HttpClientError("destination refuses 'localhost' host")
+    # fe80::1%eth0 -> fe80::1, which the fe80::/10 CIDR rejects
+    try:
+        return ipaddress.ip_address(host_lower.strip("[]").split("%", 1)[0])
+    except ValueError:
+        return None
+
+
+def iter_connectable_ips(
+    infos: Iterable[Tuple[Any, ...]], *, strict_ip_policy: bool
+) -> Iterator[str]:
+    """Yield the IP literals from ``getaddrinfo`` results that a connect loop
+    may try, in order.
+
+    Validation is lazy: an address is only checked when the caller pulls it,
+    i.e. when it is about to be connected to. Unparseable entries are
+    skipped. Reaching a blocked address raises rather than skipping it — a
+    connect loop must never fall through to the next address past a blocked
+    one. Shared by ``_safe_create_connection`` (urllib3) and
+    ``httpx_safety.SafeNetworkBackend`` so both enforce the same sequence.
+
+    Raises:
+        HttpClientError: the next address to try is blocked.
+    """
+    for info in infos:
+        # info[4] is the sockaddr tuple; its first element is the IP literal.
+        ip_str = str(info[4][0])
+        try:
+            ip = ipaddress.ip_address(ip_str)
+        except ValueError:
+            continue
+        if is_blocked_ip(ip, strict_ip_policy=strict_ip_policy):
+            raise HttpClientError(
+                f"request refuses blocked address resolved from hostname: {ip}"
+            )
+        yield ip_str
 
 
 def assert_safe_destination(
@@ -274,10 +335,8 @@ def assert_safe_destination(
     See also:
         ``_safe_create_connection`` — the connection-time sibling that
         applies the same block list inside urllib3's TCP-connect path.
-        These two functions share ``_ip_is_rejected``, so any change to
-        the block list applies uniformly — but the policy structure
-        (e.g. adding a new early-exit check) must be kept in sync
-        manually.
+        Both share ``preflight_host`` and ``is_blocked_ip``, so pre-checks
+        and block-list changes apply uniformly.
 
         Note the two intentionally differ on mixed record sets: this
         function is strict and rejects if *any* resolved address is
@@ -290,25 +349,9 @@ def assert_safe_destination(
         behavior); don't "fix" the divergence by forcing either side to
         match the other.
     """
-    if not host:
-        raise HttpClientError("destination refuses '<empty>' host")
-    host_lower = host.lower()
-    # Normalize a trailing dot (valid FQDN form) so the fast-path catches
-    # both `localhost` and `localhost.` with the same clearer-message check.
-    if host_lower.rstrip(".") == "localhost":
-        raise HttpClientError("destination refuses 'localhost' host")
-
-    # Strip IPv6 zone IDs (e.g. `fe80::1%eth0`) before parsing — `ip_address`
-    # raises ValueError on `%`. The DNS path would catch zone-IDed link-locals
-    # via the `fe80::/10` CIDR anyway, but normalizing here keeps the
-    # fast-path comment accurate.
-    literal_candidate = host_lower.strip("[]").split("%", 1)[0]
-    try:
-        literal = ipaddress.ip_address(literal_candidate)
-    except ValueError:
-        literal = None
+    literal = preflight_host(host)
     if literal is not None:
-        if _ip_is_rejected(literal, strict_ip_policy=strict_ip_policy):
+        if is_blocked_ip(literal, strict_ip_policy=strict_ip_policy):
             raise HttpClientError(f"destination refuses blocked address: {literal}")
         return str(literal)
 
@@ -324,7 +367,7 @@ def assert_safe_destination(
             ip = ipaddress.ip_address(ip_str)
         except ValueError:
             continue
-        if _ip_is_rejected(ip, strict_ip_policy=strict_ip_policy):
+        if is_blocked_ip(ip, strict_ip_policy=strict_ip_policy):
             raise HttpClientError(
                 f"destination refuses blocked address resolved from hostname: {ip}"
             )
@@ -365,10 +408,9 @@ def _assert_safe_url_scheme_and_host(url: str, *, https_only: bool) -> None:
 #
 # When a policy IS active (set via ``safety_policy``), the wrapper:
 #   1. Validates IP literals directly against the active tier.
-#   2. For hostnames, resolves and validates every A/AAAA record —
-#      rejecting the whole hostname if any record is blocked, then
-#      iterating through the validated list trying to connect. This
-#      preserves urllib3's native multi-IP fallback semantics.
+#   2. For hostnames, walks the resolved records with
+#      ``iter_connectable_ips`` (see there), preserving urllib3's native
+#      multi-IP fallback.
 #
 # Because the wrapper runs on every ``create_connection``, redirected
 # requests get the same guard as the initial request without any
@@ -385,10 +427,8 @@ _policy = threading.local()
 _original_create_connection = _urllib3_connection.create_connection
 
 
-# See `assert_safe_destination` for the no-connection sibling used by raw
-# socket / telnet callers — both share `_ip_is_rejected`, so block-list
-# changes propagate uniformly, but the check-sequence structure must be
-# kept in sync manually.
+# Siblings: `assert_safe_destination` (no connection) and
+# `httpx_safety.SafeNetworkBackend` (httpx).
 def _safe_create_connection(address: Tuple[str, int], *args: Any, **kwargs: Any) -> Any:
     if not getattr(_policy, "active", False):
         return _original_create_connection(address, *args, **kwargs)
@@ -398,12 +438,9 @@ def _safe_create_connection(address: Tuple[str, int], *args: Any, **kwargs: Any)
 
     # IP literal: validate, then delegate to the original (which is now
     # a cheap getaddrinfo on a literal + connect).
-    try:
-        literal = ipaddress.ip_address(host.strip("[]"))
-    except ValueError:
-        literal = None
+    literal = preflight_host(host)
     if literal is not None:
-        if _ip_is_rejected(literal, strict_ip_policy=strict):
+        if is_blocked_ip(literal, strict_ip_policy=strict):
             raise HttpClientError(f"request refuses blocked address: {literal}")
         # Pass the original `address` tuple through unchanged: when the IP is
         # not rejected, urllib3 sees exactly what it would have without the
@@ -423,19 +460,7 @@ def _safe_create_connection(address: Tuple[str, int], *args: Any, **kwargs: Any)
         raise HttpClientError(f"DNS resolution failed: {exc}") from None
 
     err: Union[BaseException, None] = None
-    for info in infos:
-        # info[4] is the sockaddr tuple; first element is the IP literal as
-        # a string (str() is a no-op typed-narrowing here, since getaddrinfo
-        # always returns IP literals as strings for AF_INET / AF_INET6).
-        ip_str = str(info[4][0])
-        try:
-            ip = ipaddress.ip_address(ip_str)
-        except ValueError:
-            continue
-        if _ip_is_rejected(ip, strict_ip_policy=strict):
-            raise HttpClientError(
-                f"request refuses blocked address resolved from hostname: {ip}"
-            )
+    for ip_str in iter_connectable_ips(infos, strict_ip_policy=strict):
         try:
             return _original_create_connection((ip_str, port), *args, **kwargs)
         except OSError as exc:

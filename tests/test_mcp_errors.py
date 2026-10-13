@@ -7,6 +7,7 @@ from mcp.shared.exceptions import McpError
 from mcp.types import ErrorData, JSONRPCMessage
 from pydantic import ValidationError
 
+from apollo.integrations.http.url_safety import HttpClientError
 from apollo.integrations.mcp.errors import (
     McpClientError,
     McpErrorCode,
@@ -46,6 +47,18 @@ class TestMapException(TestCase):
             McpErrorCode.CONNECTION_ERROR,
             map_exception(httpx.ConnectError("refused")).code,
         )
+
+    def test_ssrf_block_is_server_not_allowed(self):
+        block = HttpClientError("request refuses blocked address: 169.254.169.254")
+        mapped = map_exception(block)
+        self.assertEqual(McpErrorCode.SERVER_NOT_ALLOWED, mapped.code)
+        self.assertIn("169.254.169.254", str(mapped))
+        # connect errors reach map_exception from inside the SDK's task group
+        group = BaseExceptionGroup(
+            "unhandled errors in a TaskGroup",
+            [asyncio.CancelledError(), ExceptionGroup("inner", [block])],
+        )
+        self.assertEqual(McpErrorCode.SERVER_NOT_ALLOWED, map_exception(group).code)
 
     def test_expired_session_only_when_resuming(self):
         aws_expired = _mcp_error(

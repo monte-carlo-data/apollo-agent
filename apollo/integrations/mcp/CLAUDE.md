@@ -21,8 +21,9 @@ documented in the README ("MCP servers").
 
 `/api/v1/agent/execute/mcp/<op>` -> `McpProxyClient` (parses config only) -> per
 call: transport check (`streamable_http` only) -> `check_server_url` allowlist ->
-`assert_safe_destination` -> `resolve_auth` -> `run_operation` (one `anyio.run`
-per call) -> `results` conversion + cap.
+`assert_safe_destination` (early reject, before auth) -> `resolve_auth` ->
+`run_operation` (one `anyio.run` per call; every connection checked at connect
+time) -> `results` conversion + cap.
 
 ## Invariants
 
@@ -47,6 +48,13 @@ per call) -> `results` conversion + cap.
   calls, which triggers one fresh session.
 - **`limits.timeout_seconds` bounds the whole call, including auth** (STS
   AssumeRole / OAuth token fetch).
+- **The SSRF guard is enforced at connect time.** `_Run._attempt` installs
+  `httpx_safety.SafeNetworkBackend` on the client's transports
+  (`harden_async_client`), so the address actually connected to is checked, not
+  just the pre-call lookup (DNS rebinding). Any block fails the call with
+  `server_not_allowed`, even one the SDK swallowed (notification POSTs, the GET
+  stream and DELETE log and drop connect errors). Tests that inject `transport`
+  bypass the guard; `TestSsrfGuard` covers the real path.
 
 ## When upgrading `mcp`
 
@@ -57,9 +65,18 @@ per call) -> `results` conversion + cap.
   `ClientSession._validate_tool_result` — confirm it still exists.
 - Re-check that the transport still reports some failures by sending Exceptions
   into the read stream (handled by the session's message handler).
+- Re-check which SDK paths swallow connect errors (`post_writer` notifications,
+  `handle_get_stream`, `terminate_session`); `_attempt` relies on
+  `SafeNetworkBackend.blocked` to catch those.
+- httpx/httpcore come in with the SDK but are pinned in `requirements.in`, because
+  `harden_async_client` uses their private attributes. Bump them on purpose:
+  `TestSsrfGuardWiring` fails if those attributes move.
 - 2.x moved to httpx2 and is a bigger port.
 
 ## Tests
 
 `tests/test_mcp_*.py`. An in-memory server covers protocol paths; `_FakeHttpServer`
 + `httpx.MockTransport` cover HTTP-level behaviour (resume, DELETE, signing).
+`_LoopbackMcpServer` serves `_FakeHttpServer` over a real socket for the
+connect-time SSRF guard tests (`TestSsrfGuard`), which run without an injected
+transport.
