@@ -1,11 +1,15 @@
+import http.server
 import json
 import logging
+import threading
 import time
-from contextlib import asynccontextmanager
-from typing import Any, Dict, List, Optional
+from contextlib import asynccontextmanager, contextmanager
+from typing import Any, Dict, Iterator, List, Optional
 from unittest import TestCase
+from unittest.mock import AsyncMock, patch
 
 import anyio
+import httpcore
 import httpx
 from botocore.credentials import Credentials
 from mcp import types
@@ -13,6 +17,12 @@ from mcp.server.lowlevel import Server
 from mcp.shared.exceptions import McpError
 from mcp.shared.memory import create_client_server_memory_streams
 
+from apollo.integrations.http import url_safety
+from apollo.integrations.http.httpx_safety import (
+    SafeNetworkBackend,
+    harden_async_client,
+)
+from apollo.integrations.http.url_safety import HttpClientError
 from apollo.integrations.mcp.auth import ResolvedAuth, SigV4HttpxAuth
 from apollo.integrations.mcp.errors import McpClientError, McpErrorCode
 from apollo.integrations.mcp.session import (
@@ -21,6 +31,7 @@ from apollo.integrations.mcp.session import (
     McpLimits,
     run_operation,
 )
+from tests.test_httpx_safety import _addrinfo, _proxy_env
 
 _URL = "https://aws-mcp.us-east-1.api.aws/mcp"
 
@@ -505,3 +516,223 @@ class TestHttp(TestCase):
                 transport=httpx.MockTransport(redirect),
             )
         self.assertEqual(McpErrorCode.SERVER_ERROR, ctx.exception.code)
+
+
+# ---- connect-time SSRF guard (YET-3164) ---------------------------------------
+
+
+class _LoopbackMcpServer:
+    """`_FakeHttpServer` served over a real socket on 127.0.0.1. HTTP/1.0, so
+    every request opens a new connection (and a new DNS lookup)."""
+
+    def __init__(self) -> None:
+        self.fake = _FakeHttpServer()
+        self.paths: List[str] = []
+        outer = self
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def _handle(self) -> None:
+                outer.paths.append(self.path)
+                length = int(self.headers.get("content-length") or 0)
+                request = httpx.Request(
+                    self.command,
+                    "http://mcp.test/mcp",
+                    headers=dict(self.headers),
+                    content=self.rfile.read(length),
+                )
+                response = outer.fake(request)
+                self.send_response(response.status_code)
+                for name, value in response.headers.items():
+                    self.send_header(name, value)
+                self.end_headers()
+                self.wfile.write(response.content)
+
+            do_GET = do_POST = do_DELETE = _handle
+
+            def log_message(self, *args: Any) -> None:
+                pass
+
+        self._server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.port = self._server.server_address[1]
+        threading.Thread(
+            target=self._server.serve_forever,
+            kwargs={"poll_interval": 0.01},
+            daemon=True,
+        ).start()
+
+    def close(self) -> None:
+        self._server.shutdown()
+        self._server.server_close()
+
+
+@contextmanager
+def _loopback_allowed() -> Iterator[None]:
+    # loopback is blocked by default; the test server lives there
+    networks = [n for n in url_safety._DEFAULT_NETWORKS if str(n) != "127.0.0.0/8"]
+    with patch.object(url_safety, "_DEFAULT_NETWORKS", networks):
+        yield
+
+
+@contextmanager
+def _recording_connects() -> Iterator[List[str]]:
+    """Records the address every real TCP connect goes to."""
+    calls: List[str] = []
+    original = httpcore.AnyIOBackend.connect_tcp
+
+    async def connect_tcp(self: Any, host: str, port: int, *args: Any, **kwargs: Any):
+        calls.append(host)
+        return await original(self, host, port, *args, **kwargs)
+
+    with patch.object(httpcore.AnyIOBackend, "connect_tcp", connect_tcp):
+        yield calls
+
+
+def _resolver(answers: Dict[str, str], default: str = "169.254.169.254"):
+    lookups: List[str] = []
+
+    def getaddrinfo(host: Any, port: Any, *args: Any, **kwargs: Any) -> List[tuple]:
+        name = host.decode() if isinstance(host, bytes) else host
+        lookups.append(name)
+        return [_addrinfo(answers.get(name, default), port)]
+
+    return getaddrinfo, lookups
+
+
+def _list_tools(url: str, timeout: float = 2) -> Dict[str, Any]:
+    return run_operation(
+        url, ResolvedAuth(), "list_tools", limits=McpLimits(timeout_seconds=timeout)
+    )
+
+
+class TestSsrfGuard(TestCase):
+    def setUp(self):
+        self.server = _LoopbackMcpServer()
+        self.addCleanup(self.server.close)
+
+    def test_direct_connection_goes_through_the_guard(self):
+        getaddrinfo, lookups = _resolver({"mcp.test": "127.0.0.1"})
+        with _proxy_env({}), _loopback_allowed(), patch(
+            "socket.getaddrinfo", side_effect=getaddrinfo
+        ), _recording_connects() as connects:
+            result = _list_tools(f"http://mcp.test:{self.server.port}/mcp")
+        self.assertEqual([], result["tools"])
+        self.assertIn("mcp.test", lookups)
+        self.assertTrue(connects)
+        self.assertEqual({"127.0.0.1"}, set(connects))
+
+    def test_forward_proxy_connection_goes_through_the_guard(self):
+        # mcp.test itself resolves to the metadata service: only the proxy may
+        # be connected to, so success proves the request went through it.
+        getaddrinfo, lookups = _resolver({"proxy.test": "127.0.0.1"})
+        env = {"HTTP_PROXY": f"http://proxy.test:{self.server.port}"}
+        with _proxy_env(env), _loopback_allowed(), patch(
+            "socket.getaddrinfo", side_effect=getaddrinfo
+        ), _recording_connects() as connects:
+            result = _list_tools("http://mcp.test/mcp")
+        self.assertEqual([], result["tools"])
+        self.assertEqual({"proxy.test"}, set(lookups))
+        self.assertEqual({"127.0.0.1"}, set(connects))
+        self.assertIn("http://mcp.test/mcp", self.server.paths)  # absolute-form
+
+    def test_block_on_a_later_connection_fails_the_call(self):
+        # initialize connects; every later connection (notification, GET
+        # stream, tools/list, DELETE) resolves to the metadata service. The SDK
+        # swallows some of those errors; the call must still fail.
+        answers = iter(["127.0.0.1"])
+
+        def getaddrinfo(host: Any, port: Any, *args: Any, **kwargs: Any):
+            return [_addrinfo(next(answers, "169.254.169.254"), port)]
+
+        with _proxy_env({}), _loopback_allowed(), patch(
+            "socket.getaddrinfo", side_effect=getaddrinfo
+        ), _recording_connects() as connects:
+            with self.assertRaises(McpClientError) as ctx:
+                _list_tools(f"http://mcp.test:{self.server.port}/mcp")
+        self.assertEqual(McpErrorCode.SERVER_NOT_ALLOWED, ctx.exception.code)
+        self.assertEqual(["127.0.0.1"], connects)
+        self.assertIn("initialize", self.server.fake.methods()[0])
+
+    def test_swallowed_block_fails_an_otherwise_successful_call(self):
+        # e.g. the GET stream or DELETE was blocked: the SDK logs and moves on,
+        # so the operation itself succeeds
+        def backend_with_swallowed_block() -> SafeNetworkBackend:
+            backend = SafeNetworkBackend()
+            backend.blocked.append(HttpClientError("blocked GET stream"))
+            return backend
+
+        getaddrinfo, _ = _resolver({"mcp.test": "127.0.0.1"})
+        with _proxy_env({}), _loopback_allowed(), patch(
+            "socket.getaddrinfo", side_effect=getaddrinfo
+        ), patch(
+            "apollo.integrations.mcp.session.SafeNetworkBackend",
+            backend_with_swallowed_block,
+        ):
+            with self.assertRaises(McpClientError) as ctx:
+                _list_tools(f"http://mcp.test:{self.server.port}/mcp")
+        self.assertEqual(McpErrorCode.SERVER_NOT_ALLOWED, ctx.exception.code)
+        self.assertIn("tools/list", " ".join(self.server.fake.methods()))
+
+
+class TestSsrfGuardWiring(TestCase):
+    """Structural canary: with no transport injected, every transport the
+    client can route through (default + env-proxy mounts) carries the guard.
+    Catches an httpx upgrade changing how env proxies become mounts."""
+
+    _ENVS = (
+        {},
+        {"HTTPS_PROXY": "http://proxy.test:3128"},
+        {"https_proxy": "http://proxy.test:3128"},
+        {"HTTP_PROXY": "http://proxy.test:3128"},
+        {"ALL_PROXY": "http://proxy.test:3128"},
+        {"HTTPS_PROXY": "http://proxy.test:3128", "NO_PROXY": "mcp.test"},
+        {"HTTPS_PROXY": "http://proxy.test:3128", "NO_PROXY": "*"},
+        {
+            "HTTP_PROXY": "http://proxy.test:3128",
+            "HTTPS_PROXY": "http://proxy.test:3129",
+            "ALL_PROXY": "http://proxy.test:3130",
+            "NO_PROXY": "internal.test,10.0.0.0/8",
+        },
+    )
+
+    def test_every_transport_is_guarded(self):
+        for env in self._ENVS:
+            with self.subTest(env=env):
+                hardened: List[Any] = []
+
+                def capture(client: httpx.AsyncClient, backend: Any) -> None:
+                    hardened.append((client, backend))
+                    harden_async_client(client, backend)
+
+                connect = AsyncMock(side_effect=httpcore.ConnectError("unreachable"))
+                with _proxy_env(env), patch(
+                    "apollo.integrations.mcp.session.harden_async_client", capture
+                ), patch(
+                    "socket.getaddrinfo", return_value=[_addrinfo("93.184.216.34")]
+                ), patch.object(
+                    httpcore.AnyIOBackend, "connect_tcp", connect
+                ):
+                    with self.assertRaises(McpClientError):
+                        _list_tools("https://mcp.test/mcp", timeout=1)
+                    plain = httpx.AsyncClient()
+
+                self.assertEqual(1, len(hardened))
+                client, backend = hardened[0]
+                self.assertEqual(set(plain._mounts), set(client._mounts))
+                transports = [client._transport]
+                transports.extend(t for t in client._mounts.values() if t is not None)
+                for transport in transports:
+                    self.assertIs(backend, transport._pool._network_backend)
+                # no connection ever bypassed the guard: the inner backend only
+                # sees IP literals
+                for call in connect.call_args_list:
+                    self.assertEqual("93.184.216.34", call.args[0])
+
+    def test_unrecognised_transport_fails_closed(self):
+        mock = httpx.MockTransport(lambda request: httpx.Response(500))
+        with _proxy_env({"HTTPS_PROXY": "http://proxy.test:3128"}), patch.object(
+            httpx.AsyncClient, "_init_proxy_transport", return_value=mock
+        ):
+            with self.assertRaises(McpClientError) as ctx:
+                _list_tools("https://mcp.test/mcp", timeout=1)
+        self.assertEqual(McpErrorCode.SERVER_NOT_ALLOWED, ctx.exception.code)
+        self.assertIn("unsupported httpx transport", str(ctx.exception))
