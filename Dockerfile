@@ -230,7 +230,11 @@ RUN ACCEPT_EULA=Y dnf install -y msodbcsql17
 # kinit, for SQL Server Windows Authentication on the password credential form. This stage
 # has its own base (AL2023, dnf) rather than system-base, so it needs its own install and
 # the package is krb5-workstation, not krb5-user.
-RUN dnf -y install krb5-workstation
+# VULN-2435 (CVE-2024-37371): msodbcsql17 above may pull in an older krb5-libs as a
+# transitive dependency before this install runs. Explicitly update all krb5 packages
+# first so the patched version (>= 1.21.3-8.amzn2023.0.2) lands regardless of the
+# installation order.
+RUN dnf -y update 'krb5*' && dnf -y install krb5-workstation
 
 # Oracle Instant Client for thick mode.
 ARG ORACLE_IC_ZIP
