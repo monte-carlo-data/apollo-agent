@@ -103,9 +103,9 @@ class McpProxyClient(BaseProxyClient):
             )
         host, port = check_server_url(self._url, get_allowed_host_patterns())
         try:
-            # checked on every call, not once per cached client; the MCP SDK uses
-            # httpx, which doesn't go through the urllib3 hook that enforces
-            # MCD_HTTP_BLOCKED_CIDRS
+            # checked on every call, not once per cached client. An early reject
+            # before auth runs (STS / OAuth); enforcement is at connect time, in
+            # the httpx backend session.py installs (httpx_safety)
             assert_safe_destination(host, port)
         except HttpClientError as exc:
             raise McpClientError(McpErrorCode.SERVER_NOT_ALLOWED, str(exc)) from exc
