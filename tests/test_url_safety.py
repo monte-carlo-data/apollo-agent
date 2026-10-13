@@ -12,6 +12,9 @@ from apollo.integrations.http.url_safety import (
     _policy,
     _safe_create_connection,
     assert_safe_destination,
+    is_blocked_ip,
+    iter_connectable_ips,
+    preflight_host,
     safe_request,
     safety_policy,
 )
@@ -932,3 +935,111 @@ class TestIpv4EmbeddedInIpv6(TestCase):
         with patch.object(url_safety, "_original_create_connection") as called:
             _safe_create_connection((self.NAT64_PUBLIC, 443), timeout=1)
         called.assert_called_once()
+
+
+class TestSharedChecks(TestCase):
+    """YET-3164: `preflight_host` and `iter_connectable_ips` are shared by the
+    urllib3 hook and the httpx backend (`httpx_safety`), so both enforcement
+    points apply the same pre-checks and the same connect-loop sequence."""
+
+    def tearDown(self):
+        _policy.active = False
+        _policy.strict_ip_policy = False
+
+    # --- preflight_host ------------------------------------------------------
+
+    def test_preflight_rejects_empty_and_localhost(self):
+        for host in ("", "localhost", "LOCALHOST", "localhost."):
+            with self.subTest(host=host):
+                with self.assertRaises(HttpClientError):
+                    preflight_host(host)
+
+    def test_preflight_parses_literals(self):
+        self.assertEqual(preflight_host("10.0.0.5"), ipaddress.ip_address("10.0.0.5"))
+        self.assertEqual(preflight_host("[::1]"), ipaddress.ip_address("::1"))
+        self.assertEqual(
+            preflight_host("fe80::1%eth0"), ipaddress.ip_address("fe80::1")
+        )
+
+    def test_preflight_returns_none_for_hostname(self):
+        self.assertIsNone(preflight_host("mcp.example.com"))
+
+    # --- iter_connectable_ips ------------------------------------------------
+
+    def test_iter_is_lazy(self):
+        # A blocked address after the first is not checked until pulled.
+        it = iter_connectable_ips(
+            [_addrinfo("93.184.216.34"), _addrinfo("169.254.169.254")],
+            strict_ip_policy=False,
+        )
+        self.assertEqual(next(it), "93.184.216.34")
+        with self.assertRaises(HttpClientError):
+            next(it)
+
+    def test_iter_raises_on_blocked_first(self):
+        # [blocked, allowed]: never skips past the blocked address.
+        it = iter_connectable_ips(
+            [_addrinfo("169.254.169.254"), _addrinfo("93.184.216.34")],
+            strict_ip_policy=False,
+        )
+        with self.assertRaises(HttpClientError):
+            next(it)
+
+    def test_iter_skips_unparseable(self):
+        infos = [
+            (socket.AF_INET, socket.SOCK_STREAM, 0, "", ("not-an-ip", 443)),
+            _addrinfo("93.184.216.34"),
+        ]
+        self.assertEqual(
+            list(iter_connectable_ips(infos, strict_ip_policy=False)),
+            ["93.184.216.34"],
+        )
+
+    def test_iter_applies_extra_cidrs_and_strict_tier(self):
+        with patch.object(
+            url_safety, "_EXTRA_NETWORKS", [ipaddress.ip_network("10.50.0.0/16")]
+        ):
+            with self.assertRaises(HttpClientError):
+                list(
+                    iter_connectable_ips(
+                        [_addrinfo("10.50.1.1")], strict_ip_policy=False
+                    )
+                )
+        with self.assertRaises(HttpClientError):
+            list(iter_connectable_ips([_addrinfo("10.0.0.5")], strict_ip_policy=True))
+
+    def test_is_blocked_ip(self):
+        self.assertTrue(is_blocked_ip(ipaddress.ip_address("::ffff:169.254.169.254")))
+        self.assertFalse(is_blocked_ip(ipaddress.ip_address("10.0.0.5")))
+        self.assertTrue(
+            is_blocked_ip(ipaddress.ip_address("10.0.0.5"), strict_ip_policy=True)
+        )
+
+    # --- hook now shares the pre-checks --------------------------------------
+
+    def test_hook_rejects_localhost_trailing_dot(self):
+        _policy.active = True
+        with patch.object(url_safety, "_original_create_connection") as called:
+            with self.assertRaises(HttpClientError):
+                _safe_create_connection(("localhost.", 443), timeout=1)
+        called.assert_not_called()
+
+    @patch("apollo.integrations.http.url_safety.socket.getaddrinfo")
+    def test_hook_rejects_zone_id_literal_without_dns(self, mock_gai):
+        _policy.active = True
+        with patch.object(url_safety, "_original_create_connection") as called:
+            with self.assertRaises(HttpClientError):
+                _safe_create_connection(("fe80::1%eth0", 443), timeout=1)
+        called.assert_not_called()
+        mock_gai.assert_not_called()
+
+    @patch("apollo.integrations.http.url_safety.socket.getaddrinfo")
+    def test_hook_no_usable_address(self, mock_gai):
+        mock_gai.return_value = [
+            (socket.AF_INET, socket.SOCK_STREAM, 0, "", ("not-an-ip", 443))
+        ]
+        _policy.active = True
+        with patch.object(url_safety, "_original_create_connection") as called:
+            with self.assertRaises(OSError):
+                _safe_create_connection(("example.com", 443), timeout=1)
+        called.assert_not_called()
