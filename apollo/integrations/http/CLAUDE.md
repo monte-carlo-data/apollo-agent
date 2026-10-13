@@ -10,7 +10,12 @@ services, RFC 1918 ranges (where not expected), and other sensitive targets.
   `do_request`, `download_bytes`, and `download_to_storage` methods used by all
   HTTP-based integrations.
 - **`url_safety.py`** — SSRF guard: a `urllib3` connection hook plus the
-  `safety_policy` context manager that activates it per-thread.
+  `safety_policy` context manager that activates it per-thread. Also the shared
+  checks every enforcement point uses (`preflight_host`, `is_blocked_ip`,
+  `iter_connectable_ips`).
+- **`httpx_safety.py`** — the same guard for `httpx` clients (`httpx` doesn't use
+  `urllib3`): `SafeNetworkBackend` (httpcore network backend) and
+  `harden_async_client`. Used by the MCP client.
 - **`httplib2_client.py`** — `build_authorized_http`: builds the `httplib2.Http`
   passed to `googleapiclient.discovery.build(http=...)`, with a raised gzip
   decompression ratio and an explicit timeout. Not covered by the SSRF guard —
@@ -37,6 +42,22 @@ the connection.
 |---|---|---|
 | **Default** | `safe_request(method, url, **kwargs)` | RFC 1918 allowed; metadata service ranges and loopback blocked. HTTP allowed by default; set `MCD_HTTP_REQUIRE_HTTPS=true` to require HTTPS. |
 | **Strict** | `safety_policy(url, strict_ip_policy=True, https_only=True)` | Public IPs only + HTTPS required; used for pre-signed URL downloads |
+
+### httpx clients
+
+`httpx_safety.SafeNetworkBackend.connect_tcp` resolves the host, validates each
+address with the shared checks and connects only to validated IP literals — the
+same loop as the urllib3 hook (try addresses in order; a blocked one raises; a
+connect failure falls through). TLS still uses the original hostname: httpcore
+passes it to `start_tls` separately. `harden_async_client` installs the backend
+on a client httpx already built — default transport and every env-proxy mount —
+so httpx keeps its own proxy/TLS handling; with a proxy, the proxy address is
+what's checked (same as urllib3). It relies on private httpx/httpcore attributes
+(`AsyncClient._transport`/`_mounts`, `AsyncHTTPTransport._pool`,
+`AsyncConnectionPool._network_backend`) and raises if a transport doesn't match;
+`tests/test_mcp_session.py::TestSsrfGuardWiring` is the canary on upgrades. The
+backend records every block in `blocked`, for callers whose HTTP library swallows
+connect errors.
 
 ### Redirect handling
 
@@ -102,9 +123,3 @@ on that worker thread — it does not propagate automatically.
 - **`httplib2_client.py`** — httplib2 does not use `urllib3`, so requests made
   through the clients it builds never reach the `create_connection` hook. The
   destinations are fixed Google API endpoints, not caller-supplied URLs.
-- **`apollo/integrations/mcp/`** — the MCP SDK uses `httpx`, which does not use
-  `urllib3` either, so `MCD_HTTP_BLOCKED_CIDRS` is not enforced at connect time.
-  The MCP client calls `assert_safe_destination` on the server host before every
-  operation (plus its own host allowlist, `MCD_MCP_ALLOWED_HOSTS`); a connect-time
-  hook for httpx (closing the DNS-rebinding gap) is a follow-up. Its OAuth token
-  request goes through `safe_request` with redirects disabled.

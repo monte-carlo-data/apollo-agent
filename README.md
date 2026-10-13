@@ -229,7 +229,8 @@ treats every agent as unsupported.
   `/api/v1/agent/execute/mcp/<operation>` like any other connection type.
 - **Server:** `connect_args.server` = `{"url", "transport": "streamable_http", "auth": {...}}`. The
   URL must be https and match the allowlist (`MCD_MCP_ALLOWED_HOSTS`); the host also goes through the
-  SSRF check on every call.
+  SSRF check on every call, and every connection is checked again at connect time (when an HTTP(S)
+  proxy is configured, the proxy address is what's checked).
 - **Auth types:** `none`; `secret_header` (`header_name`, value from `header_value` in the
   customer's secret store); `aws_sigv4` (`assumable_role` required, AWS MCP Server hosts only; the
   agent never signs with its own role, but assumes it with its own AWS credentials, so in practice
