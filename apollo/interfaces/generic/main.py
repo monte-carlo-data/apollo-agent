@@ -81,7 +81,7 @@ def agent_execute(
           required: true
           description: the connection type to use, one of bigquery, databricks, http, storage, looker, git,
             redshift, postgres, sql-server, snowflake, mysql, oracle, teradata, azure-dedicated-sql-pool,
-            azure-sql-database, tableau, sap-hana, power-bi.
+            azure-sql-database, tableau, sap-hana, power-bi, mcp.
           schema:
               type: string
               example: snowflake

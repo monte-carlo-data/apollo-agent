@@ -105,6 +105,17 @@ class BaseProxyClient(ABC):
         """
         return {}
 
+    @property
+    def allows_result_location(self) -> bool:
+        """
+        Whether results from this client may be written to the agent's storage and
+        returned as a pre-signed URL (`__mcd_result_location__`) when the caller
+        asks for it. Clients whose results must never land in the customer's bucket
+        override this to return False; their results are always returned inline
+        (still compressed if the caller asked for compression).
+        """
+        return True
+
     def log_payload(self, request: AgentOperation) -> Dict:
         """
         Returns the `extra` payload to include in the log message for the given operation on this client.

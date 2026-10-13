@@ -102,3 +102,9 @@ on that worker thread — it does not propagate automatically.
 - **`httplib2_client.py`** — httplib2 does not use `urllib3`, so requests made
   through the clients it builds never reach the `create_connection` hook. The
   destinations are fixed Google API endpoints, not caller-supplied URLs.
+- **`apollo/integrations/mcp/`** — the MCP SDK uses `httpx`, which does not use
+  `urllib3` either, so `MCD_HTTP_BLOCKED_CIDRS` is not enforced at connect time.
+  The MCP client calls `assert_safe_destination` on the server host before every
+  operation (plus its own host allowlist, `MCD_MCP_ALLOWED_HOSTS`); a connect-time
+  hook for httpx (closing the DNS-rebinding gap) is a follow-up. Its OAuth token
+  request goes through `safe_request` with redirects disabled.
