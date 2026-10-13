@@ -68,8 +68,9 @@ time) -> `results` conversion + cap.
 - Re-check which SDK paths swallow connect errors (`post_writer` notifications,
   `handle_get_stream`, `terminate_session`); `_attempt` relies on
   `SafeNetworkBackend.blocked` to catch those.
-- httpx/httpcore come in with the SDK: `harden_async_client` uses their private
-  attributes. `TestSsrfGuardWiring` fails if they move.
+- httpx/httpcore come in with the SDK but are pinned in `requirements.in`, because
+  `harden_async_client` uses their private attributes. Bump them on purpose:
+  `TestSsrfGuardWiring` fails if those attributes move.
 - 2.x moved to httpx2 and is a bigger port.
 
 ## Tests
