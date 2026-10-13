@@ -41,11 +41,8 @@ class SafeNetworkBackend(httpcore.AsyncNetworkBackend):
     """httpcore network backend that only connects to addresses allowed by the
     ``url_safety`` policy (default tier unless ``strict_ip_policy``).
 
-    The connect loop mirrors ``url_safety._safe_create_connection`` through the
-    shared ``preflight_host`` / ``iter_connectable_ips``: addresses are tried
-    in ``getaddrinfo`` order, each validated just before it is tried; a blocked
-    address raises ``HttpClientError``; a connect failure falls through to the
-    next address. The inner backend only ever receives IP literals, never a
+    The connect loop is ``url_safety.iter_connectable_ips`` (shared with the
+    urllib3 hook); the inner backend only ever receives IP literals, never a
     hostname it would re-resolve.
 
     Every ``HttpClientError`` raised is also appended to ``blocked``, so a

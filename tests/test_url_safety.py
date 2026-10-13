@@ -1015,7 +1015,7 @@ class TestSharedChecks(TestCase):
             is_blocked_ip(ipaddress.ip_address("10.0.0.5"), strict_ip_policy=True)
         )
 
-    # --- hook now shares the pre-checks --------------------------------------
+    # --- hook uses the shared pre-checks --------------------------------------
 
     def test_hook_rejects_localhost_trailing_dot(self):
         _policy.active = True

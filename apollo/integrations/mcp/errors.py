@@ -49,7 +49,7 @@ def map_exception(exc: BaseException, resumed: bool = False) -> McpClientError:
         return leaf
     if isinstance(leaf, TimeoutError):
         return McpClientError(McpErrorCode.AGENT_TIMEOUT, "MCP operation timed out")
-    # the SSRF guard blocked a connection (httpx_safety.SafeNetworkBackend)
+    # httpx_safety: a blocked connection, or a transport the guard can't be installed on
     if isinstance(leaf, HttpClientError):
         return McpClientError(McpErrorCode.SERVER_NOT_ALLOWED, str(leaf))
 

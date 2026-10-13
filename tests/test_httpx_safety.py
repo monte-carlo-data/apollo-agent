@@ -1,9 +1,8 @@
 import ipaddress
-import os
 import socket
-import urllib.request
+import time
 from contextlib import contextmanager
-from typing import Any, Dict, Iterator, List, Optional
+from typing import Any, Iterator, List, Optional
 from unittest import TestCase
 from unittest.mock import patch
 
@@ -17,15 +16,11 @@ from apollo.integrations.http.httpx_safety import (
     harden_async_client,
 )
 from apollo.integrations.http.url_safety import HttpClientError
+from tests.ssrf_helpers import addrinfo, isolated_env
 
 _PUBLIC = "93.184.216.34"
 _PUBLIC_2 = "93.184.216.35"
 _IMDS = "169.254.169.254"
-
-
-def _addrinfo(ip: str, port: int = 443) -> tuple:
-    family = socket.AF_INET6 if ":" in ip else socket.AF_INET
-    return (family, socket.SOCK_STREAM, 6, "", (ip, port))
 
 
 class _StopAfterTls(Exception):
@@ -87,24 +82,16 @@ def _resolves(*answers: List[str]) -> Iterator[Any]:
     """Successive getaddrinfo calls return successive answers."""
     with patch(
         "socket.getaddrinfo",
-        side_effect=[[_addrinfo(ip) for ip in ips] for ips in answers],
+        side_effect=[[addrinfo(ip) for ip in ips] for ips in answers],
     ) as mock_gai:
         yield mock_gai
 
 
-@contextmanager
-def _proxy_env(env: Dict[str, str]) -> Iterator[None]:
-    # clear=True plus env-only getproxies, so the machine's (e.g. macOS system)
-    # proxy settings can't leak into the test
-    with patch.dict(os.environ, env, clear=True), patch(
-        "httpx._utils.getproxies", urllib.request.getproxies_environment
-    ):
-        yield
-
-
-def _connect(backend: SafeNetworkBackend, host: str, port: int = 443) -> Any:
+def _connect(
+    backend: SafeNetworkBackend, host: str, port: int = 443, timeout: float = 1
+) -> Any:
     async def run() -> Any:
-        return await backend.connect_tcp(host, port, timeout=1)
+        return await backend.connect_tcp(host, port, timeout=timeout)
 
     return anyio.run(run)
 
@@ -167,6 +154,20 @@ class TestSafeNetworkBackend(TestCase):
             with self.assertRaises(httpcore.ConnectError):
                 _connect(backend, "missing.example.com")
         self.assertEqual([], backend.blocked)
+
+    def test_dns_timeout_is_a_connect_timeout(self):
+        inner = _RecordingBackend()
+        backend = SafeNetworkBackend(inner)
+
+        def slow_getaddrinfo(*args: Any, **kwargs: Any) -> List[tuple]:
+            time.sleep(0.5)
+            return [addrinfo(_PUBLIC)]
+
+        with patch("socket.getaddrinfo", side_effect=slow_getaddrinfo):
+            with self.assertRaises(httpcore.ConnectTimeout):
+                _connect(backend, "slow.example.com", timeout=0.05)
+        self.assertEqual([], backend.blocked)
+        self.assertEqual([], inner.calls)
 
     def test_blocked_literals(self):
         literals = (
@@ -251,7 +252,7 @@ class TestHardenAsyncClient(TestCase):
     def test_tls_uses_original_hostname(self):
         stream = _FakeStream()
         inner = _RecordingBackend([stream])
-        with _proxy_env({}):
+        with isolated_env({}):
             client = httpx.AsyncClient()
         harden_async_client(client, SafeNetworkBackend(inner))
         with _resolves([_PUBLIC]):
@@ -262,7 +263,7 @@ class TestHardenAsyncClient(TestCase):
 
     def test_block_passes_through_client_unchanged(self):
         inner = _RecordingBackend()
-        with _proxy_env({}):
+        with isolated_env({}):
             client = httpx.AsyncClient()
         harden_async_client(client, SafeNetworkBackend(inner))
         with _resolves([_IMDS]):
@@ -274,7 +275,7 @@ class TestHardenAsyncClient(TestCase):
         # Proxied requests connect to the proxy, so the proxy is what's checked
         # (parity with the urllib3 hook).
         inner = _RecordingBackend()
-        with _proxy_env({"HTTPS_PROXY": "http://proxy.example.com:3128"}):
+        with isolated_env({"HTTPS_PROXY": "http://proxy.example.com:3128"}):
             client = httpx.AsyncClient()
         harden_async_client(client, SafeNetworkBackend(inner))
         with _resolves([_IMDS]) as mock_gai:
@@ -292,7 +293,7 @@ class TestHardenAsyncClient(TestCase):
             "NO_PROXY": "internal.example.com",
         }
         backend = SafeNetworkBackend(_RecordingBackend())
-        with _proxy_env(env):
+        with isolated_env(env):
             client = httpx.AsyncClient()
         harden_async_client(client, backend)
         transports = [client._transport]

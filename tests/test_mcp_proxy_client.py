@@ -27,7 +27,7 @@ from apollo.integrations.mcp.auth import SigV4HttpxAuth
 from apollo.integrations.mcp.errors import McpClientError, McpErrorCode
 from apollo.integrations.mcp.mcp_proxy_client import McpProxyClient
 from apollo.integrations.mcp.session import McpLimits
-from tests.test_httpx_safety import _addrinfo, _proxy_env
+from tests.ssrf_helpers import addrinfo, isolated_env
 from tests.test_mcp_session import _memory_server, _memory_streams
 
 _URL = "https://aws-mcp.us-east-1.api.aws/mcp"
@@ -452,13 +452,13 @@ class TestDnsRebinding(TestCase):
         def getaddrinfo(host, port, *args, **kwargs):
             lookups.append(host)
             ip = "93.184.216.34" if len(lookups) == 1 else "169.254.169.254"
-            return [_addrinfo(ip, port)]
+            return [addrinfo(ip, port)]
 
         connect = AsyncMock(side_effect=httpcore.ConnectError("unreachable"))
         credentials = {
             "connect_args": {"server": {"url": "https://mcp.example.com/mcp"}}
         }
-        with _proxy_env({"MCD_MCP_ALLOWED_HOSTS": "mcp.example.com"}), patch(
+        with isolated_env({"MCD_MCP_ALLOWED_HOSTS": "mcp.example.com"}), patch(
             "socket.getaddrinfo", side_effect=getaddrinfo
         ), patch.object(httpcore.AnyIOBackend, "connect_tcp", connect):
             response = Agent(LoggingUtils()).execute_operation(
