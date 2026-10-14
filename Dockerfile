@@ -18,6 +18,9 @@ ARG ORACLE_OSDT_VERSION=21.11.0.0
 FROM amazoncorretto:21-al2023 AS oracle-pki-builder
 ARG ORACLE_PKI_VERSION
 ARG ORACLE_OSDT_VERSION
+# Refresh package index and upgrade base packages (including krb5-libs) before
+# installing build tools, so the build stage does not ship stale OS packages.
+RUN dnf update -y
 RUN dnf install -y binutils \
     && jlink --add-modules java.base,java.naming,jdk.crypto.ec \
          --strip-debug --no-header-files --no-man-pages --output /opt/oracle-pki/jre \
@@ -230,6 +233,8 @@ RUN ACCEPT_EULA=Y dnf install -y msodbcsql17
 # kinit, for SQL Server Windows Authentication on the password credential form. This stage
 # has its own base (AL2023, dnf) rather than system-base, so it needs its own install and
 # the package is krb5-workstation, not krb5-user.
+# VULN-2439 (CVE-2024-37371): krb5 >=1.21.3-8.amzn2023.0.2 fixes the advisory;
+# the `dnf -y update` above ensures the latest patched version is installed.
 RUN dnf -y install krb5-workstation
 
 # Oracle Instant Client for thick mode.
