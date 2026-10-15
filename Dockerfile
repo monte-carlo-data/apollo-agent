@@ -334,6 +334,10 @@ RUN apt-get install -y --no-install-recommends krb5-user
 
 # Upgrade everything else to pick up OS security fixes (glibc, dpkg, xorg-server,
 # etc.) on every rebuild rather than waiting for the base image to be republished.
+# VULN-2445 (CVE-2026-58280): Microsoft.NETCore.App.Runtime.linux-x64 ≤ 10.0.12 has
+# high-severity CVEs. The .NET runtime is installed via Microsoft's apt feed
+# (packages.microsoft.com) by the azure-functions base image; apt-get upgrade picks up
+# the patched 10.0.13 packages from that feed on every rebuild.
 RUN apt-get upgrade -y
 
 # openssh-client required by git client
