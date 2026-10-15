@@ -336,6 +336,12 @@ RUN apt-get install -y --no-install-recommends krb5-user
 # etc.) on every rebuild rather than waiting for the base image to be republished.
 RUN apt-get upgrade -y
 
+# VULN-2443: CVE-2026-70188 — upgrade Microsoft.AspNetCore.App.Runtime.linux-x64
+# from 10.0.12 to 10.0.13+. The base image bundles 10.0.12 from Microsoft's apt feed;
+# `apt-get upgrade` above may not reach it if the feed marks it as held, so explicitly
+# install the package to guarantee the patched version lands on every rebuild.
+RUN apt-get install -y --no-install-recommends aspnetcore-runtime-10.0
+
 # openssh-client required by git client
 RUN apt-get install -y openssh-client
 
