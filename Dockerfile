@@ -336,6 +336,14 @@ RUN apt-get install -y --no-install-recommends krb5-user
 # etc.) on every rebuild rather than waiting for the base image to be republished.
 RUN apt-get upgrade -y
 
+# VULN-2442 (CVE-2026-70188): Microsoft.AspNetCore.App.Runtime.linux-x64 <= 10.0.12 is
+# vulnerable. The Azure Functions base image ships the .NET runtime via apt; explicitly
+# install aspnetcore-runtime-10.0 to ensure 10.0.13+ is present regardless of when
+# Microsoft republishes the upstream tag. apt-get upgrade above already picks this up
+# on a rebuild if the MS package feed has the fix, but an explicit install pins the
+# intent for clarity and ensures it runs even if the base-image apt cache is stale.
+RUN apt-get install -y --no-install-recommends aspnetcore-runtime-10.0
+
 # openssh-client required by git client
 RUN apt-get install -y openssh-client
 
