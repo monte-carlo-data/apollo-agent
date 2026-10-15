@@ -134,10 +134,17 @@ RUN . $VENV_DIR/bin/activate && pip install --no-cache-dir -r requirements.txt
 # VULN-423
 RUN . $VENV_DIR/bin/activate && pip install -U pip setuptools
 
-# Docker Scout reads pip's vendored SBOM (_vendor/bom.cdx.json) and flags its
-# bundled deps (setuptools, msgpack) as image CVEs, though they're pip-internal
-# and never imported at runtime. Drop it, like the _manifest removals below.
-RUN rm -f $VENV_DIR/lib/python*/site-packages/pip/_vendor/bom.cdx.json
+# Docker Scout / Aikido read pip's vendored SBOM (_vendor/bom.cdx.json) and flag
+# its bundled deps (setuptools, msgpack) as image CVEs, though they're pip-internal
+# and never imported at runtime. Drop it from every pip installation in the image.
+# The venv pip is upgraded above (pip install -U pip), so both the original and
+# the upgraded copy must be cleared; the system pip at /usr/local/lib/python* is
+# whatever the python:3.13-slim base ships and refreshes when the base tag is
+# rebuilt (VULN-2446 / AIKIDO-2026-233096: Aikido maps the vendored Python
+# `msgpack` entry to the NuGet "MessagePack" package by name — removing the SBOM
+# declaration is the only lever available here, same as the lambda/azure stages).
+RUN rm -f $VENV_DIR/lib/python*/site-packages/pip/_vendor/bom.cdx.json \
+          /usr/local/lib/python*/site-packages/pip/_vendor/bom.cdx.json
 
 # VULN-1818 (GHSA-vgq5-9859-3mmw): setuptools vendors wheel 0.46.3, vulnerable
 # to the `wheel convert` path traversal (0.9.6-0.47.0, fixed in 0.48.0). It pins
