@@ -230,10 +230,11 @@ RUN ACCEPT_EULA=Y dnf install -y msodbcsql17
 # kinit, for SQL Server Windows Authentication on the password credential form. This stage
 # has its own base (AL2023, dnf) rather than system-base, so it needs its own install and
 # the package is krb5-workstation, not krb5-user.
-# VULN-2449 (CVE-2024-37371): krb5 invalid memory read in GSS message token handling.
-# The `dnf -y update` above ensures the patched version (≥1.21.3-8.amzn2023.0.2) is
-# installed; a rebuild picks it up automatically.
 RUN dnf -y install krb5-workstation
+# VULN-2449 (CVE-2024-37371): krb5 invalid memory read in GSS message token handling.
+# AL2023 is releasever-locked, so plain `dnf upgrade` resolves to 1.21.3-8.amzn2023.0.1
+# (vulnerable). The patched build (≥1.21.3-8.amzn2023.0.2) requires --releasever=latest.
+RUN dnf -y --releasever=latest upgrade 'krb5*'
 
 # Oracle Instant Client for thick mode.
 ARG ORACLE_IC_ZIP
