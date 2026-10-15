@@ -20,8 +20,8 @@ ARG ORACLE_PKI_VERSION
 ARG ORACLE_OSDT_VERSION
 # Refresh package index and upgrade base packages (including krb5-libs) before
 # installing build tools, so the build stage does not ship stale OS packages.
-RUN dnf update -y
-RUN dnf install -y binutils \
+RUN dnf update -y \
+    && dnf install -y binutils \
     && jlink --add-modules java.base,java.naming,jdk.crypto.ec \
          --strip-debug --no-header-files --no-man-pages --output /opt/oracle-pki/jre \
     && mkdir -p /opt/oracle-pki/lib \
