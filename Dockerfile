@@ -334,10 +334,6 @@ RUN apt-get install -y --no-install-recommends krb5-user
 
 # Upgrade everything else to pick up OS security fixes (glibc, dpkg, xorg-server,
 # etc.) on every rebuild rather than waiting for the base image to be republished.
-# VULN-2445 (CVE-2026-58280): Microsoft.NETCore.App.Runtime.linux-x64 ≤ 10.0.12 has
-# high-severity CVEs. The .NET runtime is installed via Microsoft's apt feed
-# (packages.microsoft.com) by the azure-functions base image; apt-get upgrade picks up
-# the patched 10.0.13 packages from that feed on every rebuild.
 RUN apt-get upgrade -y
 
 # openssh-client required by git client
@@ -361,6 +357,22 @@ RUN apt-get install -y --no-install-recommends unzip curl \
     && ln -s /opt/oracle/instantclient_* /opt/oracle/instantclient \
     && echo /opt/oracle/instantclient > /etc/ld.so.conf.d/oracle-instantclient.conf \
     && ldconfig
+
+# VULN-2445 (CVE-2026-58280): Microsoft.NETCore.App.Runtime.linux-x64 ≤ 10.0.12 has
+# high-severity CVEs. The Azure Functions base image ships the .NET runtime as an
+# unpackaged tarball at /usr/share/dotnet (dpkg owns no dotnet packages, so
+# apt-get upgrade cannot reach it). Replace the 10.0.12 tarball installation with
+# the patched 10.0.13 runtime downloaded directly from Microsoft's CDN (curl is
+# already present from the Oracle IC step above).
+RUN dotnet_version=10.0.13 \
+    && curl -fsSL "https://dotnetcli.azureedge.net/dotnet/Runtime/${dotnet_version}/dotnet-runtime-${dotnet_version}-linux-x64.tar.gz" \
+        -o /tmp/dotnet-runtime.tar.gz \
+    && curl -fsSL "https://dotnetcli.azureedge.net/dotnet/Runtime/${dotnet_version}/dotnet-runtime-${dotnet_version}-linux-x64.tar.gz.sha512" \
+        -o /tmp/dotnet-runtime.tar.gz.sha512 \
+    && echo "$(cat /tmp/dotnet-runtime.tar.gz.sha512)  /tmp/dotnet-runtime.tar.gz" | sha512sum -c - \
+    && tar -xzf /tmp/dotnet-runtime.tar.gz -C /usr/share/dotnet \
+    && rm -rf /usr/share/dotnet/shared/Microsoft.NETCore.App/10.0.12 \
+    && rm /tmp/dotnet-runtime.tar.gz /tmp/dotnet-runtime.tar.gz.sha512
 
 # orapki + minimal JRE for building thick-mode TLS wallets (see oracle-pki-builder).
 COPY --from=oracle-pki-builder /opt/oracle-pki /opt/oracle-pki
