@@ -232,6 +232,11 @@ RUN ACCEPT_EULA=Y dnf install -y msodbcsql17
 # the package is krb5-workstation, not krb5-user.
 RUN dnf -y install krb5-workstation
 
+# VULN-2448 (CVE-2024-37371): krb5-workstation and krb5-libs 1.21.3-8.amzn2023.0.1 →
+# 1.21.3-8.amzn2023.0.2; explicit upgrade ensures the patched build lands even if the
+# earlier `dnf -y update` layer above was served from Docker cache with the old version.
+RUN dnf -y upgrade krb5-workstation krb5-libs
+
 # Oracle Instant Client for thick mode.
 ARG ORACLE_IC_ZIP
 ARG ORACLE_IC_URL
