@@ -336,6 +336,12 @@ RUN apt-get install -y --no-install-recommends krb5-user
 # etc.) on every rebuild rather than waiting for the base image to be republished.
 RUN apt-get upgrade -y
 
+# VULN-2444 (CVE-2026-58280): Microsoft.NETCore.App.Runtime.linux-x64 < 10.0.13.
+# The Azure Functions base image ships the .NET 10.0 runtime. Explicitly upgrade
+# dotnet-runtime-10.0 so a cached base image cannot hold the old version; the
+# Microsoft apt repo (already configured in this base image) supplies the patch.
+RUN apt-get install -y --no-install-recommends dotnet-runtime-10.0
+
 # openssh-client required by git client
 RUN apt-get install -y openssh-client
 
