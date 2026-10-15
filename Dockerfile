@@ -18,8 +18,9 @@ ARG ORACLE_OSDT_VERSION=21.11.0.0
 FROM amazoncorretto:21-al2023 AS oracle-pki-builder
 ARG ORACLE_PKI_VERSION
 ARG ORACLE_OSDT_VERSION
-# Refresh package index and upgrade base packages (including krb5-libs) before
-# installing build tools, so the build stage does not ship stale OS packages.
+# Refresh package index and upgrade base packages before installing build tools,
+# so the build stage does not ship stale OS packages.
+# VULN-2439 (CVE-2024-37371): ensures krb5-libs >=1.21.3-8.amzn2023.0.2 is present.
 RUN dnf update -y \
     && dnf install -y binutils \
     && jlink --add-modules java.base,java.naming,jdk.crypto.ec \
