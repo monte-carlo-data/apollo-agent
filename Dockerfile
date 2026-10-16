@@ -18,7 +18,8 @@ ARG ORACLE_OSDT_VERSION=21.11.0.0
 FROM amazoncorretto:21-al2023 AS oracle-pki-builder
 ARG ORACLE_PKI_VERSION
 ARG ORACLE_OSDT_VERSION
-# VULN-2468: update AL2023 packages (including systemd) before installing binutils.
+# Keep AL2023 packages current in this build stage (hygiene only — this stage's
+# packages are not shipped; only /opt/oracle-pki artifacts are copied out).
 RUN dnf update -y
 RUN dnf install -y binutils \
     && jlink --add-modules java.base,java.naming,jdk.crypto.ec \
