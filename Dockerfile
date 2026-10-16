@@ -18,6 +18,8 @@ ARG ORACLE_OSDT_VERSION=21.11.0.0
 FROM amazoncorretto:21-al2023 AS oracle-pki-builder
 ARG ORACLE_PKI_VERSION
 ARG ORACLE_OSDT_VERSION
+# VULN-2468: update AL2023 packages (including systemd) before installing binutils.
+RUN dnf update -y
 RUN dnf install -y binutils \
     && jlink --add-modules java.base,java.naming,jdk.crypto.ec \
          --strip-debug --no-header-files --no-man-pages --output /opt/oracle-pki/jre \
@@ -219,6 +221,7 @@ RUN pip install --no-cache-dir -U urllib3 setuptools
 
 COPY --from=lambda-builder --chown=mcdagent:mcdagent "${LAMBDA_TASK_ROOT}" "${LAMBDA_TASK_ROOT}"
 
+# VULN-2468: update AL2023 packages so systemd ≥ 252.23-15.amzn2023 (DNSSEC KSK-2024).
 # install unixodbc and 'ODBC Driver 17 for SQL Server', needed for Azure Dedicated SQL Pools
 # install git needed for looker views collection
 RUN dnf -y update
