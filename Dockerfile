@@ -134,10 +134,17 @@ RUN . $VENV_DIR/bin/activate && pip install --no-cache-dir -r requirements.txt
 # VULN-423
 RUN . $VENV_DIR/bin/activate && pip install -U pip setuptools
 
-# Docker Scout reads pip's vendored SBOM (_vendor/bom.cdx.json) and flags its
-# bundled deps (setuptools, msgpack) as image CVEs, though they're pip-internal
-# and never imported at runtime. Drop it, like the _manifest removals below.
-RUN rm -f $VENV_DIR/lib/python*/site-packages/pip/_vendor/bom.cdx.json
+# Docker Scout / Aikido read pip's vendored SBOM (_vendor/bom.cdx.json) and flag
+# its bundled deps (setuptools, msgpack) as image CVEs, though they're pip-internal
+# and never imported at runtime. Drop it from every pip installation in the image.
+# The venv pip is upgraded above (pip install -U pip), so both the original and
+# the upgraded copy must be cleared; the system pip at /usr/local/lib/python* is
+# whatever the python:3.13-slim base ships and refreshes when the base tag is
+# rebuilt (VULN-2446 / AIKIDO-2026-233096: Aikido maps the vendored Python
+# `msgpack` entry to the NuGet "MessagePack" package by name — removing the SBOM
+# declaration is the only lever available here, same as the lambda/azure stages).
+RUN rm -f $VENV_DIR/lib/python*/site-packages/pip/_vendor/bom.cdx.json \
+          /usr/local/lib/python*/site-packages/pip/_vendor/bom.cdx.json
 
 # VULN-1818 (GHSA-vgq5-9859-3mmw): setuptools vendors wheel 0.46.3, vulnerable
 # to the `wheel convert` path traversal (0.9.6-0.47.0, fixed in 0.48.0). It pins
@@ -335,6 +342,30 @@ RUN apt-get install -y --no-install-recommends krb5-user
 # Upgrade everything else to pick up OS security fixes (glibc, dpkg, xorg-server,
 # etc.) on every rebuild rather than waiting for the base image to be republished.
 RUN apt-get upgrade -y
+
+# VULN-2442 (CVE-2026-70188): Microsoft.AspNetCore.App.Runtime.linux-x64 <= 10.0.12 is
+# vulnerable. The Azure Functions base image ships the .NET runtime as a tarball at
+# /usr/share/dotnet (not via dpkg), so `apt-get upgrade` never touches it. Ubuntu
+# noble's aspnetcore-runtime-10.0 package is also 10.0.12 and additionally installs
+# dotnet-host-10.0, which rewrites /usr/bin/dotnet and /etc/dotnet/install_location to
+# point at Ubuntu's /usr/lib/dotnet — silently rerouting the Functions host to the
+# wrong (still-vulnerable) runtime tree. Instead, download the official 10.0.13
+# ASP.NET Core runtime tarball from Microsoft, extract it over /usr/share/dotnet
+# (the tree the Functions apphost already uses), and remove the 10.0.12 directories.
+# SHA-512 verified against the checksum published at dotnetcli.azureedge.net.
+# curl is installed here because the Oracle step below installs it later; the
+# azure-functions base image may or may not ship it.
+RUN apt-get install -y --no-install-recommends curl \
+    && ASPNETCORE_VER=10.0.13 \
+    && TARBALL=aspnetcore-runtime-${ASPNETCORE_VER}-linux-x64.tar.gz \
+    && EXPECTED_SHA512=7b20d4164f097e1cf616d8174b6a64be100e6f30dc4e028b16e551e8b0c86dff0ef424bb4bf52d1ff0ecca38e102d3fa80814e06cb85a32d6eee4c3b99764f79 \
+    && curl -fsSLo /tmp/${TARBALL} \
+         https://dotnetcli.azureedge.net/dotnet/aspnetcore/Runtime/${ASPNETCORE_VER}/${TARBALL} \
+    && echo "${EXPECTED_SHA512}  /tmp/${TARBALL}" | sha512sum -c - \
+    && tar -xzf /tmp/${TARBALL} -C /usr/share/dotnet \
+    && rm /tmp/${TARBALL} \
+    && rm -rf /usr/share/dotnet/shared/Microsoft.NETCore.App/10.0.12 \
+    && rm -rf /usr/share/dotnet/shared/Microsoft.AspNetCore.App/10.0.12
 
 # openssh-client required by git client
 RUN apt-get install -y openssh-client
