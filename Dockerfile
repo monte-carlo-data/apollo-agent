@@ -221,7 +221,12 @@ COPY --from=lambda-builder --chown=mcdagent:mcdagent "${LAMBDA_TASK_ROOT}" "${LA
 
 # install unixodbc and 'ODBC Driver 17 for SQL Server', needed for Azure Dedicated SQL Pools
 # install git needed for looker views collection
-RUN dnf -y update
+# VULN-2471: the Lambda base image locks dnf to the AL2023 release it was built
+# from, so a plain `dnf update` only picks up fixes in that snapshot. Move to the
+# latest AL2023 release first, so this upgrade and every install below resolve
+# against current repos (e.g. systemd-libs 252.23-15, ALAS2023-2026-3224,
+# pulled in as a dependency of the packages installed here).
+RUN dnf -y upgrade --releasever=latest
 RUN dnf -y install unixODBC git
 RUN curl https://packages.microsoft.com/config/rhel/7/prod.repo \
     | tee /etc/yum.repos.d/mssql-release.repo
