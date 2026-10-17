@@ -190,7 +190,10 @@ CMD . $VENV_DIR/bin/activate && \
 
 FROM public.ecr.aws/lambda/python:3.13 AS lambda-builder
 
-RUN dnf update -y
+# VULN-2471: move to the latest AL2023 release (see the `lambda` stage below) so
+# this stage stays consistent with the shipped image and nothing copied out of it
+# can bring back packages from the base image's stale release snapshot.
+RUN dnf -y upgrade --releasever=latest
 # install git as we need it for the direct oscrypto dependency
 RUN dnf install git -y
 # install libxcrypt-compat for IBM DB2 ibm-db package compatibility (requires libcrypt.so.1)
