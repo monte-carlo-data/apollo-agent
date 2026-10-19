@@ -381,6 +381,17 @@ COPY --from=oracle-pki-builder /opt/oracle-pki /opt/oracle-pki
 #
 # VULN-1654: jq <= 1.7.1 has a heap-buffer-overflow; Ubuntu 24.04 may ship a
 # vulnerable version. Remove if present — no runtime code uses jq.
+#
+# VULN-2340: GLib (libglib2.0-0t64 / libglib2.0-data) is another piece of the
+# base image's GTK/browser layer, here only because the MS base marks
+# libatk1.0-0t64, libpango-1.0-0 and shared-mime-info as manually installed.
+# Nothing in the agent links against it: Python, ODBC, Oracle IC, the
+# Functions host and the pip deps don't, and ibm_db bundles its own libxml2.
+# The only ELF that does is libmsalruntime.so in the extension bundle, and it
+# already can't load here (gtk3, webkit2gtk, cairo and X11 are absent). So
+# purge it together with its dependents rather than waiting on patched Ubuntu
+# builds. --auto-remove also takes the orphaned fontconfig/harfbuzz/libthai/
+# libxml2 cascade.
 # clean up all unused libraries
 RUN apt-get purge -y jq || true
 RUN apt-get purge -y --auto-remove \
@@ -388,6 +399,7 @@ RUN apt-get purge -y --auto-remove \
         libxext6 libxft2 libxi6 libxinerama1 libxpm4 libxrender1 libxrender-dev \
         libx11-6 libx11-data libx11-dev libx11-xcb1 libx11-protocol-perl x11proto-dev xauth \
         libcups2t64 libtiff6 libnss3 \
+        libglib2.0-0t64 libglib2.0-data libatk1.0-0t64 libpango-1.0-0 shared-mime-info \
     && apt-get autoremove -y && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # delete this file that includes an old golang version (including vulns) and is not used
