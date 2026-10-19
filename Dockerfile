@@ -379,9 +379,6 @@ COPY --from=oracle-pki-builder /opt/oracle-pki /opt/oracle-pki
 # satisfy the purge, it aborts and the build fails loudly rather than shipping a
 # broken image. --auto-remove sweeps the now-orphaned dependency cascade in one pass.
 #
-# VULN-1654: jq <= 1.7.1 has a heap-buffer-overflow; Ubuntu 24.04 may ship a
-# vulnerable version. Remove if present — no runtime code uses jq.
-#
 # VULN-2340: GLib (libglib2.0-0t64 / libglib2.0-data) is another piece of the
 # base image's GTK/browser layer, here only because the MS base marks
 # libatk1.0-0t64, libpango-1.0-0 and shared-mime-info as manually installed.
@@ -392,7 +389,10 @@ COPY --from=oracle-pki-builder /opt/oracle-pki /opt/oracle-pki
 # purge it together with its dependents rather than waiting on patched Ubuntu
 # builds. --auto-remove also takes the orphaned fontconfig/harfbuzz/libthai/
 # libxml2 cascade.
+#
 # clean up all unused libraries
+# VULN-1654: jq <= 1.7.1 has a heap-buffer-overflow; Ubuntu 24.04 may ship a
+# vulnerable version. Remove if present — no runtime code uses jq.
 RUN apt-get purge -y jq || true
 RUN apt-get purge -y --auto-remove \
         xvfb xserver-common x11-common x11-utils x11-xkb-utils x11-xserver-utils \
