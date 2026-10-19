@@ -287,7 +287,13 @@ CMD [ "apollo.interfaces.lambda_function.handler.lambda_handler" ]
 # 3.14 (GA, end-of-support October 2030). This is the only apollo stage not on
 # python:3.13-slim; the deps that needed cp314 wheels for it are floored in
 # requirements.in.
-FROM mcr.microsoft.com/azure-functions/python:4-python3.14 AS azure
+#
+# Pinned to a host build, not the floating `4-python3.14` tag: 4.1055.250 is the
+# first build on .NET 10.0.13, which fixes the ASP.NET Core 10.0.12 CRITICALs
+# (CVE-2026-70188, CVE-2026-88092). The floating tag still pointed at the older
+# 20261013.2 build when this was pinned (SEC-3466). Bump the pin deliberately;
+# check mcr.microsoft.com/v2/azure-functions/python/tags/list for newer builds.
+FROM mcr.microsoft.com/azure-functions/python:4.1055.250-1-python3.14 AS azure
 
 ENV AzureWebJobsScriptRoot=/home/site/wwwroot \
     AzureFunctionsJobHost__Logging__Console__IsEnabled=true
