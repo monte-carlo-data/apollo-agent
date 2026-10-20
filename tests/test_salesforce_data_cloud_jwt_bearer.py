@@ -492,6 +492,38 @@ class JwtBearerLibraryPassthroughTests(_MockedSalesforceTestCase):
         ]
         self.assertIn("forwarded-core-token", exchange.request.url)
 
+    def test_dataspace_scoped_list_tables_authenticates_with_jwt(self):
+        """list_tables(dataspace=...) builds its own temporary connection; it must
+        carry the JWT fields too, or a JWT-only credential cannot authenticate."""
+        client = SalesforceDataCloudProxyClient(_jwt_credentials())
+
+        client.list_tables(dataspace="CSG")
+
+        (form,) = self._token_requests()
+        self.assertEqual(form["grant_type"], _JWT_BEARER_GRANT_TYPE)
+
+    def test_dataspace_scoped_list_tables_with_both_modes_uses_jwt(self):
+        client = SalesforceDataCloudProxyClient(
+            _jwt_credentials(client_secret="test_client_secret")
+        )
+
+        client.list_tables(dataspace="CSG")
+
+        (form,) = self._token_requests()
+        self.assertEqual(form["grant_type"], _JWT_BEARER_GRANT_TYPE)
+
+    def test_unscoped_list_tables_on_a_dataspace_client_authenticates_with_jwt(
+        self,
+    ):
+        """A client configured with a dataspace uses a fresh unscoped connection
+        for list_tables(None); with no core token it must mint via JWT."""
+        client = SalesforceDataCloudProxyClient(_jwt_credentials(dataspace="CSG"))
+
+        client.list_tables()
+
+        (form,) = self._token_requests()
+        self.assertEqual(form["grant_type"], _JWT_BEARER_GRANT_TYPE)
+
     def test_client_credentials_library_path_is_unchanged(self):
         client = _get_proxy_client_salesforce_data_cloud(
             {
@@ -637,6 +669,20 @@ class JwtBearerSchemaTests(TestCase):
                     "client_id": "id",
                     "client_secret": "secret",
                     "private_key": _PEM,
+                }
+            ),
+            {},
+        )
+
+    def test_secret_and_private_key_with_empty_username_is_invalid(self):
+        self.assertNotEqual(
+            self._errors(
+                {
+                    "domain": _DOMAIN,
+                    "client_id": "id",
+                    "client_secret": "secret",
+                    "private_key": _PEM,
+                    "username": "",
                 }
             ),
             {},

@@ -775,7 +775,7 @@ _SALESFORCE_DATA_CLOUD_COMMON_CONNECT_ARGS: dict[str, Any] = {
     "client_secret": {"type": "string"},
     # Any private_key selects JWT Bearer, which needs the run-as user.
     "private_key": {"type": "string", "dependencies": "username"},
-    "username": {"type": "string"},
+    "username": {"type": "string", "empty": False},
     "core_token": {"type": "string"},
     "refresh_token": {"type": "string"},
     "dataspace": {"type": "string"},
@@ -946,8 +946,9 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
             # For dataspace-scoped collection we intentionally do NOT reuse the pre-fetched
             # core_token from data-collector. Reusing the same core token across multiple
             # dataspaces can result in ambiguous scoping behavior on the Salesforce side.
-            # Using the clean client-credentials flow here obtains a fresh core token and
-            # performs a dataspace-scoped a360 exchange for each dataspace attempt.
+            # Using the clean library flow here (JWT Bearer or client credentials, per
+            # credential) obtains a fresh core token and performs a dataspace-scoped
+            # a360 exchange for each dataspace attempt.
             conn = SalesforceDataCloudConnection(
                 f"https://{self._credentials.domain}",
                 client_id=self._credentials.client_id,
@@ -955,6 +956,8 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
                 core_token=None,
                 refresh_token=None,
                 dataspace=dataspace,
+                private_key=self._credentials.private_key,
+                username=self._credentials.username,
             )
             capturing = _attach_capturing_session(conn)
             try:
@@ -1060,6 +1063,8 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
                         core_token=self._credentials.core_token,
                         refresh_token=self._credentials.refresh_token,
                         dataspace=None,
+                        private_key=self._credentials.private_key,
+                        username=self._credentials.username,
                     )
                 )
             else:
