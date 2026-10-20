@@ -75,7 +75,9 @@ token is only ever served back to byte-identical credentials. Bound its lifetime
 multi-threaded — see the Dockerfile `--threads` setting), and detect secret
 expiry/revocation reactively on the auth-failure response rather than with a hopeful TTL. See
 `salesforce_data_cloud_proxy_client._get_or_mint_core_token` and its `_CORE_TOKEN_CACHE` for
-the reference implementation (YET-2522).
+the reference implementation (YET-2522). When a credential authenticates with a private key
+(e.g. SFDC Data Cloud JWT Bearer, YET-3269), key it by a fingerprint of the **public** key
+rather than any hash of the private key, so no private key material enters the cache key.
 
 ### Credential temp files
 
