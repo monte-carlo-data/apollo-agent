@@ -10,8 +10,16 @@ from dataclasses import dataclass
 from hashlib import sha256
 from typing import Any, NoReturn
 
+import jwt
 import requests
 import urllib3.exceptions
+from cryptography.exceptions import UnsupportedAlgorithm
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives.serialization import (
+    Encoding,
+    PublicFormat,
+    load_pem_private_key,
+)
 from retry import retry
 from retry.api import retry_call
 from salesforcecdpconnector.connection import SalesforceCDPConnection
@@ -86,6 +94,13 @@ _SSOT_REQUEST_TIMEOUT_MAX_SECONDS = 300
 # ``timeout`` budget (see ``ssot_get``); this keeps that subtraction from handing
 # ``requests`` a zero/negative deadline when the first GET nearly exhausted it.
 _SSOT_RETRY_MIN_READ_SECONDS = 1
+
+# JWT Bearer core-token grant (YET-3269), chosen per credential when it carries
+# ``private_key`` + ``username``. Salesforce documents a 3-minute maximum for the
+# assertion's ``exp``; the assertion is single-use, so a short lifetime costs
+# nothing (the minted token has its own session timeout).
+_JWT_BEARER_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:jwt-bearer"
+_JWT_BEARER_LIFETIME_SECONDS = 180
 
 
 def _retry_read_timeout(request_timeout: int, elapsed_seconds: float) -> int:
@@ -177,13 +192,63 @@ def _prune_expired_core_tokens(now: float) -> None:
         del _CORE_TOKEN_CACHE[key]
 
 
-def _core_token_cache_key(credentials: "SalesforceDataCloudCredentials") -> str:
+def _core_token_cache_key(
+    credentials: "SalesforceDataCloudCredentials",
+    jwt_signing_key: rsa.RSAPrivateKey | None,
+) -> str:
     """Stable per-credential cache key. ``\\0`` joins so distinct field splits
-    (e.g. domain ``a`` + id ``bc`` vs domain ``ab`` + id ``c``) can't collide."""
-    material = "\0".join(
-        [credentials.domain, credentials.client_id, credentials.client_secret]
-    )
-    return sha256(material.encode("utf-8")).hexdigest()
+    (e.g. domain ``a`` + id ``bc`` vs domain ``ab`` + id ``c``) can't collide.
+
+    A JWT Bearer credential is identified by its run-as user and the SHA-256 of
+    its *public* key, so no private key material goes into the key, and a
+    re-encoded copy of the same key still shares the cached token. The
+    ``jwt_bearer`` prefix keeps it apart from a Client Credentials key.
+    """
+    if jwt_signing_key is not None:
+        public_der = jwt_signing_key.public_key().public_bytes(
+            Encoding.DER, PublicFormat.SubjectPublicKeyInfo
+        )
+        parts = [
+            "jwt_bearer",
+            credentials.domain,
+            credentials.client_id,
+            credentials.username or "",
+            sha256(public_der).hexdigest(),
+        ]
+    else:
+        parts = [
+            credentials.domain,
+            credentials.client_id,
+            credentials.client_secret or "",
+        ]
+    return sha256("\0".join(parts).encode("utf-8")).hexdigest()
+
+
+def _normalize_private_key(pem: str) -> str:
+    """Restore newlines in a PEM flattened to one line with literal ``\\n``
+    sequences (a common way to paste a key into an env var or secret field).
+    A properly multi-line PEM is returned unchanged."""
+    if "\n" not in pem and "\\n" in pem:
+        return pem.replace("\\n", "\n")
+    return pem
+
+
+def _load_jwt_signing_key(pem: str) -> rsa.RSAPrivateKey:
+    """Parse the JWT Bearer signing key once per client. Errors never chain the
+    parser's exception or echo the input, so no key bytes reach a log or the DC."""
+    try:
+        key = load_pem_private_key(pem.encode("utf-8"), password=None)
+    except (ValueError, TypeError, UnsupportedAlgorithm):
+        raise ValueError(
+            "Salesforce Data Cloud: private_key is not a valid unencrypted PEM "
+            "private key"
+        ) from None
+    if not isinstance(key, rsa.RSAPrivateKey):
+        raise ValueError(
+            "Salesforce Data Cloud: private_key must be an RSA key "
+            "(the JWT Bearer flow signs with RS256)"
+        )
+    return key
 
 
 class _CapturingSession(requests.Session):
@@ -337,7 +402,7 @@ _SSOT_OFFSET_ERROR_MAX_CHARS = 500
 
 
 _SENSITIVE_VALUE_PATTERN = re.compile(
-    r"(['\"](?:access_token|refresh_token|id_token|signature)['\"]\s*:\s*)['\"][^'\"]*['\"]"
+    r"(['\"](?:access_token|refresh_token|id_token|signature|assertion)['\"]\s*:\s*)['\"][^'\"]*['\"]"
 )
 
 
@@ -504,10 +569,12 @@ class SalesforceDataCloudConnection(SalesforceCDPConnection):
         self,
         login_url: str,
         client_id: str,
-        client_secret: str,
+        client_secret: str | None,
         core_token: str | None = None,
         refresh_token: str | None = None,
         dataspace: str | None = None,
+        private_key: str | None = None,
+        username: str | None = None,
     ):
         # Normalize legacy value sent by old data-collectors.
         if refresh_token == "required_but_not_used":
@@ -576,14 +643,18 @@ class SalesforceDataCloudConnection(SalesforceCDPConnection):
                     "Cannot override _revoke_core_token() and _renew_token()."
                 )
         else:
-            # New DC path: let the library handle OAuth + exchange via client credentials.
-            # _token_by_client_creds_flow fetches a core token then exchanges it for
-            # a scoped Data Cloud token.
+            # New DC path: let the library handle OAuth + exchange. With a
+            # private_key the library picks _token_by_jwt_bearer_flow (it is checked
+            # before client credentials, so a credential carrying both uses JWT);
+            # otherwise _token_by_client_creds_flow. Either fetches a core token then
+            # exchanges it for a scoped Data Cloud token.
             super().__init__(
                 login_url,
                 client_id=client_id,
                 client_secret=client_secret,
                 dataspace=dataspace,
+                private_key=private_key,
+                username=username,
             )
 
             # Suppress _revoke_core_token (YET-1546). After the a360 exchange the library
@@ -621,9 +692,14 @@ class SalesforceDataCloudConnection(SalesforceCDPConnection):
 
 @dataclass
 class SalesforceDataCloudCredentials:
+    """Connection credentials. The auth method is chosen per credential
+    (YET-3269): ``private_key`` + ``username`` selects JWT Bearer, otherwise
+    ``client_secret`` selects Client Credentials. A credential carrying both uses
+    JWT, matching ``salesforce-cdp-connector``'s precedence."""
+
     domain: str
     client_id: str
-    client_secret: str
+    client_secret: str | None
     core_token: str | None
     refresh_token: str | None
     # Accepted for backwards compatibility; iteration over dataspaces is handled
@@ -633,24 +709,65 @@ class SalesforceDataCloudCredentials:
     # When set, the a360/token exchange is scoped to this dataspace so queries
     # against tables in non-default dataspaces succeed.
     dataspace: str | None = None
+    # JWT Bearer auth: PEM RSA private key whose certificate is on the connected
+    # app, and the run-as user the assertion's ``sub`` names.
+    private_key: str | None = None
+    username: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.private_key:
+            self.private_key = _normalize_private_key(self.private_key)
+            if not self.username:
+                raise ValueError(
+                    "Salesforce Data Cloud JWT Bearer auth requires username "
+                    "(the run-as user) alongside private_key"
+                )
+        elif not self.client_secret:
+            raise ValueError(
+                "Salesforce Data Cloud credentials require either client_secret "
+                "(Client Credentials) or private_key + username (JWT Bearer)"
+            )
+
+    @property
+    def uses_jwt_bearer(self) -> bool:
+        return bool(self.private_key)
 
 
 # Cerberus schema for the customer-facing self-hosted credentials JSON. Lives
 # on the proxy client because Salesforce Data Cloud is not enrolled in CTP —
 # the factory function in proxy_client_factory.py inlines the field reads
-# (domain/client_id/client_secret/[core_token]/[refresh_token]/[dataspace]).
+# (domain/client_id/[client_secret]/[private_key]/[username]/[core_token]/
+# [refresh_token]/[dataspace]).
+_SALESFORCE_DATA_CLOUD_COMMON_CONNECT_ARGS: dict[str, Any] = {
+    "domain": {"type": "string", "required": True, "empty": False},
+    "client_id": {"type": "string", "required": True, "empty": False},
+    "client_secret": {"type": "string"},
+    "private_key": {"type": "string"},
+    "username": {"type": "string"},
+    "core_token": {"type": "string"},
+    "refresh_token": {"type": "string"},
+    "dataspace": {"type": "string"},
+}
+
+# ``anyof_schema``, not ``oneof_schema``: a credential carrying both a secret and
+# a private key is valid and uses JWT (see SalesforceDataCloudCredentials).
 SALESFORCE_DATA_CLOUD_CREDENTIALS_SCHEMA: dict[str, Any] = {
     "connect_args": {
         "type": "dict",
         "required": True,
-        "schema": {
-            "domain": {"type": "string", "required": True, "empty": False},
-            "client_id": {"type": "string", "required": True, "empty": False},
-            "client_secret": {"type": "string", "required": True, "empty": False},
-            "core_token": {"type": "string"},
-            "refresh_token": {"type": "string"},
-            "dataspace": {"type": "string"},
-        },
+        "anyof_schema": [
+            # Client Credentials.
+            {
+                **_SALESFORCE_DATA_CLOUD_COMMON_CONNECT_ARGS,
+                "client_secret": {"type": "string", "required": True, "empty": False},
+            },
+            # JWT Bearer.
+            {
+                **_SALESFORCE_DATA_CLOUD_COMMON_CONNECT_ARGS,
+                "private_key": {"type": "string", "required": True, "empty": False},
+                "username": {"type": "string", "required": True, "empty": False},
+            },
+        ],
     },
 }
 
@@ -663,10 +780,18 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
     def __init__(self, credentials: SalesforceDataCloudCredentials):
         super().__init__(connection_type="salesforce-data-cloud")
         self._credentials = credentials
+        # Parsed once: validates the key up front and signs every JWT mint.
+        self._jwt_signing_key = (
+            _load_jwt_signing_key(credentials.private_key)
+            if credentials.private_key
+            else None
+        )
         # Key into the process-wide core-token cache shared by ssot_get across
         # client instances (YET-2522, see _CORE_TOKEN_CACHE). Precomputed once
         # since the credentials are fixed for this client's life.
-        self._core_token_cache_key = _core_token_cache_key(credentials)
+        self._core_token_cache_key = _core_token_cache_key(
+            credentials, self._jwt_signing_key
+        )
         self._connection = SalesforceDataCloudConnection(
             f"https://{credentials.domain}",
             client_id=credentials.client_id,
@@ -674,6 +799,8 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
             core_token=credentials.core_token,
             refresh_token=credentials.refresh_token,
             dataspace=credentials.dataspace,
+            private_key=credentials.private_key,
+            username=credentials.username,
         )
 
     @property
@@ -919,8 +1046,9 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
         """
         Discover Data Cloud dataspaces accessible to the run-as user via SOQL.
 
-        Mints a core OAuth token via the client-credentials grant against the
-        Salesforce core REST API (the ``salesforcecdpconnector`` library does
+        Mints a core OAuth token (JWT Bearer or Client Credentials, per
+        credential — see :meth:`_mint_core_token`) against the Salesforce core
+        REST API (the ``salesforcecdpconnector`` library does
         not expose its token-minting flow for arbitrary SOQL), then issues::
 
             GET /services/data/{version}/query?q=SELECT DataSpaceApiName FROM Dataspace
@@ -947,7 +1075,7 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
             f"(domain={domain}, client_id={self._credentials.client_id[:8]}...)",
         )
 
-        # 1. Mint a core OAuth token via the client-credentials grant.
+        # 1. Mint a core OAuth token with the credential's grant.
         access_token = self._mint_core_token(session)
 
         # 2. Issue SOQL query for the Dataspace SObject; follow nextRecordsUrl pagination.
@@ -1018,9 +1146,10 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
 
     def _mint_core_token(self, session: _CapturingSession) -> str:
         """
-        Mint a short-lived core OAuth token via the Salesforce client-credentials
-        grant (``POST /services/oauth2/token`` on the org's My Domain) and return
-        the access token.
+        Mint a short-lived core OAuth token (``POST /services/oauth2/token`` on
+        the org's My Domain) and return the access token. The grant follows the
+        credential (see :meth:`_core_token_grant`): JWT Bearer when it carries a
+        private key, otherwise Client Credentials.
 
         This token authenticates Salesforce **core REST** calls
         (``/services/data/...``) as the connected app's run-as user. The
@@ -1036,17 +1165,15 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
         ``session`` is a :class:`_CapturingSession` so the caller can surface the
         redacted response body on failure. Raises ``RuntimeError`` carrying
         ``code NNN`` on a non-200 response, and ``HTTP NNN`` on a 200 payload
-        missing ``access_token``. The token itself is never logged.
+        missing ``access_token``. Neither the token, the signed assertion nor the
+        private key is ever logged.
         """
         domain = self._credentials.domain
         token_url = f"https://{domain}/services/oauth2/token"
+        auth_method, form = self._core_token_grant()
         token_response = session.post(
             token_url,
-            data={
-                "grant_type": "client_credentials",
-                "client_id": self._credentials.client_id,
-                "client_secret": self._credentials.client_secret,
-            },
+            data=form,
             timeout=_DISCOVERY_REQUEST_TIMEOUT_SECONDS,
         )
         if token_response.status_code != 200:
@@ -1055,6 +1182,7 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
             logger.warning(
                 "Salesforce Data Cloud: OAuth core token mint failed",
                 extra={
+                    "auth_method": auth_method,
                     "exchange_status_code": status,
                     "exchange_error_type": _classify_exchange_status(status),
                     "exchange_response_body": body,
@@ -1073,6 +1201,36 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
                 f"Salesforce Data Cloud: OAuth response missing access_token "
                 f"(HTTP {token_response.status_code}, Salesforce response: {body})"
             ) from e
+
+    def _core_token_grant(self) -> tuple[str, dict[str, str]]:
+        """Return ``(auth_method, form)`` for the core-token POST.
+
+        JWT Bearer signs a fresh RS256 assertion per mint: ``iss`` is the
+        connected app's consumer key, ``sub`` the run-as user, ``aud`` the org's
+        My Domain URL (the library's choice too; Salesforce also accepts
+        ``login.salesforce.com``).
+        """
+        credentials = self._credentials
+        if self._jwt_signing_key is not None:
+            assertion = jwt.encode(
+                {
+                    "iss": credentials.client_id,
+                    "sub": credentials.username,
+                    "aud": f"https://{credentials.domain}",
+                    "exp": int(time.time()) + _JWT_BEARER_LIFETIME_SECONDS,
+                },
+                self._jwt_signing_key,
+                algorithm="RS256",
+            )
+            return "jwt_bearer", {
+                "grant_type": _JWT_BEARER_GRANT_TYPE,
+                "assertion": assertion,
+            }
+        return "client_credentials", {
+            "grant_type": "client_credentials",
+            "client_id": credentials.client_id,
+            "client_secret": credentials.client_secret or "",
+        }
 
     def _get_or_mint_core_token(self, session: _CapturingSession) -> tuple[str, bool]:
         """
