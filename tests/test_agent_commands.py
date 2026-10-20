@@ -1,4 +1,6 @@
+import asyncio
 import logging
+import types
 from unittest import TestCase
 from unittest.mock import create_autospec, call
 
@@ -291,8 +293,7 @@ class AgentCommandReflectionHardeningTests(TestCase):
     Pins the target type gate in ``_resolve_method``: resolving a method off a
     reflective/escape-hatch object (generator, frame, module, ...) is refused,
     cutting the ``gi_frame.f_globals.__getitem__("os")`` walk that bypasses the
-    dunder block (YET-3286 / VULN-1227). Every attribute name in that walk is a
-    non-dunder plus the allowlisted ``__getitem__``, so only a type gate stops it.
+    dunder block (YET-3286 / VULN-1227).
     """
 
     def test_resolve_method_refuses_generator_target(self):
@@ -314,16 +315,72 @@ class AgentCommandReflectionHardeningTests(TestCase):
         gen = _unstarted_generator()
         frame = gen.gi_frame
         try:
-            with self.assertRaises(AttributeError):
-                AgentEvaluationUtils._resolve_method(frame, "f_globals")
+            with self.assertLogs(_EVALUATION_LOGGER, level=logging.ERROR) as captured:
+                with self.assertRaises(AttributeError):
+                    AgentEvaluationUtils._resolve_method(frame, "f_globals")
+            self.assertTrue(
+                any(
+                    "Refusing to resolve method on reflective target" in r.getMessage()
+                    for r in captured.records
+                )
+            )
         finally:
             gen.close()
 
     def test_resolve_method_refuses_module_target(self):
         import os
 
-        with self.assertRaises(AttributeError):
-            AgentEvaluationUtils._resolve_method(os, "system")
+        with self.assertLogs(_EVALUATION_LOGGER, level=logging.ERROR) as captured:
+            with self.assertRaises(AttributeError):
+                AgentEvaluationUtils._resolve_method(os, "system")
+        self.assertTrue(
+            any(
+                "Refusing to resolve method on reflective target" in r.getMessage()
+                for r in captured.records
+            )
+        )
+
+    def test_resolve_method_refuses_other_reflective_targets(self):
+        # The remaining gated types beyond generator/frame/module. A regression
+        # dropping any from _REFLECTIVE_TARGET_TYPES would otherwise pass silently;
+        # tb_frame/co_consts/cr_frame/ag_frame are real gadget hops.
+        try:
+            raise ValueError("boom")
+        except ValueError as ex:
+            traceback = ex.__traceback__
+
+        async def _coro():
+            return None
+
+        async def _agen():
+            yield None
+
+        coro = _coro()
+        agen = _agen()
+        cases = {
+            "code": ((lambda: 0).__code__, "co_consts"),
+            "traceback": (traceback, "tb_frame"),
+            "coroutine": (coro, "cr_frame"),
+            "async_generator": (agen, "ag_frame"),
+        }
+        try:
+            for label, (target, attr) in cases.items():
+                with self.subTest(target=label):
+                    with self.assertLogs(
+                        _EVALUATION_LOGGER, level=logging.ERROR
+                    ) as captured:
+                        with self.assertRaises(AttributeError):
+                            AgentEvaluationUtils._resolve_method(target, attr)
+                    self.assertTrue(
+                        any(
+                            "Refusing to resolve method on reflective target"
+                            in r.getMessage()
+                            for r in captured.records
+                        )
+                    )
+        finally:
+            coro.close()
+            asyncio.run(agen.aclose())
 
     def test_reflection_chain_blocked_end_to_end(self):
         # client.wrapped_client.get_files(["x"]) -> unstarted generator;
@@ -340,9 +397,13 @@ class AgentCommandReflectionHardeningTests(TestCase):
                 ],
             }
         )
-        with self.assertRaises(AttributeError):
-            for command in commands.commands:
-                AgentEvaluationUtils._execute_command(command, context)
+        try:
+            with self.assertRaises(AttributeError):
+                for command in commands.commands:
+                    AgentEvaluationUtils._execute_command(command, context)
+        finally:
+            if isinstance(context.get("_gen"), types.GeneratorType):
+                context["_gen"].close()
 
     def test_dict_getitem_still_resolves_on_query_results(self):
         # The gate must not touch ordinary query-result dicts: __getitem__ on a
