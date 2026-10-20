@@ -1,5 +1,6 @@
 import logging
 import time
+import types
 from typing import Any, Callable, Optional, Dict, List, cast
 
 from apollo.agent.logging_utils import LoggingUtils
@@ -30,6 +31,22 @@ logger = logging.getLogger(__name__)
 # start an escape chain, and existing operations dispatch them.
 _ALLOWED_DUNDER_METHODS = frozenset(
     {"__getitem__", "__setitem__", "__str__", "__repr__"}
+)
+
+# Reflective/escape-hatch objects. Dispatching off one lets a caller walk
+# runtime internals to arbitrary code using only non-dunder names plus the
+# allowlisted ``__getitem__`` — e.g. an unstarted generator reaches its defining
+# module's globals via ``gi_frame.f_globals.__getitem__("os").system(...)``,
+# bypassing the dunder block. A proxy/driver client is never one of these, so
+# refusing them as dispatch targets closes the walk without an allowlist.
+_REFLECTIVE_TARGET_TYPES = (
+    types.GeneratorType,
+    types.CoroutineType,
+    types.AsyncGeneratorType,
+    types.FrameType,
+    types.TracebackType,
+    types.CodeType,
+    types.ModuleType,
 )
 
 
@@ -141,8 +158,8 @@ class AgentEvaluationUtils:
             context[store] = result
         return result
 
-    @staticmethod
-    def _resolve_method(target: Any, method_name: str) -> Callable:
+    @classmethod
+    def _resolve_method(cls, target: Any, method_name: str) -> Callable:
         """
         Methods are searched first in the proxy client object, allowing to call "extension" methods.
         If not present then it's searched in the wrapped_client object (the driver client).
@@ -150,6 +167,7 @@ class AgentEvaluationUtils:
         :param method_name: the method to search for
         :return: the method found, AttributeError is raised if no method is found.
         """
+        cls._reject_reflective_target(target, method_name)
         if method_name.startswith("__") and method_name not in _ALLOWED_DUNDER_METHODS:
             logger.error("Refusing to resolve dunder method %s", method_name)
             raise AttributeError(f"Failed to resolve method {method_name}")
@@ -157,10 +175,25 @@ class AgentEvaluationUtils:
             return getattr(target, method_name)
         if hasattr(target, "wrapped_client"):
             client = getattr(target, "wrapped_client")
+            # The fallback resolves off the wrapped_client, so it needs the same
+            # gate: a future proxy whose wrapped_client is reflective must not
+            # reopen the globals walk the target gate above closes.
+            cls._reject_reflective_target(client, method_name)
             if hasattr(client, method_name):
                 return getattr(client, method_name)
         logger.error("Failed to resolve method %s", method_name)
         raise AttributeError(f"Failed to resolve method {method_name}")
+
+    @staticmethod
+    def _reject_reflective_target(target: Any, method_name: str) -> None:
+        """Refuse to dispatch off a reflective/escape-hatch object. See
+        ``_REFLECTIVE_TARGET_TYPES`` for the rationale."""
+        if isinstance(target, _REFLECTIVE_TARGET_TYPES):
+            logger.error(
+                "Refusing to resolve method on reflective target %s",
+                type(target).__name__,
+            )
+            raise AttributeError(f"Failed to resolve method {method_name}")
 
     @classmethod
     def _resolve_args(cls, args: Optional[List[Any]], context: Dict) -> List[Any]:

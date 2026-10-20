@@ -1,4 +1,6 @@
+import asyncio
 import logging
+import types
 from unittest import TestCase
 from unittest.mock import create_autospec, call
 
@@ -265,6 +267,186 @@ class AgentCommandDunderHardeningTests(TestCase):
             ),
         )
         self.assertEqual(expected, result)
+
+
+def _unstarted_generator():
+    # Mirrors GitCloneClient.get_files: calling it returns an unstarted
+    # generator whose body never runs, so no side effect is needed to obtain it.
+    yield "x"
+
+
+class _GeneratorReturningInternalClient:
+    def get_files(self, _paths):
+        return _unstarted_generator()
+
+
+class _GeneratorProxyClient(SampleProxyClient):
+    # wrapped_client exposes a generator-returning driver method, like the
+    # Git/Looker-Git proxy clients in VULN-1227's reachable chain.
+    def __init__(self):
+        super().__init__()
+        self._client = _GeneratorReturningInternalClient()
+
+
+class _ReflectiveWrappedProxyClient(SampleProxyClient):
+    # A hypothetical future proxy whose wrapped_client is itself reflective. The
+    # fallback resolves the method off the wrapped_client, so the gate must apply
+    # there too — otherwise `os.system` resolves straight off the module.
+    @property
+    def wrapped_client(self):
+        import os
+
+        return os
+
+
+class AgentCommandReflectionHardeningTests(TestCase):
+    """
+    Pins the target type gate in ``_resolve_method``: resolving a method off a
+    reflective/escape-hatch object (generator, frame, module, ...) is refused,
+    cutting the ``gi_frame.f_globals.__getitem__("os")`` walk that bypasses the
+    dunder block (YET-3286 / VULN-1227).
+    """
+
+    def test_resolve_method_refuses_generator_target(self):
+        gen = _unstarted_generator()
+        try:
+            with self.assertLogs(_EVALUATION_LOGGER, level=logging.ERROR) as captured:
+                with self.assertRaises(AttributeError):
+                    AgentEvaluationUtils._resolve_method(gen, "gi_frame")
+            self.assertTrue(
+                any(
+                    "Refusing to resolve method on reflective target" in r.getMessage()
+                    for r in captured.records
+                )
+            )
+        finally:
+            gen.close()
+
+    def test_resolve_method_refuses_frame_target(self):
+        gen = _unstarted_generator()
+        frame = gen.gi_frame
+        try:
+            with self.assertLogs(_EVALUATION_LOGGER, level=logging.ERROR) as captured:
+                with self.assertRaises(AttributeError):
+                    AgentEvaluationUtils._resolve_method(frame, "f_globals")
+            self.assertTrue(
+                any(
+                    "Refusing to resolve method on reflective target" in r.getMessage()
+                    for r in captured.records
+                )
+            )
+        finally:
+            gen.close()
+
+    def test_resolve_method_refuses_module_target(self):
+        import os
+
+        with self.assertLogs(_EVALUATION_LOGGER, level=logging.ERROR) as captured:
+            with self.assertRaises(AttributeError):
+                AgentEvaluationUtils._resolve_method(os, "system")
+        self.assertTrue(
+            any(
+                "Refusing to resolve method on reflective target" in r.getMessage()
+                for r in captured.records
+            )
+        )
+
+    def test_resolve_method_refuses_other_reflective_targets(self):
+        # The remaining gated types beyond generator/frame/module. A regression
+        # dropping any from _REFLECTIVE_TARGET_TYPES would otherwise pass silently;
+        # tb_frame/co_consts/cr_frame/ag_frame are real gadget hops.
+        try:
+            raise ValueError("boom")
+        except ValueError as ex:
+            traceback = ex.__traceback__
+
+        async def _coro():
+            return None
+
+        async def _agen():
+            yield None
+
+        coro = _coro()
+        agen = _agen()
+        cases = {
+            "code": ((lambda: 0).__code__, "co_consts"),
+            "traceback": (traceback, "tb_frame"),
+            "coroutine": (coro, "cr_frame"),
+            "async_generator": (agen, "ag_frame"),
+        }
+        try:
+            for label, (target, attr) in cases.items():
+                with self.subTest(target=label):
+                    with self.assertLogs(
+                        _EVALUATION_LOGGER, level=logging.ERROR
+                    ) as captured:
+                        with self.assertRaises(AttributeError):
+                            AgentEvaluationUtils._resolve_method(target, attr)
+                    self.assertTrue(
+                        any(
+                            "Refusing to resolve method on reflective target"
+                            in r.getMessage()
+                            for r in captured.records
+                        )
+                    )
+        finally:
+            coro.close()
+            asyncio.run(agen.aclose())
+
+    def test_resolve_method_refuses_reflective_wrapped_client(self):
+        # The wrapped_client fallback resolves the method off the wrapped_client;
+        # the gate must apply there too. Without it, "system" resolves off the os
+        # module (`system` is not on the proxy, so the fallback is taken).
+        client = _ReflectiveWrappedProxyClient()
+        with self.assertLogs(_EVALUATION_LOGGER, level=logging.ERROR) as captured:
+            with self.assertRaises(AttributeError):
+                AgentEvaluationUtils._resolve_method(client, "system")
+        self.assertTrue(
+            any(
+                "Refusing to resolve method on reflective target" in r.getMessage()
+                for r in captured.records
+            )
+        )
+
+    def test_reflection_chain_blocked_end_to_end(self):
+        # client.wrapped_client.get_files(["x"]) -> unstarted generator;
+        # the next hop (.gi_frame) must be refused before the walk reaches
+        # f_globals / os. Reproduces the ticket chain benignly (no os.system).
+        context = {CONTEXT_VAR_CLIENT: _GeneratorProxyClient()}
+        commands = AgentCommands.from_dict(
+            {
+                "operation_name": "exploit",
+                "trace_id": "1",
+                "commands": [
+                    {"method": "get_files", "args": [["x"]], "store": "_gen"},
+                    {"target": "_gen", "method": "gi_frame"},
+                ],
+            }
+        )
+        get_files_cmd, gi_frame_cmd = commands.commands
+        try:
+            # First hop resolves the unstarted generator via the wrapped_client
+            # fallback; assert that so the refusal below is pinned to .gi_frame.
+            AgentEvaluationUtils._execute_command(get_files_cmd, context)
+            self.assertIsInstance(context["_gen"], types.GeneratorType)
+            with self.assertLogs(_EVALUATION_LOGGER, level=logging.ERROR) as captured:
+                with self.assertRaises(AttributeError):
+                    AgentEvaluationUtils._execute_command(gi_frame_cmd, context)
+            self.assertTrue(
+                any(
+                    "Refusing to resolve method on reflective target" in r.getMessage()
+                    for r in captured.records
+                )
+            )
+        finally:
+            if isinstance(context.get("_gen"), types.GeneratorType):
+                context["_gen"].close()
+
+    def test_dict_getitem_still_resolves_on_query_results(self):
+        # The gate must not touch ordinary query-result dicts: __getitem__ on a
+        # plain dict stays dispatchable (load-bearing for result aggregation).
+        method = AgentEvaluationUtils._resolve_method({"k": "v"}, "__getitem__")
+        self.assertEqual("v", method("k"))
 
 
 class _SecretRaisingClient(SampleProxyClient):
