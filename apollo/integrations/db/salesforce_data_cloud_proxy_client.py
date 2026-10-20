@@ -96,9 +96,10 @@ _SSOT_REQUEST_TIMEOUT_MAX_SECONDS = 300
 _SSOT_RETRY_MIN_READ_SECONDS = 1
 
 # JWT Bearer core-token grant (YET-3269), chosen per credential when it carries
-# ``private_key`` + ``username``. Salesforce documents a 3-minute maximum for the
-# assertion's ``exp``; the assertion is single-use, so a short lifetime costs
-# nothing (the minted token has its own session timeout).
+# ``private_key`` + ``username``. The assertion is signed fresh for each mint and
+# used once, so a short ``exp`` only narrows the replay window; the minted token
+# has its own session timeout. The library's own JWT flow (query/metadata
+# traffic) signs with ``exp`` +3600s, which Salesforce also accepts.
 _JWT_BEARER_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:jwt-bearer"
 _JWT_BEARER_LIFETIME_SECONDS = 180
 
@@ -194,7 +195,7 @@ def _prune_expired_core_tokens(now: float) -> None:
 
 def _core_token_cache_key(
     credentials: "SalesforceDataCloudCredentials",
-    jwt_signing_key: rsa.RSAPrivateKey | None,
+    jwt_public_key_fingerprint: str | None,
 ) -> str:
     """Stable per-credential cache key. ``\\0`` joins so distinct field splits
     (e.g. domain ``a`` + id ``bc`` vs domain ``ab`` + id ``c``) can't collide.
@@ -204,16 +205,13 @@ def _core_token_cache_key(
     re-encoded copy of the same key still shares the cached token. The
     ``jwt_bearer`` prefix keeps it apart from a Client Credentials key.
     """
-    if jwt_signing_key is not None:
-        public_der = jwt_signing_key.public_key().public_bytes(
-            Encoding.DER, PublicFormat.SubjectPublicKeyInfo
-        )
+    if jwt_public_key_fingerprint is not None:
         parts = [
             "jwt_bearer",
             credentials.domain,
             credentials.client_id,
             credentials.username or "",
-            sha256(public_der).hexdigest(),
+            jwt_public_key_fingerprint,
         ]
     else:
         parts = [
@@ -233,9 +231,45 @@ def _normalize_private_key(pem: str) -> str:
     return pem
 
 
+@dataclass(frozen=True)
+class _JwtSigningKey:
+    key: rsa.RSAPrivateKey
+    public_key_fingerprint: str  # SHA-256 of the DER SubjectPublicKeyInfo
+
+
+# Parsed JWT signing keys, keyed by sha256(pem). Loading a 2048-bit key with RSA
+# validation costs ~40ms, and the DC's ``skip_cache=true`` builds a fresh proxy
+# client per operation, so parse once per process rather than once per client.
+# A process sees a handful of keys at most; the cap only guards against churn.
+_JWT_SIGNING_KEY_CACHE_LOCK = threading.Lock()
+_JWT_SIGNING_KEY_CACHE: dict[str, _JwtSigningKey] = {}
+_JWT_SIGNING_KEY_CACHE_MAX_ENTRIES = 32
+
+
+def _get_jwt_signing_key(pem: str) -> _JwtSigningKey:
+    """Return the parsed signing key for ``pem``, parsing on first use."""
+    digest = sha256(pem.encode("utf-8")).hexdigest()
+    with _JWT_SIGNING_KEY_CACHE_LOCK:
+        cached = _JWT_SIGNING_KEY_CACHE.get(digest)
+    if cached is not None:
+        return cached
+    key = _load_jwt_signing_key(pem)
+    public_der = key.public_key().public_bytes(
+        Encoding.DER, PublicFormat.SubjectPublicKeyInfo
+    )
+    loaded = _JwtSigningKey(
+        key=key, public_key_fingerprint=sha256(public_der).hexdigest()
+    )
+    with _JWT_SIGNING_KEY_CACHE_LOCK:
+        if len(_JWT_SIGNING_KEY_CACHE) >= _JWT_SIGNING_KEY_CACHE_MAX_ENTRIES:
+            _JWT_SIGNING_KEY_CACHE.clear()
+        _JWT_SIGNING_KEY_CACHE[digest] = loaded
+    return loaded
+
+
 def _load_jwt_signing_key(pem: str) -> rsa.RSAPrivateKey:
-    """Parse the JWT Bearer signing key once per client. Errors never chain the
-    parser's exception or echo the input, so no key bytes reach a log or the DC."""
+    """Parse the JWT Bearer signing key. Errors never chain the parser's
+    exception or echo the input, so no key bytes reach a log or the DC."""
     try:
         key = load_pem_private_key(pem.encode("utf-8"), password=None)
     except (ValueError, TypeError, UnsupportedAlgorithm):
@@ -402,7 +436,8 @@ _SSOT_OFFSET_ERROR_MAX_CHARS = 500
 
 
 _SENSITIVE_VALUE_PATTERN = re.compile(
-    r"(['\"](?:access_token|refresh_token|id_token|signature|assertion)['\"]\s*:\s*)['\"][^'\"]*['\"]"
+    r"(['\"](?:access_token|refresh_token|id_token|signature|assertion)['\"]"
+    r"\s*:\s*)['\"][^'\"]*['\"]"
 )
 
 
@@ -728,10 +763,6 @@ class SalesforceDataCloudCredentials:
                 "(Client Credentials) or private_key + username (JWT Bearer)"
             )
 
-    @property
-    def uses_jwt_bearer(self) -> bool:
-        return bool(self.private_key)
-
 
 # Cerberus schema for the customer-facing self-hosted credentials JSON. Lives
 # on the proxy client because Salesforce Data Cloud is not enrolled in CTP —
@@ -742,7 +773,8 @@ _SALESFORCE_DATA_CLOUD_COMMON_CONNECT_ARGS: dict[str, Any] = {
     "domain": {"type": "string", "required": True, "empty": False},
     "client_id": {"type": "string", "required": True, "empty": False},
     "client_secret": {"type": "string"},
-    "private_key": {"type": "string"},
+    # Any private_key selects JWT Bearer, which needs the run-as user.
+    "private_key": {"type": "string", "dependencies": "username"},
     "username": {"type": "string"},
     "core_token": {"type": "string"},
     "refresh_token": {"type": "string"},
@@ -764,7 +796,12 @@ SALESFORCE_DATA_CLOUD_CREDENTIALS_SCHEMA: dict[str, Any] = {
             # JWT Bearer.
             {
                 **_SALESFORCE_DATA_CLOUD_COMMON_CONNECT_ARGS,
-                "private_key": {"type": "string", "required": True, "empty": False},
+                "private_key": {
+                    "type": "string",
+                    "required": True,
+                    "empty": False,
+                    "dependencies": "username",
+                },
                 "username": {"type": "string", "required": True, "empty": False},
             },
         ],
@@ -780,9 +817,10 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
     def __init__(self, credentials: SalesforceDataCloudCredentials):
         super().__init__(connection_type="salesforce-data-cloud")
         self._credentials = credentials
-        # Parsed once: validates the key up front and signs every JWT mint.
+        # Validates the key up front and signs every JWT mint; parsed once per
+        # process (see _JWT_SIGNING_KEY_CACHE).
         self._jwt_signing_key = (
-            _load_jwt_signing_key(credentials.private_key)
+            _get_jwt_signing_key(credentials.private_key)
             if credentials.private_key
             else None
         )
@@ -790,7 +828,12 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
         # client instances (YET-2522, see _CORE_TOKEN_CACHE). Precomputed once
         # since the credentials are fixed for this client's life.
         self._core_token_cache_key = _core_token_cache_key(
-            credentials, self._jwt_signing_key
+            credentials,
+            (
+                self._jwt_signing_key.public_key_fingerprint
+                if self._jwt_signing_key
+                else None
+            ),
         )
         self._connection = SalesforceDataCloudConnection(
             f"https://{credentials.domain}",
@@ -1219,17 +1262,24 @@ class SalesforceDataCloudProxyClient(BaseDbProxyClient):
                     "aud": f"https://{credentials.domain}",
                     "exp": int(time.time()) + _JWT_BEARER_LIFETIME_SECONDS,
                 },
-                self._jwt_signing_key,
+                self._jwt_signing_key.key,
                 algorithm="RS256",
             )
             return "jwt_bearer", {
                 "grant_type": _JWT_BEARER_GRANT_TYPE,
                 "assertion": assertion,
             }
+        if not credentials.client_secret:
+            # Unreachable through SalesforceDataCloudCredentials; fail locally
+            # rather than post an empty secret and surface a Salesforce 400.
+            raise ValueError(
+                "Salesforce Data Cloud: no client_secret or private_key to mint "
+                "a core token"
+            )
         return "client_credentials", {
             "grant_type": "client_credentials",
             "client_id": credentials.client_id,
-            "client_secret": credentials.client_secret or "",
+            "client_secret": credentials.client_secret,
         }
 
     def _get_or_mint_core_token(self, session: _CapturingSession) -> tuple[str, bool]:

@@ -316,11 +316,11 @@ def _get_proxy_client_salesforce_data_cloud(
     refresh_token = connect_args.get("refresh_token")
     dataspace = connect_args.get("dataspace")
     # JWT Bearer (YET-3269); SalesforceDataCloudCredentials picks the auth method
-    # and rejects a credential with neither a secret nor a private key + username.
+    # and rejects a private key without a username.
     private_key = connect_args.get("private_key")
     username = connect_args.get("username")
 
-    if not all([domain, client_id]):
+    if not all([domain, client_id]) or not (client_secret or private_key):
         raise ValueError("Missing required connection parameters")
 
     credentials = SalesforceDataCloudCredentials(

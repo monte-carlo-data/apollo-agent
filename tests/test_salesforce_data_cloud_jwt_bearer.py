@@ -32,6 +32,7 @@ from apollo.credentials.schema.validator import validate
 from apollo.integrations.db import salesforce_data_cloud_proxy_client as sfdc_module
 from apollo.integrations.db.salesforce_data_cloud_proxy_client import (
     _CORE_TOKEN_CACHE,
+    _JWT_SIGNING_KEY_CACHE,
     _JWT_BEARER_GRANT_TYPE,
     _JWT_BEARER_LIFETIME_SECONDS,
     SALESFORCE_DATA_CLOUD_CREDENTIALS_SCHEMA,
@@ -259,6 +260,34 @@ class JwtBearerMintTests(_MockedSalesforceTestCase):
         )
 
 
+class JwtSigningKeyCacheTests(TestCase):
+    def setUp(self):
+        _JWT_SIGNING_KEY_CACHE.clear()
+        self.addCleanup(_JWT_SIGNING_KEY_CACHE.clear)
+
+    def test_key_is_parsed_once_per_process_not_per_client(self):
+        """The DC's skip_cache=true builds a client per op; RSA key loading is
+        ~40ms, so it must not run on every construction."""
+        with patch.object(
+            sfdc_module,
+            "_load_jwt_signing_key",
+            wraps=sfdc_module._load_jwt_signing_key,
+        ) as load:
+            first = SalesforceDataCloudProxyClient(_jwt_credentials())
+            second = SalesforceDataCloudProxyClient(_jwt_credentials())
+
+        self.assertEqual(load.call_count, 1)
+        self.assertIs(first._jwt_signing_key, second._jwt_signing_key)
+        self.assertNotIn(_PEM, _JWT_SIGNING_KEY_CACHE)
+
+    def test_invalid_key_is_not_cached(self):
+        bogus = "-----BEGIN PRIVATE KEY-----\nnot-a-key\n-----END PRIVATE KEY-----"
+        for _ in range(2):
+            with self.assertRaises(ValueError):
+                SalesforceDataCloudProxyClient(_jwt_credentials(private_key=bogus))
+        self.assertEqual(_JWT_SIGNING_KEY_CACHE, {})
+
+
 class JwtBearerCacheKeyTests(TestCase):
     def _key(self, credentials: SalesforceDataCloudCredentials) -> str:
         return SalesforceDataCloudProxyClient(credentials)._core_token_cache_key
@@ -341,6 +370,21 @@ class JwtBearerValidationTests(TestCase):
                 }
             )
 
+    def test_factory_keeps_its_error_for_a_payload_with_no_secret_or_key(self):
+        with self.assertRaisesRegex(
+            ValueError, "Missing required connection parameters"
+        ):
+            _get_proxy_client_salesforce_data_cloud(
+                {"connect_args": {"domain": _DOMAIN, "client_id": "test_client_id"}}
+            )
+
+    def test_mint_fails_locally_if_neither_secret_nor_key_reaches_it(self):
+        client = SalesforceDataCloudProxyClient(_client_credentials())
+        client._credentials.client_secret = None
+
+        with self.assertRaisesRegex(ValueError, "no client_secret or private_key"):
+            client._core_token_grant()
+
     def test_factory_still_requires_domain_and_client_id(self):
         with self.assertRaisesRegex(
             ValueError, "Missing required connection parameters"
@@ -416,6 +460,37 @@ class JwtBearerLibraryPassthroughTests(_MockedSalesforceTestCase):
         self.assertFalse(response.is_error, msg=str(response.result))
         (form,) = self._token_requests()
         self.assertEqual(form["grant_type"], _JWT_BEARER_GRANT_TYPE)
+
+    def test_jwt_credential_with_a_forwarded_core_token_takes_the_exchange_path(
+        self,
+    ):
+        """A DC that prefetches a core token sends it alongside the JWT fields.
+        The connection then exchanges that token (no JWT mint, private_key not
+        given to the library) and a failed exchange raises rather than re-mints."""
+        client = _get_proxy_client_salesforce_data_cloud(
+            {
+                "connect_args": {
+                    "domain": _DOMAIN,
+                    "client_id": "test_client_id",
+                    "private_key": _PEM,
+                    "username": _USERNAME,
+                    "core_token": "forwarded-core-token",
+                }
+            }
+        )
+        connection = client.wrapped_client
+        self.assertIsNone(connection.private_key)
+        self.assertEqual(connection.core_token, "forwarded-core-token")
+
+        client.list_tables()
+
+        self.assertEqual(self._token_requests(), [])
+        (exchange,) = [
+            c
+            for c in self.mock_responses.calls
+            if c.request.url.startswith(f"https://{_DOMAIN}/services/a360/token")
+        ]
+        self.assertIn("forwarded-core-token", exchange.request.url)
 
     def test_client_credentials_library_path_is_unchanged(self):
         client = _get_proxy_client_salesforce_data_cloud(
@@ -549,6 +624,21 @@ class JwtBearerSchemaTests(TestCase):
     def test_private_key_without_username_is_invalid(self):
         self.assertNotEqual(
             self._errors({"domain": _DOMAIN, "client_id": "id", "private_key": _PEM}),
+            {},
+        )
+
+    def test_secret_and_private_key_without_username_is_invalid(self):
+        """Any private_key selects JWT at runtime, so the schema must not let the
+        Client Credentials variant accept it without a username."""
+        self.assertNotEqual(
+            self._errors(
+                {
+                    "domain": _DOMAIN,
+                    "client_id": "id",
+                    "client_secret": "secret",
+                    "private_key": _PEM,
+                }
+            ),
             {},
         )
 
