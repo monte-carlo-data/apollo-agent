@@ -267,6 +267,90 @@ class AgentCommandDunderHardeningTests(TestCase):
         self.assertEqual(expected, result)
 
 
+def _unstarted_generator():
+    # Mirrors GitCloneClient.get_files: calling it returns an unstarted
+    # generator whose body never runs, so no side effect is needed to obtain it.
+    yield "x"
+
+
+class _GeneratorReturningInternalClient:
+    def get_files(self, _paths):
+        return _unstarted_generator()
+
+
+class _GeneratorProxyClient(SampleProxyClient):
+    # wrapped_client exposes a generator-returning driver method, like the
+    # Git/Looker-Git proxy clients in VULN-1227's reachable chain.
+    def __init__(self):
+        super().__init__()
+        self._client = _GeneratorReturningInternalClient()
+
+
+class AgentCommandReflectionHardeningTests(TestCase):
+    """
+    Pins the target type gate in ``_resolve_method``: resolving a method off a
+    reflective/escape-hatch object (generator, frame, module, ...) is refused,
+    cutting the ``gi_frame.f_globals.__getitem__("os")`` walk that bypasses the
+    dunder block (YET-3286 / VULN-1227). Every attribute name in that walk is a
+    non-dunder plus the allowlisted ``__getitem__``, so only a type gate stops it.
+    """
+
+    def test_resolve_method_refuses_generator_target(self):
+        gen = _unstarted_generator()
+        try:
+            with self.assertLogs(_EVALUATION_LOGGER, level=logging.ERROR) as captured:
+                with self.assertRaises(AttributeError):
+                    AgentEvaluationUtils._resolve_method(gen, "gi_frame")
+            self.assertTrue(
+                any(
+                    "Refusing to resolve method on reflective target" in r.getMessage()
+                    for r in captured.records
+                )
+            )
+        finally:
+            gen.close()
+
+    def test_resolve_method_refuses_frame_target(self):
+        gen = _unstarted_generator()
+        frame = gen.gi_frame
+        try:
+            with self.assertRaises(AttributeError):
+                AgentEvaluationUtils._resolve_method(frame, "f_globals")
+        finally:
+            gen.close()
+
+    def test_resolve_method_refuses_module_target(self):
+        import os
+
+        with self.assertRaises(AttributeError):
+            AgentEvaluationUtils._resolve_method(os, "system")
+
+    def test_reflection_chain_blocked_end_to_end(self):
+        # client.wrapped_client.get_files(["x"]) -> unstarted generator;
+        # the next hop (.gi_frame) must be refused before the walk reaches
+        # f_globals / os. Reproduces the ticket chain benignly (no os.system).
+        context = {CONTEXT_VAR_CLIENT: _GeneratorProxyClient()}
+        commands = AgentCommands.from_dict(
+            {
+                "operation_name": "exploit",
+                "trace_id": "1",
+                "commands": [
+                    {"method": "get_files", "args": [["x"]], "store": "_gen"},
+                    {"target": "_gen", "method": "gi_frame"},
+                ],
+            }
+        )
+        with self.assertRaises(AttributeError):
+            for command in commands.commands:
+                AgentEvaluationUtils._execute_command(command, context)
+
+    def test_dict_getitem_still_resolves_on_query_results(self):
+        # The gate must not touch ordinary query-result dicts: __getitem__ on a
+        # plain dict stays dispatchable (load-bearing for result aggregation).
+        method = AgentEvaluationUtils._resolve_method({"k": "v"}, "__getitem__")
+        self.assertEqual("v", method("k"))
+
+
 class _SecretRaisingClient(SampleProxyClient):
     _SECRET = "presigned-url-token-super-secret"
 

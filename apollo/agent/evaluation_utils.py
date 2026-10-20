@@ -1,5 +1,6 @@
 import logging
 import time
+import types
 from typing import Any, Callable, Optional, Dict, List, cast
 
 from apollo.agent.logging_utils import LoggingUtils
@@ -30,6 +31,22 @@ logger = logging.getLogger(__name__)
 # start an escape chain, and existing operations dispatch them.
 _ALLOWED_DUNDER_METHODS = frozenset(
     {"__getitem__", "__setitem__", "__str__", "__repr__"}
+)
+
+# Reflective/escape-hatch objects. Dispatching off one lets a caller walk
+# runtime internals to arbitrary code using only non-dunder names plus the
+# allowlisted ``__getitem__`` — e.g. an unstarted generator reaches its defining
+# module's globals via ``gi_frame.f_globals.__getitem__("os").system(...)``,
+# bypassing the dunder block. A proxy/driver client is never one of these, so
+# refusing them as dispatch targets closes the walk without an allowlist.
+_REFLECTIVE_TARGET_TYPES = (
+    types.GeneratorType,
+    types.CoroutineType,
+    types.AsyncGeneratorType,
+    types.FrameType,
+    types.TracebackType,
+    types.CodeType,
+    types.ModuleType,
 )
 
 
@@ -150,6 +167,12 @@ class AgentEvaluationUtils:
         :param method_name: the method to search for
         :return: the method found, AttributeError is raised if no method is found.
         """
+        if isinstance(target, _REFLECTIVE_TARGET_TYPES):
+            logger.error(
+                "Refusing to resolve method on reflective target %s",
+                type(target).__name__,
+            )
+            raise AttributeError(f"Failed to resolve method {method_name}")
         if method_name.startswith("__") and method_name not in _ALLOWED_DUNDER_METHODS:
             logger.error("Refusing to resolve dunder method %s", method_name)
             raise AttributeError(f"Failed to resolve method {method_name}")
