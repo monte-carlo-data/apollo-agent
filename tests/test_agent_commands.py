@@ -288,6 +288,17 @@ class _GeneratorProxyClient(SampleProxyClient):
         self._client = _GeneratorReturningInternalClient()
 
 
+class _ReflectiveWrappedProxyClient(SampleProxyClient):
+    # A hypothetical future proxy whose wrapped_client is itself reflective. The
+    # fallback resolves the method off the wrapped_client, so the gate must apply
+    # there too — otherwise `os.system` resolves straight off the module.
+    @property
+    def wrapped_client(self):
+        import os
+
+        return os
+
+
 class AgentCommandReflectionHardeningTests(TestCase):
     """
     Pins the target type gate in ``_resolve_method``: resolving a method off a
@@ -382,6 +393,21 @@ class AgentCommandReflectionHardeningTests(TestCase):
             coro.close()
             asyncio.run(agen.aclose())
 
+    def test_resolve_method_refuses_reflective_wrapped_client(self):
+        # The wrapped_client fallback resolves the method off the wrapped_client;
+        # the gate must apply there too. Without it, "system" resolves off the os
+        # module (`system` is not on the proxy, so the fallback is taken).
+        client = _ReflectiveWrappedProxyClient()
+        with self.assertLogs(_EVALUATION_LOGGER, level=logging.ERROR) as captured:
+            with self.assertRaises(AttributeError):
+                AgentEvaluationUtils._resolve_method(client, "system")
+        self.assertTrue(
+            any(
+                "Refusing to resolve method on reflective target" in r.getMessage()
+                for r in captured.records
+            )
+        )
+
     def test_reflection_chain_blocked_end_to_end(self):
         # client.wrapped_client.get_files(["x"]) -> unstarted generator;
         # the next hop (.gi_frame) must be refused before the walk reaches
@@ -397,10 +423,21 @@ class AgentCommandReflectionHardeningTests(TestCase):
                 ],
             }
         )
+        get_files_cmd, gi_frame_cmd = commands.commands
         try:
-            with self.assertRaises(AttributeError):
-                for command in commands.commands:
-                    AgentEvaluationUtils._execute_command(command, context)
+            # First hop resolves the unstarted generator via the wrapped_client
+            # fallback; assert that so the refusal below is pinned to .gi_frame.
+            AgentEvaluationUtils._execute_command(get_files_cmd, context)
+            self.assertIsInstance(context["_gen"], types.GeneratorType)
+            with self.assertLogs(_EVALUATION_LOGGER, level=logging.ERROR) as captured:
+                with self.assertRaises(AttributeError):
+                    AgentEvaluationUtils._execute_command(gi_frame_cmd, context)
+            self.assertTrue(
+                any(
+                    "Refusing to resolve method on reflective target" in r.getMessage()
+                    for r in captured.records
+                )
+            )
         finally:
             if isinstance(context.get("_gen"), types.GeneratorType):
                 context["_gen"].close()
