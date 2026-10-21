@@ -700,7 +700,6 @@ workflows:
             branches:
               only:
                 - dev
-                - /.*\/pr-.*/
       - build-and-push-base-images:
           name: build-and-push-prod-base-images
           docker_hub_repository: agent
