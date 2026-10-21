@@ -10,7 +10,7 @@ blinker==1.9.0
     # via
     #   -c requirements.txt
     #   flask
-certifi==2024.8.30
+certifi==2026.10.19
     # via
     #   -c requirements.txt
     #   requests
