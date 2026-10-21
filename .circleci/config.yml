@@ -43,18 +43,32 @@ commands:
           source $BASH_ENV
         name: Generate prod version number
   setup-buildx:
+    parameters:
+      set_default:
+        description: Make the builder the default; otherwise pass --builder explicitly
+        type: boolean
+        default: true
     steps:
-    - docker/check:
-        use-docker-credentials-store: true
     # Attestations (SBOM + SLSA provenance) require the docker-container
     # buildx driver — the default docker driver writes single manifests, not
     # the OCI image index that holds attestation manifests alongside the
     # platform image.
-    - run:
-        name: Set up buildx (docker-container driver)
-        command: |
-          docker buildx create --use --name apollo-builder --driver docker-container
-          docker buildx inspect --bootstrap
+    - when:
+        condition: << parameters.set_default >>
+        steps:
+        - run:
+            name: Set up buildx (docker-container driver)
+            command: |
+              docker buildx create --use --name apollo-builder --driver docker-container
+              docker buildx inspect --bootstrap
+    - unless:
+        condition: << parameters.set_default >>
+        steps:
+        - run:
+            name: Set up buildx (docker-container driver, not default)
+            command: |
+              docker buildx create --name apollo-builder --driver docker-container
+              docker buildx inspect --builder apollo-builder --bootstrap
 
 jobs:
   build-ok:
@@ -121,12 +135,14 @@ jobs:
     steps:
       - checkout
       # arm64 emulation for the multi-arch oracle-pki build. Pinned, and run
-      # before docker/check so this privileged third-party image never sees
-      # the push credentials.
+      # before docker/check (the registry login) so this privileged third-party
+      # image never sees the push credentials.
       - run:
           name: Register QEMU for arm64 builds
           command: |
             docker run --privileged --rm tonistiigi/binfmt:qemu-v10.2.3@sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0 --install arm64
+      - docker/check:
+          use-docker-credentials-store: true
       - setup-buildx
       # Publish the `system-base` stage (apt-only, no venv, no apollo source) as
       # `<version>-system-base`. Downstream consumers (e.g. hermes-agent) build
@@ -178,7 +194,7 @@ jobs:
         description: Tag suffix, as in <version>-<tag_suffix> and latest-<tag_suffix>
         type: string
       alias_tag_suffix:
-        description: Optional second suffix pushed for the same image (legacy name)
+        description: Optional legacy suffix also pushed for the same image, kept for back-compat
         type: string
         default: ""
       verify_azure_startup:
@@ -186,16 +202,12 @@ jobs:
         default: false
     steps:
       - checkout
+      - docker/check:
+          use-docker-credentials-store: true
       - setup-buildx
-      # Each image is built TWICE per the BuildKit-attestations workflow:
-      #   1. --load into the local daemon so verify-version-in-docker-image
-      #      can `docker run` against the image before anything is published.
-      #   2. --push with --sbom=true --provenance=mode=max so the registry
-      #      copy carries the supply-chain attestations Docker Scout reads.
-      # BuildKit cache makes the second build cheap — only SBOM/provenance
-      # generation is new work. --load and --push are mutually exclusive when
-      # attestations are involved (the daemon can't load an OCI image index),
-      # which is why two passes are necessary.
+      # Built twice: --load so the image can be run and checked before publishing, then --push
+      # with SBOM + provenance. They can't be combined (the daemon can't load an OCI index with
+      # attestations); BuildKit cache makes the second pass cheap.
       - run:
           name: Build << parameters.target >> image (local) for version verification
           command: |
@@ -258,18 +270,10 @@ jobs:
       - checkout
       - docker/check:
           use-docker-credentials-store: true
-      # Docker Hub copy: build and push with SBOM + SLSA provenance (mode=max)
-      # attestations attached. The ECR step below uses the classic docker/build
-      # orb, so we create the buildx builder WITHOUT --use and pass --builder
-      # apollo-builder explicitly on this command. That leaves the default
-      # builder in place so the classic `docker build` the orb runs for the
-      # ECR step continues to use the daemon's docker driver and produces a
-      # single-manifest image (which AWS Lambda / CloudFormation require).
-      - run:
-          name: Set up buildx (docker-container driver) for the Docker Hub build
-          command: |
-            docker buildx create --name apollo-builder --driver docker-container
-            docker buildx inspect --builder apollo-builder --bootstrap
+      # Not the default builder: the classic `docker build` the ECR step runs must keep the
+      # docker driver to produce the single-manifest image Lambda requires.
+      - setup-buildx:
+          set_default: false
       - run:
           name: Build and push lambda (Docker Hub) with SBOM + SLSA provenance
           command: |
@@ -367,6 +371,10 @@ jobs:
       agent_version:
         description: The agent version installed, to check after the upgrade is complete
         type: string
+      initial_wait_seconds:
+        description: Seconds to wait before the first health poll (Azure upgrades are async)
+        type: integer
+        default: 0
       version_wait_seconds:
         description: How long to keep polling agent health for the new version after the update
         type: integer
@@ -430,18 +438,22 @@ jobs:
       - run:
           name: Run Agent Health - Validate version
           # Poll rather than sleep: a restarting agent (e.g. Azure) can report the old version or fail
-          # health for a while. Only the version field is printed; health output can include secrets.
+          # health for a while. Azure gets an initial wait because its upgrade is async. Only the
+          # version field is printed; health output can include secrets.
           command: |
             export MCD_DEFAULT_API_ID=${MCD_SMOKE_TESTS_API_ID}
             export MCD_DEFAULT_API_TOKEN=${MCD_SMOKE_TESTS_API_TOKEN}
             if [ -z "<< parameters.agent_version >>" ]; then echo "agent_version is empty"; exit 1; fi
+            sleep << parameters.initial_wait_seconds >>
+            err=$(mktemp)
             deadline=$((SECONDS + << parameters.version_wait_seconds >>))
             while true; do
-              AGENT_VERSION=$(montecarlo agents health --agent-id << parameters.agent_uuid >> 2>/dev/null | grep -v "Agent health check" | jq -r '.version' 2>/dev/null) || AGENT_VERSION=""
+              AGENT_VERSION=$(montecarlo agents health --agent-id << parameters.agent_uuid >> 2>"$err" | grep -v "Agent health check" | jq -r '.version' 2>/dev/null) || AGENT_VERSION=""
               echo "Agent Version: $AGENT_VERSION"
               if [ -n "$AGENT_VERSION" ] && [ "$AGENT_VERSION" = "<< parameters.agent_version >>" ]; then exit 0; fi
               if [ $SECONDS -ge $deadline ]; then
-                echo "Failed to find expected version (<< parameters.agent_version >>), found: $AGENT_VERSION"; exit 1
+                echo "Failed to find expected version (<< parameters.agent_version >>), found: $AGENT_VERSION"
+                echo "Last CLI error output:"; tail -5 "$err"; exit 1
               fi
               sleep 15
             done
@@ -569,6 +581,7 @@ workflows:
           image_variant: azure
           agent_uuid: ${MCD_AGENT_UUID_WITH_AZ_AGENT}
           agent_version: ${NEXT_VERSION}
+          initial_wait_seconds: 45
           image_repo: pre-release-agent
           pre-steps:
             - checkout
@@ -603,6 +616,7 @@ workflows:
           image_variant: azure
           agent_uuid: ${MCD_AGENT_UUID_WITH_AZ_AGENT}
           agent_version: ${NEXT_VERSION}
+          initial_wait_seconds: 45
           image_repo: pre-release-agent
           pre-steps:
             - checkout
@@ -718,6 +732,8 @@ workflows:
           context:
             - docker
           requires:
+            # On tags, publish base images first so a release never ships without them.
+            - build-and-push-prod-base-images
             - run-linter
             - run-test-docker
             - run-test-docker-azure
@@ -738,6 +754,7 @@ workflows:
           context:
             - docker
           requires:
+            - build-and-push-prod-base-images
             - run-linter
             - run-test-docker
             - run-test-docker-azure
@@ -759,6 +776,7 @@ workflows:
           context:
             - docker
           requires:
+            - build-and-push-prod-base-images
             - run-linter
             - run-test-docker
             - run-test-docker-azure
@@ -842,6 +860,7 @@ workflows:
             - run-linter
             - run-test-docker
             - run-test-docker-azure
+            # no golden agent uses this image, so gate on it directly
             - build-and-push-dev-aws-proxied
             - gcp-prod-update-and-validate-golden-agent-merge-queue
             - az-prod-update-and-validate-golden-agent-merge-queue
