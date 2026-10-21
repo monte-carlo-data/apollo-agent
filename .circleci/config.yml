@@ -237,15 +237,18 @@ jobs:
       - verify-version-in-docker-image:
           image: montecarlodata/<< parameters.docker_hub_repository >>:latest-azure
           version: << parameters.code_version >>,<< pipeline.number >>
-      # The Functions host exits at once if it can't load (e.g. a missing .NET framework),
-      # leaving a deployed agent returning 503 and unable to upgrade itself out of it.
+      # A host that can't start or an app that can't import leaves a deployed agent returning 503
+      # and unable to upgrade itself. Exit 124 means timeout stopped a still-running host (success).
       - run:
-          name: Verify Azure Functions host starts
+          name: Verify Azure Functions host and app start
           command: |
             rc=0
-            docker run --rm --entrypoint sh montecarlodata/<< parameters.docker_hub_repository >>:latest-azure \
-              -c 'cd /azure-functions-host && timeout 30 dotnet Microsoft.Azure.WebJobs.Script.WebHost.dll' || rc=$?
+            docker run --rm montecarlodata/<< parameters.docker_hub_repository >>:latest-azure timeout 30 /opt/startup/start_nonappservice.sh || rc=$?
             if [ "$rc" -ne 124 ]; then echo "Functions host exited with code $rc instead of staying up"; exit 1; fi
+            # Dummy connection string: the app won't import without one.
+            docker run --rm -e APPLICATIONINSIGHTS_CONNECTION_STRING="InstrumentationKey=00000000-0000-0000-0000-000000000000" \
+              --entrypoint sh montecarlodata/<< parameters.docker_hub_repository >>:latest-azure \
+              -c 'cd /home/site/wwwroot && python -c "import function_app"'
       - run:
           name: Build and push azure with SBOM + SLSA provenance
           command: |
@@ -392,8 +395,9 @@ jobs:
         type: string
         default: "agent"
       image_variant:
-        description: Image tag suffix (azure, cloudrun, lambda) for the agent's platform; required unless use_aws_cli
-        type: string
+        description: Image tag suffix for the agent's platform; required unless use_aws_cli
+        type: enum
+        enum: ["", "azure", "cloudrun", "lambda"]
         default: ""
       ecr_repo_name:
         description: The ECR repository to use for the AWS CLI update
