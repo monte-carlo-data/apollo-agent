@@ -42,6 +42,33 @@ commands:
           echo "VERSION_TAG=${TAG#v}" >> $BASH_ENV
           source $BASH_ENV
         name: Generate prod version number
+  setup-buildx:
+    parameters:
+      set_default:
+        description: Make the builder the default; otherwise pass --builder explicitly
+        type: boolean
+        default: true
+    steps:
+    # Attestations (SBOM + SLSA provenance) require the docker-container
+    # buildx driver — the default docker driver writes single manifests, not
+    # the OCI image index that holds attestation manifests alongside the
+    # platform image.
+    - when:
+        condition: << parameters.set_default >>
+        steps:
+        - run:
+            name: Set up buildx (docker-container driver)
+            command: |
+              docker buildx create --use --name apollo-builder --driver docker-container
+              docker buildx inspect --bootstrap
+    - unless:
+        condition: << parameters.set_default >>
+        steps:
+        - run:
+            name: Set up buildx (docker-container driver, not default)
+            command: |
+              docker buildx create --name apollo-builder --driver docker-container
+              docker buildx inspect --builder apollo-builder --bootstrap
 
 jobs:
   build-ok:
@@ -95,7 +122,9 @@ jobs:
           extra_build_args: --target tests-azure
           step-name: Run tests in docker build (azure, Python 3.14)
 
-  build-and-push:
+  # system-base and oracle-pki are published for downstream consumers (e.g. hermes-agent),
+  # not for the golden agents, so they run on dev and v* tags but not in the merge queue.
+  build-and-push-base-images:
     machine:
       image: ubuntu-2204:current
     parameters:
@@ -106,33 +135,15 @@ jobs:
     steps:
       - checkout
       # arm64 emulation for the multi-arch oracle-pki build. Pinned, and run
-      # before docker/check so this privileged third-party image never sees
-      # the push credentials.
+      # before docker/check (the registry login) so this privileged third-party
+      # image never sees the push credentials.
       - run:
           name: Register QEMU for arm64 builds
           command: |
             docker run --privileged --rm tonistiigi/binfmt:qemu-v10.2.3@sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0 --install arm64
       - docker/check:
           use-docker-credentials-store: true
-      # Attestations (SBOM + SLSA provenance) require the docker-container
-      # buildx driver — the default docker driver writes single manifests, not
-      # the OCI image index that holds attestation manifests alongside the
-      # platform image. Set up once; reused by every buildx call below.
-      - run:
-          name: Set up buildx (docker-container driver)
-          command: |
-            docker buildx create --use --name apollo-builder --driver docker-container
-            docker buildx inspect --bootstrap
-      # Each target is built TWICE per the BuildKit-attestations workflow:
-      #   1. --load into the local daemon so verify-version-in-docker-image
-      #      can `docker run` against the image before anything is published.
-      #   2. --push with --sbom=true --provenance=mode=max so the registry
-      #      copy carries the supply-chain attestations Docker Scout reads.
-      # BuildKit cache makes the second build cheap — only SBOM/provenance
-      # generation is new work. --load and --push are mutually exclusive when
-      # attestations are involved (the daemon can't load an OCI image index),
-      # which is why two passes are necessary.
-      #
+      - setup-buildx
       # Publish the `system-base` stage (apt-only, no venv, no apollo source) as
       # `<version>-system-base`. Downstream consumers (e.g. hermes-agent) build
       # their own venv on top against the same native libs without inheriting
@@ -166,98 +177,80 @@ jobs:
               --provenance=mode=max \
               --push \
               .
-      # AWS proxied/generic — same image, four tags (aws-proxied is the
-      # current name, aws-generic is the legacy alias kept for back-compat).
+
+  # One job per image target so each golden agent waits only for its own image.
+  build-and-push-image:
+    machine:
+      image: ubuntu-2204:current
+    parameters:
+      docker_hub_repository:
+        type: string
+      code_version:
+        type: string
+      target:
+        description: Dockerfile stage to build
+        type: string
+      tag_suffix:
+        description: Tag suffix, as in <version>-<tag_suffix> and latest-<tag_suffix>
+        type: string
+      alias_tag_suffix:
+        description: Optional legacy suffix also pushed for the same image, kept for back-compat
+        type: string
+        default: ""
+      verify_azure_startup:
+        type: boolean
+        default: false
+    steps:
+      - checkout
+      - docker/check:
+          use-docker-credentials-store: true
+      - setup-buildx
+      # Built twice: --load so the image can be run and checked before publishing, then --push
+      # with SBOM + provenance. They can't be combined (the daemon can't load an OCI index with
+      # attestations); BuildKit cache makes the second pass cheap.
       - run:
-          name: Build aws_proxied image (local) for version verification
+          name: Build << parameters.target >> image (local) for version verification
           command: |
             docker buildx build \
-              --target aws_proxied \
+              --target << parameters.target >> \
               --build-arg code_version=<< parameters.code_version >> \
               --build-arg build_number=<< pipeline.number >> \
-              --tag montecarlodata/<< parameters.docker_hub_repository >>:latest-aws-proxied \
+              --tag montecarlodata/<< parameters.docker_hub_repository >>:latest-<< parameters.tag_suffix >> \
               --load \
               .
       - verify-version-in-docker-image:
-          image: montecarlodata/<< parameters.docker_hub_repository >>:latest-aws-proxied
+          image: montecarlodata/<< parameters.docker_hub_repository >>:latest-<< parameters.tag_suffix >>
           version: << parameters.code_version >>,<< pipeline.number >>
+      - when:
+          condition: << parameters.verify_azure_startup >>
+          steps:
+            # A host that can't start or an app that can't import leaves a deployed agent returning 503
+            # and unable to upgrade itself. Exit 124 means timeout stopped a still-running host (success).
+            - run:
+                name: Verify Azure Functions host and app start
+                command: |
+                  rc=0
+                  docker run --rm montecarlodata/<< parameters.docker_hub_repository >>:latest-<< parameters.tag_suffix >> timeout 30 /opt/startup/start_nonappservice.sh || rc=$?
+                  if [ "$rc" -ne 124 ]; then echo "Functions host exited with code $rc instead of staying up"; exit 1; fi
+                  # Dummy connection string: the app won't import without one.
+                  docker run --rm -e APPLICATIONINSIGHTS_CONNECTION_STRING="InstrumentationKey=00000000-0000-0000-0000-000000000000" \
+                    --entrypoint sh montecarlodata/<< parameters.docker_hub_repository >>:latest-<< parameters.tag_suffix >> \
+                    -c 'cd /home/site/wwwroot && python -c "import function_app"'
       - run:
-          name: Build and push aws_proxied with SBOM + SLSA provenance
+          name: Build and push << parameters.target >> with SBOM + SLSA provenance
           command: |
+            image=montecarlodata/<< parameters.docker_hub_repository >>
+            alias_tags=""
+            if [ -n "<< parameters.alias_tag_suffix >>" ]; then
+              alias_tags="--tag $image:latest-<< parameters.alias_tag_suffix >> --tag $image:<< parameters.code_version >>-<< parameters.alias_tag_suffix >>"
+            fi
             docker buildx build \
-              --target aws_proxied \
+              --target << parameters.target >> \
               --build-arg code_version=<< parameters.code_version >> \
               --build-arg build_number=<< pipeline.number >> \
-              --tag montecarlodata/<< parameters.docker_hub_repository >>:latest-aws-proxied \
-              --tag montecarlodata/<< parameters.docker_hub_repository >>:<< parameters.code_version >>-aws-proxied \
-              --tag montecarlodata/<< parameters.docker_hub_repository >>:latest-aws-generic \
-              --tag montecarlodata/<< parameters.docker_hub_repository >>:<< parameters.code_version >>-aws-generic \
-              --sbom=true \
-              --provenance=mode=max \
-              --push \
-              .
-      # cloudrun
-      - run:
-          name: Build cloudrun image (local) for version verification
-          command: |
-            docker buildx build \
-              --target cloudrun \
-              --build-arg code_version=<< parameters.code_version >> \
-              --build-arg build_number=<< pipeline.number >> \
-              --tag montecarlodata/<< parameters.docker_hub_repository >>:latest-cloudrun \
-              --load \
-              .
-      - verify-version-in-docker-image:
-          image: montecarlodata/<< parameters.docker_hub_repository >>:latest-cloudrun
-          version: << parameters.code_version >>,<< pipeline.number >>
-      - run:
-          name: Build and push cloudrun with SBOM + SLSA provenance
-          command: |
-            docker buildx build \
-              --target cloudrun \
-              --build-arg code_version=<< parameters.code_version >> \
-              --build-arg build_number=<< pipeline.number >> \
-              --tag montecarlodata/<< parameters.docker_hub_repository >>:latest-cloudrun \
-              --tag montecarlodata/<< parameters.docker_hub_repository >>:<< parameters.code_version >>-cloudrun \
-              --sbom=true \
-              --provenance=mode=max \
-              --push \
-              .
-      # azure
-      - run:
-          name: Build azure image (local) for version verification
-          command: |
-            docker buildx build \
-              --target azure \
-              --build-arg code_version=<< parameters.code_version >> \
-              --build-arg build_number=<< pipeline.number >> \
-              --tag montecarlodata/<< parameters.docker_hub_repository >>:latest-azure \
-              --load \
-              .
-      - verify-version-in-docker-image:
-          image: montecarlodata/<< parameters.docker_hub_repository >>:latest-azure
-          version: << parameters.code_version >>,<< pipeline.number >>
-      # A host that can't start or an app that can't import leaves a deployed agent returning 503
-      # and unable to upgrade itself. Exit 124 means timeout stopped a still-running host (success).
-      - run:
-          name: Verify Azure Functions host and app start
-          command: |
-            rc=0
-            docker run --rm montecarlodata/<< parameters.docker_hub_repository >>:latest-azure timeout 30 /opt/startup/start_nonappservice.sh || rc=$?
-            if [ "$rc" -ne 124 ]; then echo "Functions host exited with code $rc instead of staying up"; exit 1; fi
-            # Dummy connection string: the app won't import without one.
-            docker run --rm -e APPLICATIONINSIGHTS_CONNECTION_STRING="InstrumentationKey=00000000-0000-0000-0000-000000000000" \
-              --entrypoint sh montecarlodata/<< parameters.docker_hub_repository >>:latest-azure \
-              -c 'cd /home/site/wwwroot && python -c "import function_app"'
-      - run:
-          name: Build and push azure with SBOM + SLSA provenance
-          command: |
-            docker buildx build \
-              --target azure \
-              --build-arg code_version=<< parameters.code_version >> \
-              --build-arg build_number=<< pipeline.number >> \
-              --tag montecarlodata/<< parameters.docker_hub_repository >>:latest-azure \
-              --tag montecarlodata/<< parameters.docker_hub_repository >>:<< parameters.code_version >>-azure \
+              --tag $image:latest-<< parameters.tag_suffix >> \
+              --tag $image:<< parameters.code_version >>-<< parameters.tag_suffix >> \
+              $alias_tags \
               --sbom=true \
               --provenance=mode=max \
               --push \
@@ -277,18 +270,10 @@ jobs:
       - checkout
       - docker/check:
           use-docker-credentials-store: true
-      # Docker Hub copy: build and push with SBOM + SLSA provenance (mode=max)
-      # attestations attached. The ECR step below uses the classic docker/build
-      # orb, so we create the buildx builder WITHOUT --use and pass --builder
-      # apollo-builder explicitly on this command. That leaves the default
-      # builder in place so the classic `docker build` the orb runs for the
-      # ECR step continues to use the daemon's docker driver and produces a
-      # single-manifest image (which AWS Lambda / CloudFormation require).
-      - run:
-          name: Set up buildx (docker-container driver) for the Docker Hub build
-          command: |
-            docker buildx create --name apollo-builder --driver docker-container
-            docker buildx inspect --builder apollo-builder --bootstrap
+      # Not the default builder: the classic `docker build` the ECR step runs must keep the
+      # docker driver to produce the single-manifest image Lambda requires.
+      - setup-buildx:
+          set_default: false
       - run:
           name: Build and push lambda (Docker Hub) with SBOM + SLSA provenance
           command: |
@@ -386,10 +371,14 @@ jobs:
       agent_version:
         description: The agent version installed, to check after the upgrade is complete
         type: string
-      sleep_seconds:
-        description: Seconds to wait after triggering the agent update and before checking for the new version
-        type: string
-        default: "0"
+      initial_wait_seconds:
+        description: Seconds to wait before the first health poll (Azure upgrades are async)
+        type: integer
+        default: 0
+      version_wait_seconds:
+        description: How long to keep polling agent health for the new version after the update
+        type: integer
+        default: 300
       image_repo:
         description: The image repository to use for the agent, pre-release-agent or agent
         type: string
@@ -448,16 +437,26 @@ jobs:
                     --image-tag "<< parameters.agent_version >>-<< parameters.image_variant >>"
       - run:
           name: Run Agent Health - Validate version
+          # Poll rather than sleep: a restarting agent (e.g. Azure) can report the old version or fail
+          # health for a while. Azure gets an initial wait because its upgrade is async. Only the
+          # version field is printed; health output can include secrets.
           command: |
-            sleep << parameters.sleep_seconds >>
             export MCD_DEFAULT_API_ID=${MCD_SMOKE_TESTS_API_ID}
             export MCD_DEFAULT_API_TOKEN=${MCD_SMOKE_TESTS_API_TOKEN}
-            AGENT_VERSION=`montecarlo agents health --agent-id << parameters.agent_uuid >> | grep -v "Agent health check" | jq -r '.version'`
-            echo "Agent Version: $AGENT_VERSION"
-            if [ $AGENT_VERSION = "<< parameters.agent_version >>" ]
-                then exit 0
-                else echo "Failed to find expected version (<< parameters.agent_version >>), found: $AGENT_VERSION"; exit 1
-            fi
+            if [ -z "<< parameters.agent_version >>" ]; then echo "agent_version is empty"; exit 1; fi
+            sleep << parameters.initial_wait_seconds >>
+            err=$(mktemp)
+            deadline=$((SECONDS + << parameters.version_wait_seconds >>))
+            while true; do
+              AGENT_VERSION=$(montecarlo agents health --agent-id << parameters.agent_uuid >> 2>"$err" | grep -v "Agent health check" | jq -r '.version' 2>/dev/null) || AGENT_VERSION=""
+              echo "Agent Version: $AGENT_VERSION"
+              if [ -n "$AGENT_VERSION" ] && [ "$AGENT_VERSION" = "<< parameters.agent_version >>" ]; then exit 0; fi
+              if [ $SECONDS -ge $deadline ]; then
+                echo "Failed to find expected version (<< parameters.agent_version >>), found: $AGENT_VERSION"
+                echo "Last CLI error output:"; tail -5 "$err"; exit 1
+              fi
+              sleep 15
+            done
       - run:
           name: Run validations
           command: |
@@ -472,19 +471,80 @@ workflows:
     jobs:
       - run-linter
       - run-test-docker:
-          # run for all tags and branches, we need to add this so the job is available for build-and-push-prod
+          # run for all tags and branches, we need to add this so the job is available for the prod build jobs
           filters:
             tags:
               only: /.*/
       - run-test-docker-azure:
-          # run for all tags and branches, we need to add this so the job is available for build-and-push-prod
+          # run for all tags and branches, we need to add this so the job is available for the prod build jobs
           filters:
             tags:
               only: /.*/
-      - build-and-push:
-          name: build-and-push-dev
+      - build-and-push-base-images:
+          name: build-and-push-dev-base-images
           docker_hub_repository: pre-release-agent
           code_version: ${NEXT_VERSION}
+          pre-steps:
+            - checkout
+            - generate-version-number-dev
+          context:
+            - docker
+          requires:
+            - run-linter
+            - run-test-docker
+            - run-test-docker-azure
+          filters:
+            branches:
+              only:
+                - dev
+      - build-and-push-image:
+          name: build-and-push-dev-azure
+          docker_hub_repository: pre-release-agent
+          code_version: ${NEXT_VERSION}
+          target: azure
+          tag_suffix: azure
+          verify_azure_startup: true
+          pre-steps:
+            - checkout
+            - generate-version-number-dev
+          context:
+            - docker
+          requires:
+            - run-linter
+            - run-test-docker
+            - run-test-docker-azure
+          filters:
+            branches:
+              only:
+                - dev
+                - /.*\/pr-.*/
+      - build-and-push-image:
+          name: build-and-push-dev-cloudrun
+          docker_hub_repository: pre-release-agent
+          code_version: ${NEXT_VERSION}
+          target: cloudrun
+          tag_suffix: cloudrun
+          pre-steps:
+            - checkout
+            - generate-version-number-dev
+          context:
+            - docker
+          requires:
+            - run-linter
+            - run-test-docker
+            - run-test-docker-azure
+          filters:
+            branches:
+              only:
+                - dev
+                - /.*\/pr-.*/
+      - build-and-push-image:
+          name: build-and-push-dev-aws-proxied
+          docker_hub_repository: pre-release-agent
+          code_version: ${NEXT_VERSION}
+          target: aws_proxied
+          tag_suffix: aws-proxied
+          alias_tag_suffix: aws-generic
           pre-steps:
             - checkout
             - generate-version-number-dev
@@ -511,7 +571,7 @@ workflows:
           context:
             - mc-dev
           requires:
-            - build-and-push-dev
+            - build-and-push-dev-cloudrun
           filters:
             branches:
               only:
@@ -521,7 +581,7 @@ workflows:
           image_variant: azure
           agent_uuid: ${MCD_AGENT_UUID_WITH_AZ_AGENT}
           agent_version: ${NEXT_VERSION}
-          sleep_seconds: "120"
+          initial_wait_seconds: 45
           image_repo: pre-release-agent
           pre-steps:
             - checkout
@@ -529,7 +589,7 @@ workflows:
           context:
             - mc-dev
           requires:
-            - build-and-push-dev
+            - build-and-push-dev-azure
           filters:
             branches:
               only:
@@ -546,7 +606,7 @@ workflows:
           context:
             - mc-prod
           requires:
-            - build-and-push-dev
+            - build-and-push-dev-cloudrun
           filters:
             branches:
               only:
@@ -556,7 +616,7 @@ workflows:
           image_variant: azure
           agent_uuid: ${MCD_AGENT_UUID_WITH_AZ_AGENT}
           agent_version: ${NEXT_VERSION}
-          sleep_seconds: "120"
+          initial_wait_seconds: 45
           image_repo: pre-release-agent
           pre-steps:
             - checkout
@@ -564,7 +624,7 @@ workflows:
           context:
             - mc-prod
           requires:
-            - build-and-push-dev
+            - build-and-push-dev-azure
           filters:
             branches:
               only:
@@ -641,8 +701,8 @@ workflows:
               only:
                 - dev
                 - /.*\/pr-.*/
-      - build-and-push:
-          name: build-and-push-prod
+      - build-and-push-base-images:
+          name: build-and-push-prod-base-images
           docker_hub_repository: agent
           code_version: ${VERSION_TAG}
           pre-steps:
@@ -651,6 +711,72 @@ workflows:
           context:
             - docker
           requires:
+            - run-linter
+            - run-test-docker
+            - run-test-docker-azure
+          filters: # run only for tags starting with v, don't run for branches
+            tags:
+              only: /^v.*/
+            branches:
+              ignore: /.*/
+      - build-and-push-image:
+          name: build-and-push-prod-azure
+          docker_hub_repository: agent
+          code_version: ${VERSION_TAG}
+          target: azure
+          tag_suffix: azure
+          verify_azure_startup: true
+          pre-steps:
+            - checkout
+            - generate-version-number-prod
+          context:
+            - docker
+          requires:
+            # On tags, publish base images first so a release never ships without them.
+            - build-and-push-prod-base-images
+            - run-linter
+            - run-test-docker
+            - run-test-docker-azure
+          filters: # run only for tags starting with v, don't run for branches
+            tags:
+              only: /^v.*/
+            branches:
+              ignore: /.*/
+      - build-and-push-image:
+          name: build-and-push-prod-cloudrun
+          docker_hub_repository: agent
+          code_version: ${VERSION_TAG}
+          target: cloudrun
+          tag_suffix: cloudrun
+          pre-steps:
+            - checkout
+            - generate-version-number-prod
+          context:
+            - docker
+          requires:
+            - build-and-push-prod-base-images
+            - run-linter
+            - run-test-docker
+            - run-test-docker-azure
+          filters: # run only for tags starting with v, don't run for branches
+            tags:
+              only: /^v.*/
+            branches:
+              ignore: /.*/
+      - build-and-push-image:
+          name: build-and-push-prod-aws-proxied
+          docker_hub_repository: agent
+          code_version: ${VERSION_TAG}
+          target: aws_proxied
+          tag_suffix: aws-proxied
+          alias_tag_suffix: aws-generic
+          pre-steps:
+            - checkout
+            - generate-version-number-prod
+          context:
+            - docker
+          requires:
+            - build-and-push-prod-base-images
             - run-linter
             - run-test-docker
             - run-test-docker-azure
@@ -734,6 +860,8 @@ workflows:
             - run-linter
             - run-test-docker
             - run-test-docker-azure
+            # no golden agent uses this image, so gate on it directly
+            - build-and-push-dev-aws-proxied
             - gcp-prod-update-and-validate-golden-agent-merge-queue
             - az-prod-update-and-validate-golden-agent-merge-queue
             - aws-prod-update-and-validate-golden-agent-merge-queue
