@@ -498,7 +498,6 @@ workflows:
       - update-and-validate-golden-agent:
           name: gcp-dev-update-and-validate-golden-agent
           image_variant: cloudrun
-          serial-group: << pipeline.project.slug >>/golden-agent-dev-gcp
           agent_uuid: ${MCD_AGENT_UUID_WITH_GCP_AGENT}
           agent_version: ${NEXT_VERSION}
           image_repo: pre-release-agent
@@ -516,7 +515,6 @@ workflows:
       - update-and-validate-golden-agent:
           name: az-dev-update-and-validate-golden-agent
           image_variant: azure
-          serial-group: << pipeline.project.slug >>/golden-agent-dev-az
           agent_uuid: ${MCD_AGENT_UUID_WITH_AZ_AGENT}
           agent_version: ${NEXT_VERSION}
           sleep_seconds: "120"
@@ -535,7 +533,6 @@ workflows:
       - update-and-validate-golden-agent:
           name: gcp-prod-update-and-validate-golden-agent-merge-queue
           image_variant: cloudrun
-          serial-group: << pipeline.project.slug >>/golden-agent-prod-gcp
           agent_uuid: ${MCD_AGENT_UUID_WITH_GCP_AGENT}
           agent_version: ${NEXT_VERSION}
           image_repo: pre-release-agent
@@ -553,7 +550,6 @@ workflows:
       - update-and-validate-golden-agent:
           name: az-prod-update-and-validate-golden-agent-merge-queue
           image_variant: azure
-          serial-group: << pipeline.project.slug >>/golden-agent-prod-az
           agent_uuid: ${MCD_AGENT_UUID_WITH_AZ_AGENT}
           agent_version: ${NEXT_VERSION}
           sleep_seconds: "120"
@@ -592,7 +588,6 @@ workflows:
       - update-and-validate-golden-agent:
           name: aws-dev-update-and-validate-golden-agent
           image_variant: lambda
-          serial-group: << pipeline.project.slug >>/golden-agent-dev-aws
           agent_uuid: ${MCD_AGENT_UUID_WITH_AWS_AGENT}
           agent_version: ${NEXT_VERSION}
           image_repo: pre-release-agent
@@ -609,7 +604,6 @@ workflows:
                 - dev
       - update-and-validate-golden-agent:
           name: aws-prod-update-and-validate-golden-agent-merge-queue
-          serial-group: << pipeline.project.slug >>/golden-agent-prod-aws
           use_aws_cli: true
           agent_uuid: ${MCD_AGENT_UUID_WITH_AWS_AGENT}
           agent_version: ${NEXT_VERSION}
@@ -664,7 +658,6 @@ workflows:
       - update-and-validate-golden-agent:
           name: gcp-prod-update-and-validate-golden-agent
           image_variant: cloudrun
-          serial-group: << pipeline.project.slug >>/golden-agent-prod-gcp
           agent_uuid: ${MCD_AGENT_UUID_WITH_GCP_AGENT}
           agent_version: ${VERSION_TAG}
           pre-steps:
@@ -677,7 +670,6 @@ workflows:
       - update-and-validate-golden-agent:
           name: az-prod-update-and-validate-golden-agent
           image_variant: azure
-          serial-group: << pipeline.project.slug >>/golden-agent-prod-az
           agent_uuid: ${MCD_AGENT_UUID_WITH_AZ_AGENT}
           agent_version: ${VERSION_TAG}
           sleep_seconds: "120"
@@ -710,7 +702,6 @@ workflows:
               ignore: /.*/
       - update-and-validate-golden-agent:
           name: aws-prod-update-and-validate-golden-agent
-          serial-group: << pipeline.project.slug >>/golden-agent-prod-aws
           use_aws_cli: true
           agent_uuid: ${MCD_AGENT_UUID_WITH_AWS_AGENT}
           agent_version: ${VERSION_TAG}
