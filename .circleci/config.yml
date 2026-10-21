@@ -237,6 +237,15 @@ jobs:
       - verify-version-in-docker-image:
           image: montecarlodata/<< parameters.docker_hub_repository >>:latest-azure
           version: << parameters.code_version >>,<< pipeline.number >>
+      # The Functions host exits at once if it can't load (e.g. a missing .NET framework),
+      # leaving a deployed agent returning 503 and unable to upgrade itself out of it.
+      - run:
+          name: Verify Azure Functions host starts
+          command: |
+            rc=0
+            docker run --rm --entrypoint sh montecarlodata/<< parameters.docker_hub_repository >>:latest-azure \
+              -c 'cd /azure-functions-host && timeout 30 dotnet Microsoft.Azure.WebJobs.Script.WebHost.dll' || rc=$?
+            if [ "$rc" -ne 124 ]; then echo "Functions host exited with code $rc instead of staying up"; exit 1; fi
       - run:
           name: Build and push azure with SBOM + SLSA provenance
           command: |
@@ -382,6 +391,10 @@ jobs:
         description: The image repository to use for the agent, pre-release-agent or agent
         type: string
         default: "agent"
+      image_variant:
+        description: Image tag suffix (azure, cloudrun, lambda) for the agent's platform; required unless use_aws_cli
+        type: string
+        default: ""
       ecr_repo_name:
         description: The ECR repository to use for the AWS CLI update
         type: string
@@ -420,11 +433,15 @@ jobs:
           steps:
             - run:
                 name: Update agent
+                # Pin the tag: without --image-tag the CLI installs the repo's most recently
+                # pushed tag, which may belong to a concurrent dev or merge-queue build.
                 command: |
+                  if [ -z "<< parameters.image_variant >>" ]; then echo "image_variant is required"; exit 1; fi
                   export MCD_DEFAULT_API_ID=${MCD_SMOKE_TESTS_API_ID}
                   export MCD_DEFAULT_API_TOKEN=${MCD_SMOKE_TESTS_API_TOKEN}
                   export MCD_AGENT_IMAGE_REPO=<< parameters.image_repo >>
-                  montecarlo agents upgrade --agent-id << parameters.agent_uuid >>
+                  montecarlo agents upgrade --agent-id << parameters.agent_uuid >> \
+                    --image-tag "<< parameters.agent_version >>-<< parameters.image_variant >>"
       - run:
           name: Run Agent Health - Validate version
           command: |
@@ -480,6 +497,8 @@ workflows:
                 - /.*\/pr-.*/
       - update-and-validate-golden-agent:
           name: gcp-dev-update-and-validate-golden-agent
+          image_variant: cloudrun
+          serial-group: << pipeline.project.slug >>/golden-agent-dev-gcp
           agent_uuid: ${MCD_AGENT_UUID_WITH_GCP_AGENT}
           agent_version: ${NEXT_VERSION}
           image_repo: pre-release-agent
@@ -496,6 +515,8 @@ workflows:
                 - dev
       - update-and-validate-golden-agent:
           name: az-dev-update-and-validate-golden-agent
+          image_variant: azure
+          serial-group: << pipeline.project.slug >>/golden-agent-dev-az
           agent_uuid: ${MCD_AGENT_UUID_WITH_AZ_AGENT}
           agent_version: ${NEXT_VERSION}
           sleep_seconds: "120"
@@ -513,6 +534,8 @@ workflows:
                 - dev
       - update-and-validate-golden-agent:
           name: gcp-prod-update-and-validate-golden-agent-merge-queue
+          image_variant: cloudrun
+          serial-group: << pipeline.project.slug >>/golden-agent-prod-gcp
           agent_uuid: ${MCD_AGENT_UUID_WITH_GCP_AGENT}
           agent_version: ${NEXT_VERSION}
           image_repo: pre-release-agent
@@ -529,6 +552,8 @@ workflows:
                 - /.*\/pr-.*/
       - update-and-validate-golden-agent:
           name: az-prod-update-and-validate-golden-agent-merge-queue
+          image_variant: azure
+          serial-group: << pipeline.project.slug >>/golden-agent-prod-az
           agent_uuid: ${MCD_AGENT_UUID_WITH_AZ_AGENT}
           agent_version: ${NEXT_VERSION}
           sleep_seconds: "120"
@@ -566,6 +591,8 @@ workflows:
                 - /.*\/pr-.*/
       - update-and-validate-golden-agent:
           name: aws-dev-update-and-validate-golden-agent
+          image_variant: lambda
+          serial-group: << pipeline.project.slug >>/golden-agent-dev-aws
           agent_uuid: ${MCD_AGENT_UUID_WITH_AWS_AGENT}
           agent_version: ${NEXT_VERSION}
           image_repo: pre-release-agent
@@ -582,6 +609,7 @@ workflows:
                 - dev
       - update-and-validate-golden-agent:
           name: aws-prod-update-and-validate-golden-agent-merge-queue
+          serial-group: << pipeline.project.slug >>/golden-agent-prod-aws
           use_aws_cli: true
           agent_uuid: ${MCD_AGENT_UUID_WITH_AWS_AGENT}
           agent_version: ${NEXT_VERSION}
@@ -635,6 +663,8 @@ workflows:
               ignore: /.*/
       - update-and-validate-golden-agent:
           name: gcp-prod-update-and-validate-golden-agent
+          image_variant: cloudrun
+          serial-group: << pipeline.project.slug >>/golden-agent-prod-gcp
           agent_uuid: ${MCD_AGENT_UUID_WITH_GCP_AGENT}
           agent_version: ${VERSION_TAG}
           pre-steps:
@@ -646,6 +676,8 @@ workflows:
             - build-and-push-prod
       - update-and-validate-golden-agent:
           name: az-prod-update-and-validate-golden-agent
+          image_variant: azure
+          serial-group: << pipeline.project.slug >>/golden-agent-prod-az
           agent_uuid: ${MCD_AGENT_UUID_WITH_AZ_AGENT}
           agent_version: ${VERSION_TAG}
           sleep_seconds: "120"
@@ -678,6 +710,7 @@ workflows:
               ignore: /.*/
       - update-and-validate-golden-agent:
           name: aws-prod-update-and-validate-golden-agent
+          serial-group: << pipeline.project.slug >>/golden-agent-prod-aws
           use_aws_cli: true
           agent_uuid: ${MCD_AGENT_UUID_WITH_AWS_AGENT}
           agent_version: ${VERSION_TAG}
