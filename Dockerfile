@@ -405,6 +405,10 @@ RUN apt-get purge -y --auto-remove \
 # delete this file that includes an old golang version (including vulns) and is not used
 RUN rm -rf /opt/startupcmdgen/
 
+# VULN-2507: patch MessagePack in the base image's pre-installed extension bundle
+COPY resources/azure/upgrade_bundle_messagepack.py /tmp/
+RUN python /tmp/upgrade_bundle_messagepack.py && rm /tmp/upgrade_bundle_messagepack.py
+
 COPY requirements.txt /
 COPY requirements-azure.txt /
 # Azure Functions host puts BOTH wwwroot (app code) and .python_packages/lib/site-packages (deps) on
