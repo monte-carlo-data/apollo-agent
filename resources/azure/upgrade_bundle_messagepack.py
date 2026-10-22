@@ -4,7 +4,9 @@ Usage: upgrade_bundle_messagepack.py <bundles_root> <version> <messagepack.nupkg
 
 Replaces MessagePack.dll / MessagePack.Annotations.dll in every bundle bin dir that ships them
 and rewrites the matching function.deps.json and extensions.csproj entries, so the version on disk and the version
-scanners read agree. Exits non-zero if the bundle layout is not what this script expects.
+scanners read agree. Only swaps within the same major.minor line, whose strong-name assembly version
+(<major>.<minor>.0.0) stays binary compatible. Exits non-zero if the bundle layout or MessagePack line is not what
+this script expects.
 """
 
 import base64
@@ -23,6 +25,31 @@ PACKAGES = {
 
 def _version_tuple(version: str) -> tuple:
     return tuple(int(part) for part in version.split("."))
+
+
+def _assembly_version(version: str) -> str:
+    major, minor = _version_tuple(version)[:2]
+    return f"{major}.{minor}.0.0"
+
+
+def _check_compatible(deps: dict, bin_dir: Path, old: str, new: str) -> None:
+    if _version_tuple(old)[:2] != _version_tuple(new)[:2]:
+        _fail(f"{bin_dir}: MessagePack {old} is not on the {new} minor line")
+    expected = _assembly_version(new)
+    for name in PACKAGES:
+        runtimes = [
+            runtime
+            for target in deps["targets"].values()
+            for runtime in target.get(f"{name}/{old}", {}).get("runtime", {}).values()
+        ]
+        if not runtimes:
+            _fail(f"{bin_dir}: no runtime entry for {name}/{old}")
+        for runtime in runtimes:
+            if runtime.get("assemblyVersion") != expected:
+                _fail(
+                    f"{bin_dir}: {name}/{old} assemblyVersion "
+                    f"{runtime.get('assemblyVersion')} != {expected}"
+                )
 
 
 def _file_version(dll: bytes) -> str:
@@ -105,6 +132,7 @@ def main() -> None:
         if _version_tuple(old) >= _version_tuple(new):
             print(f"{bin_dir}: MessagePack {old} already >= {new}, leaving as is")
             continue
+        _check_compatible(deps, bin_dir, old, new)
         for name, member in PACKAGES.items():
             dll = bin_dir / f"{name}.dll"
             if not dll.exists():
@@ -119,10 +147,15 @@ def main() -> None:
     for csproj in Path(root).glob("*/*/extensions.csproj"):
         text = csproj.read_text()
         match = re.search(r'Include="MessagePack" Version="([0-9.]+)"', text)
-        if match and _version_tuple(match.group(1)) < _version_tuple(new):
-            csproj.write_text(
-                text.replace(match.group(0), f'Include="MessagePack" Version="{new}"')
+        if not match or _version_tuple(match.group(1)) >= _version_tuple(new):
+            continue
+        if _version_tuple(match.group(1))[:2] != _version_tuple(new)[:2]:
+            _fail(
+                f"{csproj}: MessagePack {match.group(1)} is not on the {new} minor line"
             )
+        csproj.write_text(
+            text.replace(match.group(0), f'Include="MessagePack" Version="{new}"')
+        )
 
     print(f"upgraded MessagePack in {upgraded} bundle bin dir(s)")
 
