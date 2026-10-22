@@ -121,10 +121,14 @@ def _patch_csproj(csproj_path: Path) -> None:
 def main() -> int:
     root = Path(sys.argv[1]) if len(sys.argv) > 1 else BUNDLES_ROOT
     if not root.is_dir():
-        print(f"{root} not found, nothing to do")
-        return 0
+        print(f"{root} not found", file=sys.stderr)
+        return 1
+    deps_paths = sorted(root.rglob("*.deps.json"))
+    if not deps_paths:
+        print(f"no *.deps.json found under {root}", file=sys.stderr)
+        return 1
     nupkgs = {pkg: _download(pkg) for pkg in PACKAGES}
-    for deps_path in sorted(root.rglob("*.deps.json")):
+    for deps_path in deps_paths:
         _patch_deps(deps_path, nupkgs)
     for csproj_path in sorted(root.rglob("extensions.csproj")):
         _patch_csproj(csproj_path)
