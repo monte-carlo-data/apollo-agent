@@ -5,7 +5,7 @@ azure-core==1.41.0  # YET-463 VULN-1827
 azure-keyvault-secrets==4.10.0
 azure-mgmt-storage==21.2.1
 azure-storage-blob==12.23.0
-brotli==1.2.0  # Upgrade transient dependency of flask-compress to address SEC-1143 (CVE-2025-6176)
+brotli==1.2.1  # Upgrade transient dependency of flask-compress to address SEC-1143 (CVE-2025-6176), VULN-2525
 cachetools==5.3.3  # Runtime dep for apollo/credentials/external_credentials_cache.py; pinned here so it shows up in install_requires for downstream consumers
 cerberus>=1.3.5
 click>=8.3.3  # transitive (clickhouse-connect, flask); pinned for CVE-2026-7246
