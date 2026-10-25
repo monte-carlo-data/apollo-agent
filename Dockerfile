@@ -98,6 +98,10 @@ COPY --from=oracle-pki-builder /opt/oracle-pki /opt/oracle-pki
 # it — no runtime stage uses jq (only README examples and CircleCI CI scripts do).
 RUN apt-get purge -y jq || true
 
+# VULN-2561 (CVE-2026-111497): require the DSA-6582-1 libbrotli1 build.
+RUN apt-get update && apt-get install -y --no-install-recommends --only-upgrade libbrotli1 \
+    && dpkg --compare-versions "$(dpkg-query -W -f='${Version}' libbrotli1)" ge 1.1.0-2+deb13u1
+
 # clean up all unused libraries
 RUN apt-get autoremove -y && apt-get clean && rm -rf /var/lib/apt/lists/*
 
