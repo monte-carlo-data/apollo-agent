@@ -5,6 +5,7 @@ orbs:
   aws-ecr: circleci/aws-ecr@9.0.4
   docker: circleci/docker@2.2.0
   jq: circleci/jq@3.0.0
+  mcd-tools: monte-carlo/mcd-ci-tools@1.11.0
 
 commands:
   verify-version-in-docker-image:
@@ -70,7 +71,134 @@ commands:
               docker buildx create --name apollo-builder --driver docker-container
               docker buildx inspect --builder apollo-builder --bootstrap
 
+  # Copied from monte-carlo-data/mc-security .circleci/vuln-image-scan.yml (SEC-3726).
+  # Keep in sync with that file; docs: vuln-mgmt-scanner/Centralized_Docker_Scanning.md.
+  mc-vuln-image-scan:
+    description: >
+      Scan a Docker image with mc-security's centralized scanner (Trivy, plus Wiz/Aikido/Scout when
+      their credentials are set), store the reports as artifacts, then apply the gate. Needs a job
+      that requires fetch-mc-security-scanner and has a Docker daemon (machine executor or
+      setup_remote_docker).
+    parameters:
+      image:
+        type: string
+        description: Image(s) to scan, space-separated. Env vars such as ${VERSION_TAG} are expanded.
+      severity:
+        type: string
+        default: "CRITICAL,HIGH"
+        description: Severity filter, which is also the gate threshold.
+      customer_cves:
+        type: string
+        default: ""
+        description: Comma-separated customer-reported CVE IDs to cross-reference.
+      scanners:
+        type: string
+        default: ""
+        description: Subset of trivy,scout,wiz,aikido. Empty runs every scanner that has credentials.
+      fail_on_findings:
+        type: boolean
+        default: false
+        description: Fail the job when the scan finds anything or doesn't complete. Off is warn mode.
+      local_image:
+        type: boolean
+        default: true
+        description: >
+          Scan the copy in the local Docker daemon (build with --load first). Turn off only to scan
+          an image already in a registry.
+      workspace_root:
+        type: string
+        default: /tmp/mc-security-workspace
+      output_dir:
+        type: string
+        default: /tmp/mc-security-scan-results
+        description: Kept outside the checkout so reports never enter a `docker build .` context.
+    steps:
+      - attach_workspace:
+          at: << parameters.workspace_root >>
+      - run:
+          name: Install image scanners (pinned)
+          # In warn mode a download outage must not block a release: the scan then records
+          # "error" and the gate warns. With the gate on it fails here.
+          command: |
+            if ! bash "<< parameters.workspace_root >>/mc-security-scanner/ci/install-scanners.sh"; then
+              echo "[WARNING] Scanner install failed; the scan will record an error."
+              [ "<< parameters.fail_on_findings >>" != true ] || exit 1
+            fi
+      - run:
+          name: Vulnerability scan (mc-security)
+          environment:
+            SCAN_SEVERITY: << parameters.severity >>
+            SCAN_CUSTOMER_CVES: << parameters.customer_cves >>
+            SCAN_SCANNERS: << parameters.scanners >>
+            SCAN_LOCAL_IMAGE: << parameters.local_image >>
+            SCAN_OUTPUT_DIR: << parameters.output_dir >>
+          command: |
+            echo "mc-security scanner at $(cat "<< parameters.workspace_root >>/mc-security-scanner/MC_SECURITY_SHA")"
+            SCAN_IMAGES="<< parameters.image >>" \
+              bash "<< parameters.workspace_root >>/mc-security-scanner/ci/ci-scan.sh" scan
+      - store_artifacts:
+          path: << parameters.output_dir >>
+          destination: vuln-image-scan
+      - run:
+          name: Enforce vulnerability gate
+          environment:
+            SCAN_FAIL_ON_FINDINGS: << parameters.fail_on_findings >>
+            SCAN_SEVERITY: << parameters.severity >>
+            SCAN_OUTPUT_DIR: << parameters.output_dir >>
+          command: bash "<< parameters.workspace_root >>/mc-security-scanner/ci/ci-scan.sh" gate
+
 jobs:
+  # Copied from monte-carlo-data/mc-security .circleci/vuln-image-scan.yml (SEC-3726).
+  # Keep in sync with that file; docs: vuln-mgmt-scanner/Centralized_Docker_Scanning.md.
+  fetch-mc-security-scanner:
+    description: >
+      Fetch mc-security's scanner scripts at one commit and persist them to the workspace. Run with
+      the "GitHub PR Manager" context; give it the same branch/tag filters as the jobs that need it.
+    parameters:
+      mc_security_ref:
+        type: string
+        default: main
+        description: >
+          mc-security commit SHA (preferred), tag or branch. Pin a SHA so the code that runs next to
+          your push credentials can't change under you.
+    docker:
+      - image: cimg/python:3.12
+    resource_class: small
+    steps:
+      - mcd-tools/mint-github-token:
+          output_var: MC_SECURITY_TOKEN
+          repositories: '["mc-security"]'
+          permissions: '{"contents":"read"}'
+      - run:
+          name: Fetch scanner scripts from mc-security
+          environment:
+            MC_SECURITY_REF: << parameters.mc_security_ref >>
+          command: |
+            set +x
+            dest=/tmp/mc-security-workspace/mc-security-scanner
+            api=https://api.github.com/repos/monte-carlo-data/mc-security
+            mkdir -p "${dest}/ci"
+            # The token goes to curl on stdin, never argv (visible in /proc/<pid>/cmdline).
+            gh_get() {
+              printf 'Authorization: Bearer %s\n' "${MC_SECURITY_TOKEN}" \
+                | curl -fsSL --retry 3 -H @- -H "Accept: $1" "$2"
+            }
+            # Resolve the ref once so every file comes from the same commit.
+            sha="$(gh_get application/vnd.github.sha "${api}/commits/${MC_SECURITY_REF}")"
+            for path in \
+                vuln-mgmt-scanner/scan-image.sh \
+                vuln-mgmt-scanner/ci/ci-scan.sh \
+                vuln-mgmt-scanner/ci/install-scanners.sh; do
+              gh_get application/vnd.github.raw "${api}/contents/${path}?ref=${sha}" \
+                > "${dest}/${path#vuln-mgmt-scanner/}"
+            done
+            echo "${sha}" > "${dest}/MC_SECURITY_SHA"
+            echo "Fetched mc-security scanner at ${sha} (ref: ${MC_SECURITY_REF})"
+      - persist_to_workspace:
+          root: /tmp/mc-security-workspace
+          paths:
+            - mc-security-scanner
+
   build-ok:
     machine:
       image: ubuntu-2204:current
@@ -200,6 +328,10 @@ jobs:
       verify_azure_startup:
         type: boolean
         default: false
+      vuln_scan:
+        description: Scan the local build with mc-security's scanner before pushing (needs fetch-mc-security-scanner)
+        type: boolean
+        default: false
     steps:
       - checkout
       - docker/check:
@@ -236,6 +368,13 @@ jobs:
                   docker run --rm -e APPLICATIONINSIGHTS_CONNECTION_STRING="InstrumentationKey=00000000-0000-0000-0000-000000000000" \
                     --entrypoint sh montecarlodata/<< parameters.docker_hub_repository >>:latest-<< parameters.tag_suffix >> \
                     -c 'cd /home/site/wwwroot && python -c "import function_app"'
+      # Warn mode: findings are reported in the log and the vuln-image-scan artifacts, and the
+      # push still happens. Set fail_on_findings: true to block publishing vulnerable images.
+      - when:
+          condition: << parameters.vuln_scan >>
+          steps:
+            - mc-vuln-image-scan:
+                image: montecarlodata/<< parameters.docker_hub_repository >>:latest-<< parameters.tag_suffix >>
       - run:
           name: Build and push << parameters.target >> with SBOM + SLSA provenance
           command: |
@@ -470,6 +609,19 @@ workflows:
   build-and-deploy:
     jobs:
       - run-linter
+      # Same branch/tag coverage as the Azure image jobs that require it. Mints a read-only
+      # mc-security token, so the repo must be allowed on the GitHub PR Manager context.
+      - fetch-mc-security-scanner:
+          mc_security_ref: main
+          context:
+            - GitHub PR Manager
+          filters:
+            branches:
+              only:
+                - dev
+                - /.*\/pr-.*/
+            tags:
+              only: /^v.*/
       - run-test-docker:
           # run for all tags and branches, we need to add this so the job is available for the prod build jobs
           filters:
@@ -504,12 +656,14 @@ workflows:
           target: azure
           tag_suffix: azure
           verify_azure_startup: true
+          vuln_scan: true
           pre-steps:
             - checkout
             - generate-version-number-dev
           context:
             - docker
           requires:
+            - fetch-mc-security-scanner
             - run-linter
             - run-test-docker
             - run-test-docker-azure
@@ -726,12 +880,14 @@ workflows:
           target: azure
           tag_suffix: azure
           verify_azure_startup: true
+          vuln_scan: true
           pre-steps:
             - checkout
             - generate-version-number-prod
           context:
             - docker
           requires:
+            - fetch-mc-security-scanner
             # On tags, publish base images first so a release never ships without them.
             - build-and-push-prod-base-images
             - run-linter
