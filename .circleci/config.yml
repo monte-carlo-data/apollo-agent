@@ -612,7 +612,8 @@ workflows:
       # Same branch/tag coverage as the Azure image jobs that require it. Mints a read-only
       # mc-security token, so the repo must be allowed on the GitHub PR Manager context.
       - fetch-mc-security-scanner:
-          mc_security_ref: main
+          # mc-security merge of SEC-3726 (mc-security#1064). Bump deliberately; don't track main.
+          mc_security_ref: d25ff437db0fa2b25bda0900523404b711a921d5
           context:
             - GitHub PR Manager
           filters:
