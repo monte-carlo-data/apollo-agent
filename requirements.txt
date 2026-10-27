@@ -106,7 +106,7 @@ cryptography==50.0.0
     #   snowflake-connector-python
 databricks-sdk==0.39.0
     # via -r requirements.in
-databricks-sql-connector==4.5.0
+databricks-sql-connector==4.8.0
     # via -r requirements.in
 dataclasses-json==0.6.7
     # via agent-base
