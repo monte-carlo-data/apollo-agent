@@ -1,9 +1,7 @@
 """
-Retired runtime patches for databricks-sql-connector.
-
-4.2.6–4.7.x rejected Arrow results with duplicate column names; 4.8.0 fixed it upstream
-(databricks-sql-python#989), so the patch is gone. Other packages (data-collector) still
-call ``install_connector_patches()``, so it stays as a no-op until they drop the call.
+``install_connector_patches()`` is a retired no-op: databricks-sql-connector 4.8.0 fixed
+the duplicate-column-name bug it patched (databricks-sql-python#989). data-collector and
+hermes-agent still call it, so delete it only after both drop the call.
 """
 
 

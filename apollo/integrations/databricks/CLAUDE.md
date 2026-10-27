@@ -11,7 +11,8 @@
   calls over `HttpProxyClient`, using the token the CTP `resolve_databricks_token` transform
   resolves. Doesn't use the connector.
 - **`connector_patches.py`** — `install_connector_patches()`: a retired no-op. Don't
-  delete it while data-collector still imports it, or they crash with an `ImportError`.
+  delete it while data-collector or hermes-agent still import it, or they crash with an
+  `ImportError`.
 
 ## Duplicate column names
 

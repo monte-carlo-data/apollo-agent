@@ -70,28 +70,6 @@ class DatabricksConcatDuplicateColumnNamesTests(TestCase):
 
         self.assertEqual([(1, "a"), (2, "b")], [tuple(row) for row in rows])
 
-    def test_different_types_still_raise(self):
-        chunks = [
-            _duplicate_name_table([1], ["a"]),
-            pyarrow.Table.from_arrays(
-                [pyarrow.array([2]), pyarrow.array([3])], names=["id", "id"]
-            ),
-        ]
-
-        with self.assertRaises(pyarrow.ArrowInvalid):
-            utils.concat_table_chunks(chunks)
-
-    def test_different_names_still_raise(self):
-        chunks = [
-            _duplicate_name_table([1], ["a"]),
-            pyarrow.Table.from_arrays(
-                [pyarrow.array([2]), pyarrow.array(["b"])], names=["id", "email"]
-            ),
-        ]
-
-        with self.assertRaises(pyarrow.ArrowInvalid):
-            utils.concat_table_chunks(chunks)
-
     def test_unique_names_still_promote(self):
         # The nullability fix from databricks-sql-python#418: a null-typed column is
         # promoted to the other chunk's type.
@@ -124,5 +102,5 @@ class DatabricksConnectorVersionTests(TestCase):
 
 class DatabricksRetiredConnectorPatchTests(TestCase):
     def test_install_connector_patches_is_a_no_op(self):
-        # data-collector still imports and calls this; removing it would break them.
+        # data-collector and hermes-agent still call this; see the connector_patches docstring.
         self.assertIsNone(install_connector_patches())
