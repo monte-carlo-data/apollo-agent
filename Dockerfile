@@ -411,6 +411,10 @@ RUN apt-get purge -y --auto-remove \
 # delete this file that includes an old golang version (including vulns) and is not used
 RUN rm -rf /opt/startupcmdgen/
 
+# VULN-2594: upgrade Azure.Core in the base image's Functions host and extension bundle
+COPY resources/azure/upgrade_azure_core.py /tmp/
+RUN python /tmp/upgrade_azure_core.py && rm /tmp/upgrade_azure_core.py
+
 COPY requirements.txt /
 COPY requirements-azure.txt /
 # Azure Functions host puts BOTH wwwroot (app code) and .python_packages/lib/site-packages (deps) on
