@@ -342,6 +342,22 @@ RUN apt-get install -y --no-install-recommends krb5-user
 # etc.) on every rebuild rather than waiting for the base image to be republished.
 RUN apt-get upgrade -y
 
+# VULN-2592 (CVE-2026-111497): the base image's /usr/share/dotnet isn't apt-managed.
+RUN DOTNET_VER=10.0.14 \
+    && TARBALL=aspnetcore-runtime-${DOTNET_VER}-linux-x64.tar.gz \
+    && curl -fsSLo /tmp/${TARBALL} \
+         https://builds.dotnet.microsoft.com/dotnet/aspnetcore/Runtime/${DOTNET_VER}/${TARBALL} \
+    && echo "dd024fd2616926a555b75cbf7a836f6dce998199f0596d9d75676dca2b9d59c8ee8673c6ac23473c0f1a4bdd59eb5cd02fe9ab097eeaf2dd8c8bd117c85e7031  /tmp/${TARBALL}" \
+         | sha512sum -c - \
+    && tar -xzf /tmp/${TARBALL} --no-same-owner -C /usr/share/dotnet \
+    && rm /tmp/${TARBALL} \
+    && for d in /usr/share/dotnet/host/fxr/10.0.* \
+                /usr/share/dotnet/shared/Microsoft.NETCore.App/10.0.* \
+                /usr/share/dotnet/shared/Microsoft.AspNetCore.App/10.0.*; do \
+         if [ -d "$d" ] && dpkg --compare-versions "$(basename "$d")" lt "${DOTNET_VER}"; then \
+           rm -rf "$d"; fi; \
+       done
+
 # openssh-client required by git client
 RUN apt-get install -y openssh-client
 
