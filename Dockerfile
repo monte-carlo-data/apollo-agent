@@ -453,6 +453,10 @@ RUN rm -f /opt/python/*/lib/python*/site-packages/pip/_vendor/bom.cdx.json
 # clearing it pip calls the requirement satisfied and skips /opt/python.
 RUN PYTHONPATH= pip install --no-cache-dir -U "gunicorn>=26.2.0"
 
+# VULN-2596 (AIKIDO-2024-10439): the MS base image ships an unused viztracer 0.15.6.
+RUN PYTHONPATH= pip uninstall -y viztracer vizplugins \
+    && rm -f /usr/bin/viztracer /usr/bin/vizviewer /usr/bin/vdb
+
 # VULN-1818: same vendored-wheel removal as in the `base` and `lambda` stages.
 RUN rm -rf /opt/python/*/lib/python*/site-packages/setuptools/_vendor/wheel \
            /opt/python/*/lib/python*/site-packages/setuptools/_vendor/wheel-*.dist-info
