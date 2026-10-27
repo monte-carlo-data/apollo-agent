@@ -37,14 +37,14 @@ COPY --from=oracle-pki-builder /opt/oracle-pki /opt/oracle-pki
 # Published as `<version>-system-base` so downstream consumers (e.g. hermes-agent)
 # can build their own venv against the same native libs without inheriting
 # apollo's pip-installed dependencies.
-FROM python:3.13.14-slim AS system-base
+FROM python:3.13.16-slim AS system-base
 
 ENV APP_HOME=/app
 WORKDIR $APP_HOME
 
 # Refresh apt index and upgrade base-image packages so OS-level security fixes
 # (glibc, openssh, nghttp2, etc.) land on every rebuild rather than waiting for
-# the upstream python:3.13.14-slim tag to be republished.
+# the upstream python:3.13.16-slim tag to be republished.
 RUN apt-get update && apt-get upgrade -y
 # install git as we need it for the direct oscrypto dependency
 # this is a temporary workaround and it should be removed once we update oscrypto to 1.3.1+
