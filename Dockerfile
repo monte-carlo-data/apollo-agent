@@ -411,6 +411,19 @@ RUN apt-get purge -y --auto-remove \
 # delete this file that includes an old golang version (including vulns) and is not used
 RUN rm -rf /opt/startupcmdgen/
 
+# VULN-2506 (AIKIDO-2026-233096): MessagePack in the base image's extension bundle.
+ARG MESSAGEPACK_VERSION=2.5.307
+ARG MESSAGEPACK_SHA512=1472ecc828f98b1b8c503d27a2e8c49071297ff687d1f0682b5ef9aa3e0dfab96f6d0f7c2a4464362873ad8f6b0d6a06b0194cb4dda5192116a908b55208d75c
+ARG MESSAGEPACK_ANNOTATIONS_SHA512=71cff874717d098989cbd3eda25df90a7d0203bbd69cb5855bcb4a9b17d8d0edbc962d0389aabf809fa432495bb062e6b4649411dc58f8afdfa67f2ec5d04a54
+COPY resources/azure/upgrade_bundle_messagepack.py /tmp/
+RUN N=https://api.nuget.org/v3-flatcontainer \
+    && curl -fsSLo /tmp/mp.nupkg $N/messagepack/${MESSAGEPACK_VERSION}/messagepack.${MESSAGEPACK_VERSION}.nupkg \
+    && curl -fsSLo /tmp/mpa.nupkg $N/messagepack.annotations/${MESSAGEPACK_VERSION}/messagepack.annotations.${MESSAGEPACK_VERSION}.nupkg \
+    && echo "${MESSAGEPACK_SHA512}  /tmp/mp.nupkg" | sha512sum -c - \
+    && echo "${MESSAGEPACK_ANNOTATIONS_SHA512}  /tmp/mpa.nupkg" | sha512sum -c - \
+    && python /tmp/upgrade_bundle_messagepack.py /FuncExtensionBundles ${MESSAGEPACK_VERSION} /tmp/mp.nupkg /tmp/mpa.nupkg \
+    && rm -f /tmp/mp.nupkg /tmp/mpa.nupkg /tmp/upgrade_bundle_messagepack.py
+
 COPY requirements.txt /
 COPY requirements-azure.txt /
 # Azure Functions host puts BOTH wwwroot (app code) and .python_packages/lib/site-packages (deps) on
