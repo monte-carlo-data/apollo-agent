@@ -139,7 +139,12 @@ class AgentEvaluationUtils:
                 )
             except Exception as ex:
                 duration_s = time.monotonic() - t0
-                logger.exception(
+                client = context.get(CONTEXT_VAR_CLIENT)
+                should_log = not isinstance(
+                    client, BaseProxyClient
+                ) or client.should_log_exception(ex)
+                log_method = logger.exception if should_log else logger.info
+                log_method(
                     "Command failed, method=%s, target=%s, duration_s=%.3f, error_type=%s",
                     command.method,
                     type(target).__name__,

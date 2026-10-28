@@ -206,10 +206,18 @@ class HttpProxyClient(BaseProxyClient):
         except HTTPError as err:
             status_code = response.status_code
             text = response.text or str(err)
-            _logger.exception(
-                f"Request failed with {status_code}",
-                extra=dict(error_text=text),
-            )
+            if status_code == 404:
+                # Expected for some callers (e.g. dbt Cloud artifacts that don't
+                # exist for every step), log without a traceback.
+                _logger.info(
+                    f"Request failed with {status_code}",
+                    extra=dict(error_text=text),
+                )
+            else:
+                _logger.exception(
+                    f"Request failed with {status_code}",
+                    extra=dict(error_text=text),
+                )
             if retry_status_code_ranges is not None and self._is_retry_status_code(
                 retry_status_code_ranges, status_code
             ):
@@ -633,6 +641,22 @@ class HttpProxyClient(BaseProxyClient):
             return "HTTPError"
         else:
             return super().get_error_type(error=error)
+
+    def should_log_exception(self, ex: Exception) -> bool:
+        """
+        Don't log 404 errors as exceptions, callers like dbt Cloud request artifacts that
+        are missing by design and handle the not-found response themselves.
+        :param ex: the exception occurred.
+        :return: False if the exception was caused by a 404 response, True otherwise.
+        """
+        cause = ex.__cause__ or ex
+        if (
+            isinstance(cause, HTTPError)
+            and cause.response is not None
+            and cause.response.status_code == 404
+        ):
+            return False
+        return super().should_log_exception(ex)
 
     def get_error_extra_attributes(self, error: Exception) -> Optional[Dict]:
         cause = error.__cause__ or error
