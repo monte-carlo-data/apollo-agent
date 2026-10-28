@@ -210,9 +210,7 @@ class HttpProxyClient(BaseProxyClient):
             status_code = response.status_code
             text = response.text or str(err)
             log_method = (
-                _logger.info
-                if self._is_quiet_status_code(status_code)
-                else _logger.exception
+                _logger.exception if self.should_log_exception(err) else _logger.info
             )
             log_method(
                 f"Request failed with {status_code}",
@@ -653,13 +651,10 @@ class HttpProxyClient(BaseProxyClient):
         if (
             isinstance(cause, HTTPError)
             and cause.response is not None
-            and self._is_quiet_status_code(cause.response.status_code)
+            and cause.response.status_code in self._QUIET_ERROR_STATUS_CODES
         ):
             return False
         return super().should_log_exception(ex)
-
-    def _is_quiet_status_code(self, status_code: int) -> bool:
-        return status_code in self._QUIET_ERROR_STATUS_CODES
 
     def get_error_extra_attributes(self, error: Exception) -> Optional[Dict]:
         cause = error.__cause__ or error

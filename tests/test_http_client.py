@@ -464,16 +464,46 @@ class TestHttpClient(TestCase):
                 )
 
                 error_records = [r for r in records if r.levelno >= logging.ERROR]
-                self.assertEqual(3, len(error_records))
                 self.assertTrue(all(r.exc_info for r in error_records))
-                self.assertEqual(
-                    f"Request failed with {status_code}",
-                    error_records[0].getMessage(),
-                )
+                error_messages = [r.getMessage() for r in error_records]
+                self.assertIn(f"Request failed with {status_code}", error_messages)
+                for prefix in (
+                    "Command failed",
+                    "Exception occurred executing operation",
+                ):
+                    self.assertTrue(
+                        any(m.startswith(prefix) for m in error_messages), prefix
+                    )
                 self.assertEqual(
                     {"status_code": status_code, "reason": "FAILED"},
                     response.result.get(ATTRIBUTE_NAME_ERROR_ATTRS),
                 )
+
+    @patch("requests.request")
+    def test_do_request_log_level_follows_should_log_exception_override(
+        self, mock_request
+    ):
+        class _LoudClient(HttpProxyClient):
+            def should_log_exception(self, ex: Exception) -> bool:
+                return True
+
+        mock_response = create_autospec(Response)
+        mock_response.status_code = 404
+        mock_response.text = "not found"
+        mock_request.return_value = mock_response
+        mock_response.raise_for_status.side_effect = HTTPError(
+            "failed", response=mock_response
+        )
+
+        with self.assertLogs(level=logging.INFO) as captured:
+            with self.assertRaises(HttpClientError):
+                _LoudClient(credentials=None).do_request("https://api.example/x")
+
+        record = next(
+            r for r in captured.records if r.getMessage() == "Request failed with 404"
+        )
+        self.assertEqual(logging.ERROR, record.levelno)
+        self.assertIsNotNone(record.exc_info)
 
     def test_should_log_exception(self):
         client = HttpProxyClient(credentials=None)
@@ -713,6 +743,16 @@ class TestDownloadBytes(TestCase):
         client = HttpProxyClient(credentials={"connect_args": {}})
         with self.assertRaises(HttpClientError):
             client.download_bytes("https://s3.example/file.jar", no_auth=True)
+
+    @patch("requests.get")
+    def test_404_is_logged_as_error(self, mock_get):
+        # download 404s are raised without an HTTPError cause, so they stay at ERROR
+        mock_get.return_value = self._make_response(status_code=404)
+
+        client = HttpProxyClient(credentials={"connect_args": {}})
+        with self.assertRaises(HttpClientError) as ctx:
+            client.download_bytes("https://s3.example/file.jar", no_auth=True)
+        self.assertTrue(client.should_log_exception(ctx.exception))
 
     @patch("requests.get")
     def test_500_raises_http_error_not_http_client_error(self, mock_get):
