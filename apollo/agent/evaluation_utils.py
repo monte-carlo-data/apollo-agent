@@ -83,7 +83,7 @@ class AgentEvaluationUtils:
                 last_result = cls._execute_command(command, context)
             return client.process_result(last_result)
         except Exception as ex:
-            should_log = client.should_log_exception(ex)
+            should_log = cls._should_log_exception(context, ex)
             log_method = logger.exception if should_log else logger.info
             message = "Exception occurred executing operation"
             if not should_log:
@@ -96,6 +96,14 @@ class AgentEvaluationUtils:
                 ),
             )
             return AgentUtils.response_for_last_exception(client=client)
+
+    @staticmethod
+    def _should_log_exception(context: Dict, ex: Exception) -> bool:
+        """True unless the context client marks the exception as expected."""
+        client = context.get(CONTEXT_VAR_CLIENT)
+        return not isinstance(client, BaseProxyClient) or client.should_log_exception(
+            ex
+        )
 
     @classmethod
     def _execute_command(cls, command: AgentCommand, context: Dict) -> Optional[Any]:
@@ -139,11 +147,11 @@ class AgentEvaluationUtils:
                 )
             except Exception as ex:
                 duration_s = time.monotonic() - t0
-                client = context.get(CONTEXT_VAR_CLIENT)
-                should_log = not isinstance(
-                    client, BaseProxyClient
-                ) or client.should_log_exception(ex)
-                log_method = logger.exception if should_log else logger.info
+                log_method = (
+                    logger.exception
+                    if cls._should_log_exception(context, ex)
+                    else logger.info
+                )
                 log_method(
                     "Command failed, method=%s, target=%s, duration_s=%.3f, error_type=%s",
                     command.method,
