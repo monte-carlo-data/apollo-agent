@@ -20,6 +20,9 @@ from apollo.agent.utils import AgentUtils
 
 logger = logging.getLogger(__name__)
 
+# Cap on error text appended to quiet (INFO) operation-failure logs.
+_MAX_LOGGED_ERROR_LENGTH = 500
+
 # Dispatch resolves method names via getattr on the target object. Allowing
 # double-underscore ("dunder") names lets a caller walk internal attributes to
 # escape the proxy client API and reach arbitrary code execution, e.g.
@@ -87,7 +90,8 @@ class AgentEvaluationUtils:
             log_method = logger.exception if should_log else logger.info
             message = "Exception occurred executing operation"
             if not should_log:
-                message += f": {ex}"
+                # the error can be a full response body (e.g. an HTML 404 page)
+                message += f": {str(ex)[:_MAX_LOGGED_ERROR_LENGTH]}"
             log_method(
                 message,
                 extra=logging_utils.build_extra(
