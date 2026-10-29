@@ -20,6 +20,9 @@ from apollo.agent.utils import AgentUtils
 
 logger = logging.getLogger(__name__)
 
+# Cap on error text appended to quiet (INFO) operation-failure logs.
+_MAX_LOGGED_ERROR_LENGTH = 500
+
 # Dispatch resolves method names via getattr on the target object. Allowing
 # double-underscore ("dunder") names lets a caller walk internal attributes to
 # escape the proxy client API and reach arbitrary code execution, e.g.
@@ -83,11 +86,12 @@ class AgentEvaluationUtils:
                 last_result = cls._execute_command(command, context)
             return client.process_result(last_result)
         except Exception as ex:
-            should_log = client.should_log_exception(ex)
+            should_log = cls._should_log_exception(context, ex)
             log_method = logger.exception if should_log else logger.info
             message = "Exception occurred executing operation"
             if not should_log:
-                message += f": {ex}"
+                # the error can be a full response body (e.g. an HTML 404 page)
+                message += f": {str(ex)[:_MAX_LOGGED_ERROR_LENGTH]}"
             log_method(
                 message,
                 extra=logging_utils.build_extra(
@@ -96,6 +100,14 @@ class AgentEvaluationUtils:
                 ),
             )
             return AgentUtils.response_for_last_exception(client=client)
+
+    @staticmethod
+    def _should_log_exception(context: Dict, ex: Exception) -> bool:
+        """True unless the context client marks the exception as expected."""
+        client = context.get(CONTEXT_VAR_CLIENT)
+        return not isinstance(client, BaseProxyClient) or client.should_log_exception(
+            ex
+        )
 
     @classmethod
     def _execute_command(cls, command: AgentCommand, context: Dict) -> Optional[Any]:
@@ -139,7 +151,12 @@ class AgentEvaluationUtils:
                 )
             except Exception as ex:
                 duration_s = time.monotonic() - t0
-                logger.exception(
+                log_method = (
+                    logger.exception
+                    if cls._should_log_exception(context, ex)
+                    else logger.info
+                )
+                log_method(
                     "Command failed, method=%s, target=%s, duration_s=%.3f, error_type=%s",
                     command.method,
                     type(target).__name__,

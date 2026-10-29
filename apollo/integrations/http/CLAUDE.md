@@ -25,6 +25,17 @@ services, RFC 1918 ranges (where not expected), and other sensitive targets.
 - **`mulesoft_proxy_client.py`** — `MuleSoftProxyClient`: `HttpProxyClient`
   subclass for MuleSoft Anypoint.
 
+## Error logging
+
+`do_request` logs a 404 response at INFO without a traceback, and
+`should_log_exception` keeps the agent's operation-level logs quiet too: some
+callers (e.g. dbt Cloud artifact lookups) expect missing resources. The error is
+still returned to the caller. Other statuses log at ERROR. A subclass where a 404
+is a real error overrides `should_log_exception`; that one hook drives all
+three log lines. Clients that wrap an `HttpProxyClient` instead of subclassing
+it keep their own hook. Download paths raise without an `HTTPError` cause, so
+download 404s stay at ERROR.
+
 ## SSRF guard architecture
 
 The guard wraps `urllib3.util.connection.create_connection` **once at module
