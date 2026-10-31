@@ -116,7 +116,7 @@ multidict==6.9.1
     #   -r requirements-azure.in
     #   aiohttp
     #   yarl
-oauthlib==3.2.2
+oauthlib==4.0.0
     # via
     #   -c requirements.txt
     #   requests-oauthlib

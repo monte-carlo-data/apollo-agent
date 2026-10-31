@@ -279,7 +279,7 @@ numpy==2.4.6
     # via
     #   -r requirements.in
     #   pandas
-oauthlib==3.2.2
+oauthlib==4.0.0
     # via databricks-sql-connector
 openpyxl==3.1.5
     # via databricks-sql-connector
