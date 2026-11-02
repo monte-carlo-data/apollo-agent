@@ -98,6 +98,12 @@ COPY --from=oracle-pki-builder /opt/oracle-pki /opt/oracle-pki
 # it — no runtime stage uses jq (only README examples and CircleCI CI scripts do).
 RUN apt-get purge -y jq || true
 
+# VULN-2560 (CVE-2026-111497): fixed in trixie-security libbrotli1 1.1.0-2+deb13u1.
+RUN apt-get update \
+    && apt-get install -y --only-upgrade libbrotli1 \
+    && if dpkg -s libbrotli1 >/dev/null 2>&1; then \
+         dpkg --compare-versions "$(dpkg-query -W -f='${Version}' libbrotli1)" ge 1.1.0-2+deb13u1; fi
+
 # clean up all unused libraries
 RUN apt-get autoremove -y && apt-get clean && rm -rf /var/lib/apt/lists/*
 
