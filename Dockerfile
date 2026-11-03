@@ -253,6 +253,9 @@ RUN dnf -y install libaio unzip \
 # orapki + minimal JRE for building thick-mode TLS wallets (see oracle-pki-builder).
 COPY --from=oracle-pki-builder /opt/oracle-pki /opt/oracle-pki
 
+# VULN-2702: drop the curl CLI (libcurl stays); --nodeps since rpm requires `curl`.
+RUN rpm -e --nodeps curl-minimal && test ! -e /usr/bin/curl
+
 # VULN-464
 RUN rm -rf /var/lib/rpm/rpmdb.sqlite*
 
