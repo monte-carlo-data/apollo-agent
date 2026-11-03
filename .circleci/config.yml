@@ -5,6 +5,7 @@ orbs:
   aws-ecr: circleci/aws-ecr@9.0.4
   docker: circleci/docker@2.2.0
   jq: circleci/jq@3.0.0
+  mcd-tools: monte-carlo/mcd-ci-tools@1.12.0
 
 commands:
   verify-version-in-docker-image:
@@ -200,6 +201,10 @@ jobs:
       verify_azure_startup:
         type: boolean
         default: false
+      vuln_scan:
+        description: Scan the local build with the Security team's image scanner before pushing (needs the vuln-image-scan context)
+        type: boolean
+        default: false
     steps:
       - checkout
       - docker/check:
@@ -236,6 +241,14 @@ jobs:
                   docker run --rm -e APPLICATIONINSIGHTS_CONNECTION_STRING="InstrumentationKey=00000000-0000-0000-0000-000000000000" \
                     --entrypoint sh montecarlodata/<< parameters.docker_hub_repository >>:latest-<< parameters.tag_suffix >> \
                     -c 'cd /home/site/wwwroot && python -c "import function_app"'
+      # Warn mode: findings are reported in the log and the vuln-image-scan artifacts, and the
+      # push still happens. Set fail_on_findings: true to block publishing vulnerable images.
+      - when:
+          condition: << parameters.vuln_scan >>
+          steps:
+            - mcd-tools/vuln-image-scan:
+                image: montecarlodata/<< parameters.docker_hub_repository >>:latest-<< parameters.tag_suffix >>
+                scanners: trivy,scout,wiz,aikido
       - run:
           name: Build and push << parameters.target >> with SBOM + SLSA provenance
           command: |
@@ -504,11 +517,14 @@ workflows:
           target: azure
           tag_suffix: azure
           verify_azure_startup: true
+          vuln_scan: true
           pre-steps:
             - checkout
             - generate-version-number-dev
           context:
             - docker
+            # Wiz and Aikido credentials for the image scan (SEC-3726).
+            - vuln-image-scan
           requires:
             - run-linter
             - run-test-docker
@@ -726,11 +742,14 @@ workflows:
           target: azure
           tag_suffix: azure
           verify_azure_startup: true
+          vuln_scan: true
           pre-steps:
             - checkout
             - generate-version-number-prod
           context:
             - docker
+            # Wiz and Aikido credentials for the image scan (SEC-3726).
+            - vuln-image-scan
           requires:
             # On tags, publish base images first so a release never ships without them.
             - build-and-push-prod-base-images
