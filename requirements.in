@@ -41,7 +41,7 @@ trino==0.336.0
 protobuf==5.29.6
 psycopg2-binary==2.9.12  # latest 2.9.x; bumped from 2.9.9 which had no Python 3.13 (cp313) wheels
 pyarrow==23.0.1  # CVE-2026-25087 (Python bindings unaffected per GHSA-rgxp-2hwp-jwgg, but Trivy/Scout flag <23.0.1)
-pyasn1>=0.6.4  # CVE-2026-30922 (uncontrolled recursion), CVE-2026-23490, CVE-2026-59884/59885/59886
+pyasn1>=0.6.5  # CVE-2026-30922 (uncontrolled recursion), CVE-2026-23490, CVE-2026-59884/59885/59886, VULN-2705
 pycryptodome>=3.21.0
 pydantic==2.13.5  # K2-1344: required by the MCP SDK; pinned so every image resolves the same version. 2.12+ ships cp314 wheels for pydantic-core, which the azure image (Python 3.14) needs
 pyjwt>=2.15.0  # CVE-2026-32597, CVE-2026-48526, CVE-2026-102265..102273 (fixed 2.14.0), CVE-2026-101918 (fixed 2.15.0)

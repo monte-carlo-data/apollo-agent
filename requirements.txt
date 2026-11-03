@@ -333,7 +333,7 @@ pyarrow==23.0.1
     # via
     #   -r requirements.in
     #   salesforce-cdp-connector
-pyasn1==0.6.4
+pyasn1==0.6.5
     # via
     #   -r requirements.in
     #   pyasn1-modules
