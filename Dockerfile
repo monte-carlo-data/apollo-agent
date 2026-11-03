@@ -237,6 +237,9 @@ RUN ACCEPT_EULA=Y dnf install -y msodbcsql17
 # has its own base (AL2023, dnf) rather than system-base, so it needs its own install and
 # the package is krb5-workstation, not krb5-user.
 RUN dnf -y install krb5-workstation
+# VULN-2439 (CVE-2024-37371): AL2023 is locked to its releasever, so a plain dnf update only
+# reaches the vulnerable krb5-libs-1.21.3-8.amzn2023.0.1. Pull the patched krb5 from the latest release.
+RUN dnf upgrade --releasever=latest -y 'krb5*'
 
 # Oracle Instant Client for thick mode.
 ARG ORACLE_IC_ZIP
