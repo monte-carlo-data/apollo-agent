@@ -253,6 +253,12 @@ RUN dnf -y install libaio unzip \
 # orapki + minimal JRE for building thick-mode TLS wallets (see oracle-pki-builder).
 COPY --from=oracle-pki-builder /opt/oracle-pki /opt/oracle-pki
 
+# VULN-2703: drop the openssl CLI (pulled in by msodbcsql17); the TLS libraries stay.
+RUN if rpm -q openssl >/dev/null 2>&1; then rpm -e --nodeps openssl; fi \
+    && test ! -e /usr/bin/openssl \
+    && python -c "import ssl" \
+    && ls /usr/lib64/libssl.so.3 /usr/lib64/libcrypto.so.3
+
 # VULN-464
 RUN rm -rf /var/lib/rpm/rpmdb.sqlite*
 
