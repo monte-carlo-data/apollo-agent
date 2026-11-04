@@ -442,7 +442,7 @@ six==1.16.0
     #   presto-python-client
     #   python-dateutil
     #   thrift-sasl
-snowflake-connector-python==4.7.1
+snowflake-connector-python==4.7.5
     # via -r requirements.in
 sortedcontainers==2.4.0
     # via snowflake-connector-python
