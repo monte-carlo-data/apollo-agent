@@ -253,6 +253,15 @@ RUN dnf -y install libaio unzip \
 # orapki + minimal JRE for building thick-mode TLS wallets (see oracle-pki-builder).
 COPY --from=oracle-pki-builder /opt/oracle-pki /opt/oracle-pki
 
+# YET-3479: scanners match /usr/bin/curl and /usr/bin/openssl by their upstream
+# version and ignore AL2023 backports. The agent runs neither CLI; curl is only
+# the build-time downloader above. --nodeps because rpm (for `rpm -i <url>`) and
+# msodbcsql17 declare package deps on them; the driver links libcrypto, not the
+# CLI. The libraries stay: libcurl (rpm, dnf, git https) and openssl-libs.
+# Must run before the rpmdb removal below.
+RUN rpm -e --nodeps curl-minimal openssl \
+    && ! command -v curl && ! command -v openssl
+
 # VULN-464
 RUN rm -rf /var/lib/rpm/rpmdb.sqlite*
 
