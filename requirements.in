@@ -32,7 +32,7 @@ lxml>=6.1.0  # CVE-2026-41066 (XXE)
 lambda-git==0.1.1
 looker-sdk==24.2.0
 mcp==1.30.0  # K2-1344: generic MCP client (apollo/integrations/mcp). 1.x, not 2.x: 2.x moved to httpx2 and a new client API. Also pulls server-side packages (starlette, uvicorn, sse-starlette, python-multipart, pydantic-settings) that the agent never imports
-msal>=1.38.0  # VULN-1806 (AIKIDO-2026-10042); allow cryptography>=49 (AIKIDO-2026-94131); 1.36.0 capped cryptography<49, 1.31.0 capped <46
+msal>=1.39.0  # VULN-1806/VULN-2458 (AIKIDO-2026-10042); allow cryptography>=49 (AIKIDO-2026-94131); 1.36.0 capped cryptography<49, 1.31.0 capped <46
 numpy>=2.1.0  # numpy 2 required for Python 3.13: cp313 wheels first shipped in 2.1.0. The old "numpy.dtype size changed" ABI risk (https://github.com/numpy/numpy/issues/26710) is moot once every native dep is built against numpy 2.
 oracledb>=3.3.0,<5  # cp314 wheels first shipped in 3.3.0 (YET-2254, azure image on Python 3.14). <5, not <4: this file is mcd-agent's install_requires, and data-collector already runs 4.x. Moving our images to 4.x (drops Oracle Client <19c for thick mode; the image ships Instant Client 23.8) is its own change. Releases after 4.0.2 are calendar-versioned (26.x), which <5 also excludes
 orjson>=3.11.6  # CVE-2025-67221: recursion DoS in orjson.dumps thru 3.11.4

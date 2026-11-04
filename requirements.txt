@@ -266,7 +266,7 @@ mcp==1.30.0
     # via -r requirements.in
 more-itertools==10.7.0
     # via simple-salesforce
-msal==1.38.0
+msal==1.39.0
     # via
     #   -r requirements.in
     #   azure-identity
