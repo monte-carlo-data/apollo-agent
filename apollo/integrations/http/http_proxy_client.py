@@ -56,6 +56,9 @@ class HttpProxyClient(BaseProxyClient):
     - `disabled`: Set to True to disable SSL verification
     """
 
+    # Statuses some callers expect (e.g. missing artifacts), logged without a traceback.
+    _QUIET_ERROR_STATUS_CODES = frozenset({404})
+
     def __init__(
         self,
         credentials: Optional[Dict],
@@ -206,7 +209,10 @@ class HttpProxyClient(BaseProxyClient):
         except HTTPError as err:
             status_code = response.status_code
             text = response.text or str(err)
-            _logger.exception(
+            log_method = (
+                _logger.exception if self.should_log_exception(err) else _logger.info
+            )
+            log_method(
                 f"Request failed with {status_code}",
                 extra=dict(error_text=text),
             )
@@ -633,6 +639,22 @@ class HttpProxyClient(BaseProxyClient):
             return "HTTPError"
         else:
             return super().get_error_type(error=error)
+
+    def should_log_exception(self, ex: Exception) -> bool:
+        """
+        Don't log quiet statuses (see `_QUIET_ERROR_STATUS_CODES`) as exceptions: some callers
+        expect missing resources and handle the not-found response themselves.
+        :param ex: the exception occurred.
+        :return: False if the exception was caused by a quiet status response, True otherwise.
+        """
+        cause = ex.__cause__ or ex
+        if (
+            isinstance(cause, HTTPError)
+            and cause.response is not None
+            and cause.response.status_code in self._QUIET_ERROR_STATUS_CODES
+        ):
+            return False
+        return super().should_log_exception(ex)
 
     def get_error_extra_attributes(self, error: Exception) -> Optional[Dict]:
         cause = error.__cause__ or error
