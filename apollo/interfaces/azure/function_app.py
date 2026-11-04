@@ -31,7 +31,7 @@ root_logger.setLevel(logging.DEBUG if is_debug else logging.INFO)
 
 # configure the Azure Log Monitor, it gets the Instrumentation Key
 # from APPINSIGHTS_INSTRUMENTATIONKEY env var
-configure_azure_monitor()
+configure_azure_monitor(instrumentation_options={"httpx": {"enabled": False}})
 
 # configure the log context to include the agent context in all log messages
 log_context = AzureLogContext()

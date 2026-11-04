@@ -71,10 +71,8 @@ idna==3.15
     #   -c requirements.txt
     #   requests
 importlib-metadata==7.1.0
-    # via
-    #   -r requirements-cloudrun.in
-    #   opentelemetry-api
-opentelemetry-api==1.40.0
+    # via -r requirements-cloudrun.in
+opentelemetry-api==1.45.1
     # via
     #   -r requirements-cloudrun.in
     #   google-cloud-logging
