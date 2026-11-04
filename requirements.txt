@@ -279,8 +279,10 @@ numpy==2.4.6
     # via
     #   -r requirements.in
     #   pandas
-oauthlib==3.2.2
-    # via databricks-sql-connector
+oauthlib==4.0.1
+    # via
+    #   -r requirements.in
+    #   databricks-sql-connector
 openpyxl==3.1.5
     # via databricks-sql-connector
 oracledb==3.3.0
@@ -333,7 +335,7 @@ pyarrow==23.0.1
     # via
     #   -r requirements.in
     #   salesforce-cdp-connector
-pyasn1==0.6.4
+pyasn1==0.6.5
     # via
     #   -r requirements.in
     #   pyasn1-modules
