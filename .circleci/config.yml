@@ -409,6 +409,10 @@ jobs:
         description: The AWS account to use for the ECR repo update
         type: string
         default: "${AWS_AGENT_ECR_ACCOUNT_PROD}"
+      upgrade_retry_minutes:
+        description: How long to keep retrying the upgrade while the new image tag isn't resolvable yet
+        type: integer
+        default: 0
     steps:
       - jq/install
       - run:
@@ -441,13 +445,28 @@ jobs:
                 name: Update agent
                 # Pin the tag: without --image-tag the CLI installs the repo's most recently
                 # pushed tag, which may belong to a concurrent dev or merge-queue build.
+                # Cloud Run pulls Docker Hub images through mirror.gcr.io, which can take 20+
+                # minutes to resolve a freshly pushed tag ("not found", then "Container import
+                # failed"), so those errors are retried for upgrade_retry_minutes.
                 command: |
                   if [ -z "<< parameters.image_variant >>" ]; then echo "image_variant is required"; exit 1; fi
                   export MCD_DEFAULT_API_ID=${MCD_SMOKE_TESTS_API_ID}
                   export MCD_DEFAULT_API_TOKEN=${MCD_SMOKE_TESTS_API_TOKEN}
                   export MCD_AGENT_IMAGE_REPO=<< parameters.image_repo >>
-                  montecarlo agents upgrade --agent-id << parameters.agent_uuid >> \
-                    --image-tag "<< parameters.agent_version >>-<< parameters.image_variant >>"
+                  deadline=$((SECONDS + << parameters.upgrade_retry_minutes >> * 60))
+                  while true; do
+                    if out=$(montecarlo agents upgrade --agent-id << parameters.agent_uuid >> \
+                        --image-tag "<< parameters.agent_version >>-<< parameters.image_variant >>" 2>&1); then
+                      echo "$out"; exit 0
+                    fi
+                    echo "$out"
+                    if ! echo "$out" | grep -qE "Image '.*' not found|Container import failed" \
+                        || [ $SECONDS -ge $deadline ]; then
+                      exit 1
+                    fi
+                    echo "Image not resolvable yet; retrying in 60s"
+                    sleep 60
+                  done
       - run:
           name: Run Agent Health - Validate version
           # Poll rather than sleep: a restarting agent (e.g. Azure) can report the old version or fail
@@ -578,6 +597,7 @@ workflows:
       - update-and-validate-golden-agent:
           name: gcp-dev-update-and-validate-golden-agent
           image_variant: cloudrun
+          upgrade_retry_minutes: 30
           agent_uuid: ${MCD_AGENT_UUID_WITH_GCP_AGENT}
           agent_version: ${NEXT_VERSION}
           image_repo: pre-release-agent
@@ -613,6 +633,7 @@ workflows:
       - update-and-validate-golden-agent:
           name: gcp-prod-update-and-validate-golden-agent-merge-queue
           image_variant: cloudrun
+          upgrade_retry_minutes: 30
           agent_uuid: ${MCD_AGENT_UUID_WITH_GCP_AGENT}
           agent_version: ${NEXT_VERSION}
           image_repo: pre-release-agent
