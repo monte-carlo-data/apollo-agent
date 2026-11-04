@@ -253,6 +253,13 @@ RUN dnf -y install libaio unzip \
 # orapki + minimal JRE for building thick-mode TLS wallets (see oracle-pki-builder).
 COPY --from=oracle-pki-builder /opt/oracle-pki /opt/oracle-pki
 
+# YET-3479: the curl CLI is only a build-time downloader (the two steps above);
+# the agent never runs it. Drop it so scanners stop flagging /usr/bin/curl.
+# --nodeps because rpm declares a dependency on curl for `rpm -i <url>`, which
+# we never use. libcurl stays: rpm, dnf and git's https transport link it.
+# Must run before the rpmdb removal below.
+RUN rpm -e --nodeps curl-minimal && ! command -v curl
+
 # VULN-464
 RUN rm -rf /var/lib/rpm/rpmdb.sqlite*
 
