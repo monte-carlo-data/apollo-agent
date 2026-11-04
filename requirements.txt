@@ -118,7 +118,7 @@ duckdb==1.5.3
     # via -r requirements.in
 et-xmlfile==1.1.0
     # via openpyxl
-filelock==3.20.3
+filelock==4.2.7
     # via
     #   -r requirements.in
     #   snowflake-connector-python
@@ -442,7 +442,7 @@ six==1.16.0
     #   presto-python-client
     #   python-dateutil
     #   thrift-sasl
-snowflake-connector-python==4.7.1
+snowflake-connector-python==4.8.1
     # via -r requirements.in
 sortedcontainers==2.4.0
     # via snowflake-connector-python
