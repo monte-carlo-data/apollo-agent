@@ -135,30 +135,27 @@ USER mcdagent
 
 COPY --chown=mcdagent:mcdagent requirements.txt ./
 
-RUN python -m venv $VENV_DIR
-RUN . $VENV_DIR/bin/activate && pip install --no-cache-dir -r requirements.txt
-# VULN-423
-RUN . $VENV_DIR/bin/activate && pip install -U pip setuptools
-
-# Docker Scout reads pip's vendored SBOM (_vendor/bom.cdx.json) and flags its
-# bundled deps (setuptools, msgpack) as image CVEs, though they're pip-internal
-# and never imported at runtime. Drop it, like the _manifest removals below.
-RUN rm -f $VENV_DIR/lib/python*/site-packages/pip/_vendor/bom.cdx.json
-
-# VULN-1818 (GHSA-vgq5-9859-3mmw): setuptools vendors wheel 0.46.3, vulnerable
-# to the `wheel convert` path traversal (0.9.6-0.47.0, fixed in 0.48.0). It pins
-# what it vendors, so installing a patched wheel wouldn't replace this copy.
-# Nothing here builds wheels, so drop it outright — code included, not just the
-# dist-info, or convert.py stays on disk with only its metadata hidden.
-RUN rm -rf $VENV_DIR/lib/python*/site-packages/setuptools/_vendor/wheel \
-           $VENV_DIR/lib/python*/site-packages/setuptools/_vendor/wheel-*.dist-info
-
-# Secret scanners flag the public test keys in pycryptodome's self-tests as HIGH
-# "private key" findings, and pandas'/impyla's test URLs and tokens as credentials.
-# None of these suites run here.
-RUN rm -rf $VENV_DIR/lib/python*/site-packages/Crypto/SelfTest \
-           $VENV_DIR/lib/python*/site-packages/pandas/tests \
-           $VENV_DIR/lib/python*/site-packages/impala/tests
+# Everything below runs in one RUN so the deleted files never land in any layer:
+# Scout indexes each layer, not just the final filesystem.
+# - VULN-423: upgrade the venv's pip and setuptools.
+# - pip's vendored SBOM (_vendor/bom.cdx.json) lists pip-internal deps (setuptools,
+#   msgpack) that Scout reports as image CVEs, though they're never imported.
+# - VULN-1818 (GHSA-vgq5-9859-3mmw): setuptools vendors wheel 0.46.3, vulnerable
+#   to the `wheel convert` path traversal (fixed in 0.48.0), and pins what it
+#   vendors. Nothing here builds wheels, so drop it, code included.
+# - Secret scanners flag the public test keys in pycryptodome's self-tests as HIGH
+#   "private key" findings, and pandas'/impyla's test URLs and tokens as
+#   credentials. None of these suites run here.
+RUN python -m venv $VENV_DIR \
+    && . $VENV_DIR/bin/activate \
+    && pip install --no-cache-dir -r requirements.txt \
+    && pip install --no-cache-dir -U pip setuptools \
+    && rm -rf $VENV_DIR/lib/python*/site-packages/pip/_vendor/bom.cdx.json \
+              $VENV_DIR/lib/python*/site-packages/setuptools/_vendor/wheel \
+              $VENV_DIR/lib/python*/site-packages/setuptools/_vendor/wheel-*.dist-info \
+              $VENV_DIR/lib/python*/site-packages/Crypto/SelfTest \
+              $VENV_DIR/lib/python*/site-packages/pandas/tests \
+              $VENV_DIR/lib/python*/site-packages/impala/tests
 
 # copy sources in the last step so we don't install python libraries due to a change in source code
 COPY --chown=mcdagent:mcdagent apollo/ ./apollo
