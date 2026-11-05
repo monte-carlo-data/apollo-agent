@@ -446,8 +446,9 @@ jobs:
                 # Pin the tag: without --image-tag the CLI installs the repo's most recently
                 # pushed tag, which may belong to a concurrent dev or merge-queue build.
                 # Cloud Run pulls Docker Hub images through mirror.gcr.io, which can take 20+
-                # minutes to resolve a freshly pushed tag ("not found", then "Container import
-                # failed"), so those errors are retried for upgrade_retry_minutes.
+                # minutes to resolve a freshly pushed tag, so "not found" is retried for
+                # upgrade_retry_minutes. "Container import failed" isn't: retrying the same
+                # image doesn't create a new revision, so the health check below decides.
                 command: |
                   if [ -z "<< parameters.image_variant >>" ]; then echo "image_variant is required"; exit 1; fi
                   export MCD_DEFAULT_API_ID=${MCD_SMOKE_TESTS_API_ID}
@@ -460,8 +461,11 @@ jobs:
                       echo "$out"; exit 0
                     fi
                     echo "$out"
-                    if ! echo "$out" | grep -qE "Image '.*' not found|Container import failed" \
-                        || [ $SECONDS -ge $deadline ]; then
+                    if echo "$out" | grep -q "Container import failed"; then
+                      echo "Container import failed; leaving it to the version health check"
+                      exit 0
+                    fi
+                    if ! echo "$out" | grep -qE "Image '.*' not found" || [ $SECONDS -ge $deadline ]; then
                       exit 1
                     fi
                     echo "Image not resolvable yet; retrying in 60s"
