@@ -158,6 +158,13 @@ RUN rm -f $VENV_DIR/lib/python*/site-packages/pip/_vendor/bom.cdx.json
 RUN rm -rf $VENV_DIR/lib/python*/site-packages/setuptools/_vendor/wheel \
            $VENV_DIR/lib/python*/site-packages/setuptools/_vendor/wheel-*.dist-info
 
+# Secret scanners flag the public test keys in pycryptodome's self-tests as HIGH
+# "private key" findings, and pandas'/impyla's test URLs and tokens as credentials.
+# None of these suites run here.
+RUN rm -rf $VENV_DIR/lib/python*/site-packages/Crypto/SelfTest \
+           $VENV_DIR/lib/python*/site-packages/pandas/tests \
+           $VENV_DIR/lib/python*/site-packages/impala/tests
+
 # copy sources in the last step so we don't install python libraries due to a change in source code
 COPY --chown=mcdagent:mcdagent apollo/ ./apollo
 
@@ -211,7 +218,10 @@ COPY requirements.txt ./
 COPY requirements-lambda.txt ./
 RUN pip install --no-cache-dir --target "${LAMBDA_TASK_ROOT}" \
     -r requirements.txt \
-    -r requirements-lambda.txt
+    -r requirements-lambda.txt \
+    # Bundled test suites with fake keys and credentials, see the base stage.
+    && rm -rf "${LAMBDA_TASK_ROOT}/Crypto/SelfTest" "${LAMBDA_TASK_ROOT}/pandas/tests" \
+              "${LAMBDA_TASK_ROOT}/impala/tests"
 
 FROM public.ecr.aws/lambda/python:3.13 AS lambda
 
@@ -440,7 +450,11 @@ RUN pip install --no-cache-dir \
     && chown -R mcdagent:mcdagent /home/site/wwwroot/.python_packages \
     # Drop the SBOM the azure-functions-durable wheel bundles at the site-packages
     # root: it lists stale versions that aren't installed, tripping scout false positives.
-    && rm -rf /home/site/wwwroot/.python_packages/lib/site-packages/_manifest
+    && rm -rf /home/site/wwwroot/.python_packages/lib/site-packages/_manifest \
+    # Bundled test suites with fake keys and credentials, see the base stage.
+    && rm -rf /home/site/wwwroot/.python_packages/lib/site-packages/Crypto/SelfTest \
+              /home/site/wwwroot/.python_packages/lib/site-packages/pandas/tests \
+              /home/site/wwwroot/.python_packages/lib/site-packages/impala/tests
 
 # distutils for lambda-git, whose `git` module (imported by GitCloneClient for Looker
 # view collection) does `from distutils.spawn import find_executable`. distutils left
