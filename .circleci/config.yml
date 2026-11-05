@@ -5,7 +5,7 @@ orbs:
   aws-ecr: circleci/aws-ecr@9.0.4
   docker: circleci/docker@2.2.0
   jq: circleci/jq@3.0.0
-  mcd-tools: monte-carlo/mcd-ci-tools@1.12.0
+  mcd-tools: monte-carlo/mcd-ci-tools@1.14.0
 
 commands:
   verify-version-in-docker-image:
@@ -241,14 +241,16 @@ jobs:
                   docker run --rm -e APPLICATIONINSIGHTS_CONNECTION_STRING="InstrumentationKey=00000000-0000-0000-0000-000000000000" \
                     --entrypoint sh montecarlodata/<< parameters.docker_hub_repository >>:latest-<< parameters.tag_suffix >> \
                     -c 'cd /home/site/wwwroot && python -c "import function_app"'
-      # Warn mode: findings are reported in the log and the vuln-image-scan artifacts, and the
-      # push still happens. Set fail_on_findings: true to block publishing vulnerable images.
+      # Warn mode: the push still happens. Set fail_on_findings: true to block publishing
+      # vulnerable images. This project's builds are public, so the findings stay out of the
+      # log and the artifacts (publish_reports: false); Wiz and Aikido keep them.
       - when:
           condition: << parameters.vuln_scan >>
           steps:
             - mcd-tools/vuln-image-scan:
                 image: montecarlodata/<< parameters.docker_hub_repository >>:latest-<< parameters.tag_suffix >>
                 scanners: trivy,scout,wiz,aikido
+                publish_reports: false
       - run:
           name: Build and push << parameters.target >> with SBOM + SLSA provenance
           command: |
@@ -552,7 +554,7 @@ workflows:
             - generate-version-number-dev
           context:
             - docker
-            # Wiz and Aikido credentials for the image scan (SEC-3726).
+            # Wiz and Aikido credentials for the image scan.
             - vuln-image-scan
           requires:
             - run-linter
@@ -779,7 +781,7 @@ workflows:
             - generate-version-number-prod
           context:
             - docker
-            # Wiz and Aikido credentials for the image scan (SEC-3726).
+            # Wiz and Aikido credentials for the image scan.
             - vuln-image-scan
           requires:
             # On tags, publish base images first so a release never ships without them.
