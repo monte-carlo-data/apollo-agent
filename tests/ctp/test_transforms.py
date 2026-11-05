@@ -691,7 +691,9 @@ class TestResolveDatabricksOauthTransform(TestCase):
 
 from apollo.integrations.ctp.transforms.resolve_redshift_credentials import (
     ResolveRedshiftCredentialsTransform,
+    _create_redshift_client,
 )
+from tests.test_aws_utils import sts_endpoints_used
 
 _REDSHIFT_RAW = {
     "cluster_identifier": "my-cluster",
@@ -718,6 +720,20 @@ def _make_redshift_step(
         input=inp,
         output={"user": user_key, "password": password_key},
     )
+
+
+class TestResolveRedshiftCredentialsStsEndpoint(TestCase):
+    def test_assume_role_uses_the_regional_sts_endpoint(self):
+        endpoints = sts_endpoints_used(
+            "us-west-2",
+            lambda: _create_redshift_client(
+                aws_region="us-east-1",
+                assumable_role="arn:aws:iam::123:role/MyRole",
+                external_id=None,
+            ),
+        )
+
+        self.assertEqual(["https://sts.us-west-2.amazonaws.com"], endpoints)
 
 
 @patch("apollo.integrations.ctp.transforms.resolve_redshift_credentials.boto3")
@@ -770,7 +786,10 @@ class TestResolveRedshiftCredentialsTransform(TestCase):
         ResolveRedshiftCredentialsTransform().execute(_make_redshift_step(), state)
         mock_boto3.Session.assert_called_once_with(region_name="us-east-1")
 
-    def test_assumes_role_when_provided(self, mock_boto3):
+    @patch(
+        "apollo.integrations.ctp.transforms.resolve_redshift_credentials.create_sts_client"
+    )
+    def test_assumes_role_when_provided(self, mock_create_sts_client, mock_boto3):
         mock_sts = MagicMock()
         mock_sts.assume_role.return_value = {
             "Credentials": {
@@ -779,7 +798,7 @@ class TestResolveRedshiftCredentialsTransform(TestCase):
                 "SessionToken": "token",
             }
         }
-        mock_boto3.client.return_value = mock_sts
+        mock_create_sts_client.return_value = mock_sts
         self._mock_redshift_client(mock_boto3)
 
         state = PipelineState(
@@ -790,12 +809,15 @@ class TestResolveRedshiftCredentialsTransform(TestCase):
         )
         ResolveRedshiftCredentialsTransform().execute(step, state)
 
-        mock_boto3.client.assert_called_with("sts")
+        mock_create_sts_client.assert_called_once_with()
         mock_sts.assume_role.assert_called_once()
         call_kwargs = mock_sts.assume_role.call_args.kwargs
         self.assertEqual("arn:aws:iam::123:role/MyRole", call_kwargs["RoleArn"])
 
-    def test_assumes_role_with_external_id(self, mock_boto3):
+    @patch(
+        "apollo.integrations.ctp.transforms.resolve_redshift_credentials.create_sts_client"
+    )
+    def test_assumes_role_with_external_id(self, mock_create_sts_client, mock_boto3):
         mock_sts = MagicMock()
         mock_sts.assume_role.return_value = {
             "Credentials": {
@@ -804,7 +826,7 @@ class TestResolveRedshiftCredentialsTransform(TestCase):
                 "SessionToken": "token",
             }
         }
-        mock_boto3.client.return_value = mock_sts
+        mock_create_sts_client.return_value = mock_sts
         self._mock_redshift_client(mock_boto3)
 
         state = PipelineState(
@@ -889,7 +911,12 @@ class TestResolveRedshiftCredentialsTransform(TestCase):
             )
         self.assertIn("password", str(ctx.exception))
 
-    def test_sts_error_raises_ctp_error_without_role_arn(self, mock_boto3):
+    @patch(
+        "apollo.integrations.ctp.transforms.resolve_redshift_credentials.create_sts_client"
+    )
+    def test_sts_error_raises_ctp_error_without_role_arn(
+        self, mock_create_sts_client, mock_boto3
+    ):
         import botocore.exceptions
 
         role_arn = "arn:aws:iam::123456789012:role/SecretRole"
@@ -903,7 +930,7 @@ class TestResolveRedshiftCredentialsTransform(TestCase):
             },
             "AssumeRole",
         )
-        mock_boto3.client.return_value = mock_sts
+        mock_create_sts_client.return_value = mock_sts
 
         state = PipelineState(raw={**_REDSHIFT_RAW, "assumable_role": role_arn})
         step = _make_redshift_step(

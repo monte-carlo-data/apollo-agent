@@ -4,6 +4,7 @@ from typing import Optional
 import boto3
 
 from apollo.agent.utils import AgentUtils
+from apollo.integrations.aws.aws_utils import create_sts_client
 from apollo.integrations.ctp.errors import CtpPipelineError
 from apollo.integrations.ctp.models import PipelineState, TransformStep
 from apollo.integrations.ctp.template import TemplateEngine
@@ -144,7 +145,7 @@ def _create_redshift_client(
             assume_role_params["ExternalId"] = external_id
 
         try:
-            assumed = boto3.client("sts").assume_role(**assume_role_params)
+            assumed = create_sts_client().assume_role(**assume_role_params)
         except Exception as exc:
             error_code = (
                 getattr(exc, "response", {})
