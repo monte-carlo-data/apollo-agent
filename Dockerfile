@@ -47,8 +47,10 @@ WORKDIR $APP_HOME
 # the upstream python:3.13.14-slim tag to be republished.
 RUN apt-get update && apt-get upgrade -y
 # The interpreter's own pip (/usr/local) lags the base image tag; scanners flag it
-# even though the venvs below get their own upgraded pip.
-RUN pip install --no-cache-dir -U pip
+# even though the venvs below get their own upgraded pip. Drop its vendored SBOM
+# like the other stages do, or Scout flags pip's bundled deps.
+RUN pip install --no-cache-dir -U pip \
+    && rm -f /usr/local/lib/python*/site-packages/pip/_vendor/bom.cdx.json
 # install git as we need it for the direct oscrypto dependency
 # this is a temporary workaround and it should be removed once we update oscrypto to 1.3.1+
 # see: https://community.snowflake.com/s/article/Python-Connector-fails-to-connect-with-LibraryNotFoundError-Error-detecting-the-version-of-libcrypto
