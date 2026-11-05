@@ -268,7 +268,7 @@ urllib3==2.8.0
     # via
     #   -c requirements.txt
     #   requests
-werkzeug==3.1.6
+werkzeug==3.1.9
     # via
     #   -c requirements.txt
     #   azure-functions
