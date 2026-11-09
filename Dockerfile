@@ -37,14 +37,18 @@ COPY --from=oracle-pki-builder /opt/oracle-pki /opt/oracle-pki
 # Published as `<version>-system-base` so downstream consumers (e.g. hermes-agent)
 # can build their own venv against the same native libs without inheriting
 # apollo's pip-installed dependencies.
-FROM python:3.13.14-slim AS system-base
+# 3.13.18 is the first 3.13 release that fixes all of the interpreter CVEs
+# scanners report against 3.13.14, including CVE-2026-115557 (ssl
+# compromised-certificate denylist) and CVE-2026-114583 (tarfile filter bypass),
+# which 3.13.16 does not.
+FROM python:3.13.18-slim AS system-base
 
 ENV APP_HOME=/app
 WORKDIR $APP_HOME
 
 # Refresh apt index and upgrade base-image packages so OS-level security fixes
 # (glibc, openssh, nghttp2, etc.) land on every rebuild rather than waiting for
-# the upstream python:3.13.14-slim tag to be republished.
+# the upstream python:3.13.18-slim tag to be republished.
 RUN apt-get update && apt-get upgrade -y
 # The interpreter's own pip (/usr/local) lags the base image tag; scanners flag it
 # even though the venvs below get their own upgraded pip. Drop its vendored SBOM
@@ -57,8 +61,9 @@ RUN pip install --no-cache-dir -U pip \
 RUN apt-get install -y --no-install-recommends git
 # install libcrypt1 for IBM DB2 ibm-db package compatibility (provides libcrypt.so.1)
 RUN apt-get install -y --no-install-recommends libcrypt1
-# openssh-client required by git client
-RUN apt-get install -y openssh-client
+# openssh-client required by git client. --no-install-recommends keeps out xauth,
+# which is only for X11 forwarding and drags in libX11 and its unfixed CVEs.
+RUN apt-get install -y --no-install-recommends openssh-client
 
 # Azure database clients uses pyodbc which requires unixODBC and 'ODBC Driver 17 for SQL Server'
 # ODBC Driver 17's latest release was April, 2024. To patch vulnerabilities raised since then,
@@ -108,6 +113,28 @@ RUN apt-get update \
     && apt-get install -y --only-upgrade libbrotli1 \
     && if dpkg -s libbrotli1 >/dev/null 2>&1; then \
          dpkg --compare-versions "$(dpkg-query -W -f='${Version}' libbrotli1)" ge 1.1.0-2+deb13u1; fi
+
+# Build-only tooling. GnuPG imported the Microsoft package-signing key above and
+# unzip extracted the Oracle client; nothing runs either at runtime, and apt keeps
+# verifying repository signatures with sqv. They carry unfixed distro CVEs, so
+# remove them. curl stays: the generic agent's docs tell operators to
+# `kubectl exec … curl` the health endpoints, and git still needs libcurl.
+RUN pkgs=""; \
+    for p in gnupg gnupg2 gnupg1 gnupg-l10n gnupg-utils gpg gpg-agent gpg-wks-client \
+             gpgsm gpgconf dirmngr keyboxd pinentry-curses unzip apt-transport-https; do \
+        dpkg -s "$p" >/dev/null 2>&1 && pkgs="$pkgs $p"; \
+    done; \
+    if [ -n "$pkgs" ]; then apt-get purge -y --auto-remove $pkgs; fi \
+    && command -v git && command -v ssh && command -v curl && command -v kinit \
+    && test -e /opt/microsoft/msodbcsql17 && { command -v sqv || command -v gpgv; }
+
+# Strip setuid/setgid bits. The agent never calls su, mount, passwd, ksu or
+# ssh-keysign, and with the bits set they are the only way code running as the
+# agent user could become root inside the container. Kubernetes deployments
+# already block this (allowPrivilegeEscalation: false); Docker Compose and other
+# runtimes may not.
+RUN find / -xdev -type f -perm /6000 -exec chmod ug-s {} + \
+    && test -z "$(find / -xdev -type f -perm /6000)"
 
 # clean up all unused libraries
 RUN apt-get autoremove -y && apt-get clean && rm -rf /var/lib/apt/lists/*
@@ -160,7 +187,15 @@ RUN python -m venv $VENV_DIR \
               $VENV_DIR/lib/python*/site-packages/setuptools/_vendor/wheel-*.dist-info \
               $VENV_DIR/lib/python*/site-packages/Crypto/SelfTest \
               $VENV_DIR/lib/python*/site-packages/pandas/tests \
-              $VENV_DIR/lib/python*/site-packages/impala/tests
+              $VENV_DIR/lib/python*/site-packages/impala/tests \
+    # teradatasql bundles its Go driver for every OS/CPU (Windows, macOS, AIX, POWER,
+    # 32-bit, ARM) but loads only the one for the running platform: teradatasql.so,
+    # or teradatasql.fips.so on FIPS hosts (see teradatasql/__init__.py). Scanners
+    # flag the vendored Go modules in every copy, so keep only the native ones.
+    && TD=$(echo $VENV_DIR/lib/python*/site-packages/teradatasql) \
+    && rm -f $TD/*.dll $TD/*.dylib $TD/teradatasql.aix.so $TD/teradatasql.power.so $TD/teradatasql.x86.so \
+    && if [ "$(uname -m)" = x86_64 ]; then \
+         rm -f $TD/teradatasql.arm.so $TD/teradatasql.arm.fips.so && test -f $TD/teradatasql.so; fi
 
 # copy sources in the last step so we don't install python libraries due to a change in source code
 COPY --chown=mcdagent:mcdagent apollo/ ./apollo
@@ -432,6 +467,33 @@ RUN apt-get purge -y --auto-remove \
 # delete this file that includes an old golang version (including vulns) and is not used
 RUN rm -rf /opt/startupcmdgen/
 
+# More base-image surface the agent never runs: the binutils toolchain, wget,
+# xdg-utils, ALSA, and GnuPG (apt verifies signatures with gpgv, which stays).
+# Together these carry most of the image's unfixed Ubuntu CVEs. Only purge what
+# is installed: the apt lists are gone by now, so naming an absent package would
+# fail the build. Purge also removes anything that depends on these; nothing in
+# the runtime path does, and the checks at the end fail the build if that changes.
+#
+# The extension bundle also ships Windows-only native DLLs (runtimes/win-*),
+# which a Linux host never loads but scanners still flag.
+RUN pkgs=""; \
+    for p in binutils binutils-common binutils-x86-64-linux-gnu libbinutils libctf0 \
+             libctf-nobfd0 libgprofng0 libsframe1 wget xdg-utils libasound2t64 \
+             libasound2-data alsa-ucm-conf alsa-topology-conf gnupg gnupg2 gnupg-l10n \
+             gnupg-utils gpg gpg-agent gpg-wks-client gpgsm gpgconf dirmngr keyboxd \
+             pinentry-curses; do \
+        dpkg -s "$p" >/dev/null 2>&1 && pkgs="$pkgs $p"; \
+    done; \
+    if [ -n "$pkgs" ]; then apt-get purge -y --auto-remove $pkgs; fi \
+    && apt-get clean \
+    && find /FuncExtensionBundles -type d -path '*/runtimes/win*' -prune -exec rm -rf {} + \
+    && command -v git && command -v ssh && command -v kinit && command -v gpgv \
+    && test -x /opt/startup/start_nonappservice.sh \
+    # No setuid/setgid binaries either (see system-base): on Azure Functions they
+    # are the only route from the agent user to root inside the container.
+    && find / -xdev -type f -perm /6000 -exec chmod ug-s {} + \
+    && test -z "$(find / -xdev -type f -perm /6000)"
+
 COPY requirements.txt /
 COPY requirements-azure.txt /
 # Azure Functions host puts BOTH wwwroot (app code) and .python_packages/lib/site-packages (deps) on
@@ -451,7 +513,12 @@ RUN pip install --no-cache-dir \
     # Bundled test suites with fake keys and credentials, see the base stage.
     && rm -rf /home/site/wwwroot/.python_packages/lib/site-packages/Crypto/SelfTest \
               /home/site/wwwroot/.python_packages/lib/site-packages/pandas/tests \
-              /home/site/wwwroot/.python_packages/lib/site-packages/impala/tests
+              /home/site/wwwroot/.python_packages/lib/site-packages/impala/tests \
+    # The Teradata driver ships its Go library for every OS/CPU; see the base stage.
+    && TD=/home/site/wwwroot/.python_packages/lib/site-packages/teradatasql \
+    && rm -f $TD/*.dll $TD/*.dylib $TD/teradatasql.aix.so $TD/teradatasql.power.so $TD/teradatasql.x86.so \
+    && if [ "$(uname -m)" = x86_64 ]; then \
+         rm -f $TD/teradatasql.arm.so $TD/teradatasql.arm.fips.so && test -f $TD/teradatasql.so; fi
 
 # distutils for lambda-git, whose `git` module (imported by GitCloneClient for Looker
 # view collection) does `from distutils.spawn import find_executable`. distutils left
