@@ -568,7 +568,7 @@ workflows:
             branches:
               only:
                 - dev
-                - /.*\/pr-.*/
+                - /^gh-readonly-queue\/.*/
       - build-and-push-image:
           name: build-and-push-dev-cloudrun
           docker_hub_repository: pre-release-agent
@@ -588,7 +588,7 @@ workflows:
             branches:
               only:
                 - dev
-                - /.*\/pr-.*/
+                - /^gh-readonly-queue\/.*/
       - build-and-push-image:
           name: build-and-push-dev-aws-proxied
           docker_hub_repository: pre-release-agent
@@ -609,7 +609,7 @@ workflows:
             branches:
               only:
                 - dev
-                - /.*\/pr-.*/
+                - /^gh-readonly-queue\/.*/
       - update-and-validate-golden-agent:
           name: gcp-dev-update-and-validate-golden-agent
           image_variant: cloudrun
@@ -663,7 +663,7 @@ workflows:
           filters:
             branches:
               only:
-                - /.*\/pr-.*/
+                - /^gh-readonly-queue\/.*/
       - update-and-validate-golden-agent:
           name: az-prod-update-and-validate-golden-agent-merge-queue
           image_variant: azure
@@ -681,7 +681,7 @@ workflows:
           filters:
             branches:
               only:
-                - /.*\/pr-.*/
+                - /^gh-readonly-queue\/.*/
       - build-and-push-lambda:
           name: build-and-push-lambda-dev
           docker_hub_repository: pre-release-agent
@@ -701,7 +701,7 @@ workflows:
             branches:
               only:
                 - dev
-                - /.*\/pr-.*/
+                - /^gh-readonly-queue\/.*/
       # Image scans: one per pushed image, each after its own push, required by nothing.
       # Versioned tags, since a concurrent dev or merge-queue build can move latest-*.
       - vuln-scan-image:
@@ -719,7 +719,7 @@ workflows:
             branches:
               only:
                 - dev
-                - /.*\/pr-.*/
+                - /^gh-readonly-queue\/.*/
       - vuln-scan-image:
           name: vuln-scan-dev-cloudrun
           image: montecarlodata/pre-release-agent:${NEXT_VERSION}-cloudrun
@@ -735,7 +735,7 @@ workflows:
             branches:
               only:
                 - dev
-                - /.*\/pr-.*/
+                - /^gh-readonly-queue\/.*/
       - vuln-scan-image:
           name: vuln-scan-dev-aws-proxied
           image: montecarlodata/pre-release-agent:${NEXT_VERSION}-aws-proxied
@@ -751,7 +751,7 @@ workflows:
             branches:
               only:
                 - dev
-                - /.*\/pr-.*/
+                - /^gh-readonly-queue\/.*/
       - vuln-scan-image:
           name: vuln-scan-dev-lambda
           image: montecarlodata/pre-release-agent:${NEXT_VERSION}-lambda
@@ -767,7 +767,7 @@ workflows:
             branches:
               only:
                 - dev
-                - /.*\/pr-.*/
+                - /^gh-readonly-queue\/.*/
       - update-and-validate-golden-agent:
           name: aws-dev-update-and-validate-golden-agent
           image_variant: lambda
@@ -802,7 +802,7 @@ workflows:
           filters:
             branches:
               only:
-                - /.*\/pr-.*/
+                - /^gh-readonly-queue\/.*/
       - push-lambda-legacy-repo:
           name: push-lambda-aws-dev
           aws_ecr_repository: mcd-pre-release-agent
@@ -819,7 +819,7 @@ workflows:
             branches:
               only:
                 - dev
-                - /.*\/pr-.*/
+                - /^gh-readonly-queue\/.*/
       - build-and-push-base-images:
           name: build-and-push-prod-base-images
           docker_hub_repository: agent
