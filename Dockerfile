@@ -128,6 +128,14 @@ RUN pkgs=""; \
     && command -v git && command -v ssh && command -v curl && command -v kinit \
     && test -e /opt/microsoft/msodbcsql17 && { command -v sqv || command -v gpgv; }
 
+# Strip setuid/setgid bits. The agent never calls su, mount, passwd, ksu or
+# ssh-keysign, and with the bits set they are the only way code running as the
+# agent user could become root inside the container. Kubernetes deployments
+# already block this (allowPrivilegeEscalation: false); Docker Compose and other
+# runtimes may not.
+RUN find / -xdev -type f -perm /6000 -exec chmod ug-s {} + \
+    && test -z "$(find / -xdev -type f -perm /6000)"
+
 # clean up all unused libraries
 RUN apt-get autoremove -y && apt-get clean && rm -rf /var/lib/apt/lists/*
 
@@ -480,7 +488,11 @@ RUN pkgs=""; \
     && apt-get clean \
     && find /FuncExtensionBundles -type d -path '*/runtimes/win*' -prune -exec rm -rf {} + \
     && command -v git && command -v ssh && command -v kinit && command -v gpgv \
-    && test -x /opt/startup/start_nonappservice.sh
+    && test -x /opt/startup/start_nonappservice.sh \
+    # No setuid/setgid binaries either (see system-base): on Azure Functions they
+    # are the only route from the agent user to root inside the container.
+    && find / -xdev -type f -perm /6000 -exec chmod ug-s {} + \
+    && test -z "$(find / -xdev -type f -perm /6000)"
 
 COPY requirements.txt /
 COPY requirements-azure.txt /
