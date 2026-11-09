@@ -11,7 +11,7 @@ The following health related endpoints are exposed by the agent:
       "version": "0.0.1",
       "build": "82",
       "env": {
-          "python_version": "3.13.16",
+          "python_version": "3.13.18",
           "server": "gunicorn/21.2.0"
       }
   }
