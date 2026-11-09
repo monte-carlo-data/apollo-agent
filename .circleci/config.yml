@@ -32,7 +32,8 @@ commands:
           PIPELINE_NUMBER=<< pipeline.number >>
           if git describe --tags --abbrev=0; then TAG=$(git describe --tags --abbrev=0); else exit 1; fi
           VERSION=${TAG#v}
-          echo "NEXT_VERSION=$(echo "$VERSION" | awk 'BEGIN{FS=OFS="."} {$3+=1} 1')rc${PIPELINE_NUMBER}" >> $BASH_ENV
+          # Exported so the image scanner can expand it in its image parameter.
+          echo "export NEXT_VERSION=$(echo "$VERSION" | awk 'BEGIN{FS=OFS="."} {$3+=1} 1')rc${PIPELINE_NUMBER}" >> $BASH_ENV
           source $BASH_ENV
         name: Generate dev version number
   generate-version-number-prod:
@@ -201,10 +202,6 @@ jobs:
       verify_azure_startup:
         type: boolean
         default: false
-      vuln_scan:
-        description: Scan the local build with the Security team's image scanner before pushing (needs the vuln-image-scan context)
-        type: boolean
-        default: false
     steps:
       - checkout
       - docker/check:
@@ -241,16 +238,6 @@ jobs:
                   docker run --rm -e APPLICATIONINSIGHTS_CONNECTION_STRING="InstrumentationKey=00000000-0000-0000-0000-000000000000" \
                     --entrypoint sh montecarlodata/<< parameters.docker_hub_repository >>:latest-<< parameters.tag_suffix >> \
                     -c 'cd /home/site/wwwroot && python -c "import function_app"'
-      # Warn mode: the push still happens. Set fail_on_findings: true to block publishing
-      # vulnerable images. This project's builds are public, so the findings stay out of the
-      # log and the artifacts (publish_reports: false); Wiz and Aikido keep them.
-      - when:
-          condition: << parameters.vuln_scan >>
-          steps:
-            - mcd-tools/vuln-image-scan:
-                image: montecarlodata/<< parameters.docker_hub_repository >>:latest-<< parameters.tag_suffix >>
-                scanners: trivy,scout,wiz,aikido
-                publish_reports: false
       - run:
           name: Build and push << parameters.target >> with SBOM + SLSA provenance
           command: |
@@ -270,6 +257,26 @@ jobs:
               --provenance=mode=max \
               --push \
               .
+
+  # Scans an image after it's pushed, with the Security team's scanner. Nothing requires this
+  # job, so it never holds up the golden-agent checks, build-ok or the merge queue. Warn mode
+  # only. The project's builds are public, so findings stay out of the log and artifacts
+  # (publish_reports: false); Wiz and Aikido keep them.
+  vuln-scan-image:
+    machine:
+      image: ubuntu-2204:current
+    parameters:
+      image:
+        description: Pushed image to scan; ${NEXT_VERSION} is expanded by the scanner
+        type: string
+    steps:
+      - docker/check:
+          use-docker-credentials-store: true
+      - mcd-tools/vuln-image-scan:
+          image: << parameters.image >>
+          local_image: false
+          scanners: trivy,scout,wiz,aikido
+          publish_reports: false
 
   build-and-push-lambda:
     machine:
@@ -548,14 +555,11 @@ workflows:
           target: azure
           tag_suffix: azure
           verify_azure_startup: true
-          vuln_scan: true
           pre-steps:
             - checkout
             - generate-version-number-dev
           context:
             - docker
-            # Wiz and Aikido credentials for the image scan.
-            - vuln-image-scan
           requires:
             - run-linter
             - run-test-docker
@@ -698,6 +702,72 @@ workflows:
               only:
                 - dev
                 - /.*\/pr-.*/
+      # Image scans: one per pushed image, each after its own push, required by nothing.
+      # Versioned tags, since a concurrent dev or merge-queue build can move latest-*.
+      - vuln-scan-image:
+          name: vuln-scan-dev-azure
+          image: montecarlodata/pre-release-agent:${NEXT_VERSION}-azure
+          pre-steps:
+            - checkout
+            - generate-version-number-dev
+          context:
+            - docker
+            - vuln-image-scan
+          requires:
+            - build-and-push-dev-azure
+          filters:
+            branches:
+              only:
+                - dev
+                - /.*\/pr-.*/
+      - vuln-scan-image:
+          name: vuln-scan-dev-cloudrun
+          image: montecarlodata/pre-release-agent:${NEXT_VERSION}-cloudrun
+          pre-steps:
+            - checkout
+            - generate-version-number-dev
+          context:
+            - docker
+            - vuln-image-scan
+          requires:
+            - build-and-push-dev-cloudrun
+          filters:
+            branches:
+              only:
+                - dev
+                - /.*\/pr-.*/
+      - vuln-scan-image:
+          name: vuln-scan-dev-aws-proxied
+          image: montecarlodata/pre-release-agent:${NEXT_VERSION}-aws-proxied
+          pre-steps:
+            - checkout
+            - generate-version-number-dev
+          context:
+            - docker
+            - vuln-image-scan
+          requires:
+            - build-and-push-dev-aws-proxied
+          filters:
+            branches:
+              only:
+                - dev
+                - /.*\/pr-.*/
+      - vuln-scan-image:
+          name: vuln-scan-dev-lambda
+          image: montecarlodata/pre-release-agent:${NEXT_VERSION}-lambda
+          pre-steps:
+            - checkout
+            - generate-version-number-dev
+          context:
+            - docker
+            - vuln-image-scan
+          requires:
+            - build-and-push-lambda-dev
+          filters:
+            branches:
+              only:
+                - dev
+                - /.*\/pr-.*/
       - update-and-validate-golden-agent:
           name: aws-dev-update-and-validate-golden-agent
           image_variant: lambda
@@ -775,14 +845,11 @@ workflows:
           target: azure
           tag_suffix: azure
           verify_azure_startup: true
-          vuln_scan: true
           pre-steps:
             - checkout
             - generate-version-number-prod
           context:
             - docker
-            # Wiz and Aikido credentials for the image scan.
-            - vuln-image-scan
           requires:
             # On tags, publish base images first so a release never ships without them.
             - build-and-push-prod-base-images
