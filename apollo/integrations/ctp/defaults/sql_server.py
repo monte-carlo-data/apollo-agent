@@ -135,6 +135,10 @@ MS_FABRIC_DEFAULT_CTP = CtpConfig(
         schema=SqlServerOdbcArgs,
         field_map={
             **_SQL_SERVER_BASE_FIELD_MAP,
+            # Self-hosted credentials send `server` (the documented key); the DC sends `host`.
+            "SERVER": (
+                "tcp:{{ raw.server | default(raw.host) }},{{ raw.port | default(1433) }}"
+            ),
             "DATABASE": "{{ raw.database | default(raw.db_name) }}",
             "Authentication": "ActiveDirectoryServicePrincipal",
             "UID": "{{ raw.client_id }}@{{ raw.tenant_id }}",
@@ -248,18 +252,29 @@ AZURE_DEDICATED_SQL_POOL_CREDENTIALS_SCHEMA = {
 
 # Fabric is dict-only — there is no legacy ODBC-string path here. The customer
 # supplies the structured fields and the proxy client builds the ODBC string.
+_MS_FABRIC_COMMON_FIELDS = {
+    "port": {"type": ["string", "integer"]},
+    "database": {"type": "string", "required": True, "empty": False},
+    "tenant_id": {"type": "string", "required": True, "empty": False},
+    "client_id": {"type": "string", "required": True, "empty": False},
+    "client_secret": {"type": "string", "required": True, "empty": False},
+}
+
+# `server` is the documented key and `host` the DC's; either (or both) is accepted.
 MS_FABRIC_CREDENTIALS_SCHEMA = {
     "connect_args": {
         "type": "dict",
         "required": True,
-        "schema": {
-            "server": {"type": "string", "required": True, "empty": False},
-            "port": {"type": ["string", "integer"]},
-            "database": {"type": "string", "required": True, "empty": False},
-            "tenant_id": {"type": "string", "required": True, "empty": False},
-            "client_id": {"type": "string", "required": True, "empty": False},
-            "client_secret": {"type": "string", "required": True, "empty": False},
-        },
+        "anyof_schema": [
+            {
+                **_MS_FABRIC_COMMON_FIELDS,
+                "server": {"type": "string", "required": True, "empty": False},
+            },
+            {
+                **_MS_FABRIC_COMMON_FIELDS,
+                "host": {"type": "string", "required": True, "empty": False},
+            },
+        ],
     },
 }
 
