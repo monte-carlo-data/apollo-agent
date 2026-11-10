@@ -34,7 +34,8 @@ class SqlServerOdbcArgs(TypedDict):
 _SQL_SERVER_BASE_FIELD_MAP = {
     "DRIVER": "{ODBC Driver 17 for SQL Server}",
     # SERVER combines host and port in ODBC native format: tcp:{host},{port}
-    "SERVER": "tcp:{{ raw.host }},{{ raw.port | default(1433) }}",
+    # `default(1433, true)` because the DC sends port=None when unset.
+    "SERVER": "tcp:{{ raw.host }},{{ raw.port | default(1433, true) }}",
     # Inner default: Jinja evaluates the argument eagerly, so without it a credential
     # carrying neither field raises "'username' is undefined" instead of yielding nothing.
     "UID": "{{ raw.user | default(raw.username | default(none)) }}",
@@ -135,9 +136,10 @@ MS_FABRIC_DEFAULT_CTP = CtpConfig(
         schema=SqlServerOdbcArgs,
         field_map={
             **_SQL_SERVER_BASE_FIELD_MAP,
-            # Self-hosted credentials send `server` (the documented key); the DC sends `host`.
+            # Both the DC and self-hosted credentials send `server`; `host` is accepted as an alias.
             "SERVER": (
-                "tcp:{{ raw.server | default(raw.host) }},{{ raw.port | default(1433) }}"
+                "tcp:{{ raw.server | default(raw.host, true) }},"
+                "{{ raw.port | default(1433, true) }}"
             ),
             "DATABASE": "{{ raw.database | default(raw.db_name) }}",
             "Authentication": "ActiveDirectoryServicePrincipal",
@@ -250,8 +252,6 @@ AZURE_DEDICATED_SQL_POOL_CREDENTIALS_SCHEMA = {
     "query_timeout": {"type": "integer"},
 }
 
-# Fabric is dict-only — there is no legacy ODBC-string path here. The customer
-# supplies the structured fields and the proxy client builds the ODBC string.
 _MS_FABRIC_COMMON_FIELDS = {
     "port": {"type": ["string", "integer"]},
     "database": {"type": "string", "required": True, "empty": False},
@@ -260,7 +260,10 @@ _MS_FABRIC_COMMON_FIELDS = {
     "client_secret": {"type": "string", "required": True, "empty": False},
 }
 
-# `server` is the documented key and `host` the DC's; either (or both) is accepted.
+# Fabric is dict-only — there is no legacy ODBC-string path here. The customer
+# supplies the structured fields and the proxy client builds the ODBC string.
+# `server` is the documented key; `host` stays valid for customers who used it
+# as a workaround.
 MS_FABRIC_CREDENTIALS_SCHEMA = {
     "connect_args": {
         "type": "dict",
@@ -273,6 +276,7 @@ MS_FABRIC_CREDENTIALS_SCHEMA = {
             {
                 **_MS_FABRIC_COMMON_FIELDS,
                 "host": {"type": "string", "required": True, "empty": False},
+                "server": {"type": "string", "empty": False},
             },
         ],
     },

@@ -21,7 +21,7 @@ _CLIENT_ID = "my-client-id"
 _CLIENT_SECRET = "my-client-secret"
 _TENANT_ID = "my-tenant-id"
 
-# Flat credentials as the DC sends them — CTP transforms these into _CONNECT_ARGS_DICT.
+# Flat credentials using the `host` alias — CTP transforms these into _CONNECT_ARGS_DICT.
 _FLAT_CREDS = {
     "host": _HOST,
     "database": _DATABASE,
@@ -37,6 +37,16 @@ _DOCUMENTED_CONNECT_ARGS = {
     "database": _DATABASE,
     "tenant_id": _TENANT_ID,
     "client_id": _CLIENT_ID,
+    "client_secret": _CLIENT_SECRET,
+}
+
+# What the DC's Fabric plugin sends to the agent (server + port, port None when unset).
+_DC_CONNECT_ARGS = {
+    "server": _HOST,
+    "port": None,
+    "database": _DATABASE,
+    "client_id": _CLIENT_ID,
+    "tenant_id": _TENANT_ID,
     "client_secret": _CLIENT_SECRET,
 }
 
@@ -250,7 +260,18 @@ class MsFabricCtpRoundTripTests(TestCase):
 
     def test_ctp_resolves_documented_server_key(self):
         """Self-hosted credentials use `server`, as the docs show."""
-        creds = {"connect_args": {**_DOCUMENTED_CONNECT_ARGS}}
+        creds = {"connect_args": {**_DOCUMENTED_CONNECT_ARGS, "port": "1434"}}
+        resolved = CtpRegistry.resolve("microsoft-fabric", creds)
+        self.assertEqual(f"tcp:{_HOST},1434", resolved["connect_args"]["SERVER"])
+
+    def test_ctp_resolves_dc_payload_with_none_port(self):
+        resolved = CtpRegistry.resolve(
+            "microsoft-fabric", {"connect_args": {**_DC_CONNECT_ARGS}}
+        )
+        self.assertEqual(_SERVER, resolved["connect_args"]["SERVER"])
+
+    def test_ctp_empty_server_falls_back_to_host(self):
+        creds = {**_FLAT_CREDS, "server": ""}
         resolved = CtpRegistry.resolve("microsoft-fabric", creds)
         self.assertEqual(_SERVER, resolved["connect_args"]["SERVER"])
 
@@ -287,6 +308,14 @@ class MsFabricCredentialsSchemaTests(TestCase):
     def test_missing_server_and_host_is_rejected(self):
         connect_args = {**_DOCUMENTED_CONNECT_ARGS}
         connect_args.pop("server")
+        self.assertNotEqual({}, self._errors(connect_args))
+
+    def test_empty_server_with_host_is_rejected(self):
+        connect_args = {**_DOCUMENTED_CONNECT_ARGS, "server": "", "host": _HOST}
+        self.assertNotEqual({}, self._errors(connect_args))
+
+    def test_null_server_with_host_is_rejected(self):
+        connect_args = {**_DOCUMENTED_CONNECT_ARGS, "server": None, "host": _HOST}
         self.assertNotEqual({}, self._errors(connect_args))
 
 

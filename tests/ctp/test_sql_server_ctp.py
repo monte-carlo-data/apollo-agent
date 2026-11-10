@@ -224,6 +224,12 @@ class TestSqlServerKerberosCtp(TestCase):
         self.assertNotIn("UID", args)
         self.assertNotIn("PWD", args)
 
+    def test_kerberos_none_port_defaults_to_1433(self):
+        creds = self._kerberos_credentials()
+        creds["port"] = None
+        args = _resolve(SQL_SERVER_DEFAULT_CTP, creds)
+        self.assertEqual("tcp:labsql.mclab.internal,1433", args["SERVER"])
+
     def test_kerberos_keeps_server_and_database(self):
         args = self._resolve_kerberos()
         self.assertEqual("tcp:labsql.mclab.internal,1433", args["SERVER"])
