@@ -1,6 +1,11 @@
 import base64
+import logging
+import traceback
+from typing import List
 from unittest import TestCase
-from unittest.mock import patch, create_autospec, ANY
+from unittest.mock import MagicMock, patch, create_autospec, ANY
+
+import git
 
 from apollo.agent.utils import AgentUtils
 from apollo.integrations.git.git_client import GitCloneClient, GitFileData
@@ -249,3 +254,56 @@ class GitTests(TestCase):
 
         self.assertEqual("1.0.1", result["stdout"])
         self.assertEqual("", result["stderr"])
+
+
+class _RecordCollector(logging.Handler):
+    def __init__(self):
+        super().__init__()
+        self.lines: List[str] = []
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self.lines.append(self.format(record))
+
+
+class TestGitCloneTokenNotLogged(TestCase):
+    """The clone token must not reach logs or tracebacks."""
+
+    TOKEN = "github_pat_SECRET123"
+    REPO_URL = "github.com/gh_account/repo.git"
+    # (credentials, masked URL prefix expected in the error)
+    CASES = [
+        ({"token": TOKEN}, "oauth2:********@github.com"),
+        ({"token": TOKEN, "username": "bb_user"}, "bb_user:********@github.com"),
+    ]
+
+    def setUp(self) -> None:
+        self._logs = _RecordCollector()
+        logging.getLogger().addHandler(self._logs)
+        self.addCleanup(logging.getLogger().removeHandler, self._logs)
+
+    def _run_clone(self, creds: dict, returncode: int, stderr: bytes) -> None:
+        client = GitCloneClient(credentials={"repo_url": self.REPO_URL, **creds})
+        # Patch Popen so lambda-git's real exec_command (and its logging) runs.
+        process = MagicMock(returncode=returncode)
+        process.communicate.return_value = (b"", stderr)
+        with patch("git.subprocess.Popen", return_value=process):
+            client.git_clone()
+
+    def test_failed_clone_does_not_leak_token(self):
+        for creds, masked in self.CASES:
+            with self.subTest(creds=creds):
+                self._logs.lines.clear()
+                with self.assertRaises(git.exceptions.GitExecutionError) as ctx:
+                    self._run_clone(creds, 128, b"remote: Invalid username or token.")
+
+                tb = "".join(traceback.format_exception(ctx.exception))
+                self.assertIn(masked, tb)
+                self.assertNotIn(self.TOKEN, tb)
+                self.assertNotIn(self.TOKEN, "\n".join(self._logs.lines))
+
+    def test_successful_clone_does_not_log_token(self):
+        for creds, _ in self.CASES:
+            with self.subTest(creds=creds):
+                self._logs.lines.clear()
+                self._run_clone(creds, 0, b"")
+                self.assertNotIn(self.TOKEN, "\n".join(self._logs.lines))
