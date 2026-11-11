@@ -308,7 +308,10 @@ class MsFabricCredentialsSchemaTests(TestCase):
     def test_missing_server_and_host_is_rejected(self):
         connect_args = {**_DOCUMENTED_CONNECT_ARGS}
         connect_args.pop("server")
-        self.assertNotEqual({}, self._errors(connect_args))
+        errors = self._errors(connect_args)
+        self.assertNotEqual({}, errors)
+        # anyof nests errors per branch; the customer must still see `server` named.
+        self.assertIn("'server': ['required field']", str(errors))
 
     def test_empty_server_with_host_is_rejected(self):
         connect_args = {**_DOCUMENTED_CONNECT_ARGS, "server": "", "host": _HOST}

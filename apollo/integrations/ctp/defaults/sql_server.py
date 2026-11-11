@@ -276,6 +276,8 @@ MS_FABRIC_CREDENTIALS_SCHEMA = {
             {
                 **_MS_FABRIC_COMMON_FIELDS,
                 "host": {"type": "string", "required": True, "empty": False},
+                # Stricter than the mapper, which falls back to `host` on an empty
+                # `server`: a blank documented key in self-hosted JSON is a mistake.
                 "server": {"type": "string", "empty": False},
             },
         ],
