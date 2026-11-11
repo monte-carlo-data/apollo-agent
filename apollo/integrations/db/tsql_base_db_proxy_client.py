@@ -7,6 +7,7 @@ from apollo.integrations.db.base_db_proxy_client import BaseDbProxyClient
 
 _ODBC_DRIVER_17 = "ODBC Driver 17 for SQL Server"
 _ODBC_DRIVER_18 = "ODBC Driver 18 for SQL Server"
+_ODBC_ENCRYPT_OFF = frozenset({"no", "false", "optional"})
 
 
 def odbc_escape(value: str) -> str:
@@ -79,7 +80,12 @@ def normalize_odbc_driver(connection_string: str) -> str:
 
     Stored and self-hosted connection strings name Driver 17, which has no arm64 build.
     Driver 18 defaults to ``Encrypt=yes``, so ``Encrypt=no`` (Driver 17's default) is
-    added when the string doesn't set it. Returned unchanged whenever Driver 17 is installed.
+    added when the string sets neither ``Encrypt`` nor ``Authentication`` (with
+    ``Authentication``, Driver 17 also defaulted to ``Encrypt=yes``). Driver 18 also
+    validates the server certificate when the server forces encryption, even with
+    ``Encrypt=no``; Driver 17 didn't, so ``TrustServerCertificate=yes`` is added when
+    encryption is off and the string doesn't set it. Returned unchanged whenever Driver 17
+    is installed.
     """
     pairs = _split_odbc_pairs(connection_string)
     keys = [pair.split("=", 1)[0].strip().lower() for pair in pairs]
@@ -98,8 +104,15 @@ def normalize_odbc_driver(connection_string: str) -> str:
         return connection_string
 
     pairs[driver_index] = f"DRIVER={{{_ODBC_DRIVER_18}}}"
-    if "encrypt" not in keys:
+    if "encrypt" in keys:
+        encrypt = pairs[keys.index("encrypt")].split("=", 1)[-1].strip().lower()
+    elif "authentication" in keys:
+        encrypt = "yes"
+    else:
+        encrypt = "no"
         pairs.append("Encrypt=no")
+    if encrypt in _ODBC_ENCRYPT_OFF and "trustservercertificate" not in keys:
+        pairs.append("TrustServerCertificate=yes")
     return ";".join(pairs)
 
 
