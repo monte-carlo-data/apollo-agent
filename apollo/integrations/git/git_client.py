@@ -14,6 +14,9 @@ import git
 
 logger = logging.getLogger(__name__)
 
+# lambda-git logs every command at INFO, and HTTPS clone commands carry the token in the URL.
+logging.getLogger("git").setLevel(logging.WARNING)
+
 
 @dataclass
 class GitFileData:
@@ -153,7 +156,7 @@ class GitCloneClient:
         except git.exceptions.GitExecutionError as e:  # type: ignore[attr-defined]
             password_removed_message = self._replace_passwords_in_urls(str(e))
 
-            raise git.exceptions.GitExecutionError(password_removed_message)  # type: ignore[attr-defined]
+            raise git.exceptions.GitExecutionError(password_removed_message) from None  # type: ignore[attr-defined]
 
     def _build_ssl_config_args(self) -> List[str]:
         """
