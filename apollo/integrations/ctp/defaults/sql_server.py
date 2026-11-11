@@ -34,7 +34,8 @@ class SqlServerOdbcArgs(TypedDict):
 _SQL_SERVER_BASE_FIELD_MAP = {
     "DRIVER": "{ODBC Driver 17 for SQL Server}",
     # SERVER combines host and port in ODBC native format: tcp:{host},{port}
-    "SERVER": "tcp:{{ raw.host }},{{ raw.port | default(1433) }}",
+    # `default(1433, true)` because the DC sends port=None when unset.
+    "SERVER": "tcp:{{ raw.host }},{{ raw.port | default(1433, true) }}",
     # Inner default: Jinja evaluates the argument eagerly, so without it a credential
     # carrying neither field raises "'username' is undefined" instead of yielding nothing.
     "UID": "{{ raw.user | default(raw.username | default(none)) }}",
@@ -135,6 +136,11 @@ MS_FABRIC_DEFAULT_CTP = CtpConfig(
         schema=SqlServerOdbcArgs,
         field_map={
             **_SQL_SERVER_BASE_FIELD_MAP,
+            # Both the DC and self-hosted credentials send `server`; `host` is accepted as an alias.
+            "SERVER": (
+                "tcp:{{ raw.server | default(raw.host, true) }},"
+                "{{ raw.port | default(1433, true) }}"
+            ),
             "DATABASE": "{{ raw.database | default(raw.db_name) }}",
             "Authentication": "ActiveDirectoryServicePrincipal",
             "UID": "{{ raw.client_id }}@{{ raw.tenant_id }}",
@@ -246,20 +252,35 @@ AZURE_DEDICATED_SQL_POOL_CREDENTIALS_SCHEMA = {
     "query_timeout": {"type": "integer"},
 }
 
+_MS_FABRIC_COMMON_FIELDS = {
+    "port": {"type": ["string", "integer"]},
+    "database": {"type": "string", "required": True, "empty": False},
+    "tenant_id": {"type": "string", "required": True, "empty": False},
+    "client_id": {"type": "string", "required": True, "empty": False},
+    "client_secret": {"type": "string", "required": True, "empty": False},
+}
+
 # Fabric is dict-only — there is no legacy ODBC-string path here. The customer
 # supplies the structured fields and the proxy client builds the ODBC string.
+# `server` is the documented key; `host` stays valid for customers who used it
+# as a workaround.
 MS_FABRIC_CREDENTIALS_SCHEMA = {
     "connect_args": {
         "type": "dict",
         "required": True,
-        "schema": {
-            "server": {"type": "string", "required": True, "empty": False},
-            "port": {"type": ["string", "integer"]},
-            "database": {"type": "string", "required": True, "empty": False},
-            "tenant_id": {"type": "string", "required": True, "empty": False},
-            "client_id": {"type": "string", "required": True, "empty": False},
-            "client_secret": {"type": "string", "required": True, "empty": False},
-        },
+        "anyof_schema": [
+            {
+                **_MS_FABRIC_COMMON_FIELDS,
+                "server": {"type": "string", "required": True, "empty": False},
+            },
+            {
+                **_MS_FABRIC_COMMON_FIELDS,
+                "host": {"type": "string", "required": True, "empty": False},
+                # Stricter than the mapper, which falls back to `host` on an empty
+                # `server`: a blank documented key in self-hosted JSON is a mistake.
+                "server": {"type": "string", "empty": False},
+            },
+        ],
     },
 }
 
