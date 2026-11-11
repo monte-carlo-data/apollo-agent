@@ -73,14 +73,14 @@ commands:
               docker buildx inspect --builder apollo-builder --bootstrap
 
 jobs:
+  # Merge-queue gate. A small docker job, not machine (slow VM boot) or no-op (which
+  # reports as "build-and-deploy/build-ok", not the required "build-ok" check).
   build-ok:
-    machine:
-      image: ubuntu-2204:current
+    docker:
+      - image: cimg/base:current
+    resource_class: small
     steps:
-      - run:
-          name: Message
-          command: |
-            echo "OK"
+      - run: echo OK
 
   run-linter:
     docker:
