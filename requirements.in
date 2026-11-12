@@ -20,6 +20,7 @@ google-api-python-client==2.176.0  # Upgraded in VULN-620
 google-cloud-dataform==0.6.2
 google-cloud-secret-manager==2.25.0
 google-cloud-storage==2.19.0  # 2.10.0 shipped a legacy setuptools namespace (nspkg.pth + namespace_packages.txt for `google`), which corrupts the `google` namespace under Python 3.13 and crashes the Azure Functions worker (KeyError: 'google'). 2.19.0 uses native PEP 420 namespaces.
+grpcio>=1.85.1  # VULN-2730: AIKIDO-2026-473995, AIKIDO-2026-652035; transitive via google-api-core
 google-auth-httplib2>=0.2.0  # direct import in integrations/http/httplib2_client.py; declared here so it reaches install_requires, since google-api-python-client treats it as optional
 httplib2>=0.32.0  # direct import in integrations/http/httplib2_client.py; pinned for CVE-2026-59939
 httpcore==1.0.9  # transitive (httpx); pinned because integrations/http/httpx_safety.py swaps httpcore's private _network_backend. Re-run TestSsrfGuardWiring before bumping
