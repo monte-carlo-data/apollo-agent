@@ -24,6 +24,8 @@ class GitProxyClient(BaseProxyClient):
         - ssh_key
         - username (if ssh_key not specified)
         - token (if ssh_key not specified)
+        - ssh_known_hosts (optional, SSH only): known_hosts lines for a self-hosted
+          Git server; see GitCloneClient for how host keys are verified.
         """
         if not credentials:
             raise ValueError("Credentials are required for Git")

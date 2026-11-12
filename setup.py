@@ -35,6 +35,9 @@ setup(
         )
     ],
     include_package_data=True,
+    # Pinned SSH host keys for Git clones (SEC-4040); not a .py file, so list it
+    # explicitly for installs that don't pick up git-tracked package data.
+    package_data={"apollo.integrations.git": ["known_hosts"]},
     install_requires=parse_requirements(),
     classifiers=[
         "Development Status :: 3 - Alpha",
