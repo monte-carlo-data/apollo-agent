@@ -194,6 +194,7 @@ class GitTests(TestCase):
             )
         finally:
             client.delete_key()
+            client.delete_known_hosts()
 
     @patch.object(GitCloneClient, "git_clone")
     @patch.object(GitCloneClient, "delete_repo_dir")
