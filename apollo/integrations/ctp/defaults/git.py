@@ -11,6 +11,10 @@ class GitClientArgs(TypedDict):
     username: NotRequired[str]
     # SSH auth — base64-encoded PEM private key; decoded to bytes by the proxy client
     ssh_key: NotRequired[str]
+    # SSH host key verification (SEC-4040/SEC-4140) — OpenSSH known_hosts lines for a
+    # self-hosted Git server. When set, GitCloneClient clones with
+    # StrictHostKeyChecking=yes. Must be mapped here: the mapper drops unlisted fields.
+    ssh_known_hosts: NotRequired[str]
     # SSL — resolved from raw.ssl_options by the resolve_ssl_options transform.
     # GitCloneClient adds -c http.sslCAInfo=<path> when ssl_ca_path is set, and
     # -c http.sslVerify=false when ssl_skip_verification is True. No-op for SSH.
@@ -24,6 +28,7 @@ class GitClientArgs(TypedDict):
 GIT_CREDENTIALS_SCHEMA = {
     "repo_url": {"type": "string", "required": True, "empty": False},
     "ssh_key": {"type": "string", "required": True, "empty": False},
+    "ssh_known_hosts": {"type": "string", "required": False, "empty": False},
     "ssl_options": SSL_OPTIONS_FIELD,
 }
 
@@ -49,6 +54,7 @@ GIT_DEFAULT_CTP = CtpConfig(
             "token": "{{ raw.token | default(none) }}",
             "username": "{{ raw.username | default(none) }}",
             "ssh_key": "{{ raw.ssh_key | default(none) }}",
+            "ssh_known_hosts": "{{ raw.ssh_known_hosts | default(none) }}",
             "ssl_ca_path": "{{ derived.ssl_ca_path | default(none) }}",
             "ssl_skip_verification": (
                 "{{ true if derived.ssl_options is defined "
