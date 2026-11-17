@@ -494,6 +494,18 @@ RUN pkgs=""; \
     && find / -xdev -type f -perm /6000 -exec chmod ug-s {} + \
     && test -z "$(find / -xdev -type f -perm /6000)"
 
+# VULN-2595 (AIKIDO-2026-11098): IdentityModel family in the base image's Functions host.
+ARG IDENTITYMODEL_VERSION=8.19.0
+COPY resources/azure/upgrade_host_identitymodel.py resources/azure/identitymodel-nupkgs.sha512 /tmp/identitymodel/
+RUN cd /tmp/identitymodel \
+    && for f in $(awk '{print $2}' identitymodel-nupkgs.sha512); do \
+         id=${f%.${IDENTITYMODEL_VERSION}.nupkg} \
+         && curl -fsSLo $f https://api.nuget.org/v3-flatcontainer/$id/${IDENTITYMODEL_VERSION}/$f || exit 1; \
+       done \
+    && sha512sum -c identitymodel-nupkgs.sha512 \
+    && python upgrade_host_identitymodel.py /azure-functions-host ${IDENTITYMODEL_VERSION} *.nupkg \
+    && cd / && rm -rf /tmp/identitymodel
+
 COPY requirements.txt /
 COPY requirements-azure.txt /
 # Azure Functions host puts BOTH wwwroot (app code) and .python_packages/lib/site-packages (deps) on
