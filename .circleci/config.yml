@@ -5,7 +5,7 @@ orbs:
   aws-ecr: circleci/aws-ecr@9.0.4
   docker: circleci/docker@2.2.0
   jq: circleci/jq@3.0.0
-  mcd-tools: monte-carlo/mcd-ci-tools@1.16.0
+  mcd-tools: monte-carlo/mcd-ci-tools@1.17.0
 
 commands:
   verify-version-in-docker-image:
@@ -73,14 +73,14 @@ commands:
               docker buildx inspect --builder apollo-builder --bootstrap
 
 jobs:
+  # Merge-queue gate. A small docker job, not machine (slow VM boot) or no-op (which
+  # reports as "build-and-deploy/build-ok", not the required "build-ok" check).
   build-ok:
-    machine:
-      image: ubuntu-2204:current
+    docker:
+      - image: cimg/base:current
+    resource_class: small
     steps:
-      - run:
-          name: Message
-          command: |
-            echo "OK"
+      - run: echo OK
 
   run-linter:
     docker:
