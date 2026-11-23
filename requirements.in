@@ -25,7 +25,7 @@ google-auth-httplib2>=0.2.0  # direct import in integrations/http/httplib2_clien
 httplib2>=0.32.1  # direct import in integrations/http/httplib2_client.py; pinned for CVE-2026-59939 and the distrusted Comodo AAA root CA
 httpcore==1.0.9  # transitive (httpx); pinned because integrations/http/httpx_safety.py swaps httpcore's private _network_backend. Re-run TestSsrfGuardWiring before bumping
 httpx==0.28.1  # transitive (mcp); pinned because integrations/http/httpx_safety.py relies on private httpx attrs (_transport, _mounts, _pool). Re-run TestSsrfGuardWiring before bumping
-gunicorn==26.2.0  # Successive request-smuggling / message-framing fixes: AIKIDO-2026-10742 (VULN-1117/YET-1356, stricter RFC 9112/9110 parsing), AIKIDO-2026-332632 (VULN-1812, duplicate Host/Content-Type, chunked-body truncation, HEAD/1xx/204/304 framing), AIKIDO-2026-625366 (HTTP/2 environ skips the HTTP/1 header validation). We run the default sync/gthread workers and never enable the opt-in HTTP/2 support.
+gunicorn==27.0.1  # Successive request-smuggling / message-framing fixes: AIKIDO-2026-10742 (VULN-1117/YET-1356, stricter RFC 9112/9110 parsing), AIKIDO-2026-332632 (VULN-1812, duplicate Host/Content-Type, chunked-body truncation, HEAD/1xx/204/304 framing), AIKIDO-2026-625366 (HTTP/2 environ skips the HTTP/1 header validation). CVE-2026-134821 (ASGI HTTP/1 parser memory exhaustion, fix 27.0.0). We run the default sync/gthread WSGI workers, never the ASGI worker, and never enable the opt-in HTTP/2 support.
 hdbcli==2.18.27
 ibm-db>=3.2.8; platform_machine != "aarch64"  # cp314 wheels first shipped in 3.2.8 (YET-2254, azure image on Python 3.14); IBM ships no Linux arm64 driver (YET-3019)
 jinja2>=3.1.6
