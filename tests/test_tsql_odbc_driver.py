@@ -31,10 +31,10 @@ class NormalizeOdbcDriverTests(TestCase):
         self._with_drivers(_DRIVER_17, _DRIVER_18)
         self.assertEqual(_LEGACY, normalize_odbc_driver(_LEGACY))
 
-    def test_switches_to_driver_18_and_keeps_driver_17_encryption_default(self):
+    def test_switches_to_driver_18_and_keeps_driver_17_tls_defaults(self):
         self._with_drivers(_DRIVER_18)
         self.assertEqual(
-            f"DRIVER={{{_DRIVER_18}}};SERVER=tcp:db.example.com,1433;UID=user;PWD=pass;Encrypt=no",
+            f"DRIVER={{{_DRIVER_18}}};SERVER=tcp:db.example.com,1433;UID=user;PWD=pass;Encrypt=no;TrustServerCertificate=yes",
             normalize_odbc_driver(_LEGACY),
         )
 
@@ -47,10 +47,58 @@ class NormalizeOdbcDriverTests(TestCase):
             ),
         )
 
+    def test_explicit_encrypt_no_trusts_server_certificate(self):
+        self._with_drivers(_DRIVER_18)
+        for encrypt in ("no", "No", "false", "optional"):
+            with self.subTest(encrypt=encrypt):
+                self.assertEqual(
+                    f"DRIVER={{{_DRIVER_18}}};SERVER=x;Encrypt={encrypt};TrustServerCertificate=yes",
+                    normalize_odbc_driver(
+                        f"DRIVER={{{_DRIVER_17}}};SERVER=x;Encrypt={encrypt}"
+                    ),
+                )
+
+    def test_keeps_explicit_trust_server_certificate(self):
+        self._with_drivers(_DRIVER_18)
+        self.assertEqual(
+            f"DRIVER={{{_DRIVER_18}}};SERVER=x;trustservercertificate=no;Encrypt=no",
+            normalize_odbc_driver(
+                f"DRIVER={{{_DRIVER_17}}};SERVER=x;trustservercertificate=no"
+            ),
+        )
+
+    def test_encrypt_yes_still_validates_certificate(self):
+        self._with_drivers(_DRIVER_18)
+        self.assertEqual(
+            f"DRIVER={{{_DRIVER_18}}};SERVER=x;Encrypt=yes",
+            normalize_odbc_driver(f"DRIVER={{{_DRIVER_17}}};SERVER=x;Encrypt=yes"),
+        )
+
+    def test_authentication_keeps_driver_18_encryption_default(self):
+        # Driver 17 also encrypted and validated by default when Authentication was set.
+        self._with_drivers(_DRIVER_18)
+        self.assertEqual(
+            f"DRIVER={{{_DRIVER_18}}};SERVER=x;Authentication=ActiveDirectoryMsi",
+            normalize_odbc_driver(
+                f"DRIVER={{{_DRIVER_17}}};SERVER=x;Authentication=ActiveDirectoryMsi"
+            ),
+        )
+
+    def test_authentication_with_encrypt_no_trusts_server_certificate(self):
+        self._with_drivers(_DRIVER_18)
+        self.assertEqual(
+            f"DRIVER={{{_DRIVER_18}}};SERVER=x;authentication=ActiveDirectoryPassword;"
+            "Encrypt=no;TrustServerCertificate=yes",
+            normalize_odbc_driver(
+                f"DRIVER={{{_DRIVER_17}}};SERVER=x;authentication=ActiveDirectoryPassword;"
+                "Encrypt=no"
+            ),
+        )
+
     def test_preserves_braced_values(self):
         self._with_drivers(_DRIVER_18)
         self.assertEqual(
-            f"DRIVER={{{_DRIVER_18}}};PWD={{p;a}}}}ss}};UID=user;Encrypt=no",
+            f"DRIVER={{{_DRIVER_18}}};PWD={{p;a}}}}ss}};UID=user;Encrypt=no;TrustServerCertificate=yes",
             normalize_odbc_driver(
                 f"DRIVER={{{_DRIVER_17}}};PWD={{p;a}}}}ss}};UID=user"
             ),
@@ -90,14 +138,14 @@ class NormalizeOdbcDriverTests(TestCase):
     def test_unbraced_driver_value(self):
         self._with_drivers(_DRIVER_18)
         self.assertEqual(
-            f"DRIVER={{{_DRIVER_18}}};SERVER=x;Encrypt=no",
+            f"DRIVER={{{_DRIVER_18}}};SERVER=x;Encrypt=no;TrustServerCertificate=yes",
             normalize_odbc_driver(f"DRIVER={_DRIVER_17};SERVER=x"),
         )
 
     def test_trailing_semicolon(self):
         self._with_drivers(_DRIVER_18)
         self.assertEqual(
-            f"DRIVER={{{_DRIVER_18}}};SERVER=x;Encrypt=no",
+            f"DRIVER={{{_DRIVER_18}}};SERVER=x;Encrypt=no;TrustServerCertificate=yes",
             normalize_odbc_driver(f"DRIVER={{{_DRIVER_17}}};SERVER=x;"),
         )
 
@@ -110,7 +158,7 @@ class NormalizeOdbcDriverTests(TestCase):
             ),
             (
                 f"DRIVER={{{_DRIVER_17}}};SERVER=x",
-                f"DRIVER={{{_DRIVER_18}}};SERVER=x;Encrypt=no",
+                f"DRIVER={{{_DRIVER_18}}};SERVER=x;Encrypt=no;TrustServerCertificate=yes",
             ),
         ):
             with self.subTest(connection_string=connection_string):
@@ -135,13 +183,13 @@ class ProxyClientsNormalizeDriverTests(TestCase):
 
     def test_sql_server_legacy_string(self):
         self.assertEqual(
-            f"DRIVER={{{_DRIVER_18}}};SERVER=tcp:db.example.com,1433;UID=user;PWD=pass;Encrypt=no",
+            f"DRIVER={{{_DRIVER_18}}};SERVER=tcp:db.example.com,1433;UID=user;PWD=pass;Encrypt=no;TrustServerCertificate=yes",
             self._connected_string(SqlServerProxyClient, _LEGACY),
         )
 
     def test_azure_database_legacy_string(self):
         self.assertEqual(
-            f"DRIVER={{{_DRIVER_18}}};SERVER=tcp:db.example.com,1433;UID=user;PWD=pass;Encrypt=no",
+            f"DRIVER={{{_DRIVER_18}}};SERVER=tcp:db.example.com,1433;UID=user;PWD=pass;Encrypt=no;TrustServerCertificate=yes",
             self._connected_string(AzureDatabaseProxyClient, _LEGACY),
         )
 
@@ -151,5 +199,6 @@ class ProxyClientsNormalizeDriverTests(TestCase):
             {"DRIVER": f"{{{_DRIVER_17}}}", "SERVER": "fabric.example.com"},
         )
         self.assertEqual(
-            f"DRIVER={{{_DRIVER_18}}};SERVER=fabric.example.com;Encrypt=no", connected
+            f"DRIVER={{{_DRIVER_18}}};SERVER=fabric.example.com;Encrypt=no;TrustServerCertificate=yes",
+            connected,
         )

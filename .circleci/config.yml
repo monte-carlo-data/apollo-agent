@@ -5,6 +5,7 @@ orbs:
   aws-ecr: circleci/aws-ecr@9.0.4
   docker: circleci/docker@2.2.0
   jq: circleci/jq@3.0.0
+  mcd-tools: monte-carlo/mcd-ci-tools@1.17.0
 
 commands:
   verify-version-in-docker-image:
@@ -31,7 +32,8 @@ commands:
           PIPELINE_NUMBER=<< pipeline.number >>
           if git describe --tags --abbrev=0; then TAG=$(git describe --tags --abbrev=0); else exit 1; fi
           VERSION=${TAG#v}
-          echo "NEXT_VERSION=$(echo "$VERSION" | awk 'BEGIN{FS=OFS="."} {$3+=1} 1')rc${PIPELINE_NUMBER}" >> $BASH_ENV
+          # Exported so the image scanner can expand it in its image parameter.
+          echo "export NEXT_VERSION=$(echo "$VERSION" | awk 'BEGIN{FS=OFS="."} {$3+=1} 1')rc${PIPELINE_NUMBER}" >> $BASH_ENV
           source $BASH_ENV
         name: Generate dev version number
   generate-version-number-prod:
@@ -71,14 +73,14 @@ commands:
               docker buildx inspect --builder apollo-builder --bootstrap
 
 jobs:
+  # Merge-queue gate. A small docker job, not machine (slow VM boot) or no-op (which
+  # reports as "build-and-deploy/build-ok", not the required "build-ok" check).
   build-ok:
-    machine:
-      image: ubuntu-2204:current
+    docker:
+      - image: cimg/base:current
+    resource_class: small
     steps:
-      - run:
-          name: Message
-          command: |
-            echo "OK"
+      - run: echo OK
 
   run-linter:
     docker:
@@ -256,6 +258,26 @@ jobs:
               --push \
               .
 
+  # Scans an image after it's pushed, with the Security team's scanner. Nothing requires this
+  # job, so it never holds up the golden-agent checks, build-ok or the merge queue. Warn mode
+  # only. The project's builds are public, so findings stay out of the log and artifacts
+  # (publish_reports: false); Wiz and Aikido keep them.
+  vuln-scan-image:
+    machine:
+      image: ubuntu-2204:current
+    parameters:
+      image:
+        description: Pushed image to scan; ${NEXT_VERSION} is expanded by the scanner
+        type: string
+    steps:
+      - docker/check:
+          use-docker-credentials-store: true
+      - mcd-tools/vuln-image-scan:
+          image: << parameters.image >>
+          local_image: false
+          scanners: trivy,scout,wiz,aikido
+          publish_reports: false
+
   build-and-push-lambda:
     machine:
       image: ubuntu-2204:current
@@ -396,6 +418,10 @@ jobs:
         description: The AWS account to use for the ECR repo update
         type: string
         default: "${AWS_AGENT_ECR_ACCOUNT_PROD}"
+      upgrade_retry_minutes:
+        description: How long to keep retrying the upgrade while the new image tag isn't resolvable yet
+        type: integer
+        default: 0
     steps:
       - jq/install
       - run:
@@ -428,13 +454,38 @@ jobs:
                 name: Update agent
                 # Pin the tag: without --image-tag the CLI installs the repo's most recently
                 # pushed tag, which may belong to a concurrent dev or merge-queue build.
+                # Cloud Run pulls Docker Hub images through mirror.gcr.io, which can take 20+
+                # minutes to resolve a freshly pushed tag, so 404s ("Image not found", then
+                # "Container import failed") and 429 import failures (rate limited) are
+                # retried for upgrade_retry_minutes. A 400 "Container import failed" isn't:
+                # retrying the same image doesn't create a new revision, so the health check
+                # below decides. The mirror never has a tag right after the push, so jobs that
+                # retry wait 2 minutes first and then retry every 2 minutes: fewer pulls while
+                # rate limited.
                 command: |
                   if [ -z "<< parameters.image_variant >>" ]; then echo "image_variant is required"; exit 1; fi
                   export MCD_DEFAULT_API_ID=${MCD_SMOKE_TESTS_API_ID}
                   export MCD_DEFAULT_API_TOKEN=${MCD_SMOKE_TESTS_API_TOKEN}
                   export MCD_AGENT_IMAGE_REPO=<< parameters.image_repo >>
-                  montecarlo agents upgrade --agent-id << parameters.agent_uuid >> \
-                    --image-tag "<< parameters.agent_version >>-<< parameters.image_variant >>"
+                  deadline=$((SECONDS + << parameters.upgrade_retry_minutes >> * 60))
+                  if [ << parameters.upgrade_retry_minutes >> -gt 0 ]; then sleep 120; fi
+                  while true; do
+                    if out=$(montecarlo agents upgrade --agent-id << parameters.agent_uuid >> \
+                        --image-tag "<< parameters.agent_version >>-<< parameters.image_variant >>" 2>&1); then
+                      echo "$out"; exit 0
+                    fi
+                    echo "$out"
+                    if echo "$out" | grep -q "400 Container import failed"; then
+                      echo "Container import failed; leaving it to the version health check"
+                      exit 0
+                    fi
+                    if ! echo "$out" | grep -qE "404 Image '.*' not found|(404|429) Container import failed" \
+                        || [ $SECONDS -ge $deadline ]; then
+                      exit 1
+                    fi
+                    echo "Image not resolvable yet; retrying in 120s"
+                    sleep 120
+                  done
       - run:
           name: Run Agent Health - Validate version
           # Poll rather than sleep: a restarting agent (e.g. Azure) can report the old version or fail
@@ -517,7 +568,7 @@ workflows:
             branches:
               only:
                 - dev
-                - /.*\/pr-.*/
+                - /^gh-readonly-queue\/.*/
       - build-and-push-image:
           name: build-and-push-dev-cloudrun
           docker_hub_repository: pre-release-agent
@@ -537,7 +588,7 @@ workflows:
             branches:
               only:
                 - dev
-                - /.*\/pr-.*/
+                - /^gh-readonly-queue\/.*/
       - build-and-push-image:
           name: build-and-push-dev-aws-proxied
           docker_hub_repository: pre-release-agent
@@ -558,10 +609,11 @@ workflows:
             branches:
               only:
                 - dev
-                - /.*\/pr-.*/
+                - /^gh-readonly-queue\/.*/
       - update-and-validate-golden-agent:
           name: gcp-dev-update-and-validate-golden-agent
           image_variant: cloudrun
+          upgrade_retry_minutes: 30
           agent_uuid: ${MCD_AGENT_UUID_WITH_GCP_AGENT}
           agent_version: ${NEXT_VERSION}
           image_repo: pre-release-agent
@@ -597,6 +649,7 @@ workflows:
       - update-and-validate-golden-agent:
           name: gcp-prod-update-and-validate-golden-agent-merge-queue
           image_variant: cloudrun
+          upgrade_retry_minutes: 30
           agent_uuid: ${MCD_AGENT_UUID_WITH_GCP_AGENT}
           agent_version: ${NEXT_VERSION}
           image_repo: pre-release-agent
@@ -610,7 +663,7 @@ workflows:
           filters:
             branches:
               only:
-                - /.*\/pr-.*/
+                - /^gh-readonly-queue\/.*/
       - update-and-validate-golden-agent:
           name: az-prod-update-and-validate-golden-agent-merge-queue
           image_variant: azure
@@ -628,7 +681,7 @@ workflows:
           filters:
             branches:
               only:
-                - /.*\/pr-.*/
+                - /^gh-readonly-queue\/.*/
       - build-and-push-lambda:
           name: build-and-push-lambda-dev
           docker_hub_repository: pre-release-agent
@@ -648,7 +701,73 @@ workflows:
             branches:
               only:
                 - dev
-                - /.*\/pr-.*/
+                - /^gh-readonly-queue\/.*/
+      # Image scans: one per pushed image, each after its own push, required by nothing.
+      # Versioned tags, since a concurrent dev or merge-queue build can move latest-*.
+      - vuln-scan-image:
+          name: vuln-scan-dev-azure
+          image: montecarlodata/pre-release-agent:${NEXT_VERSION}-azure
+          pre-steps:
+            - checkout
+            - generate-version-number-dev
+          context:
+            - docker
+            - vuln-image-scan
+          requires:
+            - build-and-push-dev-azure
+          filters:
+            branches:
+              only:
+                - dev
+                - /^gh-readonly-queue\/.*/
+      - vuln-scan-image:
+          name: vuln-scan-dev-cloudrun
+          image: montecarlodata/pre-release-agent:${NEXT_VERSION}-cloudrun
+          pre-steps:
+            - checkout
+            - generate-version-number-dev
+          context:
+            - docker
+            - vuln-image-scan
+          requires:
+            - build-and-push-dev-cloudrun
+          filters:
+            branches:
+              only:
+                - dev
+                - /^gh-readonly-queue\/.*/
+      - vuln-scan-image:
+          name: vuln-scan-dev-aws-proxied
+          image: montecarlodata/pre-release-agent:${NEXT_VERSION}-aws-proxied
+          pre-steps:
+            - checkout
+            - generate-version-number-dev
+          context:
+            - docker
+            - vuln-image-scan
+          requires:
+            - build-and-push-dev-aws-proxied
+          filters:
+            branches:
+              only:
+                - dev
+                - /^gh-readonly-queue\/.*/
+      - vuln-scan-image:
+          name: vuln-scan-dev-lambda
+          image: montecarlodata/pre-release-agent:${NEXT_VERSION}-lambda
+          pre-steps:
+            - checkout
+            - generate-version-number-dev
+          context:
+            - docker
+            - vuln-image-scan
+          requires:
+            - build-and-push-lambda-dev
+          filters:
+            branches:
+              only:
+                - dev
+                - /^gh-readonly-queue\/.*/
       - update-and-validate-golden-agent:
           name: aws-dev-update-and-validate-golden-agent
           image_variant: lambda
@@ -683,7 +802,7 @@ workflows:
           filters:
             branches:
               only:
-                - /.*\/pr-.*/
+                - /^gh-readonly-queue\/.*/
       - push-lambda-legacy-repo:
           name: push-lambda-aws-dev
           aws_ecr_repository: mcd-pre-release-agent
@@ -700,7 +819,7 @@ workflows:
             branches:
               only:
                 - dev
-                - /.*\/pr-.*/
+                - /^gh-readonly-queue\/.*/
       - build-and-push-base-images:
           name: build-and-push-prod-base-images
           docker_hub_repository: agent

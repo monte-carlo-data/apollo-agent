@@ -487,3 +487,58 @@ class AgentCommandFailureLoggingTests(TestCase):
         self.assertIn("download_bytes", message)
         self.assertIn("ValueError", message)
         self.assertNotIn(_SecretRaisingClient._SECRET, message)
+
+    def test_method_invocation_expected_failure_logs_info_without_traceback(self):
+        client = _ExpectedErrorRaisingClient()
+        context = {CONTEXT_VAR_CLIENT: client}
+        command = AgentCommand.from_dict({"method": "download_bytes"})
+
+        with self.assertLogs(_EVALUATION_LOGGER, level=logging.INFO) as captured:
+            with self.assertRaises(ValueError):
+                AgentEvaluationUtils._execute_single_command(command, context)
+
+        self.assertEqual(1, len(captured.records))
+        record = captured.records[0]
+        self.assertEqual(logging.INFO, record.levelno)
+        self.assertIsNone(record.exc_info)
+        message = record.getMessage()
+        self.assertIn("Command failed", message)
+        self.assertIn("download_bytes", message)
+        self.assertNotIn(_SecretRaisingClient._SECRET, message)
+
+
+class _ExpectedErrorRaisingClient(_SecretRaisingClient):
+    def should_log_exception(self, ex: Exception) -> bool:
+        return False
+
+
+class _LongExpectedErrorRaisingClient(SampleProxyClient):
+    _BODY = "<html>" + "x" * 5000 + "</html>"
+
+    def download_bytes(self, *args, **kwargs):
+        raise ValueError(self._BODY)
+
+    def should_log_exception(self, ex: Exception) -> bool:
+        return False
+
+
+class AgentOperationExpectedFailureLoggingTests(TestCase):
+    def test_expected_failure_log_truncates_long_error_message(self):
+        client = _LongExpectedErrorRaisingClient()
+        context = {CONTEXT_VAR_CLIENT: client}
+        commands = [AgentCommand.from_dict({"method": "download_bytes"})]
+
+        with self.assertLogs(_EVALUATION_LOGGER, level=logging.INFO) as captured:
+            AgentEvaluationUtils.execute(
+                context, LoggingUtils(), "op", commands, "trace-id"
+            )
+
+        messages = [
+            r.getMessage()
+            for r in captured.records
+            if r.getMessage().startswith("Exception occurred executing operation")
+        ]
+        self.assertEqual(1, len(messages))
+        self.assertLess(len(messages[0]), 1000)
+        self.assertIn("<html>xxx", messages[0])
+        self.assertNotIn("</html>", messages[0])
