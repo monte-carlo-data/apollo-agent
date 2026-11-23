@@ -37,23 +37,33 @@ COPY --from=oracle-pki-builder /opt/oracle-pki /opt/oracle-pki
 # Published as `<version>-system-base` so downstream consumers (e.g. hermes-agent)
 # can build their own venv against the same native libs without inheriting
 # apollo's pip-installed dependencies.
-FROM python:3.13.14-slim AS system-base
+# 3.13.18 is the first 3.13 release that fixes all of the interpreter CVEs
+# scanners report against 3.13.14, including CVE-2026-115557 (ssl
+# compromised-certificate denylist) and CVE-2026-114583 (tarfile filter bypass),
+# which 3.13.16 does not.
+FROM python:3.13.18-slim AS system-base
 
 ENV APP_HOME=/app
 WORKDIR $APP_HOME
 
 # Refresh apt index and upgrade base-image packages so OS-level security fixes
 # (glibc, openssh, nghttp2, etc.) land on every rebuild rather than waiting for
-# the upstream python:3.13.14-slim tag to be republished.
+# the upstream python:3.13.18-slim tag to be republished.
 RUN apt-get update && apt-get upgrade -y
+# The interpreter's own pip (/usr/local) lags the base image tag; scanners flag it
+# even though the venvs below get their own upgraded pip. Drop its vendored SBOM
+# like the other stages do, or Scout flags pip's bundled deps.
+RUN pip install --no-cache-dir -U pip \
+    && rm -f /usr/local/lib/python*/site-packages/pip/_vendor/bom.cdx.json
 # install git as we need it for the direct oscrypto dependency
 # this is a temporary workaround and it should be removed once we update oscrypto to 1.3.1+
 # see: https://community.snowflake.com/s/article/Python-Connector-fails-to-connect-with-LibraryNotFoundError-Error-detecting-the-version-of-libcrypto
 RUN apt-get install -y --no-install-recommends git
 # install libcrypt1 for IBM DB2 ibm-db package compatibility (provides libcrypt.so.1)
 RUN apt-get install -y --no-install-recommends libcrypt1
-# openssh-client required by git client
-RUN apt-get install -y openssh-client
+# openssh-client required by git client. --no-install-recommends keeps out xauth,
+# which is only for X11 forwarding and drags in libX11 and its unfixed CVEs.
+RUN apt-get install -y --no-install-recommends openssh-client
 
 # Azure database clients uses pyodbc which requires unixODBC and 'ODBC Driver 17 for SQL Server'
 # ODBC Driver 17's latest release was April, 2024. To patch vulnerabilities raised since then,
@@ -98,6 +108,34 @@ COPY --from=oracle-pki-builder /opt/oracle-pki /opt/oracle-pki
 # it — no runtime stage uses jq (only README examples and CircleCI CI scripts do).
 RUN apt-get purge -y jq || true
 
+# VULN-2560 (CVE-2026-111497): fixed in trixie-security libbrotli1 1.1.0-2+deb13u1.
+RUN apt-get update \
+    && apt-get install -y --only-upgrade libbrotli1 \
+    && if dpkg -s libbrotli1 >/dev/null 2>&1; then \
+         dpkg --compare-versions "$(dpkg-query -W -f='${Version}' libbrotli1)" ge 1.1.0-2+deb13u1; fi
+
+# Build-only tooling. GnuPG imported the Microsoft package-signing key above and
+# unzip extracted the Oracle client; nothing runs either at runtime, and apt keeps
+# verifying repository signatures with sqv. They carry unfixed distro CVEs, so
+# remove them. curl stays: the generic agent's docs tell operators to
+# `kubectl exec … curl` the health endpoints, and git still needs libcurl.
+RUN pkgs=""; \
+    for p in gnupg gnupg2 gnupg1 gnupg-l10n gnupg-utils gpg gpg-agent gpg-wks-client \
+             gpgsm gpgconf dirmngr keyboxd pinentry-curses unzip apt-transport-https; do \
+        dpkg -s "$p" >/dev/null 2>&1 && pkgs="$pkgs $p"; \
+    done; \
+    if [ -n "$pkgs" ]; then apt-get purge -y --auto-remove $pkgs; fi \
+    && command -v git && command -v ssh && command -v curl && command -v kinit \
+    && test -e /opt/microsoft/msodbcsql17 && { command -v sqv || command -v gpgv; }
+
+# Strip setuid/setgid bits. The agent never calls su, mount, passwd, ksu or
+# ssh-keysign, and with the bits set they are the only way code running as the
+# agent user could become root inside the container. Kubernetes deployments
+# already block this (allowPrivilegeEscalation: false); Docker Compose and other
+# runtimes may not.
+RUN find / -xdev -type f -perm /6000 -exec chmod ug-s {} + \
+    && test -z "$(find / -xdev -type f -perm /6000)"
+
 # clean up all unused libraries
 RUN apt-get autoremove -y && apt-get clean && rm -rf /var/lib/apt/lists/*
 
@@ -129,23 +167,35 @@ USER mcdagent
 
 COPY --chown=mcdagent:mcdagent requirements.txt ./
 
-RUN python -m venv $VENV_DIR
-RUN . $VENV_DIR/bin/activate && pip install --no-cache-dir -r requirements.txt
-# VULN-423
-RUN . $VENV_DIR/bin/activate && pip install -U pip setuptools
-
-# Docker Scout reads pip's vendored SBOM (_vendor/bom.cdx.json) and flags its
-# bundled deps (setuptools, msgpack) as image CVEs, though they're pip-internal
-# and never imported at runtime. Drop it, like the _manifest removals below.
-RUN rm -f $VENV_DIR/lib/python*/site-packages/pip/_vendor/bom.cdx.json
-
-# VULN-1818 (GHSA-vgq5-9859-3mmw): setuptools vendors wheel 0.46.3, vulnerable
-# to the `wheel convert` path traversal (0.9.6-0.47.0, fixed in 0.48.0). It pins
-# what it vendors, so installing a patched wheel wouldn't replace this copy.
-# Nothing here builds wheels, so drop it outright — code included, not just the
-# dist-info, or convert.py stays on disk with only its metadata hidden.
-RUN rm -rf $VENV_DIR/lib/python*/site-packages/setuptools/_vendor/wheel \
-           $VENV_DIR/lib/python*/site-packages/setuptools/_vendor/wheel-*.dist-info
+# Everything below runs in one RUN so the deleted files never land in any layer:
+# Scout indexes each layer, not just the final filesystem.
+# - VULN-423: upgrade the venv's pip and setuptools.
+# - pip's vendored SBOM (_vendor/bom.cdx.json) lists pip-internal deps (setuptools,
+#   msgpack) that Scout reports as image CVEs, though they're never imported.
+# - VULN-1818 (GHSA-vgq5-9859-3mmw): setuptools vendors wheel 0.46.3, vulnerable
+#   to the `wheel convert` path traversal (fixed in 0.48.0), and pins what it
+#   vendors. Nothing here builds wheels, so drop it, code included.
+# - Secret scanners flag the public test keys in pycryptodome's self-tests as HIGH
+#   "private key" findings, and pandas'/impyla's test URLs and tokens as
+#   credentials. None of these suites run here.
+RUN python -m venv $VENV_DIR \
+    && . $VENV_DIR/bin/activate \
+    && pip install --no-cache-dir -r requirements.txt \
+    && pip install --no-cache-dir -U pip setuptools \
+    && rm -rf $VENV_DIR/lib/python*/site-packages/pip/_vendor/bom.cdx.json \
+              $VENV_DIR/lib/python*/site-packages/setuptools/_vendor/wheel \
+              $VENV_DIR/lib/python*/site-packages/setuptools/_vendor/wheel-*.dist-info \
+              $VENV_DIR/lib/python*/site-packages/Crypto/SelfTest \
+              $VENV_DIR/lib/python*/site-packages/pandas/tests \
+              $VENV_DIR/lib/python*/site-packages/impala/tests \
+    # teradatasql bundles its Go driver for every OS/CPU (Windows, macOS, AIX, POWER,
+    # 32-bit, ARM) but loads only the one for the running platform: teradatasql.so,
+    # or teradatasql.fips.so on FIPS hosts (see teradatasql/__init__.py). Scanners
+    # flag the vendored Go modules in every copy, so keep only the native ones.
+    && TD=$(echo $VENV_DIR/lib/python*/site-packages/teradatasql) \
+    && rm -f $TD/*.dll $TD/*.dylib $TD/teradatasql.aix.so $TD/teradatasql.power.so $TD/teradatasql.x86.so \
+    && if [ "$(uname -m)" = x86_64 ]; then \
+         rm -f $TD/teradatasql.arm.so $TD/teradatasql.arm.fips.so && test -f $TD/teradatasql.so; fi
 
 # copy sources in the last step so we don't install python libraries due to a change in source code
 COPY --chown=mcdagent:mcdagent apollo/ ./apollo
@@ -203,7 +253,10 @@ COPY requirements.txt ./
 COPY requirements-lambda.txt ./
 RUN pip install --no-cache-dir --target "${LAMBDA_TASK_ROOT}" \
     -r requirements.txt \
-    -r requirements-lambda.txt
+    -r requirements-lambda.txt \
+    # Bundled test suites with fake keys and credentials, see the base stage.
+    && rm -rf "${LAMBDA_TASK_ROOT}/Crypto/SelfTest" "${LAMBDA_TASK_ROOT}/pandas/tests" \
+              "${LAMBDA_TASK_ROOT}/impala/tests"
 
 FROM public.ecr.aws/lambda/python:3.13 AS lambda
 
@@ -254,6 +307,15 @@ RUN dnf -y install libaio unzip \
 
 # orapki + minimal JRE for building thick-mode TLS wallets (see oracle-pki-builder).
 COPY --from=oracle-pki-builder /opt/oracle-pki /opt/oracle-pki
+
+# YET-3479: scanners match /usr/bin/curl and /usr/bin/openssl by their upstream
+# version and ignore AL2023 backports. The agent runs neither CLI; curl is only
+# the build-time downloader above. --nodeps because rpm (for `rpm -i <url>`) and
+# msodbcsql17 declare package deps on them; the driver links libcrypto, not the
+# CLI. The libraries stay: libcurl (rpm, dnf, git https) and openssl-libs.
+# Must run before the rpmdb removal below.
+RUN rpm -e --nodeps curl-minimal openssl \
+    && ! command -v curl && ! command -v openssl
 
 # VULN-464
 RUN rm -rf /var/lib/rpm/rpmdb.sqlite*
@@ -387,19 +449,58 @@ COPY --from=oracle-pki-builder /opt/oracle-pki /opt/oracle-pki
 # satisfy the purge, it aborts and the build fails loudly rather than shipping a
 # broken image. --auto-remove sweeps the now-orphaned dependency cascade in one pass.
 #
+# VULN-2340: GLib (libglib2.0-0t64 / libglib2.0-data) is another piece of the
+# base image's GTK/browser layer, here only because the MS base marks
+# libatk1.0-0t64, libpango-1.0-0 and shared-mime-info as manually installed.
+# Nothing in the agent links against it: Python, ODBC, Oracle IC, the
+# Functions host and the pip deps don't, and ibm_db bundles its own libxml2.
+# The only ELF that does is libmsalruntime.so in the extension bundle, and it
+# already can't load here (gtk3, webkit2gtk, cairo and X11 are absent). So
+# purge it together with its dependents rather than waiting on patched Ubuntu
+# builds. --auto-remove also takes the orphaned fontconfig/harfbuzz/libthai/
+# libxml2 cascade.
+#
+# clean up all unused libraries
 # VULN-1654: jq <= 1.7.1 has a heap-buffer-overflow; Ubuntu 24.04 may ship a
 # vulnerable version. Remove if present — no runtime code uses jq.
-# clean up all unused libraries
 RUN apt-get purge -y jq || true
 RUN apt-get purge -y --auto-remove \
         xvfb xserver-common x11-common x11-utils x11-xkb-utils x11-xserver-utils \
         libxext6 libxft2 libxi6 libxinerama1 libxpm4 libxrender1 libxrender-dev \
         libx11-6 libx11-data libx11-dev libx11-xcb1 libx11-protocol-perl x11proto-dev xauth \
         libcups2t64 libtiff6 libnss3 \
+        libglib2.0-0t64 libglib2.0-data libatk1.0-0t64 libpango-1.0-0 shared-mime-info \
     && apt-get autoremove -y && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # delete this file that includes an old golang version (including vulns) and is not used
 RUN rm -rf /opt/startupcmdgen/
+
+# More base-image surface the agent never runs: the binutils toolchain, wget,
+# xdg-utils, ALSA, and GnuPG (apt verifies signatures with gpgv, which stays).
+# Together these carry most of the image's unfixed Ubuntu CVEs. Only purge what
+# is installed: the apt lists are gone by now, so naming an absent package would
+# fail the build. Purge also removes anything that depends on these; nothing in
+# the runtime path does, and the checks at the end fail the build if that changes.
+#
+# The extension bundle also ships Windows-only native DLLs (runtimes/win-*),
+# which a Linux host never loads but scanners still flag.
+RUN pkgs=""; \
+    for p in binutils binutils-common binutils-x86-64-linux-gnu libbinutils libctf0 \
+             libctf-nobfd0 libgprofng0 libsframe1 wget xdg-utils libasound2t64 \
+             libasound2-data alsa-ucm-conf alsa-topology-conf gnupg gnupg2 gnupg-l10n \
+             gnupg-utils gpg gpg-agent gpg-wks-client gpgsm gpgconf dirmngr keyboxd \
+             pinentry-curses; do \
+        dpkg -s "$p" >/dev/null 2>&1 && pkgs="$pkgs $p"; \
+    done; \
+    if [ -n "$pkgs" ]; then apt-get purge -y --auto-remove $pkgs; fi \
+    && apt-get clean \
+    && find /FuncExtensionBundles -type d -path '*/runtimes/win*' -prune -exec rm -rf {} + \
+    && command -v git && command -v ssh && command -v kinit && command -v gpgv \
+    && test -x /opt/startup/start_nonappservice.sh \
+    # No setuid/setgid binaries either (see system-base): on Azure Functions they
+    # are the only route from the agent user to root inside the container.
+    && find / -xdev -type f -perm /6000 -exec chmod ug-s {} + \
+    && test -z "$(find / -xdev -type f -perm /6000)"
 
 COPY requirements.txt /
 COPY requirements-azure.txt /
@@ -416,7 +517,16 @@ RUN pip install --no-cache-dir \
     && chown -R mcdagent:mcdagent /home/site/wwwroot/.python_packages \
     # Drop the SBOM the azure-functions-durable wheel bundles at the site-packages
     # root: it lists stale versions that aren't installed, tripping scout false positives.
-    && rm -rf /home/site/wwwroot/.python_packages/lib/site-packages/_manifest
+    && rm -rf /home/site/wwwroot/.python_packages/lib/site-packages/_manifest \
+    # Bundled test suites with fake keys and credentials, see the base stage.
+    && rm -rf /home/site/wwwroot/.python_packages/lib/site-packages/Crypto/SelfTest \
+              /home/site/wwwroot/.python_packages/lib/site-packages/pandas/tests \
+              /home/site/wwwroot/.python_packages/lib/site-packages/impala/tests \
+    # The Teradata driver ships its Go library for every OS/CPU; see the base stage.
+    && TD=/home/site/wwwroot/.python_packages/lib/site-packages/teradatasql \
+    && rm -f $TD/*.dll $TD/*.dylib $TD/teradatasql.aix.so $TD/teradatasql.power.so $TD/teradatasql.x86.so \
+    && if [ "$(uname -m)" = x86_64 ]; then \
+         rm -f $TD/teradatasql.arm.so $TD/teradatasql.arm.fips.so && test -f $TD/teradatasql.so; fi
 
 # distutils for lambda-git, whose `git` module (imported by GitCloneClient for Looker
 # view collection) does `from distutils.spawn import find_executable`. distutils left
@@ -433,15 +543,16 @@ RUN pip install --no-cache-dir setuptools
 # brings back whatever pip it currently bundles).
 RUN rm -f /opt/python/*/lib/python*/site-packages/pip/_vendor/bom.cdx.json
 
-# AIKIDO-2026-625366: the MS base image ships its own gunicorn (26.1.0 at the
-# time of writing) in the interpreter's site-packages, separate from the copy
-# requirements.txt puts under .python_packages. Our pin can't reach it, so
-# upgrade it in place. pip replaces the dist-info rather than writing over it,
-# so the flagged 26.1.0 metadata is gone from the final image. Unpinned base
-# tag, so a refresh may reintroduce an older one until MS ships >=26.2.0.
-# PYTHONPATH points at .python_packages, which already has our 26.2.0 — without
-# clearing it pip calls the requirement satisfied and skips /opt/python.
-RUN PYTHONPATH= pip install --no-cache-dir -U "gunicorn>=26.2.0"
+# AIKIDO-2026-625366, CVE-2026-134821: the MS base image ships its own gunicorn
+# (26.1.0 at the time of writing) in the interpreter's site-packages, separate
+# from the copy requirements.txt puts under .python_packages. Our pin can't
+# reach it, so upgrade it in place. pip replaces the dist-info rather than
+# writing over it, so the flagged 26.1.0 metadata is gone from the final image.
+# Unpinned base tag, so a refresh may reintroduce an older one until MS ships
+# >=27.0.1. PYTHONPATH points at .python_packages, which already has our 27.0.1
+# — without clearing it pip calls the requirement satisfied and skips
+# /opt/python.
+RUN PYTHONPATH= pip install --no-cache-dir -U "gunicorn>=27.0.1"
 
 # VULN-1818: same vendored-wheel removal as in the `base` and `lambda` stages.
 RUN rm -rf /opt/python/*/lib/python*/site-packages/setuptools/_vendor/wheel \

@@ -1,3 +1,4 @@
+import logging
 import os
 import tempfile as tempfile_mod
 from contextlib import contextmanager
@@ -416,6 +417,114 @@ class TestHttpClient(TestCase):
             response.result.get(ATTRIBUTE_NAME_ERROR_ATTRS),
         )
 
+    def _execute_failed_request(self, mock_request, status_code: int):
+        mock_response = create_autospec(Response)
+        mock_response.status_code = status_code
+        mock_response.text = "request failed"
+        mock_response.reason = "FAILED"
+        mock_request.return_value = mock_response
+        mock_response.raise_for_status.side_effect = HTTPError(
+            "failed",
+            response=mock_response,
+        )
+        with self.assertLogs(level=logging.INFO) as captured:
+            response = self._agent.execute_operation(
+                "http",
+                "do_request",
+                _HTTP_OPERATION,
+                _HTTP_CREDENTIALS,
+            )
+        return response, captured.records
+
+    @patch("requests.request")
+    def test_http_request_404_logged_without_errors(self, mock_request):
+        response, records = self._execute_failed_request(mock_request, 404)
+
+        error_records = [r for r in records if r.levelno >= logging.ERROR]
+        self.assertEqual([], [r.getMessage() for r in error_records])
+        self.assertTrue(all(r.exc_info is None for r in records))
+        messages = [r.getMessage() for r in records]
+        self.assertIn("Request failed with 404", messages)
+        self.assertTrue(any(m.startswith("Command failed") for m in messages))
+
+        # the response returned to the caller is unchanged
+        self.assertEqual("request failed", response.result.get(ATTRIBUTE_NAME_ERROR))
+        self.assertEqual("HTTPError", response.result.get(ATTRIBUTE_NAME_ERROR_TYPE))
+        self.assertEqual(
+            {"status_code": 404, "reason": "FAILED"},
+            response.result.get(ATTRIBUTE_NAME_ERROR_ATTRS),
+        )
+
+    @patch("requests.request")
+    def test_http_request_other_failures_logged_as_errors(self, mock_request):
+        for status_code in (400, 401, 403, 500):
+            with self.subTest(status_code=status_code):
+                response, records = self._execute_failed_request(
+                    mock_request, status_code
+                )
+
+                error_records = [r for r in records if r.levelno >= logging.ERROR]
+                self.assertTrue(all(r.exc_info for r in error_records))
+                error_messages = [r.getMessage() for r in error_records]
+                self.assertIn(f"Request failed with {status_code}", error_messages)
+                for prefix in (
+                    "Command failed",
+                    "Exception occurred executing operation",
+                ):
+                    self.assertTrue(
+                        any(m.startswith(prefix) for m in error_messages), prefix
+                    )
+                self.assertEqual(
+                    {"status_code": status_code, "reason": "FAILED"},
+                    response.result.get(ATTRIBUTE_NAME_ERROR_ATTRS),
+                )
+
+    @patch("requests.request")
+    def test_do_request_log_level_follows_should_log_exception_override(
+        self, mock_request
+    ):
+        class _LoudClient(HttpProxyClient):
+            def should_log_exception(self, ex: Exception) -> bool:
+                return True
+
+        mock_response = create_autospec(Response)
+        mock_response.status_code = 404
+        mock_response.text = "not found"
+        mock_request.return_value = mock_response
+        mock_response.raise_for_status.side_effect = HTTPError(
+            "failed", response=mock_response
+        )
+
+        with self.assertLogs(level=logging.INFO) as captured:
+            with self.assertRaises(HttpClientError):
+                _LoudClient(credentials=None).do_request("https://api.example/x")
+
+        record = next(
+            r for r in captured.records if r.getMessage() == "Request failed with 404"
+        )
+        self.assertEqual(logging.ERROR, record.levelno)
+        self.assertIsNotNone(record.exc_info)
+
+    def test_should_log_exception(self):
+        client = HttpProxyClient(credentials=None)
+
+        def client_error_from(status_code: int) -> Exception:
+            response = create_autospec(Response)
+            response.status_code = status_code
+            try:
+                try:
+                    raise HTTPError("failed", response=response)
+                except HTTPError as err:
+                    raise HttpClientError("failed") from err
+            except HttpClientError as ex:
+                return ex
+
+        self.assertFalse(client.should_log_exception(client_error_from(404)))
+        self.assertTrue(client.should_log_exception(client_error_from(401)))
+        # SSRF-guard / download errors carry no HTTPError cause
+        self.assertTrue(client.should_log_exception(HttpClientError("blocked")))
+        self.assertTrue(client.should_log_exception(ValueError("boom")))
+
     @patch("requests.request")
     def test_http_request_with_ssl_options_ca_data(self, mock_request):
         """Test that ssl_verify path in connect_args is forwarded to requests as verify."""
@@ -634,6 +743,16 @@ class TestDownloadBytes(TestCase):
         client = HttpProxyClient(credentials={"connect_args": {}})
         with self.assertRaises(HttpClientError):
             client.download_bytes("https://s3.example/file.jar", no_auth=True)
+
+    @patch("requests.get")
+    def test_404_is_logged_as_error(self, mock_get):
+        # download 404s are raised without an HTTPError cause, so they stay at ERROR
+        mock_get.return_value = self._make_response(status_code=404)
+
+        client = HttpProxyClient(credentials={"connect_args": {}})
+        with self.assertRaises(HttpClientError) as ctx:
+            client.download_bytes("https://s3.example/file.jar", no_auth=True)
+        self.assertTrue(client.should_log_exception(ctx.exception))
 
     @patch("requests.get")
     def test_500_raises_http_error_not_http_client_error(self, mock_get):

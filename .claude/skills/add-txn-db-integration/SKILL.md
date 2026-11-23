@@ -67,17 +67,13 @@ from typing import Optional, Any
 
 import pyodbc
 
-from apollo.integrations.db.tsql_base_db_proxy_client import TSqlBaseDbProxyClient
+from apollo.integrations.db.tsql_base_db_proxy_client import (
+    TSqlBaseDbProxyClient,
+    normalize_odbc_driver,
+    odbc_string_from_dict,
+)
 
 _ATTR_CONNECT_ARGS = "connect_args"
-
-
-def _odbc_escape(value: str) -> str:
-    if value.startswith("{") and value.endswith("}"):
-        return value  # already wrapped (e.g. driver names)
-    if any(c in value for c in (";", "{", "}", "=")):
-        return "{" + value.replace("}", "}}") + "}"
-    return value
 
 
 class <Name>ProxyClient(TSqlBaseDbProxyClient):
@@ -92,22 +88,25 @@ class <Name>ProxyClient(TSqlBaseDbProxyClient):
         connect_args = credentials[_ATTR_CONNECT_ARGS]
         if not isinstance(connect_args, dict):
             raise ValueError(...)
-        connection_string = ";".join(
-            f"{k}={_odbc_escape(str(v))}" for k, v in connect_args.items()
+        # The CTP puts the timeouts in connect_args; pop them before serializing.
+        connect_args = dict(connect_args)
+        login_timeout = connect_args.pop(
+            "login_timeout", self._DEFAULT_LOGIN_TIMEOUT_IN_SECONDS
+        )
+        query_timeout = connect_args.pop(
+            "query_timeout_in_seconds", self._DEFAULT_QUERY_TIMEOUT_IN_SECONDS
         )
         self._connection = pyodbc.connect(
-            connection_string,
-            timeout=credentials.get("login_timeout", self._DEFAULT_LOGIN_TIMEOUT_IN_SECONDS),
+            normalize_odbc_driver(odbc_string_from_dict(connect_args)),
+            timeout=login_timeout,
         )
         self._connection.add_output_converter(
             self._DATETIMEOFFSET_SQL_TYPE_CODE, self._handle_datetimeoffset
         )
-        self._connection.timeout = credentials.get(
-            "query_timeout_in_seconds", self._DEFAULT_QUERY_TIMEOUT_IN_SECONDS
-        )
+        self._connection.timeout = query_timeout
 ```
 
-**Always include `_odbc_escape`** — ODBC values containing `;`, `{`, `}`, or `=` must be brace-wrapped per the ODBC spec.
+**Always serialize with `odbc_string_from_dict`** — it brace-wraps ODBC values containing `;`, `{`, `}`, or `=` per the ODBC spec. `normalize_odbc_driver` swaps Driver 17 for 18 where only 18 is installed (e.g. arm64).
 
 ### Non-ODBC clients (trino, psycopg2, etc.)
 
@@ -122,7 +121,7 @@ For trino, `connect_args` is passed directly as kwargs: `trino.dbapi.connect(**c
 
 **→ Run `/add-ccp-connector` for detailed guidance** on the TypedDict schema, `CtpConfig`/`MapperConfig` structure, Jinja2 template rules, optional fields, transform steps, and SSL cert materialization.
 
-Reference implementations: `apollo/integrations/ctp/defaults/fabric.py` (ODBC), `apollo/integrations/ctp/defaults/starburst_galaxy.py` (trino), `apollo/integrations/ctp/defaults/postgres.py` (psycopg2).
+Reference implementations: `apollo/integrations/ctp/defaults/sql_server.py` (ODBC, incl. `MS_FABRIC_DEFAULT_CTP`), `apollo/integrations/ctp/defaults/starburst_galaxy.py` (trino), `apollo/integrations/ctp/defaults/postgres.py` (psycopg2).
 
 ### Azure AD service principal auth (ODBC Driver 18)
 
@@ -228,7 +227,7 @@ def test_handle_datetimeoffset(self): ...
 
 | Driver | Proxy client | CTP config |
 |--------|-------------|------------|
-| pyodbc (SQL Server / Fabric) | `fabric_proxy_client.py` (inherits `TSqlBaseDbProxyClient`) | `ctp/defaults/fabric.py` |
+| pyodbc (SQL Server / Fabric) | `fabric_proxy_client.py` (inherits `TSqlBaseDbProxyClient`) | `ctp/defaults/sql_server.py` |
 | trino (Starburst) | `starburst_proxy_client.py` | `ctp/defaults/starburst_galaxy.py` |
 | psycopg2 (Postgres) | `postgres_proxy_client.py` | `ctp/defaults/postgres.py` |
 
@@ -239,7 +238,7 @@ def test_handle_datetimeoffset(self): ...
 | Mistake | Fix |
 |---------|-----|
 | Bracket notation in template: `raw['port']` | Use `raw.port` |
-| Missing `_odbc_escape` for ODBC dict serialization | Values with `;`, `{`, `}`, `=` must be brace-wrapped — copy `_odbc_escape` from `fabric_proxy_client.py` |
+| Hand-building the ODBC string from a dict | Values with `;`, `{`, `}`, `=` must be brace-wrapped — use `odbc_string_from_dict` from `tsql_base_db_proxy_client.py` |
 | Azure AD: `UID` missing `@tenant_id` | Use `{{ raw.client_id }}@{{ raw.tenant_id }}` |
 | Registering CTP before proxy client supports dict | Wait until Step 1 accepts dict `connect_args` |
 | Forgetting `_discover()` import | Without it, `CtpRegistry.get("<name>")` returns `None` and flat creds will fail |

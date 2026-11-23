@@ -5,13 +5,13 @@ azure-core==1.41.0  # YET-463 VULN-1827
 azure-keyvault-secrets==4.10.0
 azure-mgmt-storage==21.2.1
 azure-storage-blob==12.23.0
-brotli==1.2.0  # Upgrade transient dependency of flask-compress to address SEC-1143 (CVE-2025-6176)
+brotli==1.2.1  # Upgrade transient dependency of flask-compress to address SEC-1143 (CVE-2025-6176), VULN-2525
 cachetools==5.3.3  # Runtime dep for apollo/credentials/external_credentials_cache.py; pinned here so it shows up in install_requires for downstream consumers
 cerberus>=1.3.5
 click>=8.3.3  # transitive (clickhouse-connect, flask); pinned for CVE-2026-7246
 clickhouse-connect>=0.10.0  # cp314 wheels first shipped in 0.10.0 (YET-2254, azure image on Python 3.14); we only use the stable clickhouse_connect.dbapi facade
 cryptography>=50.0.0  # CVE-2026-26007; >=48.0.1 for GHSA-537c-gmf6-5ccf (bundled OpenSSL OOB read, fixed in 48.0.1); >=49.0.0 for AIKIDO-2026-94131; >=50.0.0 for CVE-2026-69247 (CVE-2026-69249 needs only 49)
-databricks-sql-connector==4.5.0  # requires thrift>=0.24.0, which is what clears the thrift CVEs below; 4.2.5 held us at thrift 0.16.0 to match impyla's old pin. Default backend is still Thrift — the SEA/Rust kernel added in 4.3.0 is opt-in per connection (use_kernel=True) and we don't set it. 4.4.0 also raised the floor to Python 3.10 (we're on 3.13+) and started reporting cursor.rowcount for DML instead of a hardcoded -1. 4.2.6+ rejects duplicate column names when concatenating Arrow results. Re-check the duplicate-column-name patch in apollo/integrations/databricks/connector_patches.py on every bump
+databricks-sql-connector==4.8.0  # requires thrift>=0.24.0, which is what clears the thrift CVEs below; 4.2.5 held us at thrift 0.16.0 to match impyla's old pin. Default backend is still Thrift — the SEA/Rust kernel added in 4.3.0 is opt-in per connection (use_kernel=True) and we don't set it. 4.4.0 also raised the floor to Python 3.10 (we're on 3.13+) and started reporting cursor.rowcount for DML instead of a hardcoded -1. 4.2.6–4.7.x reject duplicate column names when concatenating Arrow results (databricks-sql-python#989); 4.8.0 fixes it, so don't go below 4.8.0
 databricks-sdk==0.39.0
 duckdb==1.5.3  # pinned to the exact version MotherDuck's server-side extension supports (it rejects both <1.5.3 and >1.5.3, e.g. 1.5.4)
 flask==3.1.3  # CVE-2026-27205: missing Vary: Cookie on some session accesses, fixed in 3.1.3
@@ -20,11 +20,12 @@ google-api-python-client==2.176.0  # Upgraded in VULN-620
 google-cloud-dataform==0.6.2
 google-cloud-secret-manager==2.25.0
 google-cloud-storage==2.19.0  # 2.10.0 shipped a legacy setuptools namespace (nspkg.pth + namespace_packages.txt for `google`), which corrupts the `google` namespace under Python 3.13 and crashes the Azure Functions worker (KeyError: 'google'). 2.19.0 uses native PEP 420 namespaces.
+grpcio>=1.85.1  # VULN-2730: AIKIDO-2026-473995, AIKIDO-2026-652035; transitive via google-api-core
 google-auth-httplib2>=0.2.0  # direct import in integrations/http/httplib2_client.py; declared here so it reaches install_requires, since google-api-python-client treats it as optional
-httplib2>=0.32.0  # direct import in integrations/http/httplib2_client.py; pinned for CVE-2026-59939
+httplib2>=0.32.1  # direct import in integrations/http/httplib2_client.py; pinned for CVE-2026-59939 and the distrusted Comodo AAA root CA
 httpcore==1.0.9  # transitive (httpx); pinned because integrations/http/httpx_safety.py swaps httpcore's private _network_backend. Re-run TestSsrfGuardWiring before bumping
 httpx==0.28.1  # transitive (mcp); pinned because integrations/http/httpx_safety.py relies on private httpx attrs (_transport, _mounts, _pool). Re-run TestSsrfGuardWiring before bumping
-gunicorn==26.2.0  # Successive request-smuggling / message-framing fixes: AIKIDO-2026-10742 (VULN-1117/YET-1356, stricter RFC 9112/9110 parsing), AIKIDO-2026-332632 (VULN-1812, duplicate Host/Content-Type, chunked-body truncation, HEAD/1xx/204/304 framing), AIKIDO-2026-625366 (HTTP/2 environ skips the HTTP/1 header validation). We run the default sync/gthread workers and never enable the opt-in HTTP/2 support.
+gunicorn==27.0.1  # Successive request-smuggling / message-framing fixes: AIKIDO-2026-10742 (VULN-1117/YET-1356, stricter RFC 9112/9110 parsing), AIKIDO-2026-332632 (VULN-1812, duplicate Host/Content-Type, chunked-body truncation, HEAD/1xx/204/304 framing), AIKIDO-2026-625366 (HTTP/2 environ skips the HTTP/1 header validation). CVE-2026-134821 (ASGI HTTP/1 parser memory exhaustion, fix 27.0.0). We run the default sync/gthread WSGI workers, never the ASGI worker, and never enable the opt-in HTTP/2 support.
 hdbcli==2.18.27
 ibm-db>=3.2.8; platform_machine != "aarch64"  # cp314 wheels first shipped in 3.2.8 (YET-2254, azure image on Python 3.14); IBM ships no Linux arm64 driver (YET-3019)
 jinja2>=3.1.6
@@ -40,8 +41,9 @@ presto-python-client==0.8.3
 trino==0.336.0
 protobuf==5.29.6
 psycopg2-binary==2.9.12  # latest 2.9.x; bumped from 2.9.9 which had no Python 3.13 (cp313) wheels
-pyarrow==23.0.1  # CVE-2026-25087 (Python bindings unaffected per GHSA-rgxp-2hwp-jwgg, but Trivy/Scout flag <23.0.1)
-pyasn1>=0.6.4  # CVE-2026-30922 (uncontrolled recursion), CVE-2026-23490, CVE-2026-59884/59885/59886
+pyarrow==26.0.1  # CVE-2026-25087 (Python bindings unaffected per GHSA-rgxp-2hwp-jwgg, but Trivy/Scout flag <23.0.1); CVE-2026-111497 (bundled Brotli decoder, fixed 26.0.1)
+oauthlib>=4.0.0  # CVE-2026-118669 (YET-3479); transitive via databricks-sql-connector
+pyasn1>=0.6.5  # CVE-2026-30922 (uncontrolled recursion), CVE-2026-23490, CVE-2026-59884/59885/59886, CVE-2026-119194..119197
 pycryptodome>=3.21.0
 pydantic==2.13.5  # K2-1344: required by the MCP SDK; pinned so every image resolves the same version. 2.12+ ships cp314 wheels for pydantic-core, which the azure image (Python 3.14) needs
 pyjwt>=2.15.0  # CVE-2026-32597, CVE-2026-48526, CVE-2026-102265..102273 (fixed 2.14.0), CVE-2026-101918 (fixed 2.15.0)
@@ -51,7 +53,7 @@ pyOpenSSL>=26.3.0  # CVE-2026-27459 (buffer overflow); >=26.3.0 to allow cryptog
 retry2==0.9.5
 salesforce-cdp-connector==1.0.19  # For Salesforce Data Cloud integration (YET-615: dataspace= support)
 simple-salesforce==1.12.6
-snowflake-connector-python>=4.7.1  # 3.x capped cffi<2.0.0 which blocks cryptography>=46; >=4.7.1 for AIKIDO-2026-572073
+snowflake-connector-python>=4.8.1,<5  # 3.x capped cffi<2.0.0 which blocks cryptography>=46; >=4.7.1 for AIKIDO-2026-572073; >=4.7.3 for CVE-2026-86597; >=4.8.1 lifts the filelock<4 cap; 5.x is a new major
 # python_version conditions below to resolve urllib3 compatibility issues with snowflake-connector-python
 tableauserverclient==0.25 ; python_version < "3.10"
 tableauserverclient==0.38 ; python_version >= "3.10"
@@ -59,11 +61,11 @@ urllib3~=2.8  # CVE-2026-44431, CVE-2026-44432, CVE-2026-97687, CVE-2026-97688, 
 
 typing-extensions==4.16.0  # K2-1344: floor is pydantic>=2.12 (cp314 pydantic-core wheels for the azure image), which needs >=4.14.1
 
-teradatasql>=20.0.0.72  # first release built with Go 1.27.2 (stdlib fixes from 1.26.9/1.27.2: CVE-2026-56857, CVE-2026-78663 and 8 more) and golang.org/x/crypto >= 0.56.0 (CVE-2026-56855, CVE-2026-78662)
+teradatasql>=20.0.0.74  # first release built with Go 1.27.3 (stdlib CVE-2026-111943; earlier Go 1.26.9/1.27.2 fixes: CVE-2026-56857, CVE-2026-78663 and 8 more) and golang.org/x/crypto >= 0.56.0 (CVE-2026-56855, CVE-2026-78662)
 
 impyla==0.24.0  # 0.22.0 and 0.23.0 hard-pin thrift==0.16.0; 0.24.0 is the first release to relax that to thrift>=0.23.0. `Connection.cursor(close_finished_queries=...)`, which hive_proxy_client depends on, is unchanged
-thrift>=0.24.0  # 13 Apache Thrift CVEs reported against 0.16.0. Fixed in 0.23.0: CVE-2026-41604, CVE-2026-41602, CVE-2026-41605, CVE-2026-43869, CVE-2026-43870, CVE-2025-48431. Fixed in 0.24.0: CVE-2026-41608 (Python THeaderTransport zlib bomb), CVE-2026-48586, CVE-2026-43871, CVE-2026-55968, CVE-2026-55969, CVE-2026-58389, CVE-2026-48145. Only three of the thirteen touch the Python bindings, but scanners flag the package by version. Pinned directly so a future databricks-sql-connector that relaxes its thrift floor can't silently drag us back
-werkzeug==3.1.6  # CVE-2026-27199, CVE-2026-21860, CVE-2025-66221 (was 3.1.0)
+thrift>=0.25.0  # CVE-2026-66055, CVE-2026-66858, CVE-2026-85087, CVE-2026-85494, CVE-2026-94634, CVE-2026-94636, CVE-2026-94654 (fixed in 0.25.0; earlier floors cleared 13 more). databricks-sql-connector 4.8.0 caps thrift <0.26.0, so a 0.26 bump needs a connector bump too. Pinned directly so a connector that relaxes its floor can't drag us back
+werkzeug==3.1.9  # CVE-2026-27199, CVE-2026-21860, CVE-2025-66221 (was 3.1.0); CVE-2026-102598 (fix 3.1.9)
 
 # Transitive native deps forced up to their lowest Python 3.13 (cp313) wheel
 # release. At their previous resolved versions these had no cp313 wheel, so the
@@ -96,7 +98,7 @@ backports-zstd>=1.7.0 ; python_version < "3.14"
 zeep>=4.3.3  # GHSA-4cc2-g9w2-fhf6 (SSRF via WSDL/XSD parsing); transitive via simple-salesforce
 requests>=2.34.0  # CVE-2026-25645; transitive HTTP client
 idna>=3.15  # CVE-2026-45409; transitive via requests/snowflake
-filelock>=3.20.3  # CVE-2026-22701, CVE-2025-68146; transitive via snowflake-connector-python
+filelock>=4.2.1  # CVE-2026-22701, CVE-2025-68146; CVE-2026-112907..112940 (fix 4.2.1); transitive via snowflake-connector-python
 marshmallow>=3.26.2  # CVE-2025-68480; transitive via dataclasses-json
 tomlkit>=0.15.1  # AIKIDO-2026-525182; transitive via snowflake-connector-python
 platformdirs>=4.11.11  # VULN-2083 (AIKIDO-2026-777134); transitive via snowflake-connector-python/zeep/databricks-sql-connector

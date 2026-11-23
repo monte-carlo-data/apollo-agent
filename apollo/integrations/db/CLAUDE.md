@@ -28,8 +28,10 @@ Several clients use `pyodbc` (fabric, azure_database, sql_server). They share:
 - Default timeouts: `login_timeout=15s`, `query_timeout_in_seconds=840s` (14 minutes). These keys are passed inside `connect_args` and popped before the dict is serialized to an ODBC string.
 - `normalize_odbc_driver(connection_string)` — call on the final string right before `pyodbc.connect`.
   Where only ODBC Driver 18 is installed (e.g. arm64, which has no Driver 17 build), it rewrites a
-  Driver 17 string to 18 and adds `Encrypt=no` unless `Encrypt` is set; strings are unchanged
-  wherever Driver 17 is installed.
+  Driver 17 string to 18 and keeps Driver 17's TLS defaults: adds `Encrypt=no` unless `Encrypt`
+  or `Authentication` is set (with `Authentication`, Driver 17 also encrypted by default), and adds
+  `TrustServerCertificate=yes` when encryption is off and the string doesn't set it. Strings are
+  unchanged wherever Driver 17 is installed.
 
 These are shared via `TSqlBaseDbProxyClient` in `tsql_base_db_proxy_client.py`, which all three clients inherit from.
 
@@ -75,7 +77,9 @@ token is only ever served back to byte-identical credentials. Bound its lifetime
 multi-threaded — see the Dockerfile `--threads` setting), and detect secret
 expiry/revocation reactively on the auth-failure response rather than with a hopeful TTL. See
 `salesforce_data_cloud_proxy_client._get_or_mint_core_token` and its `_CORE_TOKEN_CACHE` for
-the reference implementation (YET-2522).
+the reference implementation (YET-2522). When a credential authenticates with a private key
+(e.g. SFDC Data Cloud JWT Bearer, YET-3269), key it by a fingerprint of the **public** key
+rather than any hash of the private key, so no private key material enters the cache key.
 
 ### Credential temp files
 

@@ -8,7 +8,7 @@ cachetools==5.3.3
     # via
     #   -c requirements.txt
     #   google-auth
-certifi==2024.8.30
+certifi==2026.10.19
     # via
     #   -c requirements.txt
     #   requests
@@ -55,7 +55,7 @@ grpc-google-iam-v1==0.14.3
     #   -c requirements.txt
     #   google-cloud-logging
     #   google-cloud-run
-grpcio==1.76.0
+grpcio==1.85.1
     # via
     #   -c requirements.txt
     #   google-api-core
@@ -71,10 +71,8 @@ idna==3.15
     #   -c requirements.txt
     #   requests
 importlib-metadata==7.1.0
-    # via
-    #   -r requirements-cloudrun.in
-    #   opentelemetry-api
-opentelemetry-api==1.40.0
+    # via -r requirements-cloudrun.in
+opentelemetry-api==1.45.2
     # via
     #   -r requirements-cloudrun.in
     #   google-cloud-logging
@@ -97,7 +95,7 @@ protobuf==5.29.6
     #   grpc-google-iam-v1
     #   grpcio-status
     #   proto-plus
-pyasn1==0.6.4
+pyasn1==0.6.5
     # via
     #   -c requirements.txt
     #   pyasn1-modules
