@@ -98,7 +98,7 @@ def validate_impact(impact: Any) -> list[str]:
 ImpactRunner = Callable[[], "tuple[int, str, str] | None"]
 
 
-def select_targets(
+def _select_by_packaging(
     changed_files: list[str] | None, run_impact_map: ImpactRunner
 ) -> Selection:
     """``run_impact_map`` returns (exit code, stdout, stderr), or None when the script is absent."""
@@ -106,12 +106,6 @@ def select_targets(
         return Selection(
             list(TARGETS),
             "could not list the changed files; checking every target (fail-open)",
-        )
-    checks = [f for f in changed_files if f in CHECK_FILES]
-    if checks:
-        return Selection(
-            list(TARGETS),
-            f"the image checks changed ({', '.join(checks)}); checking every target",
         )
     packaging = [f for f in changed_files if is_packaging_file(f)]
     if not packaging:
@@ -143,6 +137,21 @@ def select_targets(
     if not targets:
         return Selection([], "impact map: no image affected", impact, packaging)
     return Selection(targets, "impact map selection", impact, packaging)
+
+
+def select_targets(
+    changed_files: list[str] | None, run_impact_map: ImpactRunner
+) -> Selection:
+    """``run_impact_map`` returns (exit code, stdout, stderr), or None when the script is absent."""
+    selection = _select_by_packaging(changed_files, run_impact_map)
+    checks = [f for f in changed_files or [] if f in CHECK_FILES]
+    if checks and selection.targets != list(TARGETS):
+        # Keep the impact map result: the checklist still applies to the packaging change.
+        selection.targets = list(TARGETS)
+        selection.reason = (
+            f"the image checks changed ({', '.join(checks)}); checking every target"
+        )
+    return selection
 
 
 def render(template: str, targets: list[str]) -> str:

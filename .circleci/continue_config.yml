@@ -115,9 +115,11 @@ jobs:
           name: Run CI script tests (image checks, impact map) with a bare Python
           command: |
             python -m venv /tmp/bare-venv
-            /tmp/bare-venv/bin/pip install --no-cache-dir --quiet pytest
-            /tmp/bare-venv/bin/python -m pytest -p no:cacheprovider --noconftest \
-              $(find tests -maxdepth 1 \( -name 'test_image_checks*.py' -o -name 'test_impact_map*.py' \) | sort)
+            /tmp/bare-venv/bin/pip install --no-cache-dir --quiet "$(grep -E '^pytest==' requirements-dev.txt)"
+            tests=$(find tests -maxdepth 1 \( -name 'test_image_checks*.py' -o -name 'test_impact_map*.py' \) | sort)
+            # With no paths pytest would run all of tests/, which needs the agent's deps.
+            if [ -z "$tests" ]; then echo "no CI script tests found"; exit 1; fi
+            /tmp/bare-venv/bin/python -m pytest -p no:cacheprovider --noconftest $tests
 
   run-test-docker:
     machine:

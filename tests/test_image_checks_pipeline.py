@@ -501,3 +501,13 @@ def test_changed_checks_run_on_every_target(path):
     selection = setup.select_targets([path, "apollo/x.py"], _never_called)
     assert selection.targets == ALL
     assert "image checks changed" in selection.reason
+
+
+def test_changed_checks_keep_the_impact_map_result():
+    stdout = _impact(["lambda"])
+    selection = setup.select_targets(
+        ["scripts/image_checks/in_image.py", "requirements-lambda.txt"],
+        lambda: (0, stdout, ""),
+    )
+    assert selection.targets == ALL
+    assert selection.impact is not None and selection.packaging_files
