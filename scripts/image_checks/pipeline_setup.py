@@ -8,6 +8,7 @@ this build needs:
 
 * tags, ``dev``, ``main`` and merge-queue branches: none. Those pipelines check
   every image they build inside their build jobs.
+* other branches that change the checks (check_image.py, in_image.py): all four.
 * other branches with no packaging change (requirements*, Dockerfile, .dockerignore,
   resources/): none, so code-only PRs build no images.
 * other branches with a packaging change: the ``image_targets`` reported by
@@ -42,6 +43,11 @@ PACKAGING_PATTERNS = (
     re.compile(r"^Dockerfile$"),
     re.compile(r"^\.dockerignore$"),
     re.compile(r"^resources/"),
+)
+# The checks themselves: a change to them is exercised on every target.
+CHECK_FILES = (
+    "scripts/image_checks/check_image.py",
+    "scripts/image_checks/in_image.py",
 )
 IMPACT_MAP_TIMEOUT = 300
 
@@ -100,6 +106,12 @@ def select_targets(
         return Selection(
             list(TARGETS),
             "could not list the changed files; checking every target (fail-open)",
+        )
+    checks = [f for f in changed_files if f in CHECK_FILES]
+    if checks:
+        return Selection(
+            list(TARGETS),
+            f"the image checks changed ({', '.join(checks)}); checking every target",
         )
     packaging = [f for f in changed_files if is_packaging_file(f)]
     if not packaging:

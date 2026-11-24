@@ -492,3 +492,12 @@ def test_fail_open_impact_map_shape_is_accepted():
     assert selection.targets == ALL
     assert selection.reason == "impact map selection"
     setup.log_impact(selection.impact)  # must not raise
+
+
+@pytest.mark.parametrize(
+    "path", ["scripts/image_checks/check_image.py", "scripts/image_checks/in_image.py"]
+)
+def test_changed_checks_run_on_every_target(path):
+    selection = setup.select_targets([path, "apollo/x.py"], _never_called)
+    assert selection.targets == ALL
+    assert "image checks changed" in selection.reason

@@ -72,8 +72,8 @@ CircleCI dynamic config (project setting "Enable dynamic config using setup work
    that can trigger a build: use a fine-grained token limited to this repository with only
    pull-request write access.
 
-Changes to the checks themselves (`scripts/image_checks/`) don't trigger branch image
-builds; they run in the merge queue. Run them locally (below) before merging such a change.
+A change to the checks themselves (`check_image.py`, `in_image.py`) builds and checks all
+four targets on the branch.
 
 ## Running locally
 
