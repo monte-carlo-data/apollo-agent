@@ -476,3 +476,19 @@ def test_unexpected_selection_error_fails_open(tmp_path, monkeypatch):
     out = tmp_path / "out.yml"
     assert setup.main(["--template", str(tmp_path / "t.yml"), "--out", str(out)]) == 0
     assert _selected(out.read_text()) == ALL
+
+
+def test_fail_open_impact_map_shape_is_accepted():
+    """C1 fail-open lists every connection type; manual_checks may have a null connection_type."""
+    stdout = _impact(
+        ALL,
+        connection_types=[f"type-{i}" for i in range(38)],
+        manual_checks=[
+            {"area": "other", "connection_type": None, "reason": "unmapped"}
+        ],
+        unmapped_packages=["somepkg"],
+    )
+    selection = setup.select_targets(["requirements.txt"], lambda: (0, stdout, ""))
+    assert selection.targets == ALL
+    assert selection.reason == "impact map selection"
+    setup.log_impact(selection.impact)  # must not raise

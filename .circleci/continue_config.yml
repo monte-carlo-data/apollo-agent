@@ -108,12 +108,16 @@ jobs:
             . .venv/bin/activate
             black --check .
             pyright
-      # The `tests` Docker stages don't copy scripts/, so the CI scripts' tests run here.
+      # The `tests` Docker stages don't copy scripts/ or the .in files, so the CI scripts' tests
+      # run here, in a bare venv with only pytest: the scripts must work with the stdlib alone.
+      # --noconftest: tests/conftest.py imports apollo. Test files that don't exist are skipped.
       - run:
-          name: Run CI script tests (image checks, impact map)
+          name: Run CI script tests (image checks, impact map) with a bare Python
           command: |
-            . .venv/bin/activate
-            pytest -p no:cacheprovider --noconftest $(ls tests/test_image_checks*.py tests/test_impact_map*.py 2>/dev/null)
+            python -m venv /tmp/bare-venv
+            /tmp/bare-venv/bin/pip install --no-cache-dir --quiet pytest
+            /tmp/bare-venv/bin/python -m pytest -p no:cacheprovider --noconftest \
+              $(find tests -maxdepth 1 \( -name 'test_image_checks*.py' -o -name 'test_impact_map*.py' \) | sort)
 
   run-test-docker:
     machine:
