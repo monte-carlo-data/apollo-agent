@@ -436,3 +436,20 @@ def test_source_imports():
     assert impact_map.source_imports(source) == {"a.b", "x", "x.y", "x.z"}
     # unparsable files fall back to the line scan
     assert impact_map.source_imports("import pyodbc\ndef (:\n") == {"pyodbc"}
+
+
+def test_import_scan_handles_non_ascii_file_names(repo: FixtureRepo):
+    repo.edit("apollo/integrations/db/café.py", lambda _: "import os\n")
+    repo.replace("requirements.txt", "pyodbc==5.1.0", "pyodbc==5.2.0")
+    report = repo.analyze()
+    assert report["connection_types"] == ["sql-server"]
+
+
+def test_repo_subdirectory_reads_paths_from_the_root(repo: FixtureRepo):
+    repo.replace("requirements.txt", "pyodbc==5.1.0", "pyodbc==5.2.0")
+    repo.analyze()  # commits head
+    git = impact_map.Git(repo.path / "apollo")
+    assert "pyodbc==5.1.0" in (git.show("base", "requirements.txt") or "")
+    assert "apollo/integrations/db/sql_server_proxy_client.py" in git.python_sources(
+        "HEAD", "apollo"
+    )

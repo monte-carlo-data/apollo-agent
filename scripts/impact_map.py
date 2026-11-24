@@ -91,18 +91,22 @@ class Git:
 
         Any other failure (unreadable ref or object) raises, so it can't pass for "absent".
         """
-        if not self._run("ls-tree", "--name-only", ref, "--", path).strip():
+        if not self._ls_tree(ref, path):
             return None
         return self._run("show", f"{ref}:{path}")
+
+    def _ls_tree(self, ref: str, path: str, recursive: bool = False) -> list[str]:
+        """Paths under ``path`` at ``ref``, relative to the repo root and unquoted."""
+        args = ["ls-tree", "-z", "--full-tree", "--name-only"] + (
+            ["-r"] if recursive else []
+        )
+        out = self._run(*args, ref, "--", path)
+        return [name for name in out.split("\0") if name]
 
     def python_sources(self, ref: str, path: str) -> dict[str, str]:
         """file -> content for every ``*.py`` under ``path`` at ``ref`` (one git call)."""
         files = [
-            f
-            for f in self._run(
-                "ls-tree", "-r", "--name-only", ref, "--", path
-            ).splitlines()
-            if f.endswith(".py")
+            f for f in self._ls_tree(ref, path, recursive=True) if f.endswith(".py")
         ]
         if not files:
             return {}
