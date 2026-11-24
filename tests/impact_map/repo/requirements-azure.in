@@ -1,0 +1,2 @@
+-c requirements.txt
+azure-functions==2.1.0
