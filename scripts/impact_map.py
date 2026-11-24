@@ -13,6 +13,7 @@ Stdlib only, so it runs in a bare CI Python. See docs/impact-map.md.
 """
 
 import argparse
+import ast
 import fnmatch
 import json
 import logging
@@ -78,39 +79,53 @@ class Git:
             raise ImpactMapError(f"git {' '.join(args)} failed: {proc.stderr.strip()}")
         return proc.stdout
 
+    def verify_ref(self, ref: str) -> None:
+        self._run("rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}")
+
     def changed_files(self, base: str, head: str) -> list[str]:
         out = self._run("diff", "--name-only", f"{base}...{head}")
         return sorted(line for line in out.splitlines() if line)
 
     def show(self, ref: str, path: str) -> str | None:
-        """File content at ``ref``, or None when the file doesn't exist there."""
-        proc = subprocess.run(
-            ["git", "-C", str(self.repo), "show", f"{ref}:{path}"],
-            capture_output=True,
-            text=True,
-        )
-        return proc.stdout if proc.returncode == 0 else None
+        """File content at ``ref``, or None when the file doesn't exist there.
 
-    def import_lines(self, ref: str, path: str) -> list[tuple[str, str]]:
-        """(file, line) for every import statement under ``path`` at ``ref``."""
-        out = self._run(
-            "grep",
-            "--full-name",
-            "-I",
-            "-E",
-            r"^[[:space:]]*(from|import)[[:space:]]",
-            ref,
-            "--",
-            f"{path}/*.py",
-            ok_codes=(0, 1),
+        Any other failure (unreadable ref or object) raises, so it can't pass for "absent".
+        """
+        if not self._run("ls-tree", "--name-only", ref, "--", path).strip():
+            return None
+        return self._run("show", f"{ref}:{path}")
+
+    def python_sources(self, ref: str, path: str) -> dict[str, str]:
+        """file -> content for every ``*.py`` under ``path`` at ``ref`` (one git call)."""
+        files = [
+            f
+            for f in self._run(
+                "ls-tree", "-r", "--name-only", ref, "--", path
+            ).splitlines()
+            if f.endswith(".py")
+        ]
+        if not files:
+            return {}
+        proc = subprocess.run(
+            ["git", "-C", str(self.repo), "cat-file", "--batch"],
+            input="".join(f"{ref}:{f}\n" for f in files).encode(),
+            capture_output=True,
         )
-        lines = []
-        for raw in out.splitlines():
-            # <ref>:<file>:<line>
-            rest = raw[len(ref) + 1 :] if raw.startswith(f"{ref}:") else raw
-            file_path, _, line = rest.partition(":")
-            lines.append((file_path, line))
-        return lines
+        if proc.returncode != 0:
+            raise ImpactMapError(f"git cat-file failed: {proc.stderr.decode().strip()}")
+        sources: dict[str, str] = {}
+        out = proc.stdout
+        pos = 0
+        for f in files:
+            header_end = out.index(b"\n", pos)
+            header = out[pos:header_end].split()
+            if len(header) != 3:
+                raise ImpactMapError(f"cannot read {ref}:{f}: {out[pos:header_end]!r}")
+            size = int(header[2])
+            start = header_end + 1
+            sources[f] = out[start : start + size].decode("utf-8", errors="replace")
+            pos = start + size + 1
+        return sources
 
 
 # --------------------------------------------------------------------- parsing
@@ -180,6 +195,26 @@ def parse_requirements_in(text: str | None) -> dict[str, str]:
         if match:
             specs[normalize(match.group("name"))] = " ".join(spec.split())
     return specs
+
+
+def source_imports(source: str) -> set[str]:
+    """Dotted module names a Python file imports (``from a import b`` -> a, a.b).
+
+    Parses with ``ast`` so multi-line and nested imports count; falls back to a line scan
+    for files that don't parse.
+    """
+    try:
+        tree = ast.parse(source)
+    except (SyntaxError, ValueError):
+        return set().union(*(imported_modules(line) for line in source.splitlines()))
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            names.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module and not node.level:
+            names.add(node.module)
+            names.update(f"{node.module}.{a.name}" for a in node.names if a.name != "*")
+    return names
 
 
 def imported_modules(line: str) -> set[str]:
@@ -304,6 +339,8 @@ class ImpactMap:
 
     def analyze(self) -> dict[str, Any]:
         result = Result()
+        self.git.verify_ref(self.base)
+        self.git.verify_ref(self.head)
         packaging = [
             f
             for f in self.git.changed_files(self.base, self.head)
@@ -412,8 +449,13 @@ class ImpactMap:
         self, package: ChangedPackage, graphs: list[dict[str, Pin]], result: Result
     ) -> None:
         chain = self._ancestors(package.name, graphs)
+        head_graph = graphs[-1]
         unresolved = []
         for name in sorted(chain):
+            # Only what ships at head must be mapped: a removed dependency's entry is
+            # (rightly) gone from the manifest too.
+            if name not in head_graph and any(name in g for g in graphs):
+                continue
             pins = [g[name] for g in graphs if name in g]
             is_top = any(p.top_level for p in pins)
             has_parents = any(p.parents for p in pins)
@@ -431,13 +473,16 @@ class ImpactMap:
                 f"`{package.name}`{via} has no entry in the impact-map manifest",
             )
 
+        own_types: set[str] = set()
         for name in sorted(chain):
-            result.connection_types.update(self._map_one(name, result))
+            types = self._map_one(name, result)
+            result.connection_types.update(types)
+            if name == package.name:
+                own_types = types
 
         # Per-area checks only for the changed package's own connection types: a driver
         # bump needs its collection paths checked, the drivers that merely pull it in don't.
         own = self.manifest.packages.get(package.name, {})
-        own_types = self._map_one(package.name, result)
         for connection_type in sorted(own_types):
             for area in own.get("areas", []):
                 if area in self.manifest.connection_types.get(connection_type, []):
@@ -471,10 +516,10 @@ class ImpactMap:
     def _importers(self, package: str) -> set[str]:
         """apollo/ files at the head ref that import any of the package's modules."""
         if self.head not in self._imports:
-            by_file: dict[str, set[str]] = {}
-            for file_path, line in self.git.import_lines(self.head, SCANNED_SOURCE_DIR):
-                by_file.setdefault(file_path, set()).update(imported_modules(line))
-            self._imports[self.head] = sorted(by_file.items())
+            sources = self.git.python_sources(self.head, SCANNED_SOURCE_DIR)
+            self._imports[self.head] = sorted(
+                (file_path, source_imports(text)) for file_path, text in sources.items()
+            )
         prefixes = self.manifest.package_imports(package)
         hits = set()
         for file_path, modules in self._imports[self.head]:

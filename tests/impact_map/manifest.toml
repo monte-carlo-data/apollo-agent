@@ -24,6 +24,7 @@ sql-server = ["metadata_collection", "monitors"]
 "apollo/integrations/db/sql_server_proxy_client.py" = { connection_types = ["sql-server"] }
 "apollo/integrations/snowflake/" = { connection_types = ["snowflake"] }
 "apollo/integrations/aws/glue_proxy_client.py" = { connection_types = ["glue"] }
+"apollo/interfaces/cloudrun/cloudrun_updater.py" = { manual = "Cloud Run self-upgrade" }
 "apollo/credentials/asm.py" = { manual = "Self-hosted credentials in AWS Secrets Manager" }
 
 [packages]
@@ -35,3 +36,4 @@ pyodbc = { scope = "direct", connection_types = ["sql-server"], areas = ["metada
 snowflake-connector-python = { scope = "direct", imports = ["snowflake.connector"], areas = ["metadata_collection", "query_logs", "monitors"] }
 azure-functions = { scope = "runtime", imports = [], manual = [{ area = "other", reason = "Azure host start" }] }
 pytest = { scope = "dev" }
+google-cloud-run = { scope = "direct", imports = ["google.cloud.run_v2"] }

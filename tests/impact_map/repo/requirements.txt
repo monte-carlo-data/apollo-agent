@@ -16,6 +16,10 @@ cryptography==50.0.0
     #   snowflake-connector-python
 flask==3.1.3
     # via -r requirements.in
+google-cloud-run==0.10.18
+    # via -r requirements.in
+oldlib==1.0
+    # via -r requirements.in
 ibm-db==3.2.8 ; platform_machine != "aarch64"
     # via -r requirements.in
 pyodbc==5.1.0

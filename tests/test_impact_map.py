@@ -394,3 +394,45 @@ def test_cli_bad_ref_is_an_internal_error(repo: FixtureRepo):
     assert proc.returncode != 0
     assert proc.stdout == ""
     assert "no-such-ref" in proc.stderr
+
+
+# ------------------------------------------------------------ review fixes
+
+
+def test_removed_dependency_without_manifest_entry_does_not_fail_open(
+    repo: FixtureRepo,
+):
+    # Removing a dependency also removes its manifest entry; that is not "unmapped".
+    repo.replace("requirements.in", "oldlib==1.0  # not in the test manifest\n", "")
+    repo.replace("requirements.txt", "oldlib==1.0\n    # via -r requirements.in\n", "")
+    report = repo.analyze()
+    assert report["changed_packages"][0]["name"] == "oldlib"
+    assert report["unmapped_packages"] == []
+    assert report["connection_types"] == []
+
+
+def test_import_scan_reads_multiline_imports(repo: FixtureRepo):
+    # cloudrun_updater.py does `from google.cloud import (\n    run_v2,\n)`
+    repo.replace(
+        "requirements.txt", "google-cloud-run==0.10.18", "google-cloud-run==0.10.19"
+    )
+    report = repo.analyze()
+    [check] = report["manual_checks"]
+    assert check["reason"].startswith("Cloud Run self-upgrade")
+
+
+def test_show_distinguishes_missing_path_from_unreadable_ref(repo: FixtureRepo):
+    git = impact_map.Git(repo.path)
+    assert git.show("base", "does-not-exist.txt") is None
+    assert "pyodbc" in (git.show("base", "requirements.txt") or "")
+    with pytest.raises(impact_map.ImpactMapError):
+        git.show("no-such-ref", "requirements.txt")
+
+
+def test_source_imports():
+    source = (
+        "import a.b as c\nfrom x import (\n    y,\n    z as w,\n)\nfrom . import rel\n"
+    )
+    assert impact_map.source_imports(source) == {"a.b", "x", "x.y", "x.z"}
+    # unparsable files fall back to the line scan
+    assert impact_map.source_imports("import pyodbc\ndef (:\n") == {"pyodbc"}
