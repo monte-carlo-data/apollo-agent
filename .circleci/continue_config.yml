@@ -113,7 +113,7 @@ jobs:
           name: Run CI script tests (image checks, impact map)
           command: |
             . .venv/bin/activate
-            pytest -p no:cacheprovider $(ls tests/test_image_checks*.py tests/test_impact_map*.py 2>/dev/null)
+            pytest -p no:cacheprovider --noconftest $(ls tests/test_image_checks*.py tests/test_impact_map*.py 2>/dev/null)
 
   run-test-docker:
     machine:

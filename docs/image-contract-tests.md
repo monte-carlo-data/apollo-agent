@@ -13,7 +13,7 @@ containers with no network:
 | Check | What it does |
 |---|---|
 | `version` | `apollo/agent/settings.py` prints the expected `<code_version>,<build_number>`. |
-| `imports` | Imports every native driver and compiled library the agent uses (`oracledb`, `pyodbc`, `ibm_db`, `teradatasql`, `psycopg2`, `snowflake.connector`, `hdbcli`, `duckdb`, `pyarrow`, ... see `NATIVE_MODULES`) and the target's entry modules. Also loads the Oracle Instant Client (thick mode) and checks that `ODBC Driver 17 for SQL Server` is registered. |
+| `imports` | Imports every native driver and compiled library the agent uses (`oracledb`, `pyodbc`, `ibm_db`, `teradatasql`, `psycopg2`, `snowflake.connector`, `hdbcli`, `duckdb`, `pyarrow`, ... see `NATIVE_MODULES`) and the target's entry modules. Also loads the Oracle Instant Client (thick mode) and checks that a SQL Server ODBC driver (17 or 18) is registered. |
 | `ldd` | Runs `ldd` (or the dynamic loader's `--list`) on every shared object on the interpreter's path, `/opt/oracle/instantclient` and `/opt/microsoft`; fails on any `not found`. Known, harmless gaps are listed with a reason in `LDD_IGNORED`. |
 | `health` | Starts the entrypoint and hits health: gunicorn on `/api/v1/test/health` for `generic` (and the `aws_proxied` entry module, run in the `generic` image), `aws_proxied` and `cloudrun`; the Lambda handler from the image's `CMD`, called with an API Gateway event; for `azure`, the image's own Functions host entrypoint is started with an [Azurite](https://github.com/Azure/Azurite) storage emulator (Durable Functions needs storage) and a pre-seeded placeholder function key, and health is called through the host. Only `version` and `build` are read from the health response. |
 

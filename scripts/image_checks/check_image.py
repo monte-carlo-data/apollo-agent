@@ -67,7 +67,7 @@ NATIVE_MODULES: tuple[str, ...] = (
     "pydantic_core",
     "git",
 )
-PROBES: tuple[str, ...] = ("oracledb thick mode", "ODBC Driver 17 for SQL Server")
+PROBES: tuple[str, ...] = ("oracledb thick mode", "SQL Server ODBC driver")
 # System libraries outside site-packages that drivers load.
 NATIVE_LIB_DIRS: tuple[str, ...] = ("/opt/oracle/instantclient", "/opt/microsoft")
 

@@ -46,19 +46,26 @@ def _probe_oracle_thick() -> None:
     oracledb.clientversion()
 
 
+SQL_SERVER_ODBC_DRIVERS = (
+    "ODBC Driver 17 for SQL Server",
+    "ODBC Driver 18 for SQL Server",
+)
+
+
 def _probe_odbc_driver() -> None:
     import pyodbc
 
     drivers = pyodbc.drivers()
-    if "ODBC Driver 17 for SQL Server" not in drivers:
+    # tsql_base_db_proxy_client uses whichever of these is installed.
+    if not any(d in drivers for d in SQL_SERVER_ODBC_DRIVERS):
         raise RuntimeError(
-            f"'ODBC Driver 17 for SQL Server' not registered; found {drivers}"
+            f"no SQL Server ODBC driver (17 or 18) registered; found {drivers}"
         )
 
 
 PROBES: dict[str, Callable[[], None]] = {
     "oracledb thick mode": _probe_oracle_thick,
-    "ODBC Driver 17 for SQL Server": _probe_odbc_driver,
+    "SQL Server ODBC driver": _probe_odbc_driver,
 }
 
 

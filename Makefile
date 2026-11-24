@@ -48,4 +48,4 @@ image-checks:
 	@for t in $(IMAGE_TARGETS); do $(MAKE) image-check TARGET=$$t || exit 1; done
 
 test-image-checks:
-	python3 -m pytest -p no:cacheprovider tests/test_image_checks.py tests/test_image_checks_pipeline.py
+	python3 -m pytest -p no:cacheprovider --noconftest tests/test_image_checks.py tests/test_image_checks_pipeline.py
