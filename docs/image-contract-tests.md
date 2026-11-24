@@ -15,7 +15,7 @@ containers with no network:
 | `version` | `apollo/agent/settings.py` prints the expected `<code_version>,<build_number>`. |
 | `imports` | Imports every native driver and compiled library the agent uses (`oracledb`, `pyodbc`, `ibm_db`, `teradatasql`, `psycopg2`, `snowflake.connector`, `hdbcli`, `duckdb`, `pyarrow`, ... see `NATIVE_MODULES`) and the target's entry modules. Also loads the Oracle Instant Client (thick mode) and checks that `ODBC Driver 17 for SQL Server` is registered. |
 | `ldd` | Runs `ldd` (or the dynamic loader's `--list`) on every shared object on the interpreter's path, `/opt/oracle/instantclient` and `/opt/microsoft`; fails on any `not found`. Known, harmless gaps are listed with a reason in `LDD_IGNORED`. |
-| `health` | Starts the entrypoint and hits health: gunicorn on `/api/v1/test/health` for `generic` (and the `aws_proxied` entry module, run in the `generic` image), `aws_proxied` and `cloudrun`; the Lambda handler from the image's `CMD`, called with an API Gateway event; for `azure`, the Functions host must stay up and load `function_app` without errors. Only `version` and `build` are read from the health response. |
+| `health` | Starts the entrypoint and hits health: gunicorn on `/api/v1/test/health` for `generic` (and the `aws_proxied` entry module, run in the `generic` image), `aws_proxied` and `cloudrun`; the Lambda handler from the image's `CMD`, called with an API Gateway event; for `azure`, the image's own Functions host entrypoint is started with an [Azurite](https://github.com/Azure/Azurite) storage emulator (Durable Functions needs storage) and a pre-seeded placeholder function key, and health is called through the host. Only `version` and `build` are read from the health response. |
 
 Entry modules per target: `generic`: `apollo.interfaces.generic.main`,
 `apollo.interfaces.aws.main`; `cloudrun`: `apollo.interfaces.cloudrun.main`; `lambda`:
@@ -24,7 +24,7 @@ Entry modules per target: `generic`: `apollo.interfaces.generic.main`,
 Placeholders the checks provide, because the real values only exist in a customer's
 deployment: an `authorized_user` GCP credentials file and `GOOGLE_CLOUD_PROJECT` for
 `cloudrun` (its main module builds a logging client at import), a zero
-`APPLICATIONINSIGHTS_CONNECTION_STRING` for `azure`, and `AWS_REGION` for `lambda`.
+`APPLICATIONINSIGHTS_CONNECTION_STRING`, Azurite and a function key for `azure`, and `AWS_REGION` for `lambda`.
 
 ### Reading a failure
 

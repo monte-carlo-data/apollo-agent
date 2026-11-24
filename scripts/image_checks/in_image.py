@@ -148,7 +148,10 @@ def run_http_health(request: dict[str, Any]) -> dict[str, Any]:
     last_error = "no attempt made"
     while time.monotonic() < deadline:
         try:
-            with urllib.request.urlopen(request["url"], timeout=10) as resp:
+            req = urllib.request.Request(
+                request["url"], headers=request.get("headers", {})
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
                 return {"status": resp.status, **_health_fields(resp.read().decode())}
         except urllib.error.HTTPError as exc:
             last_error = f"HTTP {exc.code}"

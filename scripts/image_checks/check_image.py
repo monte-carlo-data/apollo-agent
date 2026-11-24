@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -78,6 +79,10 @@ LDD_IGNORED: tuple[tuple[str, str], ...] = (
     # ibm_db's clidriver ships its optional XML support library without the XML4C runtime
     # it links; the DB2 CLI driver itself (libdb2.so) resolves fully.
     ("/clidriver/lib/libdb2clixml4c.so", "libDB2xml4c.so.58"),
+    # The azure stage's apt purge (--auto-remove) takes libsqlite3 with it, so the stdlib
+    # sqlite3 module can't load there. Nothing in the agent imports sqlite3; zeep, pandas and
+    # filelock only import it lazily or optionally. Remove this once the azure stage keeps it.
+    ("/lib-dynload/_sqlite3.", "libsqlite3.so.0"),
 )
 
 # A placeholder Application Insights key: function_app configures telemetry at import time.
@@ -98,6 +103,50 @@ GCP_ENV = {
     "GOOGLE_APPLICATION_CREDENTIALS": GCP_CREDENTIALS_PATH,
     "GOOGLE_CLOUD_PROJECT": "image-check",
 }
+# Azure Functions host: storage emulator and a fixed function key, for the health call only.
+AZURITE = (
+    "mcr.microsoft.com/azure-storage/azurite:3.35.0@sha256:"
+    "647c63a91102a9d8e8000aab803436e1fc85fbb285e7ce830a82ee5d6661cf37",
+    "azurite",
+    "--blobHost",
+    "0.0.0.0",
+    "--queueHost",
+    "0.0.0.0",
+    "--tableHost",
+    "0.0.0.0",
+    "--skipApiVersionCheck",
+    "--loose",
+)
+# Azurite's documented, public development account key.
+AZURITE_ACCOUNT_KEY = "Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw=="
+AZURE_FUNCTION_KEY = "image-check-function-key"
+AZURE_HOST_KEYS = {
+    "masterKey": {
+        "name": "master",
+        "value": "image-check-master-key",
+        "encrypted": False,
+    },
+    "functionKeys": [
+        {"name": "default", "value": AZURE_FUNCTION_KEY, "encrypted": False}
+    ],
+    "systemKeys": [],
+    "hostName": None,
+    "instanceId": "image-check",
+    "source": "runtime",
+    "decryptionKeyId": "",
+}
+
+
+def azurite_connection_string(host: str) -> str:
+    account = "devstoreaccount1"
+    return (
+        f"DefaultEndpointsProtocol=http;AccountName={account};AccountKey={AZURITE_ACCOUNT_KEY};"
+        f"BlobEndpoint=http://{host}:10000/{account};"
+        f"QueueEndpoint=http://{host}:10001/{account};"
+        f"TableEndpoint=http://{host}:10002/{account};"
+    )
+
+
 LAMBDA_ENV = {"AWS_REGION": "us-east-1", "AWS_DEFAULT_REGION": "us-east-1"}
 
 
@@ -381,42 +430,38 @@ class Checker:
             return
         self.report.ok(f"{what} health: HTTP 200, version {found}")
 
-    def _check_http_server(self, server: Server) -> None:
-        what = f"{server.name} entrypoint"
-        run = [
-            "run",
-            "-d",
-            "--platform",
-            "linux/amd64",
-            "--network",
-            "none",
-            "-e",
-            f"PORT={PORT}",
-        ]
-        run += env_args(self.target.env) + self._mounts + [self.image]
-        if server.command:
-            run += list(server.command)
-        container = docker(*run).stdout.strip()
+    def _serve_and_probe(
+        self,
+        what: str,
+        run_args: list[str],
+        command: tuple[str, ...] | None = None,
+        headers: dict[str, str] | None = None,
+        timeout: int = 90,
+    ) -> None:
+        """Start the image's server detached, then poll health from inside the container."""
+        run = ["run", "-d", "--platform", "linux/amd64", "-e", f"PORT={PORT}"]
+        run += run_args + env_args(self.target.env) + self._mounts + [self.image]
+        container = docker(*run, *(command or ())).stdout.strip()
         try:
+            request = {
+                "mode": "http-health",
+                "url": f"http://127.0.0.1:{PORT}/api/v1/test/health",
+                "headers": headers or {},
+                "timeout": timeout,
+            }
             proc = docker(
                 "exec",
                 container,
                 self.target.python,
                 "-c",
                 PROBE_SOURCE,
-                json.dumps(
-                    {
-                        "mode": "http-health",
-                        "url": f"http://127.0.0.1:{PORT}/api/v1/test/health",
-                        "timeout": 90,
-                    }
-                ),
-                timeout=180,
+                json.dumps(request),
+                timeout=timeout + 90,
                 check=False,
             )
             result = parse_result(proc.stdout)
             if result is None:
-                # exec fails outright when the server process died and took the container with it
+                # exec fails outright when the server died and took the container with it
                 result = {
                     "error": tail(proc.stdout + proc.stderr, 10) or "container exited"
                 }
@@ -424,6 +469,11 @@ class Checker:
             self._check_health_result(what, result, logs.stdout + logs.stderr)
         finally:
             docker("rm", "-f", container, check=False)
+
+    def _check_http_server(self, server: Server) -> None:
+        self._serve_and_probe(
+            f"{server.name} entrypoint", ["--network", "none"], command=server.command
+        )
 
     def _check_lambda_handler(self) -> None:
         inspect = docker("image", "inspect", "-f", "{{json .Config.Cmd}}", self.image)
@@ -436,47 +486,43 @@ class Checker:
         result, output = self.probe({"mode": "lambda-health", "handler": cmd[0]})
         self._check_health_result(f"lambda handler {cmd[0]}", result, output)
 
-    def _check_azure_host(self, run_seconds: int = 45) -> None:
-        # A host that can't start leaves a deployed agent returning 503 and unable to
-        # upgrade itself. The host needs network to fetch its extension bundle.
-        container = docker(
-            "run",
-            "-d",
-            "--platform",
-            "linux/amd64",
-            *env_args(self.target.env),
-            self.image,
-        ).stdout.strip()
+    def _check_azure_host(self) -> None:
+        """Start the Functions host with its real entrypoint and call health through it.
+
+        A host that can't start, or a worker that can't load function_app, leaves a
+        deployed agent answering 503 and unable to upgrade itself. The host needs a
+        storage account (Durable Functions) and a function key (the route's auth level):
+        an Azurite container on a private network, and a pre-seeded file-based key.
+        Both networks allow outbound traffic: the host may fetch its extension bundle.
+        """
+        suffix = f"{os.getpid()}-{int(time.time())}"
+        network, azurite = f"image-check-{suffix}", f"image-check-azurite-{suffix}"
+        keys = Path(self._tmp.name) / "host.json"
+        keys.write_text(json.dumps(AZURE_HOST_KEYS))
+        keys.chmod(0o644)
+        docker("network", "create", network)
         try:
-            deadline = time.monotonic() + run_seconds
-            running = True
-            while time.monotonic() < deadline and running:
-                time.sleep(3)
-                state = docker(
-                    "inspect", "-f", "{{.State.Running}}", container, check=False
-                )
-                running = state.stdout.strip() == "true"
-            logs = docker("logs", container, check=False)
-            output = logs.stdout + logs.stderr
-            if not running:
-                self.report.fail(
-                    "Azure Functions host exited instead of staying up", tail(output)
-                )
-                return
-            errors = [
-                line
-                for line in output.splitlines()
-                if "function_app" in line and ("Error" in line or "Exception" in line)
-            ]
-            if errors:
-                self.report.fail(
-                    "Azure Functions host failed to load function_app",
-                    "\n".join(errors),
-                )
-                return
-            self.report.ok(f"Azure Functions host stayed up for {run_seconds}s")
+            docker(
+                "run", "-d", "--rm", "--name", azurite, "--network", network, *AZURITE
+            )
+            self._serve_and_probe(
+                "Azure Functions host",
+                [
+                    "--network",
+                    network,
+                    "-e",
+                    f"AzureWebJobsStorage={azurite_connection_string(azurite)}",
+                    "-e",
+                    "AzureWebJobsSecretStorageType=files",
+                    "-v",
+                    f"{keys}:/azure-functions-host/Secrets/host.json:ro",
+                ],
+                headers={"x-functions-key": AZURE_FUNCTION_KEY},
+                timeout=180,
+            )
         finally:
-            docker("rm", "-f", container, check=False)
+            docker("rm", "-f", azurite, check=False)
+            docker("network", "rm", network, check=False)
 
     def run(self, checks: list[str]) -> Report:
         print(
