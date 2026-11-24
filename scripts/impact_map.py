@@ -401,8 +401,13 @@ class ImpactMap:
         )
         if txt not in self.manifest.requirements_files:
             reason = f"`{path}` has no compiled file the manifest maps to an image"
-            for name in differing or [path]:
+            for name in differing:
                 self._fail_open_unmapped(result, name, reason)
+            if not differing:
+                result.fail_open_reasons.append(reason)
+                result.add_check(
+                    "other", None, f"{reason}: add it to `[requirements_files]`."
+                )
             return
         if differing and txt not in changed:
             for name in differing:

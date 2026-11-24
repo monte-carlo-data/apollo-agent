@@ -453,3 +453,13 @@ def test_repo_subdirectory_reads_paths_from_the_root(repo: FixtureRepo):
     assert "apollo/integrations/db/sql_server_proxy_client.py" in git.python_sources(
         "HEAD", "apollo"
     )
+
+
+def test_unknown_in_file_without_packages_fails_open_without_fake_package(
+    repo: FixtureRepo,
+):
+    repo.edit("requirements-new.in", lambda _: "# placeholder\n")
+    report = repo.analyze()
+    assert report["unmapped_packages"] == []
+    assert report["image_targets"] == ALL_TARGETS
+    assert any("requirements-new.in" in c["reason"] for c in report["manual_checks"])

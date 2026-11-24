@@ -67,8 +67,9 @@ are no manual checks. The checklist never fails CI.
    pull it in.
 5. **Mapping.** For the changed package and each ancestor:
    - its `[packages]` entry adds `connection_types` and any `manual` checks;
-   - **import scanning**: the `apollo/` files that import it at the head ref (via `git grep`;
-     `from a import b` counts as importing `a` and `a.b`) are looked up in `[modules]`, which
+   - **import scanning**: the `apollo/` files that import it at the head ref (read with one `git
+     cat-file --batch` and parsed with `ast`, so multi-line imports count; `from a import b`
+     counts as importing `a` and `a.b`) are looked up in `[modules]`, which
      adds that module's `connection_types` and turns its `manual` text into an `other` check.
      This catches packages apollo imports directly but only gets transitively, like `boto3`.
 6. **Per-area checks.** When the changed package's own entry has `areas` (drivers do), each of
