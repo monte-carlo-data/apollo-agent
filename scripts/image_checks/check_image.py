@@ -302,10 +302,9 @@ class Checker:
             creds.chmod(0o644)
             self._mounts = ["-v", f"{creds}:{GCP_CREDENTIALS_PATH}:ro"]
 
-    def run_args(self, *, network: bool = False) -> list[str]:
-        args = ["run", "--rm", "--platform", "linux/amd64", "-w", self.target.workdir]
-        if not network:
-            args += ["--network", "none"]
+    def run_args(self) -> list[str]:
+        args = ["run", "--rm", "--platform", "linux/amd64", "--network", "none"]
+        args += ["-w", self.target.workdir]
         return args + env_args(self.target.env) + self._mounts
 
     def probe(
@@ -418,11 +417,8 @@ class Checker:
                 f"{what} health check failed", f"{reason}\n--- output ---\n{tail(logs)}"
             )
             return
-        expected_version, _, expected_build = (self.expected_version or "").partition(
-            ","
-        )
         found = f"{result.get('version')},{result.get('build')}"
-        if self.expected_version and found != f"{expected_version},{expected_build}":
+        if self.expected_version and found != self.expected_version:
             self.report.fail(
                 f"{what} health reported the wrong version",
                 f"expected {self.expected_version!r}, found {found!r}",
@@ -535,6 +531,10 @@ class Checker:
                 getattr(self, f"check_{check}")()
             except DockerError as exc:
                 self.report.fail(f"{check} check could not run docker", str(exc))
+            except Exception as exc:  # keep going, and keep the failure readable
+                self.report.fail(
+                    f"{check} check crashed", f"{type(exc).__name__}: {exc}"
+                )
             print(f"    ({time.monotonic() - started:.0f}s)", flush=True)
         self._tmp.cleanup()
         return self.report

@@ -67,7 +67,10 @@ CircleCI dynamic config (project setting "Enable dynamic config using setup work
    their workflows are exactly what they were before dynamic config.
 3. The setup job also posts the impact map's `--format markdown` manual checklist as one
    sticky PR comment (`scripts/image_checks/pr_comment.py`). It never fails the build, and
-   it is a no-op until a token is provided in `IMPACT_MAP_GITHUB_TOKEN`.
+   it is a no-op until a token is provided in `IMPACT_MAP_GITHUB_TOKEN`. The setup job runs
+   the branch's own scripts, so whatever token is added there is readable by any branch
+   that can trigger a build: use a fine-grained token limited to this repository with only
+   pull-request write access.
 
 Changes to the checks themselves (`scripts/image_checks/`) don't trigger branch image
 builds; they run in the merge queue. Run them locally (below) before merging such a change.

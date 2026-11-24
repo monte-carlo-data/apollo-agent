@@ -445,3 +445,34 @@ def test_main_never_fails(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(pr_comment.GitHub, "find_comment", boom)
     assert pr_comment.main(["--body-file", str(body)]) == 0
     assert "network down; ignored" in capsys.readouterr().out
+
+
+ODD_IMPACT_MAP = textwrap.dedent(
+    """\
+    import json
+    print(json.dumps({"schema_version": 1, "packaging_changed": True, "image_targets": ["azure"],
+        "changed_packages": ["pyodbc"], "unmapped_packages": [{"name": "x"}]}))
+    """
+)
+
+
+def test_e2e_oddly_shaped_impact_fields_do_not_crash_setup(repo):
+    _commit(repo, "scripts/impact_map.py", ODD_IMPACT_MAP)
+    _commit(repo, "requirements.txt", "pyodbc==5.2.0\n")
+    out, log = _run_setup(repo, {"CIRCLE_BRANCH": "feature"})
+    assert _selected(out) == ["azure"]
+    assert "unmapped packages: {'name': 'x'}" in log
+
+
+def test_unexpected_selection_error_fails_open(tmp_path, monkeypatch):
+    (tmp_path / "t.yml").write_text(TEMPLATE)
+    monkeypatch.setenv("CIRCLE_BRANCH", "feature")
+    monkeypatch.delenv("CIRCLE_TAG", raising=False)
+
+    def boom(args):
+        raise RuntimeError("unexpected")
+
+    monkeypatch.setattr(setup, "select_branch", boom)
+    out = tmp_path / "out.yml"
+    assert setup.main(["--template", str(tmp_path / "t.yml"), "--out", str(out)]) == 0
+    assert _selected(out.read_text()) == ALL

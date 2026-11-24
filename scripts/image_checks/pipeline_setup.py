@@ -270,27 +270,44 @@ def main(argv: list[str] | None = None) -> int:
             [], f"{kind} build: its build jobs check every image they build"
         )
     else:
-        base, changed = changed_files_against_main()
-        selection = select_targets(changed, impact_map_runner(args.impact_map, base))
-        if args.checklist and selection.impact is not None:
-            write_checklist(args.impact_map, base, args.checklist)
-        elif args.checklist and changed is not None and not selection.packaging_files:
-            # Definitely nothing to check; clears an earlier checklist. When the impact map
-            # is missing or failed, no file is written and the comment is left alone.
-            args.checklist.write_text("")
-
-    log(f"image checks: {', '.join(selection.targets) or 'none'} ({selection.reason})")
-    if selection.packaging_files:
-        log(f"packaging files changed: {', '.join(selection.packaging_files)}")
-    if selection.impact:
-        for pkg in selection.impact.get("changed_packages", []):
-            log(f"  {pkg.get('name')}: {pkg.get('from')} -> {pkg.get('to')}")
-        if selection.impact.get("unmapped_packages"):
-            log(
-                f"  unmapped packages: {', '.join(selection.impact['unmapped_packages'])}"
+        try:
+            selection = select_branch(args)
+        except Exception as exc:  # a setup failure would stop the whole pipeline
+            selection = Selection(
+                list(TARGETS),
+                f"selection failed ({type(exc).__name__}: {exc}); checking every target (fail-open)",
             )
+    log(f"image checks: {', '.join(selection.targets) or 'none'} ({selection.reason})")
     args.out.write_text(render(args.template.read_text(), selection.targets))
     return 0
+
+
+def select_branch(args: argparse.Namespace) -> Selection:
+    base, changed = changed_files_against_main()
+    selection = select_targets(changed, impact_map_runner(args.impact_map, base))
+    if args.checklist and selection.impact is not None:
+        write_checklist(args.impact_map, base, args.checklist)
+    elif args.checklist and changed is not None and not selection.packaging_files:
+        # Definitely nothing to check; clears an earlier checklist. When the impact map
+        # is missing or failed, no file is written and the comment is left alone.
+        args.checklist.write_text("")
+    if selection.packaging_files:
+        log(f"packaging files changed: {', '.join(selection.packaging_files)}")
+    log_impact(selection.impact)
+    return selection
+
+
+def log_impact(impact: dict[str, Any] | None) -> None:
+    """Log the package changes; fields beyond image_targets aren't validated, so str() them."""
+    if not impact:
+        return
+    packages = impact.get("changed_packages")
+    for pkg in packages if isinstance(packages, list) else []:
+        if isinstance(pkg, dict):
+            log(f"  {pkg.get('name')}: {pkg.get('from')} -> {pkg.get('to')}")
+    unmapped = impact.get("unmapped_packages")
+    if isinstance(unmapped, list) and unmapped:
+        log(f"  unmapped packages: {', '.join(str(p) for p in unmapped)}")
 
 
 if __name__ == "__main__":

@@ -270,3 +270,60 @@ def test_http_health_times_out_readably():
     )
     assert result["status"] is None
     assert "no healthy response within 1s" in result["error"]
+
+
+def test_unexpected_exception_is_reported_and_later_checks_still_run(
+    monkeypatch, capsys
+):
+    checker = check_image.Checker("generic", "img", None)
+    ran = []
+
+    def crash():
+        raise KeyError("imports")
+
+    monkeypatch.setattr(checker, "check_imports", crash)
+    monkeypatch.setattr(checker, "check_ldd", lambda: ran.append("ldd"))
+    report = checker.run(["imports", "ldd"])
+    assert [f.headline for f in report.failures] == [
+        "imports check crashed in the generic image"
+    ]
+    assert ran == ["ldd"]
+
+
+def test_azurite_connection_string_points_at_the_sidecar():
+    cs = check_image.azurite_connection_string("azurite-x")
+    assert "BlobEndpoint=http://azurite-x:10000/devstoreaccount1;" in cs
+    assert "QueueEndpoint=http://azurite-x:10001/devstoreaccount1;" in cs
+    assert "TableEndpoint=http://azurite-x:10002/devstoreaccount1;" in cs
+
+
+def test_azure_host_check_wires_storage_key_and_cleans_up(monkeypatch):
+    calls = []
+
+    def fake_docker(*args, timeout=600, check=True):
+        calls.append(args)
+        stdout = "cid\n"
+        if args[0] == "exec":
+            body = {"status": 200, "version": "1.2.3", "build": "45"}
+            stdout = check_image.RESULT_MARKER + json.dumps(body) + "\n"
+        return subprocess.CompletedProcess(args, 0, stdout, "")
+
+    monkeypatch.setattr(check_image, "docker", fake_docker)
+    checker = check_image.Checker("azure", "img", "1.2.3,45")
+    checker._check_azure_host()
+    assert checker.report.failures == []
+    network = calls[0][2]
+    assert calls[0][:2] == ("network", "create")
+    host_run = next(c for c in calls if c[0] == "run" and "img" in c)
+    assert (
+        f"AzureWebJobsStorage={check_image.azurite_connection_string(calls[1][4])}"
+        in host_run
+    )
+    assert any(
+        a.endswith(":/azure-functions-host/Secrets/host.json:ro") for a in host_run
+    )
+    exec_call = next(c for c in calls if c[0] == "exec")
+    request = json.loads(exec_call[-1])
+    assert request["headers"] == {"x-functions-key": check_image.AZURE_FUNCTION_KEY}
+    assert calls[-1] == ("network", "rm", network)
+    assert ("rm", "-f", calls[1][4]) in calls
