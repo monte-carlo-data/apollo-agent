@@ -1,0 +1,39 @@
+# Small manifest for tests/test_impact_map.py; mirrors the shape of
+# scripts/impact_map_manifest.toml.
+packaging_paths = ["requirements*.txt", "requirements*.in", "Dockerfile", "resources/*"]
+fail_open_paths = ["Dockerfile", "resources/*"]
+
+[targets]
+generic = []
+cloudrun = ["gcp"]
+lambda = ["aws"]
+azure = ["azure"]
+
+[requirements_files]
+"requirements.txt" = ["generic", "cloudrun", "lambda", "azure"]
+"requirements-azure.txt" = ["azure"]
+"requirements-dev.txt" = []
+
+[connection_types]
+db2 = ["metadata_collection", "monitors"]
+glue = ["metadata_collection"]
+snowflake = ["metadata_collection", "query_logs", "monitors"]
+sql-server = ["metadata_collection", "monitors"]
+
+[modules]
+"apollo/integrations/db/sql_server_proxy_client.py" = { connection_types = ["sql-server"] }
+"apollo/integrations/snowflake/" = { connection_types = ["snowflake"] }
+"apollo/integrations/aws/glue_proxy_client.py" = { connection_types = ["glue"] }
+"apollo/interfaces/cloudrun/cloudrun_updater.py" = { manual = "Cloud Run self-upgrade" }
+"apollo/credentials/asm.py" = { manual = "Self-hosted credentials in AWS Secrets Manager" }
+
+[packages]
+agent-base = { scope = "runtime", imports = [] }
+cryptography = { scope = "direct" }
+flask = { scope = "runtime", imports = [] }
+ibm-db = { scope = "direct", connection_types = ["db2"], areas = ["metadata_collection"] }
+pyodbc = { scope = "direct", connection_types = ["sql-server"], areas = ["metadata_collection", "monitors"] }
+snowflake-connector-python = { scope = "direct", imports = ["snowflake.connector"], areas = ["metadata_collection", "query_logs", "monitors"] }
+azure-functions = { scope = "runtime", imports = [], manual = [{ area = "other", reason = "Azure host start" }] }
+pytest = { scope = "dev" }
+google-cloud-run = { scope = "direct", imports = ["google.cloud.run_v2"] }

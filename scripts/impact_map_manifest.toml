@@ -1,0 +1,285 @@
+# Impact-map manifest, read by scripts/impact_map.py. How to maintain it: docs/impact-map.md.
+#
+# tests/test_impact_map_manifest.py checks that every package in a requirements*.in file has
+# an entry under [packages], that every requirements*.txt is mapped to the image targets the
+# Dockerfile installs it into, and that every connection type used here is in
+# [connection_types].
+
+# Files whose change counts as a packaging change. Any other change (e.g. apollo/ code)
+# gives `packaging_changed: false`.
+packaging_paths = [
+  "requirements*.txt",
+  "requirements*.in",
+  "Dockerfile",
+  ".dockerignore",
+  "resources/*",
+]
+
+# A change to any of these affects every image: all targets and all platforms (fail-open).
+fail_open_paths = [
+  "Dockerfile",
+  ".dockerignore",
+  "resources/*",
+]
+
+# Image target -> platforms its standing test agent runs on. `aws_proxied` is `generic` with a
+# different CMD and is checked inside the `generic` image, so it is never listed. `generic` has
+# no standing test agent.
+[targets]
+generic = []
+cloudrun = ["gcp"]
+lambda = ["aws"]
+azure = ["azure"]
+
+# Compiled requirements file -> image targets that install it (from the Dockerfile).
+# requirements-dev.txt only goes into the `tests` / `tests-azure` stages, which are not shipped.
+[requirements_files]
+"requirements.txt" = ["generic", "cloudrun", "lambda", "azure"]
+"requirements-cloudrun.txt" = ["cloudrun"]
+"requirements-lambda.txt" = ["lambda"]
+"requirements-azure.txt" = ["azure"]
+"requirements-dev.txt" = []
+
+# Connection types, as the Monte Carlo REST API v2 names them (`GET /connection-types`,
+# also used by the apollo-agent-dev-smoke-test skill), with the collection areas each one
+# supports. Areas come from the type's job types: metadata / etl / reports ->
+# metadata_collection, query_logs -> query_logs, sql_query -> monitors.
+[connection_types]
+athena = ["query_logs", "monitors"]
+azure-dedicated-sql-pool = ["metadata_collection", "monitors"]
+azure-sql-database = ["metadata_collection", "monitors"]
+bigquery = ["metadata_collection", "query_logs", "monitors"]
+clickhouse = ["metadata_collection", "query_logs", "monitors"]
+databricks-metastore-sql-warehouse = ["metadata_collection", "query_logs"]
+databricks-sql-warehouse = ["monitors"]
+db2 = ["metadata_collection", "monitors"]
+dremio = ["metadata_collection", "monitors"]
+fivetran = ["metadata_collection"]
+gcp-dataform = ["metadata_collection"]
+glue = ["metadata_collection"]
+hive = ["monitors"]
+hive-mysql = ["metadata_collection"]
+hive-s3 = ["query_logs"]
+informatica-v2 = ["metadata_collection"]
+looker = ["metadata_collection"]
+looker-git-clone = ["metadata_collection"]
+mariadb = ["metadata_collection", "monitors"]
+microsoft-fabric = ["metadata_collection", "monitors"]
+motherduck = ["metadata_collection", "monitors"]
+mulesoft = ["metadata_collection"]
+mysql = ["metadata_collection", "monitors"]
+oracle = ["metadata_collection", "monitors"]
+postgres = ["metadata_collection", "monitors"]
+power-bi = ["metadata_collection"]
+presto = ["monitors"]
+redshift = ["metadata_collection", "query_logs", "monitors"]
+s3 = []
+salesforce-crm = ["metadata_collection", "monitors"]
+salesforce-data-cloud = ["metadata_collection", "monitors"]
+sap-hana = ["metadata_collection", "monitors"]
+snowflake = ["metadata_collection", "query_logs", "monitors"]
+sql-server = ["metadata_collection", "monitors"]
+starburst-enterprise = ["metadata_collection", "monitors"]
+starburst-galaxy = ["metadata_collection", "monitors"]
+tableau = ["metadata_collection"]
+teradata = ["metadata_collection", "query_logs", "monitors"]
+
+# apollo/ source paths -> what they serve. A key ending in "/" covers the directory; the
+# longest matching key wins. When a changed package (or a package that pulls it in) is
+# imported by a file here, its connection types are added, and `manual` becomes an `other`
+# item on the manual checklist. Files with no entry add nothing.
+[modules]
+"apollo/integrations/aws/athena_proxy_client.py" = { connection_types = ["athena"] }
+"apollo/integrations/aws/glue_proxy_client.py" = { connection_types = ["glue"] }
+"apollo/integrations/aws/s3_proxy_client.py" = { connection_types = ["s3", "hive-s3"] }
+"apollo/integrations/aws/base_aws_proxy_client.py" = { connection_types = ["athena", "glue", "s3", "hive-s3"] }
+"apollo/integrations/aws/aws_utils.py" = { connection_types = ["athena", "glue", "s3", "hive-s3"] }
+"apollo/integrations/aws/msk_proxy_client.py" = { manual = "MSK Connect / MSK Kafka ETL collection has no REST v2 connection type: run an ETL collection on an MSK connection" }
+"apollo/integrations/bigquery/" = { connection_types = ["bigquery"] }
+"apollo/integrations/databricks/" = { connection_types = ["databricks-sql-warehouse", "databricks-metastore-sql-warehouse"] }
+"apollo/integrations/db/azure_database_proxy_client.py" = { connection_types = ["azure-sql-database", "azure-dedicated-sql-pool"] }
+"apollo/integrations/db/clickhouse_proxy_client.py" = { connection_types = ["clickhouse"] }
+"apollo/integrations/db/db2_proxy_client.py" = { connection_types = ["db2"] }
+"apollo/integrations/db/dremio_proxy_client.py" = { connection_types = ["dremio"] }
+"apollo/integrations/db/fabric_proxy_client.py" = { connection_types = ["microsoft-fabric"] }
+"apollo/integrations/db/hive_proxy_client.py" = { connection_types = ["hive"] }
+"apollo/integrations/db/motherduck_proxy_client.py" = { connection_types = ["motherduck"] }
+"apollo/integrations/db/mysql_proxy_client.py" = { connection_types = ["mysql", "mariadb", "hive-mysql"] }
+"apollo/integrations/db/oracle_client_config.py" = { connection_types = ["oracle"] }
+"apollo/integrations/db/oracle_proxy_client.py" = { connection_types = ["oracle"] }
+"apollo/integrations/db/postgres_proxy_client.py" = { connection_types = ["postgres"] }
+"apollo/integrations/db/presto_proxy_client.py" = { connection_types = ["presto"] }
+"apollo/integrations/db/salesforce_crm_proxy_client.py" = { connection_types = ["salesforce-crm"] }
+"apollo/integrations/db/salesforce_data_cloud_proxy_client.py" = { connection_types = ["salesforce-data-cloud"] }
+"apollo/integrations/db/sap_hana_proxy_client.py" = { connection_types = ["sap-hana"] }
+"apollo/integrations/db/sql_server_kerberos_env.py" = { connection_types = ["sql-server"] }
+"apollo/integrations/db/sql_server_proxy_client.py" = { connection_types = ["sql-server"] }
+"apollo/integrations/db/starburst_enterprise_proxy_client.py" = { connection_types = ["starburst-enterprise"] }
+"apollo/integrations/db/starburst_proxy_client.py" = { connection_types = ["starburst-galaxy"] }
+"apollo/integrations/db/teradata_proxy_client.py" = { connection_types = ["teradata"] }
+"apollo/integrations/db/tsql_base_db_proxy_client.py" = { connection_types = ["sql-server", "azure-sql-database", "azure-dedicated-sql-pool", "microsoft-fabric"] }
+"apollo/integrations/gcp_dataform/" = { connection_types = ["gcp-dataform"], manual = "GCP Dataform has no saved test connection (dev.apollo agents): run the UI connection test for GCP Dataform on each affected agent" }
+"apollo/integrations/git/" = { connection_types = ["looker-git-clone"] }
+"apollo/integrations/http/httplib2_client.py" = { connection_types = ["bigquery"] }
+"apollo/integrations/http/http_proxy_client.py" = { connection_types = ["fivetran", "informatica-v2", "mulesoft"] }
+"apollo/integrations/http/url_safety.py" = { connection_types = ["fivetran", "informatica-v2", "mulesoft"] }
+"apollo/integrations/http/informatica_proxy_client.py" = { connection_types = ["informatica-v2"] }
+"apollo/integrations/http/mulesoft_proxy_client.py" = { connection_types = ["mulesoft"] }
+"apollo/integrations/http/httpx_safety.py" = { manual = "MCP client SSRF guard (httpx/httpcore internals): run an MCP call through the agent" }
+"apollo/integrations/looker/" = { connection_types = ["looker"] }
+"apollo/integrations/mcp/" = { manual = "MCP client has no REST v2 connection type: run an MCP call through the agent" }
+"apollo/integrations/powerbi/" = { connection_types = ["power-bi"] }
+"apollo/integrations/redshift/" = { connection_types = ["redshift"] }
+"apollo/integrations/snowflake/" = { connection_types = ["snowflake"] }
+"apollo/integrations/tableau/" = { connection_types = ["tableau"] }
+"apollo/integrations/ctp/" = { manual = "Credential transforms (OAuth, JWT, private keys) shared by several connection types: validate a connection that uses key-pair or OAuth auth" }
+"apollo/integrations/ctp/transforms/resolve_databricks_oauth.py" = { connection_types = ["databricks-sql-warehouse", "databricks-metastore-sql-warehouse"] }
+"apollo/integrations/ctp/transforms/resolve_databricks_token.py" = { connection_types = ["databricks-sql-warehouse", "databricks-metastore-sql-warehouse"] }
+"apollo/integrations/ctp/transforms/resolve_informatica_session.py" = { connection_types = ["informatica-v2"] }
+"apollo/integrations/ctp/transforms/resolve_mulesoft_endpoints.py" = { connection_types = ["mulesoft"] }
+"apollo/integrations/ctp/transforms/resolve_presto_auth.py" = { connection_types = ["presto"] }
+"apollo/integrations/ctp/transforms/resolve_redshift_credentials.py" = { connection_types = ["redshift"] }
+"apollo/integrations/custom/" = { manual = "Custom connectors (custom SQL integrations): validate a custom connector connection" }
+"apollo/integrations/custom_bi/" = { manual = "Custom BI connectors: validate a custom BI connector connection" }
+"apollo/integrations/custom_etl/" = { manual = "Custom ETL connectors: validate a custom ETL connector connection" }
+"apollo/integrations/s3/" = { manual = "Agent storage on AWS (S3): run an operation that writes its result to the agent bucket, e.g. a metadata collection on the AWS agent" }
+"apollo/integrations/s3_compatible/" = { manual = "S3-compatible agent storage: run an operation that writes its result to storage on an agent configured with S3-compatible storage" }
+"apollo/integrations/gcs/" = { manual = "Agent storage on GCP (GCS): run an operation that writes its result to the agent bucket, e.g. a metadata collection on the GCP agent" }
+"apollo/integrations/azure_blob/" = { manual = "Agent storage on Azure (Blob): run an operation that writes its result to the agent container, e.g. a metadata collection on the Azure agent" }
+"apollo/credentials/" = { manual = "Self-hosted credentials: validate a connection whose credentials live in the customer's secret store" }
+"apollo/credentials/asm.py" = { manual = "Self-hosted credentials in AWS Secrets Manager: validate a connection whose credentials live there" }
+"apollo/credentials/gsm.py" = { manual = "Self-hosted credentials in GCP Secret Manager: validate a connection whose credentials live there (dev.apollo GCP agent: my-bigquery-self-hosted-test-6)" }
+"apollo/credentials/akv.py" = { manual = "Self-hosted credentials in Azure Key Vault: validate a connection whose credentials live there" }
+"apollo/agent/upgrade_validation.py" = { manual = "Self-upgrade validation rules: upgrade each platform's agent through the Monte Carlo API" }
+"apollo/interfaces/lambda_function/cf_updater.py" = { manual = "Lambda self-upgrade (cf_updater): upgrade a CloudFormation-deployed AWS agent through the Monte Carlo API" }
+"apollo/interfaces/lambda_function/cf_utils.py" = { manual = "Lambda self-upgrade (cf_updater): upgrade a CloudFormation-deployed AWS agent through the Monte Carlo API" }
+"apollo/interfaces/lambda_function/direct_updater.py" = { manual = "Lambda self-upgrade (direct_updater): upgrade the AWS agent through the Monte Carlo API" }
+"apollo/interfaces/lambda_function/platform.py" = { manual = "AWS Lambda platform info and logs: run `get-operation-logs` against the AWS agent" }
+"apollo/interfaces/cloudrun/cloudrun_updater.py" = { manual = "Cloud Run self-upgrade (cloudrun_updater): upgrade the GCP agent through the Monte Carlo API" }
+"apollo/interfaces/cloudrun/logging_setup.py" = { manual = "Cloud Run logging: confirm the GCP agent's logs still reach Cloud Logging" }
+"apollo/interfaces/cloudrun/platform.py" = { manual = "Cloud Run platform info and logs: run `get-operation-logs` against the GCP agent" }
+"apollo/interfaces/azure/azure_updater.py" = { manual = "Azure self-upgrade (azure_updater): upgrade the Azure agent through the Monte Carlo API" }
+"apollo/interfaces/azure/azure_platform.py" = { manual = "Azure platform info and logs (azure-monitor-query): run `get-operation-logs` against the Azure agent" }
+
+# Every package named in a requirements*.in file. Keys are PEP 503 names.
+#   scope            direct     - apollo uses it for specific connection types or paths
+#                    runtime    - platform/runtime-wide (web server, framework, agent base);
+#                                 the image checks and each agent's health check cover it
+#                    transitive - pinned only to force a version (security, wheels); the
+#                                 mapping comes from the packages that pull it in (`# via`)
+#                    dev        - tests/lint only, never in a shipped image
+#   connection_types REST v2 connection types it serves (on top of what import scanning finds)
+#   imports          module names to look for in apollo/ (default: the name with - -> _);
+#                    [] turns scanning off
+#   areas            when THIS package's pin changes, add a manual check per affected
+#                    connection type for each of these areas the type supports
+#   manual           extra manual checks, [{ area = "...", reason = "..." }]
+[packages]
+# --- requirements.in
+agent-base = { scope = "runtime", imports = [] }  # provides apollo.common, imported everywhere
+azure-identity = { scope = "direct", imports = ["azure.identity"] }
+azure-core = { scope = "transitive", imports = ["azure.core"] }
+azure-keyvault-secrets = { scope = "direct", imports = ["azure.keyvault"] }
+azure-mgmt-storage = { scope = "direct", imports = ["azure.mgmt.storage"] }
+azure-storage-blob = { scope = "direct", imports = ["azure.storage.blob"] }
+brotli = { scope = "transitive" }
+cachetools = { scope = "direct" }
+cerberus = { scope = "direct" }
+click = { scope = "transitive" }
+clickhouse-connect = { scope = "direct", connection_types = ["clickhouse"], areas = ["metadata_collection", "query_logs", "monitors"] }
+cryptography = { scope = "direct" }
+databricks-sql-connector = { scope = "direct", imports = ["databricks.sql"], connection_types = ["databricks-sql-warehouse", "databricks-metastore-sql-warehouse"], areas = ["metadata_collection", "query_logs", "monitors"] }
+databricks-sdk = { scope = "direct", imports = ["databricks.sdk"], connection_types = ["databricks-sql-warehouse", "databricks-metastore-sql-warehouse"], areas = ["metadata_collection", "query_logs"] }
+duckdb = { scope = "direct", connection_types = ["motherduck"], areas = ["metadata_collection", "monitors"] }
+flask = { scope = "runtime", imports = [] }
+flask-compress = { scope = "runtime", imports = [] }
+google-api-python-client = { scope = "direct", imports = ["googleapiclient"], connection_types = ["bigquery"], areas = ["metadata_collection", "query_logs", "monitors"] }
+google-cloud-dataform = { scope = "direct", imports = ["google.cloud.dataform", "google.cloud.dataform_v1", "google.cloud.dataform_v1beta1"], connection_types = ["gcp-dataform"], areas = ["metadata_collection"] }
+google-cloud-secret-manager = { scope = "direct", imports = ["google.cloud.secretmanager", "google.cloud.secretmanager_v1"] }
+google-cloud-storage = { scope = "direct", imports = ["google.cloud.storage"] }
+grpcio = { scope = "transitive", imports = ["grpc"] }
+google-auth-httplib2 = { scope = "direct", connection_types = ["bigquery"], areas = ["metadata_collection", "query_logs", "monitors"] }  # BigQuery HTTP transport
+httplib2 = { scope = "direct", connection_types = ["bigquery"], areas = ["metadata_collection", "query_logs", "monitors"] }  # BigQuery HTTP transport
+httpcore = { scope = "direct" }
+httpx = { scope = "direct" }
+gunicorn = { scope = "runtime", imports = [] }
+hdbcli = { scope = "direct", connection_types = ["sap-hana"], areas = ["metadata_collection", "monitors"] }
+ibm-db = { scope = "direct", imports = ["ibm_db", "ibm_db_dbi"], connection_types = ["db2"], areas = ["metadata_collection", "monitors"] }
+jinja2 = { scope = "direct" }
+lxml = { scope = "transitive" }
+lambda-git = { scope = "direct", imports = [], connection_types = ["looker-git-clone"] }  # git binary for the Lambda image
+looker-sdk = { scope = "direct", connection_types = ["looker"], areas = ["metadata_collection"] }
+mcp = { scope = "direct" }
+msal = { scope = "direct", connection_types = ["power-bi"] }
+numpy = { scope = "transitive" }
+oracledb = { scope = "direct", connection_types = ["oracle"], areas = ["metadata_collection", "monitors"], manual = [{ area = "other", reason = "Oracle runs in thin and thick mode: validate the thick-mode connections (AWS oracle-thick-ssl-test-aws-agent, Azure oracle-dev-thick-az-agent) and the thin one (GCP oracle-test-gcp-agent)" }] }
+orjson = { scope = "transitive" }
+presto-python-client = { scope = "direct", imports = ["prestodb"], connection_types = ["presto"], areas = ["monitors"] }
+trino = { scope = "direct", connection_types = ["starburst-galaxy", "starburst-enterprise"], areas = ["metadata_collection", "monitors"] }
+protobuf = { scope = "transitive", imports = ["google.protobuf"] }
+psycopg2-binary = { scope = "direct", imports = ["psycopg2"], connection_types = ["postgres", "redshift"], areas = ["metadata_collection", "query_logs", "monitors"] }
+pyarrow = { scope = "direct", connection_types = ["dremio"], areas = ["metadata_collection", "monitors"] }
+oauthlib = { scope = "transitive" }
+pyasn1 = { scope = "transitive" }
+pycryptodome = { scope = "transitive", imports = ["Crypto"] }
+pydantic = { scope = "direct" }
+pyjwt = { scope = "direct", imports = ["jwt"] }
+pymysql = { scope = "direct", connection_types = ["mysql", "mariadb", "hive-mysql"], areas = ["metadata_collection", "monitors"] }
+pyodbc = { scope = "direct", connection_types = ["sql-server", "azure-sql-database", "azure-dedicated-sql-pool", "microsoft-fabric"], areas = ["metadata_collection", "monitors"] }
+pyopenssl = { scope = "transitive", imports = ["OpenSSL"] }
+retry2 = { scope = "direct", imports = ["retry"] }
+salesforce-cdp-connector = { scope = "direct", imports = ["salesforcecdpconnector"], connection_types = ["salesforce-data-cloud"], areas = ["metadata_collection", "monitors"] }
+simple-salesforce = { scope = "direct", connection_types = ["salesforce-crm"], areas = ["metadata_collection", "monitors"] }
+snowflake-connector-python = { scope = "direct", imports = ["snowflake.connector"], connection_types = ["snowflake"], areas = ["metadata_collection", "query_logs", "monitors"] }
+tableauserverclient = { scope = "direct", connection_types = ["tableau"], areas = ["metadata_collection"] }
+urllib3 = { scope = "direct" }
+typing-extensions = { scope = "transitive" }
+teradatasql = { scope = "direct", connection_types = ["teradata"], areas = ["metadata_collection", "query_logs", "monitors"] }
+impyla = { scope = "direct", imports = ["impala"], connection_types = ["hive"], areas = ["monitors"] }
+thrift = { scope = "transitive" }
+werkzeug = { scope = "runtime", imports = [] }
+google-crc32c = { scope = "transitive" }
+lz4 = { scope = "transitive" }
+markupsafe = { scope = "transitive" }
+bitarray = { scope = "transitive" }
+pandas = { scope = "transitive" }
+zstandard = { scope = "transitive" }
+backports-zstd = { scope = "transitive" }
+zeep = { scope = "transitive" }
+requests = { scope = "direct" }
+idna = { scope = "transitive" }
+filelock = { scope = "transitive" }
+marshmallow = { scope = "transitive" }
+tomlkit = { scope = "transitive" }
+platformdirs = { scope = "transitive" }
+
+# --- requirements-cloudrun.in
+google-cloud-logging = { scope = "direct", imports = ["google.cloud.logging", "google.cloud.logging_v2"] }
+google-cloud-run = { scope = "direct", imports = ["google.cloud.run_v2"] }
+importlib-metadata = { scope = "transitive" }
+opentelemetry-api = { scope = "transitive", imports = ["opentelemetry"] }
+
+# --- requirements-lambda.in
+apig-wsgi = { scope = "runtime" }  # Lambda handler's WSGI adapter; the image checks import it
+
+# --- requirements-azure.in
+azure-functions = { scope = "runtime", imports = [] }  # Azure host entry; the image checks start it
+azure-functions-durable = { scope = "runtime", imports = [] }
+azure-mgmt-resource = { scope = "direct", imports = ["azure.mgmt.resource"] }
+azure-monitor-opentelemetry = { scope = "direct", imports = ["azure.monitor.opentelemetry"], manual = [{ area = "other", reason = "Azure telemetry (azure-monitor-opentelemetry): confirm the Azure agent's logs still reach Application Insights" }] }
+azure-monitor-query = { scope = "direct", imports = ["azure.monitor.query"] }
+aiohttp = { scope = "transitive" }
+multidict = { scope = "transitive" }
+deprecated = { scope = "transitive" }
+wrapt = { scope = "transitive" }
+zipp = { scope = "transitive" }
+
+# --- requirements-dev.in
+black = { scope = "dev" }
+flask-swagger = { scope = "dev" }
+pre-commit = { scope = "dev" }
+pyright = { scope = "dev" }
+pytest = { scope = "dev" }
+python-box = { scope = "dev" }
+responses = { scope = "dev" }
+virtualenv = { scope = "dev" }
