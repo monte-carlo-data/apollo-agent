@@ -482,6 +482,11 @@ RUN rm -rf /opt/startupcmdgen/
 # fail the build. Purge also removes anything that depends on these; nothing in
 # the runtime path does, and the checks at the end fail the build if that changes.
 #
+# libsqlite3-0 goes with GnuPG here (--auto-remove: only gpg needed it), so Python's
+# stdlib sqlite3 module can't load in this image. Nothing in the agent imports it today;
+# anything that starts to must reinstall libsqlite3-0 (the image checks' ldd step
+# ignores this one gap explicitly, see LDD_IGNORED in scripts/image_checks/check_image.py).
+#
 # The extension bundle also ships Windows-only native DLLs (runtimes/win-*),
 # which a Linux host never loads but scanners still flag.
 RUN pkgs=""; \
