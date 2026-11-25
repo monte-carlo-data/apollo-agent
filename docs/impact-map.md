@@ -15,8 +15,10 @@ python scripts/impact_map.py --base origin/main --head HEAD                    #
 python scripts/impact_map.py --base origin/main --head HEAD --format markdown  # PR checklist
 ```
 
-`--base` and `--head` are git refs; the diff is `base...head` (from the merge base, like a PR
-diff), so the base ref must be fetched. Logs go to stderr. Exit code 0 means the analysis ran,
+`--base` and `--head` are git refs. Everything is compared from `git merge-base base head`,
+like a PR diff: both the list of changed files and the "before" contents of each requirements
+file. So passing `origin/main` after `main` has moved on is safe: changes that landed on
+`main` since the branch point aren't reported as reverted. The base ref must be fetched. Logs go to stderr. Exit code 0 means the analysis ran,
 including "nothing changed"; anything else is an internal error (bad ref, unreadable manifest),
 and callers should then build and check everything.
 
@@ -52,7 +54,7 @@ are no manual checks. The checklist never fails CI.
 
 ## How it works
 
-1. **Changed files.** `git diff --name-only base...head`, filtered to `packaging_paths`.
+1. **Changed files.** `git diff --name-only <merge-base> head`, filtered to `packaging_paths`.
 2. **Fail-open paths.** A change to the `Dockerfile` (which holds the base images),
    `.dockerignore` or anything under `resources/` affects every image: all targets, all
    platforms, every connection type, plus an `other` manual check.
@@ -83,6 +85,16 @@ are no manual checks. The checklist never fails CI.
 
 A change to apollo code alone is not a packaging change. The script answers "what can this
 dependency change break", not "what does this code change touch".
+
+### Known limitations
+
+- **Any `Dockerfile` or `resources/` change selects everything**: every image target, platform
+  and connection type. That suits the image checks, but once the standing test agents validate
+  connections, a one-line Dockerfile tweak means a full run, and vulnerability fixes touch the
+  Dockerfile often. A stage-aware mapping (which stages a Dockerfile hunk is in, and which
+  targets build on them) would narrow it; it isn't built yet.
+- Import scanning counts every import, including ones under `if TYPE_CHECKING:`. That can add
+  connection types but never drops one.
 
 ## The manifest
 
@@ -131,6 +143,9 @@ python -m pytest --noconftest tests/test_impact_map.py tests/test_impact_map_man
 They need only `pytest` and `git`. `--noconftest` skips `tests/conftest.py`, which imports
 apollo. `tests/test_impact_map.py` builds a throwaway git repo from `tests/impact_map/repo/`
 (fixture requirements files, a `Dockerfile`, a few `apollo/` stubs) with
-`tests/impact_map/manifest.toml`, commits a change on top, and checks the report. The Docker
+`tests/impact_map/manifest.toml`, commits a change on top, and checks the report. The fixture
+`requirements*` files and `Dockerfile` are stored with a `.fixture` suffix, which the test drops
+when it copies them, so dependency scanners (Dependabot, Aikido, Wiz) don't read their old pins
+as the repo's own. The Docker
 `tests` image has no `scripts/` or `.in` files, so both files skip there and CI runs them with a
 bare Python instead.

@@ -19,6 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "impact_map.py"
 FIXTURES = Path(__file__).resolve().parent / "impact_map"
 MANIFEST = FIXTURES / "manifest.toml"
+FIXTURE_SUFFIX = ".fixture"
 
 if not SCRIPT.exists() or shutil.which("git") is None:
     pytest.skip("scripts/impact_map.py or git not available", allow_module_level=True)
@@ -41,11 +42,17 @@ def _git(repo: Path, *args: str) -> str:
 
 
 class FixtureRepo:
-    """A git repo whose first commit (`base`) is tests/impact_map/repo."""
+    """A git repo whose first commit (`base`) is tests/impact_map/repo.
+
+    Packaging fixtures are stored as `*.fixture` so dependency scanners don't read them as
+    the repo's real requirements; the suffix is dropped in the copy.
+    """
 
     def __init__(self, path: Path):
         self.path = path
         shutil.copytree(FIXTURES / "repo", path)
+        for fixture in path.rglob(f"*{FIXTURE_SUFFIX}"):
+            fixture.rename(fixture.with_name(fixture.name[: -len(FIXTURE_SUFFIX)]))
         _git(path, "init", "-q", "-b", "main")
         _git(path, "config", "user.email", "test@example.com")
         _git(path, "config", "user.name", "test")
@@ -302,7 +309,7 @@ def test_same_pin_in_two_files_lists_both(repo: FixtureRepo):
 
 
 def test_parse_requirements_txt():
-    text = (FIXTURES / "repo" / "requirements.txt").read_text()
+    text = (FIXTURES / "repo" / "requirements.txt.fixture").read_text()
     pins = impact_map.parse_requirements_txt(text)
     assert pins["cryptography"].version == "50.0.0"
     assert pins["cryptography"].top_level is True
@@ -311,7 +318,7 @@ def test_parse_requirements_txt():
     assert pins["cffi"].parents == {"cryptography"}
     assert pins["ibm-db"].version == "3.2.8"
     azure = impact_map.parse_requirements_txt(
-        (FIXTURES / "repo" / "requirements-azure.txt").read_text()
+        (FIXTURES / "repo" / "requirements-azure.txt.fixture").read_text()
     )
     # `-c requirements.txt` is a constraint, not a parent
     assert azure["cryptography"].parents == {"azure-functions"}
@@ -463,3 +470,27 @@ def test_unknown_in_file_without_packages_fails_open_without_fake_package(
     assert report["unmapped_packages"] == []
     assert report["image_targets"] == ALL_TARGETS
     assert any("requirements-new.in" in c["reason"] for c in report["manual_checks"])
+
+
+def test_base_moved_since_branch_point_is_not_reported_as_reverted(repo: FixtureRepo):
+    # The branch bumps snowflake; main then bumps flask. Diffing against main's tip must
+    # report only the branch's change, not flask 3.1.3 -> 3.1.2 (base contents come from the
+    # merge base, like the changed-file list).
+    _git(repo.path, "checkout", "-q", "-b", "feature")
+    repo.replace(
+        "requirements.txt",
+        "snowflake-connector-python==4.8.1",
+        "snowflake-connector-python==4.8.2",
+    )
+    repo._commit("branch bump")
+    _git(repo.path, "checkout", "-q", "main")
+    repo.replace("requirements.txt", "flask==3.1.3", "flask==3.1.4")
+    repo._commit("main bump")
+    manifest = impact_map.Manifest.load(MANIFEST)
+    report = impact_map.ImpactMap(
+        impact_map.Git(repo.path), manifest, "main", "feature"
+    ).analyze()
+    assert [p["name"] for p in report["changed_packages"]] == [
+        "snowflake-connector-python"
+    ]
+    assert report["connection_types"] == ["snowflake"]

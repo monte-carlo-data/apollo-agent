@@ -82,8 +82,11 @@ class Git:
     def verify_ref(self, ref: str) -> None:
         self._run("rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}")
 
+    def merge_base(self, base: str, head: str) -> str:
+        return self._run("merge-base", base, head).strip()
+
     def changed_files(self, base: str, head: str) -> list[str]:
-        out = self._run("diff", "--name-only", f"{base}...{head}")
+        out = self._run("diff", "--name-only", base, head)
         return sorted(line for line in out.splitlines() if line)
 
     def show(self, ref: str, path: str) -> str | None:
@@ -345,6 +348,10 @@ class ImpactMap:
         result = Result()
         self.git.verify_ref(self.base)
         self.git.verify_ref(self.head)
+        # Compare from the merge base, like a PR diff: both the changed-file list and the
+        # "before" contents, so changes that landed on the base after the branch point
+        # don't show up as reverted.
+        self.base = self.git.merge_base(self.base, self.head)
         packaging = [
             f
             for f in self.git.changed_files(self.base, self.head)

@@ -118,7 +118,7 @@ teradata = ["metadata_collection", "query_logs", "monitors"]
 "apollo/integrations/db/starburst_proxy_client.py" = { connection_types = ["starburst-galaxy"] }
 "apollo/integrations/db/teradata_proxy_client.py" = { connection_types = ["teradata"] }
 "apollo/integrations/db/tsql_base_db_proxy_client.py" = { connection_types = ["sql-server", "azure-sql-database", "azure-dedicated-sql-pool", "microsoft-fabric"] }
-"apollo/integrations/gcp_dataform/" = { connection_types = ["gcp-dataform"], manual = "GCP Dataform has no saved test connection (dev.apollo agents): run the UI connection test for GCP Dataform on each affected agent" }
+"apollo/integrations/gcp_dataform/" = { connection_types = ["gcp-dataform"], manual = "GCP Dataform may have no saved test connection: run the UI connection test for GCP Dataform on each affected agent" }
 "apollo/integrations/git/" = { connection_types = ["looker-git-clone"] }
 "apollo/integrations/http/httplib2_client.py" = { connection_types = ["bigquery"] }
 "apollo/integrations/http/http_proxy_client.py" = { connection_types = ["fivetran", "informatica-v2", "mulesoft"] }
@@ -148,7 +148,7 @@ teradata = ["metadata_collection", "query_logs", "monitors"]
 "apollo/integrations/azure_blob/" = { manual = "Agent storage on Azure (Blob): run an operation that writes its result to the agent container, e.g. a metadata collection on the Azure agent" }
 "apollo/credentials/" = { manual = "Self-hosted credentials: validate a connection whose credentials live in the customer's secret store" }
 "apollo/credentials/asm.py" = { manual = "Self-hosted credentials in AWS Secrets Manager: validate a connection whose credentials live there" }
-"apollo/credentials/gsm.py" = { manual = "Self-hosted credentials in GCP Secret Manager: validate a connection whose credentials live there (dev.apollo GCP agent: my-bigquery-self-hosted-test-6)" }
+"apollo/credentials/gsm.py" = { manual = "Self-hosted credentials in GCP Secret Manager: validate a connection whose credentials live there" }
 "apollo/credentials/akv.py" = { manual = "Self-hosted credentials in Azure Key Vault: validate a connection whose credentials live there" }
 "apollo/agent/upgrade_validation.py" = { manual = "Self-upgrade validation rules: upgrade each platform's agent through the Monte Carlo API" }
 "apollo/interfaces/lambda_function/cf_updater.py" = { manual = "Lambda self-upgrade (cf_updater): upgrade a CloudFormation-deployed AWS agent through the Monte Carlo API" }
@@ -212,7 +212,7 @@ looker-sdk = { scope = "direct", connection_types = ["looker"], areas = ["metada
 mcp = { scope = "direct" }
 msal = { scope = "direct", connection_types = ["power-bi"] }
 numpy = { scope = "transitive" }
-oracledb = { scope = "direct", connection_types = ["oracle"], areas = ["metadata_collection", "monitors"], manual = [{ area = "other", reason = "Oracle runs in thin and thick mode: validate the thick-mode connections (AWS oracle-thick-ssl-test-aws-agent, Azure oracle-dev-thick-az-agent) and the thin one (GCP oracle-test-gcp-agent)" }] }
+oracledb = { scope = "direct", connection_types = ["oracle"], areas = ["metadata_collection", "monitors"], manual = [{ area = "other", reason = "Oracle runs in thin and thick mode: validate a thick-mode Oracle connection (with TLS) on the AWS and Azure test agents and a thin-mode one on the GCP test agent" }] }
 orjson = { scope = "transitive" }
 presto-python-client = { scope = "direct", imports = ["prestodb"], connection_types = ["presto"], areas = ["monitors"] }
 trino = { scope = "direct", connection_types = ["starburst-galaxy", "starburst-enterprise"], areas = ["metadata_collection", "monitors"] }
