@@ -1,0 +1,1098 @@
+# Continuation config. The pipeline starts in .circleci/config.yml (setup workflow),
+# which renders this file with scripts/image_checks/pipeline_setup.py: blocks and lines
+# tagged `image-check` are kept only for the image targets a branch build must check.
+# See docs/image-contract-tests.md.
+version: 2.1
+
+orbs:
+  aws-cli: circleci/aws-cli@4.1.3
+  aws-ecr: circleci/aws-ecr@9.0.4
+  docker: circleci/docker@2.2.0
+  jq: circleci/jq@3.0.0
+  mcd-tools: monte-carlo/mcd-ci-tools@1.17.0
+
+commands:
+  # The one set of image contract checks, run on the branch (image-check job) and on every
+  # image the merge queue, dev and releases build: version file, native driver and entry
+  # module imports, ldd, entrypoint health, Azure host start. One readable line per failure.
+  image-contract-checks:
+    parameters:
+      image:
+        description: Image to check
+        type: string
+      target:
+        description: Check profile in scripts/image_checks/check_image.py
+        type: enum
+        enum: ["generic", "aws_proxied", "cloudrun", "lambda", "azure"]
+      version:
+        description: Expected "<code_version>,<build_number>" in the image's version file
+        type: string
+    steps:
+    - run:
+        name: Image contract checks (<< parameters.target >>)
+        command: |
+          python3 scripts/image_checks/check_image.py --target << parameters.target >> \
+            --image "<< parameters.image >>" --expected-version "<< parameters.version >>"
+  # Only v* release tags count: any other tag reachable from HEAD (e.g. a CI dry-run tag)
+  # would otherwise become the version, which golden-agent upgrades reject.
+  generate-version-number-dev:
+    steps:
+    - run:
+        command: |
+          PIPELINE_NUMBER=<< pipeline.number >>
+          if git describe --tags --abbrev=0 --match 'v*'; then TAG=$(git describe --tags --abbrev=0 --match 'v*'); else exit 1; fi
+          VERSION=${TAG#v}
+          # Exported so the image scanner can expand it in its image parameter.
+          echo "export NEXT_VERSION=$(echo "$VERSION" | awk 'BEGIN{FS=OFS="."} {$3+=1} 1')rc${PIPELINE_NUMBER}" >> $BASH_ENV
+          source $BASH_ENV
+        name: Generate dev version number
+  generate-version-number-prod:
+    steps:
+    - run:
+        command: |
+          if git describe --tags --abbrev=0 --match 'v*'; then TAG=$(git describe --tags --abbrev=0 --match 'v*'); else exit 1; fi
+          echo "VERSION_TAG=${TAG#v}" >> $BASH_ENV
+          source $BASH_ENV
+        name: Generate prod version number
+  setup-buildx:
+    parameters:
+      set_default:
+        description: Make the builder the default; otherwise pass --builder explicitly
+        type: boolean
+        default: true
+    steps:
+    # Attestations (SBOM + SLSA provenance) require the docker-container
+    # buildx driver — the default docker driver writes single manifests, not
+    # the OCI image index that holds attestation manifests alongside the
+    # platform image.
+    - when:
+        condition: << parameters.set_default >>
+        steps:
+        - run:
+            name: Set up buildx (docker-container driver)
+            command: |
+              docker buildx create --use --name apollo-builder --driver docker-container
+              docker buildx inspect --bootstrap
+    - unless:
+        condition: << parameters.set_default >>
+        steps:
+        - run:
+            name: Set up buildx (docker-container driver, not default)
+            command: |
+              docker buildx create --name apollo-builder --driver docker-container
+              docker buildx inspect --builder apollo-builder --bootstrap
+
+jobs:
+  # Merge-queue gate. A small docker job, not machine (slow VM boot) or no-op (which
+  # reports as "build-and-deploy/build-ok", not the required "build-ok" check).
+  build-ok:
+    docker:
+      - image: cimg/base:current
+    resource_class: small
+    steps:
+      - run: echo OK
+
+  run-linter:
+    docker:
+      - image: cimg/python:3.13-node
+    steps:
+      - checkout
+      - run:
+          name: Install dependencies
+          command: |
+            python -m venv .venv
+            . .venv/bin/activate
+            pip install --no-cache-dir --upgrade pip
+            pip install --no-cache-dir -r requirements.txt -r requirements-dev.txt -r requirements-cloudrun.txt -r requirements-lambda.txt -r requirements-azure.txt
+      - run:
+          name: 'Run black / pyright'
+          command: |
+            . .venv/bin/activate
+            black --check .
+            pyright
+      # The `tests` Docker stages don't copy scripts/ or the .in files, so the CI scripts' tests
+      # run here, in a bare venv with only pytest: the scripts must work with the stdlib alone.
+      # --noconftest: tests/conftest.py imports apollo. Test files that don't exist are skipped.
+      - run:
+          name: Run CI script tests (image checks, impact map) with a bare Python
+          command: |
+            python -m venv /tmp/bare-venv
+            /tmp/bare-venv/bin/pip install --no-cache-dir --quiet "$(grep -E '^pytest==' requirements-dev.txt)"
+            tests=$(find tests -maxdepth 1 \( -name 'test_image_checks*.py' -o -name 'test_impact_map*.py' \) | sort)
+            # With no paths pytest would run all of tests/, which needs the agent's deps.
+            if [ -z "$tests" ]; then echo "no CI script tests found"; exit 1; fi
+            /tmp/bare-venv/bin/python -m pytest -p no:cacheprovider --noconftest $tests
+
+  run-test-docker:
+    machine:
+      image: ubuntu-2204:current
+    steps:
+      - checkout
+      - docker/build:
+          image: mcd/apollo-agent-tests
+          extra_build_args: --target tests
+          step-name: Run tests in docker build
+
+  # The azure image is the only one on Python 3.14 (its base is the sole non-EOL
+  # variant Microsoft publishes — see the azure stage in the Dockerfile), so the
+  # suite is run a second time against that interpreter and its resolved deps.
+  run-test-docker-azure:
+    machine:
+      image: ubuntu-2204:current
+    steps:
+      - checkout
+      - docker/build:
+          image: mcd/apollo-agent-tests-azure
+          extra_build_args: --target tests-azure
+          step-name: Run tests in docker build (azure, Python 3.14)
+
+  # system-base and oracle-pki are published for downstream consumers (e.g. hermes-agent),
+  # not for the golden agents, so they run on dev and v* tags but not in the merge queue.
+  build-and-push-base-images:
+    machine:
+      image: ubuntu-2204:current
+    parameters:
+      docker_hub_repository:
+        type: string
+      code_version:
+        type: string
+    steps:
+      - checkout
+      # arm64 emulation for the multi-arch oracle-pki build. Pinned, and run
+      # before docker/check (the registry login) so this privileged third-party
+      # image never sees the push credentials.
+      - run:
+          name: Register QEMU for arm64 builds
+          command: |
+            docker run --privileged --rm tonistiigi/binfmt:qemu-v10.2.3@sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0 --install arm64
+      - docker/check:
+          use-docker-credentials-store: true
+      - setup-buildx
+      # Publish the `system-base` stage (apt-only, no venv, no apollo source) as
+      # `<version>-system-base`. Downstream consumers (e.g. hermes-agent) build
+      # their own venv on top against the same native libs without inheriting
+      # apollo's pip-installed Python deps. No version check — system-base has
+      # no apollo/agent/version file, so it goes straight to push.
+      - run:
+          name: Build and push system-base with SBOM + SLSA provenance
+          command: |
+            docker buildx build \
+              --target system-base \
+              --build-arg code_version=<< parameters.code_version >> \
+              --build-arg build_number=<< pipeline.number >> \
+              --tag montecarlodata/<< parameters.docker_hub_repository >>:latest-system-base \
+              --tag montecarlodata/<< parameters.docker_hub_repository >>:<< parameters.code_version >>-system-base \
+              --sbom=true \
+              --provenance=mode=max \
+              --push \
+              .
+      # Publish `/opt/oracle-pki` alone as a multi-arch `<version>-oracle-pki`
+      # image, so arm64 consumers can `COPY --from` it (system-base is
+      # amd64-only). The arm64 half builds under QEMU; it's only jlink + curl.
+      - run:
+          name: Build and push multi-arch oracle-pki with SBOM + SLSA provenance
+          command: |
+            docker buildx build \
+              --platform linux/amd64,linux/arm64 \
+              --target oracle-pki \
+              --tag montecarlodata/<< parameters.docker_hub_repository >>:latest-oracle-pki \
+              --tag montecarlodata/<< parameters.docker_hub_repository >>:<< parameters.code_version >>-oracle-pki \
+              --sbom=true \
+              --provenance=mode=max \
+              --push \
+              .
+
+  # One job per image target so each golden agent waits only for its own image.
+  build-and-push-image:
+    machine:
+      image: ubuntu-2204:current
+    parameters:
+      docker_hub_repository:
+        type: string
+      code_version:
+        type: string
+      target:
+        description: Dockerfile stage to build
+        type: string
+      tag_suffix:
+        description: Tag suffix, as in <version>-<tag_suffix> and latest-<tag_suffix>
+        type: string
+      alias_tag_suffix:
+        description: Optional legacy suffix also pushed for the same image, kept for back-compat
+        type: string
+        default: ""
+      check_image:
+        description: Build the image locally and run the contract checks before pushing. False on v* releases, whose images the merge queue and dev already checked; a failing check there would leave the release partially published, since targets build in parallel.
+        type: boolean
+        default: true
+    steps:
+      - checkout
+      - docker/check:
+          use-docker-credentials-store: true
+      - setup-buildx
+      # Built twice: --load so the image can be run and checked before publishing, then --push
+      # with SBOM + provenance. They can't be combined (the daemon can't load an OCI index with
+      # attestations); BuildKit cache makes the second pass cheap. The local build only feeds
+      # the checks, so releases (check_image: false) skip both.
+      - when:
+          condition: << parameters.check_image >>
+          steps:
+            - run:
+                name: Build << parameters.target >> image (local) for version verification
+                command: |
+                  docker buildx build \
+                    --target << parameters.target >> \
+                    --build-arg code_version=<< parameters.code_version >> \
+                    --build-arg build_number=<< pipeline.number >> \
+                    --tag montecarlodata/<< parameters.docker_hub_repository >>:latest-<< parameters.tag_suffix >> \
+                    --load \
+                    .
+            - image-contract-checks:
+                image: montecarlodata/<< parameters.docker_hub_repository >>:latest-<< parameters.tag_suffix >>
+                target: << parameters.target >>
+                version: << parameters.code_version >>,<< pipeline.number >>
+      - run:
+          name: Build and push << parameters.target >> with SBOM + SLSA provenance
+          command: |
+            image=montecarlodata/<< parameters.docker_hub_repository >>
+            alias_tags=""
+            if [ -n "<< parameters.alias_tag_suffix >>" ]; then
+              alias_tags="--tag $image:latest-<< parameters.alias_tag_suffix >> --tag $image:<< parameters.code_version >>-<< parameters.alias_tag_suffix >>"
+            fi
+            docker buildx build \
+              --target << parameters.target >> \
+              --build-arg code_version=<< parameters.code_version >> \
+              --build-arg build_number=<< pipeline.number >> \
+              --tag $image:latest-<< parameters.tag_suffix >> \
+              --tag $image:<< parameters.code_version >>-<< parameters.tag_suffix >> \
+              $alias_tags \
+              --sbom=true \
+              --provenance=mode=max \
+              --push \
+              .
+
+  # Branch builds: build one shipped image locally (never pushed) and run the contract
+  # checks on it. Only added to the pipeline for packaging changes, for the targets the
+  # impact map selects (see .circleci/config.yml and scripts/image_checks/pipeline_setup.py).
+  image-check:
+    machine:
+      image: ubuntu-2204:current
+    parameters:
+      target:
+        description: Dockerfile stage to build and check
+        type: enum
+        enum: ["generic", "cloudrun", "lambda", "azure"]
+    steps:
+      - checkout
+      - run:
+          name: Build << parameters.target >> image
+          command: |
+            started=$SECONDS
+            docker build --target << parameters.target >> \
+              --build-arg code_version=0.0.0-ci --build-arg build_number=<< pipeline.number >> \
+              --tag apollo-check:<< parameters.target >> .
+            echo "build took $((SECONDS - started))s"
+      - image-contract-checks:
+          image: apollo-check:<< parameters.target >>
+          target: << parameters.target >>
+          version: 0.0.0-ci,<< pipeline.number >>
+
+  # Scans an image after it's pushed, with the Security team's scanner. Nothing requires this
+  # job, so it never holds up the golden-agent checks, build-ok or the merge queue. Warn mode
+  # only. The project's builds are public, so findings stay out of the log and artifacts
+  # (publish_reports: false); Wiz and Aikido keep them.
+  vuln-scan-image:
+    machine:
+      image: ubuntu-2204:current
+    parameters:
+      image:
+        description: Pushed image to scan; ${NEXT_VERSION} is expanded by the scanner
+        type: string
+    steps:
+      - docker/check:
+          use-docker-credentials-store: true
+      - mcd-tools/vuln-image-scan:
+          image: << parameters.image >>
+          local_image: false
+          scanners: trivy,scout,wiz,aikido
+          publish_reports: false
+
+  build-and-push-lambda:
+    machine:
+      image: ubuntu-2204:current
+    parameters:
+      docker_hub_repository:
+        type: string
+      aws_ecr_repository:
+        type: string
+      code_version:
+        type: string
+      check_image:
+        description: Build the image locally and run the contract checks before pushing. False on v* releases, whose images the merge queue and dev already checked; a failing check there would leave the release partially published, since targets build in parallel.
+        type: boolean
+        default: true
+    steps:
+      - checkout
+      - docker/check:
+          use-docker-credentials-store: true
+      # Not the default builder: the classic `docker build` the ECR step runs must keep the
+      # docker driver to produce the single-manifest image Lambda requires.
+      - setup-buildx:
+          set_default: false
+      - run:
+          name: Build and push lambda (Docker Hub) with SBOM + SLSA provenance
+          command: |
+            docker buildx build \
+              --builder apollo-builder \
+              --target lambda \
+              --build-arg code_version=<< parameters.code_version >> \
+              --build-arg build_number=<< pipeline.number >> \
+              --tag montecarlodata/<< parameters.docker_hub_repository >>:latest-lambda \
+              --tag montecarlodata/<< parameters.docker_hub_repository >>:<< parameters.code_version >>-lambda \
+              --sbom=true \
+              --provenance=mode=max \
+              --push \
+              .
+      # ECR copy: rebuild with --provenance=false. AWS Lambda / CloudFormation
+      # reject the OCI image index that BuildKit emits when attestations are
+      # attached ("image manifest, config or layer media type ... is not
+      # supported"), so the ECR image must be a plain single-arch manifest.
+      # BuildKit cache means the second build is nearly free.
+      - docker/build:
+          step-name: Build lambda image (ECR, no attestations)
+          use-buildkit: true
+          extra_build_args: --target lambda --build-arg code_version=<< parameters.code_version >> --build-arg build_number=<< pipeline.number >> --provenance=false
+          registry: ${AWS_ECR_ACCOUNT_URL}
+          image: << parameters.aws_ecr_repository >>
+          tag: latest,<< parameters.code_version >>
+      # The ECR build above is what gets pushed, so releases (check_image: false) skip only the checks.
+      - when:
+          condition: << parameters.check_image >>
+          steps:
+            - image-contract-checks:
+                image: ${AWS_ECR_ACCOUNT_URL}/<< parameters.aws_ecr_repository >>:<< parameters.code_version >>
+                target: lambda
+                version: << parameters.code_version >>,<< pipeline.number >>
+      - aws-cli/setup:
+          role_arn: "${AWS_ROLE_ARN}"
+      - aws-ecr/ecr_login
+      - aws-ecr/push_image:
+          repo: << parameters.aws_ecr_repository >>
+          tag: latest,<< parameters.code_version >>
+  push-lambda-legacy-repo:
+    machine:
+      image: ubuntu-2204:current
+    parameters:
+      aws_ecr_repository:
+        type: string
+      code_version:
+        type: string
+    steps:
+      - checkout
+      # Build a fresh lambda image with --provenance=false for the legacy ECR.
+      # Previously this job pulled the Docker Hub image and re-pushed, but
+      # that image now ships as an OCI index with a provenance attestation
+      # manifest that AWS Lambda / CloudFormation reject. Rebuilding here
+      # keeps the ECR copy as a plain single-arch manifest.
+      - docker/build:
+          step-name: Build lambda image (legacy ECR, no attestations)
+          use-buildkit: true
+          extra_build_args: --target lambda --build-arg code_version=<< parameters.code_version >> --build-arg build_number=<< pipeline.number >> --provenance=false
+          registry: ${AWS_ECR_ACCOUNT_URL}
+          image: << parameters.aws_ecr_repository >>
+          tag: latest,<< parameters.code_version >>
+      - aws-ecr/ecr_login
+      - aws-ecr/push_image:
+          repo: << parameters.aws_ecr_repository >>
+          tag: latest,<< parameters.code_version >>
+
+  build-and-push-docs:
+    docker:
+      - image: python:3.13
+    parameters:
+      code_version:
+        type: string
+    steps:
+      - checkout
+      - aws-cli/install
+      - aws-cli/setup:
+          profile_name: default
+      - run:
+          name: Install dependencies
+          command: |
+            pip install virtualenv==20.35.4
+            pip install --upgrade pip
+      - run:
+          name: Publish docs and invalidate the cloudfront cache
+          command: make VERSION=<< parameters.code_version >> publish-docs
+
+  update-and-validate-golden-agent:
+    executor:
+      name: aws-cli/default
+      tag: current-22.04
+    parameters:
+      use_aws_cli:
+        description: Use the AWS CLI to perform the update
+        type: boolean
+        default: false
+      agent_uuid:
+        description: UUID of the Agent
+        type: string
+      agent_version:
+        description: The agent version installed, to check after the upgrade is complete
+        type: string
+      initial_wait_seconds:
+        description: Seconds to wait before the first health poll (Azure upgrades are async)
+        type: integer
+        default: 0
+      version_wait_seconds:
+        description: How long to keep polling agent health for the new version after the update
+        type: integer
+        default: 300
+      image_repo:
+        description: The image repository to use for the agent, pre-release-agent or agent
+        type: string
+        default: "agent"
+      image_variant:
+        description: Image tag suffix for the agent's platform; required unless use_aws_cli
+        type: enum
+        enum: ["", "azure", "cloudrun", "lambda"]
+        default: ""
+      ecr_repo_name:
+        description: The ECR repository to use for the AWS CLI update
+        type: string
+        default: "${AWS_AGENT_ECR_REPO_PROD}"
+      ecr_repo_account:
+        description: The AWS account to use for the ECR repo update
+        type: string
+        default: "${AWS_AGENT_ECR_ACCOUNT_PROD}"
+      upgrade_retry_minutes:
+        description: How long to keep retrying the upgrade while the new image tag isn't resolvable yet
+        type: integer
+        default: 0
+    steps:
+      - jq/install
+      - run:
+          name: Install dependencies
+          command: |
+            curl https://bootstrap.pypa.io/get-pip.py > get-pip.py
+            python get-pip.py
+            pip install --no-cache-dir --upgrade pip
+            pip install --no-cache-dir montecarlodata
+      - when:
+          condition:
+            equal: [ true, << parameters.use_aws_cli >> ]
+          steps:
+            - aws-cli/setup:
+                role_arn: "${AWS_AGENT_ACCOUNT_ROLE_ARN}"
+                profile_name: mcd
+            - run:
+                name: Trigger AWS agent stack update
+                command: |
+                  aws cloudformation update-stack --profile mcd --stack-name "${AWS_AGENT_STACK_NAME}" --use-previous-template --parameters "ParameterKey=ImageUri,ParameterValue=<< parameters.ecr_repo_account >>.dkr.ecr.*.amazonaws.com/<< parameters.ecr_repo_name >>:<< parameters.agent_version >>" --region ${AWS_AGENT_REGION} --capabilities CAPABILITY_IAM
+            - run:
+                name: Wait for update to complete
+                command: |
+                  aws cloudformation wait stack-update-complete --profile mcd --stack-name "${AWS_AGENT_STACK_NAME}" --region ${AWS_AGENT_REGION}
+      - when:
+          condition:
+            not: << parameters.use_aws_cli >>
+          steps:
+            - run:
+                name: Update agent
+                # Pin the tag: without --image-tag the CLI installs the repo's most recently
+                # pushed tag, which may belong to a concurrent dev or merge-queue build.
+                # Cloud Run pulls Docker Hub images through mirror.gcr.io, which can take 20+
+                # minutes to resolve a freshly pushed tag, so 404s ("Image not found", then
+                # "Container import failed") and 429 import failures (rate limited) are
+                # retried for upgrade_retry_minutes. A 400 "Container import failed" isn't:
+                # retrying the same image doesn't create a new revision, so the health check
+                # below decides. The mirror never has a tag right after the push, so jobs that
+                # retry wait 2 minutes first and then retry every 2 minutes: fewer pulls while
+                # rate limited.
+                command: |
+                  if [ -z "<< parameters.image_variant >>" ]; then echo "image_variant is required"; exit 1; fi
+                  export MCD_DEFAULT_API_ID=${MCD_SMOKE_TESTS_API_ID}
+                  export MCD_DEFAULT_API_TOKEN=${MCD_SMOKE_TESTS_API_TOKEN}
+                  export MCD_AGENT_IMAGE_REPO=<< parameters.image_repo >>
+                  deadline=$((SECONDS + << parameters.upgrade_retry_minutes >> * 60))
+                  if [ << parameters.upgrade_retry_minutes >> -gt 0 ]; then sleep 120; fi
+                  tag="<< parameters.agent_version >>-<< parameters.image_variant >>"
+                  while true; do
+                    # Diagnostics for a silent hang (YET-3659): before upgrading, the CLI HEADs this
+                    # Docker Hub URL (no timeout) and on anything but 200 opens an interactive tag
+                    # prompt, which waits forever without a TTY. Print what CI gets; never fails.
+                    echo "Docker Hub tag check: $(curl -sS -o /dev/null -m 20 -w '%{http_code} in %{time_total}s' -I \
+                      "https://hub.docker.com/v2/namespaces/montecarlodata/repositories/<< parameters.image_repo >>/tags/$tag" 2>&1 || true)"
+                    # </dev/null: a prompt fails at once instead of waiting. timeout: fail with 124 inside
+                    # CircleCI's 10m no-output limit (green calls take under 2 minutes). tee: output shows
+                    # live; $out still gets it for the checks below.
+                    rc=0
+                    out=$(timeout 300 montecarlo agents upgrade --agent-id << parameters.agent_uuid >> \
+                        --image-tag "$tag" </dev/null 2>&1 | tee /dev/stderr; exit "${PIPESTATUS[0]}") || rc=$?
+                    if [ "$rc" -eq 0 ]; then exit 0; fi
+                    if [ "$rc" -eq 124 ]; then echo "montecarlo agents upgrade did not finish within 300s"; fi
+                    if echo "$out" | grep -q "400 Container import failed"; then
+                      echo "Container import failed; leaving it to the version health check"
+                      exit 0
+                    fi
+                    if ! echo "$out" | grep -qE "404 Image '.*' not found|(404|429) Container import failed" \
+                        || [ $SECONDS -ge $deadline ]; then
+                      exit 1
+                    fi
+                    echo "Image not resolvable yet; retrying in 120s"
+                    sleep 120
+                  done
+      - run:
+          name: Run Agent Health - Validate version
+          # Poll rather than sleep: a restarting agent (e.g. Azure) can report the old version or fail
+          # health for a while. Azure gets an initial wait because its upgrade is async. Only the
+          # version field is printed; health output can include secrets.
+          command: |
+            export MCD_DEFAULT_API_ID=${MCD_SMOKE_TESTS_API_ID}
+            export MCD_DEFAULT_API_TOKEN=${MCD_SMOKE_TESTS_API_TOKEN}
+            if [ -z "<< parameters.agent_version >>" ]; then echo "agent_version is empty"; exit 1; fi
+            sleep << parameters.initial_wait_seconds >>
+            err=$(mktemp)
+            deadline=$((SECONDS + << parameters.version_wait_seconds >>))
+            while true; do
+              AGENT_VERSION=$(montecarlo agents health --agent-id << parameters.agent_uuid >> 2>"$err" | grep -v "Agent health check" | jq -r '.version' 2>/dev/null) || AGENT_VERSION=""
+              echo "Agent Version: $AGENT_VERSION"
+              if [ -n "$AGENT_VERSION" ] && [ "$AGENT_VERSION" = "<< parameters.agent_version >>" ]; then exit 0; fi
+              if [ $SECONDS -ge $deadline ]; then
+                echo "Failed to find expected version (<< parameters.agent_version >>), found: $AGENT_VERSION"
+                echo "Last CLI error output:"; tail -5 "$err"; exit 1
+              fi
+              sleep 15
+            done
+      - run:
+          name: Run validations
+          command: |
+            export MCD_DEFAULT_API_ID=${MCD_SMOKE_TESTS_API_ID}
+            export MCD_DEFAULT_API_TOKEN=${MCD_SMOKE_TESTS_API_TOKEN}
+            montecarlo collectors run-validations --only-periodic --agent-id << parameters.agent_uuid >>
+
+workflows:
+  version: 2
+
+  build-and-deploy:
+    jobs:
+      - run-linter
+      - run-test-docker:
+          # run for all tags and branches, we need to add this so the job is available for the prod build jobs
+          filters:
+            tags:
+              only: /.*/
+      - run-test-docker-azure:
+          # run for all tags and branches, we need to add this so the job is available for the prod build jobs
+          filters:
+            tags:
+              only: /.*/
+      # image-check:begin generic
+      - image-check:
+          name: image-check-generic
+          target: generic
+          filters:
+            branches:
+              ignore:
+                - dev
+                - main
+                - /^gh-readonly-queue\/.*/
+      # image-check:end generic
+      # image-check:begin cloudrun
+      - image-check:
+          name: image-check-cloudrun
+          target: cloudrun
+          filters:
+            branches:
+              ignore:
+                - dev
+                - main
+                - /^gh-readonly-queue\/.*/
+      # image-check:end cloudrun
+      # image-check:begin lambda
+      - image-check:
+          name: image-check-lambda
+          target: lambda
+          filters:
+            branches:
+              ignore:
+                - dev
+                - main
+                - /^gh-readonly-queue\/.*/
+      # image-check:end lambda
+      # image-check:begin azure
+      - image-check:
+          name: image-check-azure
+          target: azure
+          filters:
+            branches:
+              ignore:
+                - dev
+                - main
+                - /^gh-readonly-queue\/.*/
+      # image-check:end azure
+      - build-and-push-base-images:
+          name: build-and-push-dev-base-images
+          docker_hub_repository: pre-release-agent
+          code_version: ${NEXT_VERSION}
+          pre-steps:
+            - checkout
+            - generate-version-number-dev
+          context:
+            - docker
+          requires:
+            - run-linter
+            - run-test-docker
+            - run-test-docker-azure
+          filters:
+            branches:
+              only:
+                - dev
+      - build-and-push-image:
+          name: build-and-push-dev-azure
+          docker_hub_repository: pre-release-agent
+          code_version: ${NEXT_VERSION}
+          target: azure
+          tag_suffix: azure
+          pre-steps:
+            - checkout
+            - generate-version-number-dev
+          context:
+            - docker
+          requires:
+            - run-linter
+            - run-test-docker
+            - run-test-docker-azure
+          filters:
+            branches:
+              only:
+                - dev
+                - /^gh-readonly-queue\/.*/
+      - build-and-push-image:
+          name: build-and-push-dev-cloudrun
+          docker_hub_repository: pre-release-agent
+          code_version: ${NEXT_VERSION}
+          target: cloudrun
+          tag_suffix: cloudrun
+          pre-steps:
+            - checkout
+            - generate-version-number-dev
+          context:
+            - docker
+          requires:
+            - run-linter
+            - run-test-docker
+            - run-test-docker-azure
+          filters:
+            branches:
+              only:
+                - dev
+                - /^gh-readonly-queue\/.*/
+      - build-and-push-image:
+          name: build-and-push-dev-aws-proxied
+          docker_hub_repository: pre-release-agent
+          code_version: ${NEXT_VERSION}
+          target: aws_proxied
+          tag_suffix: aws-proxied
+          alias_tag_suffix: aws-generic
+          pre-steps:
+            - checkout
+            - generate-version-number-dev
+          context:
+            - docker
+          requires:
+            - run-linter
+            - run-test-docker
+            - run-test-docker-azure
+          filters:
+            branches:
+              only:
+                - dev
+                - /^gh-readonly-queue\/.*/
+      - update-and-validate-golden-agent:
+          name: gcp-dev-update-and-validate-golden-agent
+          image_variant: cloudrun
+          upgrade_retry_minutes: 30
+          agent_uuid: ${MCD_AGENT_UUID_WITH_GCP_AGENT}
+          agent_version: ${NEXT_VERSION}
+          image_repo: pre-release-agent
+          pre-steps:
+            - checkout
+            - generate-version-number-dev
+          context:
+            - mc-dev
+          requires:
+            - build-and-push-dev-cloudrun
+          filters:
+            branches:
+              only:
+                - dev
+      - update-and-validate-golden-agent:
+          name: az-dev-update-and-validate-golden-agent
+          image_variant: azure
+          agent_uuid: ${MCD_AGENT_UUID_WITH_AZ_AGENT}
+          agent_version: ${NEXT_VERSION}
+          initial_wait_seconds: 45
+          image_repo: pre-release-agent
+          pre-steps:
+            - checkout
+            - generate-version-number-dev
+          context:
+            - mc-dev
+          requires:
+            - build-and-push-dev-azure
+          filters:
+            branches:
+              only:
+                - dev
+      - update-and-validate-golden-agent:
+          name: gcp-prod-update-and-validate-golden-agent-merge-queue
+          image_variant: cloudrun
+          upgrade_retry_minutes: 30
+          agent_uuid: ${MCD_AGENT_UUID_WITH_GCP_AGENT}
+          agent_version: ${NEXT_VERSION}
+          image_repo: pre-release-agent
+          pre-steps:
+            - checkout
+            - generate-version-number-dev
+          context:
+            - mc-prod
+          requires:
+            - build-and-push-dev-cloudrun
+          filters:
+            branches:
+              only:
+                - /^gh-readonly-queue\/.*/
+      - update-and-validate-golden-agent:
+          name: az-prod-update-and-validate-golden-agent-merge-queue
+          image_variant: azure
+          agent_uuid: ${MCD_AGENT_UUID_WITH_AZ_AGENT}
+          agent_version: ${NEXT_VERSION}
+          initial_wait_seconds: 45
+          image_repo: pre-release-agent
+          pre-steps:
+            - checkout
+            - generate-version-number-dev
+          context:
+            - mc-prod
+          requires:
+            - build-and-push-dev-azure
+          filters:
+            branches:
+              only:
+                - /^gh-readonly-queue\/.*/
+      - build-and-push-lambda:
+          name: build-and-push-lambda-dev
+          docker_hub_repository: pre-release-agent
+          aws_ecr_repository: mcd-pre-release-agent
+          code_version: ${NEXT_VERSION}
+          pre-steps:
+            - checkout
+            - generate-version-number-dev
+          context:
+            - aether-dev
+            - docker
+          requires:
+            - run-linter
+            - run-test-docker
+            - run-test-docker-azure
+          filters:
+            branches:
+              only:
+                - dev
+                - /^gh-readonly-queue\/.*/
+      # Image scans: one per pushed image, each after its own push, required by nothing.
+      # Versioned tags, since a concurrent dev or merge-queue build can move latest-*.
+      - vuln-scan-image:
+          name: vuln-scan-dev-azure
+          image: montecarlodata/pre-release-agent:${NEXT_VERSION}-azure
+          pre-steps:
+            - checkout
+            - generate-version-number-dev
+          context:
+            - docker
+            - vuln-image-scan
+          requires:
+            - build-and-push-dev-azure
+          filters:
+            branches:
+              only:
+                - dev
+                - /^gh-readonly-queue\/.*/
+      - vuln-scan-image:
+          name: vuln-scan-dev-cloudrun
+          image: montecarlodata/pre-release-agent:${NEXT_VERSION}-cloudrun
+          pre-steps:
+            - checkout
+            - generate-version-number-dev
+          context:
+            - docker
+            - vuln-image-scan
+          requires:
+            - build-and-push-dev-cloudrun
+          filters:
+            branches:
+              only:
+                - dev
+                - /^gh-readonly-queue\/.*/
+      - vuln-scan-image:
+          name: vuln-scan-dev-aws-proxied
+          image: montecarlodata/pre-release-agent:${NEXT_VERSION}-aws-proxied
+          pre-steps:
+            - checkout
+            - generate-version-number-dev
+          context:
+            - docker
+            - vuln-image-scan
+          requires:
+            - build-and-push-dev-aws-proxied
+          filters:
+            branches:
+              only:
+                - dev
+                - /^gh-readonly-queue\/.*/
+      - vuln-scan-image:
+          name: vuln-scan-dev-lambda
+          image: montecarlodata/pre-release-agent:${NEXT_VERSION}-lambda
+          pre-steps:
+            - checkout
+            - generate-version-number-dev
+          context:
+            - docker
+            - vuln-image-scan
+          requires:
+            - build-and-push-lambda-dev
+          filters:
+            branches:
+              only:
+                - dev
+                - /^gh-readonly-queue\/.*/
+      - update-and-validate-golden-agent:
+          name: aws-dev-update-and-validate-golden-agent
+          image_variant: lambda
+          agent_uuid: ${MCD_AGENT_UUID_WITH_AWS_AGENT}
+          agent_version: ${NEXT_VERSION}
+          image_repo: pre-release-agent
+          pre-steps:
+            - checkout
+            - generate-version-number-dev
+          context:
+            - mc-dev
+          requires:
+            - build-and-push-lambda-dev
+          filters:
+            branches:
+              only:
+                - dev
+      - update-and-validate-golden-agent:
+          name: aws-prod-update-and-validate-golden-agent-merge-queue
+          use_aws_cli: true
+          agent_uuid: ${MCD_AGENT_UUID_WITH_AWS_AGENT}
+          agent_version: ${NEXT_VERSION}
+          ecr_repo_name: "${AWS_AGENT_ECR_REPO_DEV}"
+          ecr_repo_account: "${AWS_AGENT_ECR_ACCOUNT_DEV}"
+          pre-steps:
+            - checkout
+            - generate-version-number-dev
+          context:
+            - mc-prod
+          requires:
+            - build-and-push-lambda-dev
+          filters:
+            branches:
+              only:
+                - /^gh-readonly-queue\/.*/
+      - push-lambda-legacy-repo:
+          name: push-lambda-aws-dev
+          aws_ecr_repository: mcd-pre-release-agent
+          code_version: ${NEXT_VERSION}
+          pre-steps:
+            - checkout
+            - generate-version-number-dev
+          context:
+            - aws-dev
+            - docker
+          requires:
+            - build-and-push-lambda-dev
+          filters:
+            branches:
+              only:
+                - dev
+                - /^gh-readonly-queue\/.*/
+      - build-and-push-base-images:
+          name: build-and-push-prod-base-images
+          docker_hub_repository: agent
+          code_version: ${VERSION_TAG}
+          pre-steps:
+            - checkout
+            - generate-version-number-prod
+          context:
+            - docker
+          requires:
+            - run-linter
+            - run-test-docker
+            - run-test-docker-azure
+          filters: # run only for tags starting with v, don't run for branches
+            tags:
+              only: /^v.*/
+            branches:
+              ignore: /.*/
+      - build-and-push-image:
+          name: build-and-push-prod-azure
+          check_image: false
+          docker_hub_repository: agent
+          code_version: ${VERSION_TAG}
+          target: azure
+          tag_suffix: azure
+          pre-steps:
+            - checkout
+            - generate-version-number-prod
+          context:
+            - docker
+          requires:
+            # On tags, publish base images first so a release never ships without them.
+            - build-and-push-prod-base-images
+            - run-linter
+            - run-test-docker
+            - run-test-docker-azure
+          filters: # run only for tags starting with v, don't run for branches
+            tags:
+              only: /^v.*/
+            branches:
+              ignore: /.*/
+      - build-and-push-image:
+          name: build-and-push-prod-cloudrun
+          check_image: false
+          docker_hub_repository: agent
+          code_version: ${VERSION_TAG}
+          target: cloudrun
+          tag_suffix: cloudrun
+          pre-steps:
+            - checkout
+            - generate-version-number-prod
+          context:
+            - docker
+          requires:
+            - build-and-push-prod-base-images
+            - run-linter
+            - run-test-docker
+            - run-test-docker-azure
+          filters: # run only for tags starting with v, don't run for branches
+            tags:
+              only: /^v.*/
+            branches:
+              ignore: /.*/
+      - build-and-push-image:
+          name: build-and-push-prod-aws-proxied
+          check_image: false
+          docker_hub_repository: agent
+          code_version: ${VERSION_TAG}
+          target: aws_proxied
+          tag_suffix: aws-proxied
+          alias_tag_suffix: aws-generic
+          pre-steps:
+            - checkout
+            - generate-version-number-prod
+          context:
+            - docker
+          requires:
+            - build-and-push-prod-base-images
+            - run-linter
+            - run-test-docker
+            - run-test-docker-azure
+          filters: # run only for tags starting with v, don't run for branches
+            tags:
+              only: /^v.*/
+            branches:
+              ignore: /.*/
+      - build-and-push-lambda:
+          name: build-and-push-lambda-prod
+          check_image: false
+          docker_hub_repository: agent
+          aws_ecr_repository: mcd-agent
+          code_version: ${VERSION_TAG}
+          pre-steps:
+            - checkout
+            - generate-version-number-prod
+          context:
+            - aether-prod
+            - docker
+          requires:
+            - run-linter
+            - run-test-docker
+            - run-test-docker-azure
+          filters: # run only for tags starting with v, don't run for branches
+            tags:
+              only: /^v.*/
+            branches:
+              ignore: /.*/
+      - push-lambda-legacy-repo:
+          name: push-lambda-aws-prod
+          aws_ecr_repository: mcd-agent
+          code_version: ${VERSION_TAG}
+          pre-steps:
+            - checkout
+            - generate-version-number-prod
+          context:
+            - aws-prod
+            - docker
+          requires:
+            - build-and-push-lambda-prod
+          filters: # run only for tags starting with v, don't run for branches
+            tags:
+              only: /^v.*/
+            branches:
+              ignore: /.*/
+      - build-and-push-docs:
+          name: build-and-push-docs-dev
+          code_version: ${NEXT_VERSION}
+          pre-steps:
+            - checkout
+            - generate-version-number-dev
+          context:
+            - aws-dev
+          requires:
+            - run-linter
+            - run-test-docker
+            - run-test-docker-azure
+          filters:
+            branches:
+              only:
+                - dev
+      - build-and-push-docs:
+          name: build-and-push-docs-prod
+          code_version: ${VERSION_TAG}
+          pre-steps:
+            - checkout
+            - generate-version-number-prod
+          context:
+            - aws-prod
+          requires:
+            - run-linter
+            - run-test-docker
+            - run-test-docker-azure
+          filters: # run only for tags starting with v, don't run for branches
+            tags:
+              only: /^v.*/
+            branches:
+              ignore: /.*/
+      - build-ok:
+          requires:
+            - run-linter
+            - run-test-docker
+            - run-test-docker-azure
+            - image-check-generic  # image-check:generic
+            - image-check-cloudrun  # image-check:cloudrun
+            - image-check-lambda  # image-check:lambda
+            - image-check-azure  # image-check:azure
+            # no golden agent uses this image, so gate on it directly
+            - build-and-push-dev-aws-proxied
+            - gcp-prod-update-and-validate-golden-agent-merge-queue
+            - az-prod-update-and-validate-golden-agent-merge-queue
+            - aws-prod-update-and-validate-golden-agent-merge-queue
+          filters:
+            branches:
+              ignore:
+                - dev
+                - main
