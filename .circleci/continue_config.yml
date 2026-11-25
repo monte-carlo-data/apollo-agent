@@ -33,12 +33,14 @@ commands:
         command: |
           python3 scripts/image_checks/check_image.py --target << parameters.target >> \
             --image "<< parameters.image >>" --expected-version "<< parameters.version >>"
+  # Only v* release tags count: any other tag reachable from HEAD (e.g. a CI dry-run tag)
+  # would otherwise become the version, which golden-agent upgrades reject.
   generate-version-number-dev:
     steps:
     - run:
         command: |
           PIPELINE_NUMBER=<< pipeline.number >>
-          if git describe --tags --abbrev=0; then TAG=$(git describe --tags --abbrev=0); else exit 1; fi
+          if git describe --tags --abbrev=0 --match 'v*'; then TAG=$(git describe --tags --abbrev=0 --match 'v*'); else exit 1; fi
           VERSION=${TAG#v}
           # Exported so the image scanner can expand it in its image parameter.
           echo "export NEXT_VERSION=$(echo "$VERSION" | awk 'BEGIN{FS=OFS="."} {$3+=1} 1')rc${PIPELINE_NUMBER}" >> $BASH_ENV
@@ -48,7 +50,7 @@ commands:
     steps:
     - run:
         command: |
-          if git describe --tags --abbrev=0; then TAG=$(git describe --tags --abbrev=0); else exit 1; fi
+          if git describe --tags --abbrev=0 --match 'v*'; then TAG=$(git describe --tags --abbrev=0 --match 'v*'); else exit 1; fi
           echo "VERSION_TAG=${TAG#v}" >> $BASH_ENV
           source $BASH_ENV
         name: Generate prod version number

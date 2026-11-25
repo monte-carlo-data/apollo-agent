@@ -511,3 +511,67 @@ def test_changed_checks_keep_the_impact_map_result():
     )
     assert selection.targets == ALL
     assert selection.impact is not None and selection.packaging_files
+
+
+# -- version steps: only v* release tags count -----------------------------------------
+
+
+def _version_command(step):
+    """The shell of a `generate-version-number-*` command in the continuation config."""
+    lines = (ROOT / ".circleci" / "continue_config.yml").read_text().splitlines()
+    start = lines.index(f"  {step}:")
+    begin = next(
+        i for i in range(start, len(lines)) if lines[i].strip() == "command: |"
+    )
+    body = []
+    for line in lines[begin + 1 :]:
+        if not line.startswith(" " * 10):
+            break
+        body.append(line[10:])
+    return "\n".join(body).replace("<< pipeline.number >>", "4242")
+
+
+@pytest.fixture
+def tagged_repo(tmp_path):
+    # A release tag on an older commit and a non-release tag (like a CI dry-run tag)
+    # on HEAD: `git describe` without --match would return the newer, wrong one.
+    _git(tmp_path, "init", "-q", "-b", "main")
+    _git(tmp_path, "config", "user.email", "t@example.com")
+    _git(tmp_path, "config", "user.name", "t")
+    _git(tmp_path, "commit", "-q", "--allow-empty", "-m", "release")
+    _git(tmp_path, "tag", "v1.14.7")
+    _git(tmp_path, "commit", "-q", "--allow-empty", "-m", "later")
+    _git(tmp_path, "tag", "setup-test-1")
+    return tmp_path
+
+
+def _run_version_step(repo, step):
+    bash_env = repo / "bash_env"
+    bash_env.write_text("")
+    subprocess.run(
+        ["bash", "-eo", "pipefail", "-c", _version_command(step)],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        env={**os.environ, "BASH_ENV": str(bash_env)},
+    )
+    return bash_env.read_text()
+
+
+def test_dev_version_ignores_non_release_tags(tagged_repo):
+    assert "NEXT_VERSION=1.14.8rc4242" in _run_version_step(
+        tagged_repo, "generate-version-number-dev"
+    )
+
+
+def test_prod_version_ignores_non_release_tags(tagged_repo):
+    assert "VERSION_TAG=1.14.7" in _run_version_step(
+        tagged_repo, "generate-version-number-prod"
+    )
+
+
+def test_prod_version_on_a_release_tag(tagged_repo):
+    _git(tagged_repo, "tag", "v1.14.8")
+    assert "VERSION_TAG=1.14.8" in _run_version_step(
+        tagged_repo, "generate-version-number-prod"
+    )
