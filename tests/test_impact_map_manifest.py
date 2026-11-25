@@ -40,9 +40,32 @@ def _in_packages(path: Path) -> set[str]:
 @pytest.mark.parametrize("in_file", IN_FILES, ids=lambda p: p.name)
 def test_every_in_package_is_in_the_manifest(in_file: Path):
     missing = sorted(_in_packages(in_file) - MANIFEST.packages.keys())
-    assert not missing, (
-        f"{in_file.name} lists packages with no entry in scripts/impact_map_manifest.toml: "
-        f"{missing}. Add them under [packages] (see docs/impact-map.md)."
+    assert not missing, _missing_entries_message(in_file, missing)
+
+
+def _missing_entries_message(in_file: Path, missing: list[str]) -> str:
+    """Tell a person (or a bot reading CI logs) exactly which lines to add, and where."""
+    if in_file.name == "requirements-dev.in":
+        lines = [f'{name} = {{ scope = "dev" }}' for name in missing]
+        hint = "Dev-only packages need just the scope."
+    else:
+        lines = [
+            f'{name} = {{ scope = "direct", connection_types = [], imports = ["{name.replace("-", "_")}"] }}'
+            for name in missing
+        ]
+        hint = (
+            'Pick the scope: "direct" (apollo imports it for specific connection types; fill '
+            "connection_types from [connection_types] and fix imports to the module name), "
+            '"runtime" (used by every operation), or "transitive" (pinned only to force a '
+            "version of something another package pulls in; drop connection_types/imports). "
+            'Drivers also get areas = ["metadata_collection", "monitors", ...].'
+        )
+    return (
+        f"{in_file.name} lists {len(missing)} package(s) with no entry in "
+        "scripts/impact_map_manifest.toml. Add these lines under [packages], in the "
+        f"`# --- {in_file.name}` block:\n\n"
+        + "\n".join(lines)
+        + f'\n\n{hint} See docs/impact-map.md, "Maintaining it".'
     )
 
 
