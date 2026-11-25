@@ -15,7 +15,7 @@ containers with no network:
 | `version` | `apollo/agent/settings.py` prints the expected `<code_version>,<build_number>`. |
 | `imports` | Imports every native driver and compiled library the agent uses (`oracledb`, `pyodbc`, `ibm_db`, `teradatasql`, `psycopg2`, `snowflake.connector`, `hdbcli`, `duckdb`, `pyarrow`, ... see `NATIVE_MODULES`) and the target's entry modules. Also loads the Oracle Instant Client (thick mode) and checks that a SQL Server ODBC driver (17 or 18) is registered. |
 | `ldd` | Runs `ldd` (or the dynamic loader's `--list`) on every shared object on the interpreter's path, `/opt/oracle/instantclient` and `/opt/microsoft`; fails on any `not found`. Known, harmless gaps are listed with a reason in `LDD_IGNORED`. |
-| `health` | Starts the entrypoint and hits health: gunicorn on `/api/v1/test/health` for `generic` (and the `aws_proxied` entry module, run in the `generic` image), `aws_proxied` and `cloudrun`; the Lambda handler from the image's `CMD`, called with an API Gateway event; for `azure`, the image's own Functions host entrypoint is started with an [Azurite](https://github.com/Azure/Azurite) storage emulator (Durable Functions needs storage) and a pre-seeded placeholder function key, and health is called through the host. Only `version` and `build` are read from the health response. |
+| `health` | Starts the entrypoint and hits health: gunicorn on `/api/v1/test/health` for `generic` (and the `aws_proxied` entry module, run in the `generic` image), `aws_proxied` and `cloudrun`; the Lambda handler from the image's `CMD`, called with an API Gateway event; for `azure`, the image's own Functions host entrypoint is started with an [Azurite](https://github.com/Azure/Azurite) storage emulator (Durable Functions needs storage) and a pre-seeded placeholder function key, and health is called through the host. Only `version` and `build` are read from the health response. The Azure host may download its extension bundle from Microsoft's CDN at startup, so `azure` health (and `image-check-azure`) depends on the network: an occasional timeout there is a flake to rerun, not an image problem. |
 
 Entry modules per target: `generic`: `apollo.interfaces.generic.main`,
 `apollo.interfaces.aws.main`; `cloudrun`: `apollo.interfaces.cloudrun.main`; `lambda`:
@@ -47,7 +47,14 @@ finds them all.
 | Feature branch, no packaging change | none: no image is built |
 | Feature branch, packaging change (`requirements*`, `Dockerfile`, `.dockerignore`, `resources/`) | the targets `scripts/impact_map.py` selects, built locally by `image-check-<target>` jobs (never pushed). If the impact map is missing, fails or prints something unexpected: all four. |
 | Merge queue (`gh-readonly-queue/*`), `dev` | every image the pipeline builds (`azure`, `cloudrun`, `aws_proxied`, `lambda`), inside its build job, before the push |
-| `v*` tags | every image the release builds, the same way |
+| `v*` tags | none: the release jobs only build and push (`check_image: false`) |
+
+Releases skip the checks because their targets build and push in parallel: a check failing
+in one job while another has already pushed would leave the release partially published.
+The same commit has already passed every check in the merge queue and on `dev`. In the
+release jobs, `check_image: false` drops the local `--load` build (it only feeds the checks)
+and the checks; the lambda job's ECR build is the image it pushes, so there only the checks
+go.
 
 `build-ok` requires the branch's `image-check-<target>` jobs, so a broken image fails the
 required check. `aws_proxied` is not built on branches: it is `generic` with a different

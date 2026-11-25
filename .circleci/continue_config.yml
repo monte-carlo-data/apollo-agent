@@ -219,6 +219,10 @@ jobs:
         description: Optional legacy suffix also pushed for the same image, kept for back-compat
         type: string
         default: ""
+      check_image:
+        description: Build the image locally and run the contract checks before pushing. False on v* releases, whose images the merge queue and dev already checked; a failing check there would leave the release partially published, since targets build in parallel.
+        type: boolean
+        default: true
     steps:
       - checkout
       - docker/check:
@@ -226,21 +230,25 @@ jobs:
       - setup-buildx
       # Built twice: --load so the image can be run and checked before publishing, then --push
       # with SBOM + provenance. They can't be combined (the daemon can't load an OCI index with
-      # attestations); BuildKit cache makes the second pass cheap.
-      - run:
-          name: Build << parameters.target >> image (local) for version verification
-          command: |
-            docker buildx build \
-              --target << parameters.target >> \
-              --build-arg code_version=<< parameters.code_version >> \
-              --build-arg build_number=<< pipeline.number >> \
-              --tag montecarlodata/<< parameters.docker_hub_repository >>:latest-<< parameters.tag_suffix >> \
-              --load \
-              .
-      - image-contract-checks:
-          image: montecarlodata/<< parameters.docker_hub_repository >>:latest-<< parameters.tag_suffix >>
-          target: << parameters.target >>
-          version: << parameters.code_version >>,<< pipeline.number >>
+      # attestations); BuildKit cache makes the second pass cheap. The local build only feeds
+      # the checks, so releases (check_image: false) skip both.
+      - when:
+          condition: << parameters.check_image >>
+          steps:
+            - run:
+                name: Build << parameters.target >> image (local) for version verification
+                command: |
+                  docker buildx build \
+                    --target << parameters.target >> \
+                    --build-arg code_version=<< parameters.code_version >> \
+                    --build-arg build_number=<< pipeline.number >> \
+                    --tag montecarlodata/<< parameters.docker_hub_repository >>:latest-<< parameters.tag_suffix >> \
+                    --load \
+                    .
+            - image-contract-checks:
+                image: montecarlodata/<< parameters.docker_hub_repository >>:latest-<< parameters.tag_suffix >>
+                target: << parameters.target >>
+                version: << parameters.code_version >>,<< pipeline.number >>
       - run:
           name: Build and push << parameters.target >> with SBOM + SLSA provenance
           command: |
@@ -317,6 +325,10 @@ jobs:
         type: string
       code_version:
         type: string
+      check_image:
+        description: Build the image locally and run the contract checks before pushing. False on v* releases, whose images the merge queue and dev already checked; a failing check there would leave the release partially published, since targets build in parallel.
+        type: boolean
+        default: true
     steps:
       - checkout
       - docker/check:
@@ -351,10 +363,14 @@ jobs:
           registry: ${AWS_ECR_ACCOUNT_URL}
           image: << parameters.aws_ecr_repository >>
           tag: latest,<< parameters.code_version >>
-      - image-contract-checks:
-          image: ${AWS_ECR_ACCOUNT_URL}/<< parameters.aws_ecr_repository >>:<< parameters.code_version >>
-          target: lambda
-          version: << parameters.code_version >>,<< pipeline.number >>
+      # The ECR build above is what gets pushed, so releases (check_image: false) skip only the checks.
+      - when:
+          condition: << parameters.check_image >>
+          steps:
+            - image-contract-checks:
+                image: ${AWS_ECR_ACCOUNT_URL}/<< parameters.aws_ecr_repository >>:<< parameters.code_version >>
+                target: lambda
+                version: << parameters.code_version >>,<< pipeline.number >>
       - aws-cli/setup:
           role_arn: "${AWS_ROLE_ARN}"
       - aws-ecr/ecr_login
@@ -913,6 +929,7 @@ workflows:
               ignore: /.*/
       - build-and-push-image:
           name: build-and-push-prod-azure
+          check_image: false
           docker_hub_repository: agent
           code_version: ${VERSION_TAG}
           target: azure
@@ -935,6 +952,7 @@ workflows:
               ignore: /.*/
       - build-and-push-image:
           name: build-and-push-prod-cloudrun
+          check_image: false
           docker_hub_repository: agent
           code_version: ${VERSION_TAG}
           target: cloudrun
@@ -956,6 +974,7 @@ workflows:
               ignore: /.*/
       - build-and-push-image:
           name: build-and-push-prod-aws-proxied
+          check_image: false
           docker_hub_repository: agent
           code_version: ${VERSION_TAG}
           target: aws_proxied
@@ -978,6 +997,7 @@ workflows:
               ignore: /.*/
       - build-and-push-lambda:
           name: build-and-push-lambda-prod
+          check_image: false
           docker_hub_repository: agent
           aws_ecr_repository: mcd-agent
           code_version: ${VERSION_TAG}
