@@ -515,12 +515,21 @@ jobs:
                   export MCD_AGENT_IMAGE_REPO=<< parameters.image_repo >>
                   deadline=$((SECONDS + << parameters.upgrade_retry_minutes >> * 60))
                   if [ << parameters.upgrade_retry_minutes >> -gt 0 ]; then sleep 120; fi
+                  tag="<< parameters.agent_version >>-<< parameters.image_variant >>"
                   while true; do
-                    if out=$(montecarlo agents upgrade --agent-id << parameters.agent_uuid >> \
-                        --image-tag "<< parameters.agent_version >>-<< parameters.image_variant >>" 2>&1); then
-                      echo "$out"; exit 0
-                    fi
-                    echo "$out"
+                    # Diagnostics for a silent hang (YET-3659): before upgrading, the CLI HEADs this
+                    # Docker Hub URL (no timeout) and on anything but 200 opens an interactive tag
+                    # prompt, which waits forever without a TTY. Print what CI gets; never fails.
+                    echo "Docker Hub tag check: $(curl -sS -o /dev/null -m 20 -w '%{http_code} in %{time_total}s' -I \
+                      "https://hub.docker.com/v2/namespaces/montecarlodata/repositories/<< parameters.image_repo >>/tags/$tag" 2>&1 || true)"
+                    # </dev/null: a prompt fails at once instead of waiting. timeout: fail with 124 inside
+                    # CircleCI's 10m no-output limit (green calls take under 2 minutes). tee: output shows
+                    # live; $out still gets it for the checks below.
+                    rc=0
+                    out=$(timeout 300 montecarlo agents upgrade --agent-id << parameters.agent_uuid >> \
+                        --image-tag "$tag" </dev/null 2>&1 | tee /dev/stderr; exit "${PIPESTATUS[0]}") || rc=$?
+                    if [ "$rc" -eq 0 ]; then exit 0; fi
+                    if [ "$rc" -eq 124 ]; then echo "montecarlo agents upgrade did not finish within 300s"; fi
                     if echo "$out" | grep -q "400 Container import failed"; then
                       echo "Container import failed; leaving it to the version health check"
                       exit 0
