@@ -175,6 +175,9 @@ COPY --chown=mcdagent:mcdagent requirements.txt ./
 # - VULN-1818 (GHSA-vgq5-9859-3mmw): setuptools vendors wheel 0.46.3, vulnerable
 #   to the `wheel convert` path traversal (fixed in 0.48.0), and pins what it
 #   vendors. Nothing here builds wheels, so drop it, code included.
+# - AIKIDO-2026-777134: setuptools also vendors platformdirs 4.4.0 (fixed in
+#   4.11.11). Nothing in setuptools imports it; our own copy is pinned. The `ls`
+#   fails the build if a setuptools bump moves it.
 # - Secret scanners flag the public test keys in pycryptodome's self-tests as HIGH
 #   "private key" findings, and pandas'/impyla's test URLs and tokens as
 #   credentials. None of these suites run here.
@@ -182,9 +185,12 @@ RUN python -m venv $VENV_DIR \
     && . $VENV_DIR/bin/activate \
     && pip install --no-cache-dir -r requirements.txt \
     && pip install --no-cache-dir -U pip setuptools \
+    && ls -d $VENV_DIR/lib/python*/site-packages/setuptools/_vendor/platformdirs-*.dist-info \
     && rm -rf $VENV_DIR/lib/python*/site-packages/pip/_vendor/bom.cdx.json \
               $VENV_DIR/lib/python*/site-packages/setuptools/_vendor/wheel \
               $VENV_DIR/lib/python*/site-packages/setuptools/_vendor/wheel-*.dist-info \
+              $VENV_DIR/lib/python*/site-packages/setuptools/_vendor/platformdirs \
+              $VENV_DIR/lib/python*/site-packages/setuptools/_vendor/platformdirs-*.dist-info \
               $VENV_DIR/lib/python*/site-packages/Crypto/SelfTest \
               $VENV_DIR/lib/python*/site-packages/pandas/tests \
               $VENV_DIR/lib/python*/site-packages/impala/tests \
@@ -271,7 +277,8 @@ RUN echo "mcdagent:x:1000:1000:mcdagent:${LAMBDA_TASK_ROOT}:/sbin/nologin" >> /e
 # VULN-369: Base ECR image includes urllib3-1.26.18 which is vulnerable (CVE-2024-37891).
 # Note that this is the system install, not our app.
 # Added setuptools as distutils is required by the git module we use for Looker
-RUN pip install --no-cache-dir -U urllib3 setuptools
+# pip: the base image's pip vendors platformdirs 4.10.0 (AIKIDO-2026-777134).
+RUN pip install --no-cache-dir -U pip urllib3 setuptools
 
 COPY --from=lambda-builder --chown=mcdagent:mcdagent "${LAMBDA_TASK_ROOT}" "${LAMBDA_TASK_ROOT}"
 
@@ -323,10 +330,13 @@ RUN rm -rf /var/lib/rpm/rpmdb.sqlite*
 # Same pip vendored-SBOM noise as in the `base` stage, for the Lambda interpreter.
 RUN rm -f /var/lang/lib/python*/site-packages/pip/_vendor/bom.cdx.json
 
-# VULN-1818: same vendored-wheel removal as in the `base` stage, for the Lambda
-# interpreter.
-RUN rm -rf /var/lang/lib/python*/site-packages/setuptools/_vendor/wheel \
-           /var/lang/lib/python*/site-packages/setuptools/_vendor/wheel-*.dist-info
+# VULN-1818, AIKIDO-2026-777134: same vendored wheel and platformdirs removal as
+# in the `base` stage, for the Lambda interpreter.
+RUN ls -d /var/lang/lib/python*/site-packages/setuptools/_vendor/platformdirs-*.dist-info \
+    && rm -rf /var/lang/lib/python*/site-packages/setuptools/_vendor/wheel \
+           /var/lang/lib/python*/site-packages/setuptools/_vendor/wheel-*.dist-info \
+           /var/lang/lib/python*/site-packages/setuptools/_vendor/platformdirs \
+           /var/lang/lib/python*/site-packages/setuptools/_vendor/platformdirs-*.dist-info
 
 # The Runtime Interface Emulator is only for local `docker run` testing —
 # /lambda-entrypoint.sh execs it when AWS_LAMBDA_RUNTIME_API is unset, which
@@ -563,9 +573,13 @@ RUN PYTHONPATH= pip install --no-cache-dir -U "gunicorn>=27.0.1"
 RUN PYTHONPATH= pip uninstall -y viztracer vizplugins \
     && rm -f /usr/bin/viztracer /usr/bin/vizviewer /usr/bin/vdb
 
-# VULN-1818: same vendored-wheel removal as in the `base` and `lambda` stages.
-RUN rm -rf /opt/python/*/lib/python*/site-packages/setuptools/_vendor/wheel \
-           /opt/python/*/lib/python*/site-packages/setuptools/_vendor/wheel-*.dist-info
+# VULN-1818, AIKIDO-2026-777134: same vendored wheel and platformdirs removal as
+# in the `base` and `lambda` stages.
+RUN ls -d /opt/python/*/lib/python*/site-packages/setuptools/_vendor/platformdirs-*.dist-info \
+    && rm -rf /opt/python/*/lib/python*/site-packages/setuptools/_vendor/wheel \
+           /opt/python/*/lib/python*/site-packages/setuptools/_vendor/wheel-*.dist-info \
+           /opt/python/*/lib/python*/site-packages/setuptools/_vendor/platformdirs \
+           /opt/python/*/lib/python*/site-packages/setuptools/_vendor/platformdirs-*.dist-info
 
 COPY --chown=mcdagent:mcdagent apollo /home/site/wwwroot/apollo
 
