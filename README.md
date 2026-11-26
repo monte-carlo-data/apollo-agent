@@ -136,6 +136,17 @@ Then, you can follow the instructions in our public docs to update the agents:
 - AWS: https://docs.getmontecarlo.com/docs/create-and-register-an-aws-agent#how-do-i-upgrade-the-agent
 - GCP: https://docs.getmontecarlo.com/docs/create-and-register-a-gcp-agent#how-do-i-upgrade-the-agent
 
+### Dev golden agents
+Every `dev` pipeline upgrades the shared dev golden agents (one per platform: GCP, Azure, AWS) to the new
+image and validates them, in the `{gcp,az,aws}-dev-update-and-validate-golden-agent` jobs of
+`.circleci/continue_config.yml`. Each of these jobs is in a CircleCI
+[serial group](https://circleci.com/docs/guides/orchestrate/controlling-serial-execution-across-your-organization/)
+per platform (`<project slug>/dev-golden-agent-{gcp,az,aws}`), so when two `dev` pipelines overlap, only one
+of them upgrades a given agent at a time; platforms still run in parallel. The newest pipeline wins: while
+its job waits for the group it shows as queued/blocked, and an older pipeline's job that has not started yet
+is skipped and shows as **not run**. A not-run golden job means a newer `dev` build superseded it, not a
+failure. CircleCI adds `serial-start-N`/`serial-end-N` lock jobs around each of them in the workflow.
+
 ### Deploying new agents
 You can also deploy new agents instead of using the existing dev agents, you can follow the instructions for each 
 platform in our public docs: [AWS](https://docs.getmontecarlo.com/docs/create-and-register-an-aws-agent) and [GCP](https://docs.getmontecarlo.com/docs/create-and-register-a-gcp-agent),
