@@ -620,3 +620,70 @@ def test_validate_nothing_validated_exits_7(
         assert "NOT_COVERED=1" in line
     else:
         assert "nothing validated" not in err
+
+
+@pytest.fixture
+def terraform_outputs(tmp_path):
+    """`terraform output -json` of a Layer 3 stack (made-up values)."""
+    path = tmp_path / "out.json"
+    path.write_text(
+        json.dumps(
+            {
+                "agent_id": {
+                    "sensitive": False,
+                    "type": "string",
+                    "value": "agent-uuid",
+                },
+                "platform": {"sensitive": False, "type": "string", "value": "aws"},
+                "image_variant": {
+                    "sensitive": False,
+                    "type": "string",
+                    "value": "lambda",
+                },
+                "health_timeout_seconds": {
+                    "sensitive": False,
+                    "type": "number",
+                    "value": 600,
+                },
+                "connection_ids": {
+                    "sensitive": False,
+                    "type": ["map", "string"],
+                    "value": {"postgres": "conn-pg", "athena": "conn-at"},
+                },
+            }
+        )
+    )
+    return path
+
+
+def test_validate_reads_terraform_output_json(fake, clock, tmp_path, terraform_outputs):
+    fake.add("POST", "/api/v2/connections/conn-pg/validate", accepted("r-pg"))
+    fake.add("GET", "/api/v2/validations/r-pg", completed_with(validation("a")))
+    args = [
+        "validate",
+        "--connection-ids",
+        f"{terraform_outputs}:connection_ids.value",
+        "--types",
+        "postgres,snowflake",
+        "--report",
+        str(tmp_path / "report.json"),
+    ]
+    assert mc.main(args) == 0
+    data = report(tmp_path)
+    assert data["platform"] == "aws"
+    assert [
+        (r["connection_type"], r["connection_id"], r["outcome"])
+        for r in data["results"]
+    ] == [
+        ("postgres", "conn-pg", "PASS"),
+        ("snowflake", None, "NOT_COVERED"),
+    ]
+
+
+def test_validate_terraform_output_without_value_is_usage_error(
+    fake, tmp_path, terraform_outputs
+):
+    # The output object itself (value/type/sensitive) is not a type -> id map.
+    args = validate_args(terraform_outputs, tmp_path, "postgres")
+    args[2] = f"{terraform_outputs}:connection_ids"
+    assert mc.main(args) == 2

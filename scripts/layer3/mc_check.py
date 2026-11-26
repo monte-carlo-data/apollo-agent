@@ -444,24 +444,38 @@ def validate_one(
 
 
 def load_connection_ids(spec: str) -> tuple[dict[str, str], str | None]:
-    """``FILE[:dotted.path]`` → (type → connection id, platform). The platform is read
-    from a ``platform`` key next to the map (tfc_run.py outputs carry both)."""
+    """``FILE[:dotted.path]`` → (type → connection id, platform).
+
+    Made for ``terraform output -json`` of a Layer 3 stack
+    (``out.json:connection_ids.value``). The platform is the nearest ``platform`` key
+    on the path to the map, either a string or a Terraform output (``{"value": ...}``).
+    """
     path, _, dotted = spec.partition(":")
     try:
         data: Any = json.loads(Path(path).read_text())
     except (OSError, ValueError) as error:
         raise UsageError(f"cannot read {path}: {type(error).__name__}") from None
-    parent: Any = None
+    ancestors: list[Any] = []
     for key in [k for k in dotted.split(".") if k]:
         if not isinstance(data, dict) or key not in data:
             raise UsageError(f"{path} has no {dotted}")
-        parent, data = data, data[key]
+        ancestors.append(data)
+        data = data[key]
     if not isinstance(data, dict) or not all(
         isinstance(k, str) and isinstance(v, str) for k, v in data.items()
     ):
         raise UsageError(f"{spec} is not a map of connection type to id")
-    platform = parent.get("platform") if isinstance(parent, dict) else None
-    return data, platform if isinstance(platform, str) else None
+    return data, find_platform(ancestors)
+
+
+def find_platform(ancestors: list[Any]) -> str | None:
+    for node in reversed(ancestors):
+        platform = node.get("platform") if isinstance(node, dict) else None
+        if isinstance(platform, dict):
+            platform = platform.get("value")
+        if isinstance(platform, str):
+            return platform
+    return None
 
 
 def parse_types(value: str) -> list[str]:
