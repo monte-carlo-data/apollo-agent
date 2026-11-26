@@ -46,7 +46,7 @@ finds them all.
 |---|---|
 | Feature branch, no packaging change | none: no image is built |
 | Feature branch, packaging change (`requirements*`, `Dockerfile`, `.dockerignore`, `resources/`) | the targets `scripts/impact_map.py` selects, built locally by `image-check-<target>` jobs (never pushed). If the impact map is missing, fails or prints something unexpected: all four. |
-| Merge queue (`gh-readonly-queue/*`), `dev` | every image the pipeline builds (`azure`, `cloudrun`, `aws_proxied`, `lambda`), inside its build job, before the push |
+| Merge queue (`gh-readonly-queue/*`), `dev` | every image the pipeline builds (`azure`, `cloudrun`, `aws_proxied`, `lambda`), inside its build job, before the push (to `queue-agent` / `mcd-queue-agent` from the merge queue, `pre-release-agent` / `mcd-pre-release-agent` from `dev`; see the README's "Where CI pushes images") |
 | `v*` tags | none: the release jobs only build and push (`check_image: false`) |
 
 Releases skip the checks because their targets build and push in parallel: a check failing
