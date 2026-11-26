@@ -1110,8 +1110,11 @@ workflows:
             - generate-version-number-dev
           context:
             - mc-prod
+          # Both ECR pushes: the image must be in the account the stack pulls from,
+          # aether-dev's registry or the legacy aws-dev one, before the update.
           requires:
             - build-and-push-lambda-queue
+            - push-lambda-aws-queue
           filters:
             branches:
               only:

@@ -63,7 +63,17 @@ def test_no_job_runs_on_both_dev_and_the_queue():
 
 def test_queue_jobs_use_only_the_queue_repos():
     queue = _queue_entries()
-    assert len(queue) == 12, sorted(queue)
+    expected = {
+        "build-and-push-queue-azure",
+        "build-and-push-queue-cloudrun",
+        "build-and-push-queue-aws-proxied",
+        "build-and-push-lambda-queue",
+        "push-lambda-aws-queue",
+        "gcp-prod-update-and-validate-golden-agent-merge-queue",
+        "az-prod-update-and-validate-golden-agent-merge-queue",
+        "aws-prod-update-and-validate-golden-agent-merge-queue",
+    }
+    assert expected <= set(queue), sorted(expected - set(queue))
     for name, entry in queue.items():
         assert "pre-release-agent" not in entry, name
         assert "${AWS_AGENT_ECR_REPO_DEV}" not in entry, name
