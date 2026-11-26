@@ -1,0 +1,8 @@
+agent-base @ git+https://github.com/monte-carlo-data/agent-base.git@v0.0.7
+cryptography>=50.0.0  # CVE fix
+flask==3.1.3
+google-cloud-run==0.10.18
+oldlib==1.0  # not in the test manifest
+ibm-db>=3.2.8; platform_machine != "aarch64"  # no arm64 driver
+pyodbc==5.1.0
+snowflake-connector-python>=4.8.1,<5
