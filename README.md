@@ -142,16 +142,16 @@ image and validates them, in the `{gcp,az,aws}-dev-update-and-validate-golden-ag
 `.circleci/continue_config.yml`. Each of these jobs is in a CircleCI
 [serial group](https://circleci.com/docs/guides/orchestrate/controlling-serial-execution-across-your-organization/)
 per platform (`<project slug>/dev-golden-agent-{gcp,az,aws}`), so when two `dev` pipelines overlap, only one
-of them upgrades a given agent at a time; platforms still run in parallel. The newest pipeline wins: an older
-pipeline's golden job that has not started yet is skipped (**not run**) once a newer pipeline's job for the same
-platform is waiting or running. A not-run golden job with a green build before it means a newer `dev` build
-superseded it, not a failure.
+of them upgrades a given agent at a time; platforms still run in parallel. Jobs waiting for a group start in the
+order they reached it. A golden job that reaches its group after a newer pipeline's job for the same platform is
+already waiting or running is skipped (**not run**): a not-run golden job with a green build before it means a
+newer `dev` build superseded it, not a failure. The serial group never skips the newest pipeline's job.
 
 CircleCI implements each group with two extra jobs in the workflow, `serial-start-N` (lock) before the golden
 job and `serial-end-N` (unlock) after it, so in the API the golden job depends on `serial-start-N`, not on the
 build job. While a job waits for its group, `serial-start-N` is `running` and the golden job is `blocked` (the
-workflow shows `queued` once that is all it is waiting on); when
-it is superseded, all three are `not_run` and the workflow still ends `success`.
+workflow shows `queued` once that is all it is waiting on); when it is superseded, all three are `not_run` and
+the workflow still ends `success`.
 
 ### Deploying new agents
 You can also deploy new agents instead of using the existing dev agents, you can follow the instructions for each 
