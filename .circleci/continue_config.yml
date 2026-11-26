@@ -711,11 +711,8 @@ workflows:
                 - dev
                 - /^gh-readonly-queue\/.*/
       - update-and-validate-golden-agent:
-          # One serial group per platform (YET-3662): overlapping `dev` pipelines upgrade the
-          # same shared golden agent, so same-platform jobs run one at a time. A newer
-          # pipeline's job goes first; an older one still waiting is skipped (`not_run`).
-          # Platforms still run in parallel. The merge-queue jobs need none: the queue
-          # builds one entry at a time.
+          # Serial group per platform so overlapping `dev` pipelines don't upgrade the same
+          # golden agent at once; see README "Dev golden agents" (YET-3662).
           name: gcp-dev-update-and-validate-golden-agent
           serial-group: << pipeline.project.slug >>/dev-golden-agent-gcp
           image_variant: cloudrun
