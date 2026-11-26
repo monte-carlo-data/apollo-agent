@@ -82,6 +82,64 @@ commands:
               docker buildx create --name apollo-builder --driver docker-container
               docker buildx inspect --builder apollo-builder --bootstrap
 
+  # The ECR copy of the lambda image. Lambda and CloudFormation need a plain single-arch
+  # manifest, so it is built with --provenance=false. push_latest picks the tags:
+  # latest,<version> (dev) or <version> alone (merge queue). docker/build and
+  # aws-ecr/push_image take one tag list, hence a when/unless pair.
+  build-lambda-ecr:
+    parameters:
+      step_name:
+        type: string
+      aws_ecr_repository:
+        type: string
+      code_version:
+        type: string
+      push_latest:
+        type: boolean
+    steps:
+      - when:
+          condition: << parameters.push_latest >>
+          steps:
+            - docker/build:
+                step-name: << parameters.step_name >>
+                use-buildkit: true
+                extra_build_args: --target lambda --build-arg code_version=<< parameters.code_version >> --build-arg build_number=<< pipeline.number >> --provenance=false
+                registry: ${AWS_ECR_ACCOUNT_URL}
+                image: << parameters.aws_ecr_repository >>
+                tag: latest,<< parameters.code_version >>
+      - unless:
+          condition: << parameters.push_latest >>
+          steps:
+            - docker/build:
+                step-name: << parameters.step_name >>
+                use-buildkit: true
+                extra_build_args: --target lambda --build-arg code_version=<< parameters.code_version >> --build-arg build_number=<< pipeline.number >> --provenance=false
+                registry: ${AWS_ECR_ACCOUNT_URL}
+                image: << parameters.aws_ecr_repository >>
+                tag: << parameters.code_version >>
+  # Pushes the tags build-lambda-ecr built. Needs an ECR login first.
+  push-lambda-ecr:
+    parameters:
+      aws_ecr_repository:
+        type: string
+      code_version:
+        type: string
+      push_latest:
+        type: boolean
+    steps:
+      - when:
+          condition: << parameters.push_latest >>
+          steps:
+            - aws-ecr/push_image:
+                repo: << parameters.aws_ecr_repository >>
+                tag: latest,<< parameters.code_version >>
+      - unless:
+          condition: << parameters.push_latest >>
+          steps:
+            - aws-ecr/push_image:
+                repo: << parameters.aws_ecr_repository >>
+                tag: << parameters.code_version >>
+
 jobs:
   # Merge-queue gate. A small docker job, not machine (slow VM boot) or no-op (which
   # reports as "build-and-deploy/build-ok", not the required "build-ok" check).
@@ -225,6 +283,10 @@ jobs:
         description: Build the image locally and run the contract checks before pushing. False on v* releases, whose images the merge queue and dev already checked; a failing check there would leave the release partially published, since targets build in parallel.
         type: boolean
         default: true
+      push_latest:
+        description: Also push the latest-<tag_suffix> tags. False in the merge queue, whose builds have not been through dev and must never become "latest".
+        type: boolean
+        default: true
     steps:
       - checkout
       - docker/check:
@@ -244,28 +306,29 @@ jobs:
                     --target << parameters.target >> \
                     --build-arg code_version=<< parameters.code_version >> \
                     --build-arg build_number=<< pipeline.number >> \
-                    --tag montecarlodata/<< parameters.docker_hub_repository >>:latest-<< parameters.tag_suffix >> \
+                    --tag montecarlodata/<< parameters.docker_hub_repository >>:<< parameters.code_version >>-<< parameters.tag_suffix >> \
                     --load \
                     .
             - image-contract-checks:
-                image: montecarlodata/<< parameters.docker_hub_repository >>:latest-<< parameters.tag_suffix >>
+                image: montecarlodata/<< parameters.docker_hub_repository >>:<< parameters.code_version >>-<< parameters.tag_suffix >>
                 target: << parameters.target >>
                 version: << parameters.code_version >>,<< pipeline.number >>
       - run:
           name: Build and push << parameters.target >> with SBOM + SLSA provenance
           command: |
             image=montecarlodata/<< parameters.docker_hub_repository >>
-            alias_tags=""
-            if [ -n "<< parameters.alias_tag_suffix >>" ]; then
-              alias_tags="--tag $image:latest-<< parameters.alias_tag_suffix >> --tag $image:<< parameters.code_version >>-<< parameters.alias_tag_suffix >>"
-            fi
+            suffixes="<< parameters.tag_suffix >> << parameters.alias_tag_suffix >>"
+            tags=""
+            for suffix in $suffixes; do
+              tags="$tags --tag $image:<< parameters.code_version >>-$suffix"
+              if [ "<< parameters.push_latest >>" = "true" ]; then tags="$tags --tag $image:latest-$suffix"; fi
+            done
+            echo "Pushing:$tags"
             docker buildx build \
               --target << parameters.target >> \
               --build-arg code_version=<< parameters.code_version >> \
               --build-arg build_number=<< pipeline.number >> \
-              --tag $image:latest-<< parameters.tag_suffix >> \
-              --tag $image:<< parameters.code_version >>-<< parameters.tag_suffix >> \
-              $alias_tags \
+              $tags \
               --sbom=true \
               --provenance=mode=max \
               --push \
@@ -331,6 +394,10 @@ jobs:
         description: Build the image locally and run the contract checks before pushing. False on v* releases, whose images the merge queue and dev already checked; a failing check there would leave the release partially published, since targets build in parallel.
         type: boolean
         default: true
+      push_latest:
+        description: Also push latest-lambda (Docker Hub) and latest (ECR). False in the merge queue, whose builds have not been through dev and must never become "latest".
+        type: boolean
+        default: true
     steps:
       - checkout
       - docker/check:
@@ -342,13 +409,16 @@ jobs:
       - run:
           name: Build and push lambda (Docker Hub) with SBOM + SLSA provenance
           command: |
+            image=montecarlodata/<< parameters.docker_hub_repository >>
+            tags="--tag $image:<< parameters.code_version >>-lambda"
+            if [ "<< parameters.push_latest >>" = "true" ]; then tags="$tags --tag $image:latest-lambda"; fi
+            echo "Pushing: $tags"
             docker buildx build \
               --builder apollo-builder \
               --target lambda \
               --build-arg code_version=<< parameters.code_version >> \
               --build-arg build_number=<< pipeline.number >> \
-              --tag montecarlodata/<< parameters.docker_hub_repository >>:latest-lambda \
-              --tag montecarlodata/<< parameters.docker_hub_repository >>:<< parameters.code_version >>-lambda \
+              $tags \
               --sbom=true \
               --provenance=mode=max \
               --push \
@@ -358,13 +428,11 @@ jobs:
       # attached ("image manifest, config or layer media type ... is not
       # supported"), so the ECR image must be a plain single-arch manifest.
       # BuildKit cache means the second build is nearly free.
-      - docker/build:
-          step-name: Build lambda image (ECR, no attestations)
-          use-buildkit: true
-          extra_build_args: --target lambda --build-arg code_version=<< parameters.code_version >> --build-arg build_number=<< pipeline.number >> --provenance=false
-          registry: ${AWS_ECR_ACCOUNT_URL}
-          image: << parameters.aws_ecr_repository >>
-          tag: latest,<< parameters.code_version >>
+      - build-lambda-ecr:
+          step_name: Build lambda image (ECR, no attestations)
+          aws_ecr_repository: << parameters.aws_ecr_repository >>
+          code_version: << parameters.code_version >>
+          push_latest: << parameters.push_latest >>
       # The ECR build above is what gets pushed, so releases (check_image: false) skip only the checks.
       - when:
           condition: << parameters.check_image >>
@@ -376,9 +444,10 @@ jobs:
       - aws-cli/setup:
           role_arn: "${AWS_ROLE_ARN}"
       - aws-ecr/ecr_login
-      - aws-ecr/push_image:
-          repo: << parameters.aws_ecr_repository >>
-          tag: latest,<< parameters.code_version >>
+      - push-lambda-ecr:
+          aws_ecr_repository: << parameters.aws_ecr_repository >>
+          code_version: << parameters.code_version >>
+          push_latest: << parameters.push_latest >>
   push-lambda-legacy-repo:
     machine:
       image: ubuntu-2204:current
@@ -387,6 +456,10 @@ jobs:
         type: string
       code_version:
         type: string
+      push_latest:
+        description: Also push the latest tag. False in the merge queue, whose builds have not been through dev and must never become "latest".
+        type: boolean
+        default: true
     steps:
       - checkout
       # Build a fresh lambda image with --provenance=false for the legacy ECR.
@@ -394,17 +467,16 @@ jobs:
       # that image now ships as an OCI index with a provenance attestation
       # manifest that AWS Lambda / CloudFormation reject. Rebuilding here
       # keeps the ECR copy as a plain single-arch manifest.
-      - docker/build:
-          step-name: Build lambda image (legacy ECR, no attestations)
-          use-buildkit: true
-          extra_build_args: --target lambda --build-arg code_version=<< parameters.code_version >> --build-arg build_number=<< pipeline.number >> --provenance=false
-          registry: ${AWS_ECR_ACCOUNT_URL}
-          image: << parameters.aws_ecr_repository >>
-          tag: latest,<< parameters.code_version >>
+      - build-lambda-ecr:
+          step_name: Build lambda image (legacy ECR, no attestations)
+          aws_ecr_repository: << parameters.aws_ecr_repository >>
+          code_version: << parameters.code_version >>
+          push_latest: << parameters.push_latest >>
       - aws-ecr/ecr_login
-      - aws-ecr/push_image:
-          repo: << parameters.aws_ecr_repository >>
-          tag: latest,<< parameters.code_version >>
+      - push-lambda-ecr:
+          aws_ecr_repository: << parameters.aws_ecr_repository >>
+          code_version: << parameters.code_version >>
+          push_latest: << parameters.push_latest >>
 
   build-and-push-docs:
     docker:
@@ -450,7 +522,7 @@ jobs:
         type: integer
         default: 300
       image_repo:
-        description: The image repository to use for the agent, pre-release-agent or agent
+        description: The Docker Hub repository to upgrade the agent from (pre-release-agent, queue-agent or agent)
         type: string
         default: "agent"
       image_variant:
@@ -632,6 +704,13 @@ workflows:
                 - main
                 - /^gh-readonly-queue\/.*/
       # image-check:end azure
+      # dev and the merge queue (gh-readonly-queue/*) build the same images into different
+      # repos. dev pushes to pre-release-agent (Docker Hub) and mcd-pre-release-agent (ECR),
+      # including the latest-* / latest tags. The merge queue pushes to queue-agent and
+      # mcd-queue-agent with versioned tags only (push_latest: false): its builds upgrade the
+      # prod golden agents before the change reaches main, but haven't been through dev, so
+      # they must never become "latest pre-release". Each image job comes in a -dev and a
+      # -queue instance; build-ok and the prod golden-agent jobs require the -queue ones.
       - build-and-push-base-images:
           name: build-and-push-dev-base-images
           docker_hub_repository: pre-release-agent
@@ -668,6 +747,25 @@ workflows:
             branches:
               only:
                 - dev
+      - build-and-push-image:
+          name: build-and-push-queue-azure
+          docker_hub_repository: queue-agent
+          code_version: ${NEXT_VERSION}
+          push_latest: false
+          target: azure
+          tag_suffix: azure
+          pre-steps:
+            - checkout
+            - generate-version-number-dev
+          context:
+            - docker
+          requires:
+            - run-linter
+            - run-test-docker
+            - run-test-docker-azure
+          filters:
+            branches:
+              only:
                 - /^gh-readonly-queue\/.*/
       - build-and-push-image:
           name: build-and-push-dev-cloudrun
@@ -688,6 +786,25 @@ workflows:
             branches:
               only:
                 - dev
+      - build-and-push-image:
+          name: build-and-push-queue-cloudrun
+          docker_hub_repository: queue-agent
+          code_version: ${NEXT_VERSION}
+          push_latest: false
+          target: cloudrun
+          tag_suffix: cloudrun
+          pre-steps:
+            - checkout
+            - generate-version-number-dev
+          context:
+            - docker
+          requires:
+            - run-linter
+            - run-test-docker
+            - run-test-docker-azure
+          filters:
+            branches:
+              only:
                 - /^gh-readonly-queue\/.*/
       - build-and-push-image:
           name: build-and-push-dev-aws-proxied
@@ -709,6 +826,26 @@ workflows:
             branches:
               only:
                 - dev
+      - build-and-push-image:
+          name: build-and-push-queue-aws-proxied
+          docker_hub_repository: queue-agent
+          code_version: ${NEXT_VERSION}
+          push_latest: false
+          target: aws_proxied
+          tag_suffix: aws-proxied
+          alias_tag_suffix: aws-generic
+          pre-steps:
+            - checkout
+            - generate-version-number-dev
+          context:
+            - docker
+          requires:
+            - run-linter
+            - run-test-docker
+            - run-test-docker-azure
+          filters:
+            branches:
+              only:
                 - /^gh-readonly-queue\/.*/
       - update-and-validate-golden-agent:
           # Serial group per platform so overlapping `dev` pipelines don't upgrade the same
@@ -756,14 +893,14 @@ workflows:
           upgrade_retry_minutes: 30
           agent_uuid: ${MCD_AGENT_UUID_WITH_GCP_AGENT}
           agent_version: ${NEXT_VERSION}
-          image_repo: pre-release-agent
+          image_repo: queue-agent
           pre-steps:
             - checkout
             - generate-version-number-dev
           context:
             - mc-prod
           requires:
-            - build-and-push-dev-cloudrun
+            - build-and-push-queue-cloudrun
           filters:
             branches:
               only:
@@ -774,14 +911,14 @@ workflows:
           agent_uuid: ${MCD_AGENT_UUID_WITH_AZ_AGENT}
           agent_version: ${NEXT_VERSION}
           initial_wait_seconds: 45
-          image_repo: pre-release-agent
+          image_repo: queue-agent
           pre-steps:
             - checkout
             - generate-version-number-dev
           context:
             - mc-prod
           requires:
-            - build-and-push-dev-azure
+            - build-and-push-queue-azure
           filters:
             branches:
               only:
@@ -805,9 +942,28 @@ workflows:
             branches:
               only:
                 - dev
+      - build-and-push-lambda:
+          name: build-and-push-lambda-queue
+          docker_hub_repository: queue-agent
+          aws_ecr_repository: mcd-queue-agent
+          code_version: ${NEXT_VERSION}
+          push_latest: false
+          pre-steps:
+            - checkout
+            - generate-version-number-dev
+          context:
+            - aether-dev
+            - docker
+          requires:
+            - run-linter
+            - run-test-docker
+            - run-test-docker-azure
+          filters:
+            branches:
+              only:
                 - /^gh-readonly-queue\/.*/
       # Image scans: one per pushed image, each after its own push, required by nothing.
-      # Versioned tags, since a concurrent dev or merge-queue build can move latest-*.
+      # Versioned tags, since a concurrent dev build can move latest-*.
       - vuln-scan-image:
           name: vuln-scan-dev-azure
           image: montecarlodata/pre-release-agent:${NEXT_VERSION}-azure
@@ -823,6 +979,20 @@ workflows:
             branches:
               only:
                 - dev
+      - vuln-scan-image:
+          name: vuln-scan-queue-azure
+          image: montecarlodata/queue-agent:${NEXT_VERSION}-azure
+          pre-steps:
+            - checkout
+            - generate-version-number-dev
+          context:
+            - docker
+            - vuln-image-scan
+          requires:
+            - build-and-push-queue-azure
+          filters:
+            branches:
+              only:
                 - /^gh-readonly-queue\/.*/
       - vuln-scan-image:
           name: vuln-scan-dev-cloudrun
@@ -839,6 +1009,20 @@ workflows:
             branches:
               only:
                 - dev
+      - vuln-scan-image:
+          name: vuln-scan-queue-cloudrun
+          image: montecarlodata/queue-agent:${NEXT_VERSION}-cloudrun
+          pre-steps:
+            - checkout
+            - generate-version-number-dev
+          context:
+            - docker
+            - vuln-image-scan
+          requires:
+            - build-and-push-queue-cloudrun
+          filters:
+            branches:
+              only:
                 - /^gh-readonly-queue\/.*/
       - vuln-scan-image:
           name: vuln-scan-dev-aws-proxied
@@ -855,6 +1039,20 @@ workflows:
             branches:
               only:
                 - dev
+      - vuln-scan-image:
+          name: vuln-scan-queue-aws-proxied
+          image: montecarlodata/queue-agent:${NEXT_VERSION}-aws-proxied
+          pre-steps:
+            - checkout
+            - generate-version-number-dev
+          context:
+            - docker
+            - vuln-image-scan
+          requires:
+            - build-and-push-queue-aws-proxied
+          filters:
+            branches:
+              only:
                 - /^gh-readonly-queue\/.*/
       - vuln-scan-image:
           name: vuln-scan-dev-lambda
@@ -871,6 +1069,20 @@ workflows:
             branches:
               only:
                 - dev
+      - vuln-scan-image:
+          name: vuln-scan-queue-lambda
+          image: montecarlodata/queue-agent:${NEXT_VERSION}-lambda
+          pre-steps:
+            - checkout
+            - generate-version-number-dev
+          context:
+            - docker
+            - vuln-image-scan
+          requires:
+            - build-and-push-lambda-queue
+          filters:
+            branches:
+              only:
                 - /^gh-readonly-queue\/.*/
       - update-and-validate-golden-agent:
           name: aws-dev-update-and-validate-golden-agent
@@ -895,7 +1107,8 @@ workflows:
           use_aws_cli: true
           agent_uuid: ${MCD_AGENT_UUID_WITH_AWS_AGENT}
           agent_version: ${NEXT_VERSION}
-          ecr_repo_name: "${AWS_AGENT_ECR_REPO_DEV}"
+          # Same account as before (from the mc-prod context); the repo is the queue's own.
+          ecr_repo_name: mcd-queue-agent
           ecr_repo_account: "${AWS_AGENT_ECR_ACCOUNT_DEV}"
           pre-steps:
             - checkout
@@ -903,7 +1116,7 @@ workflows:
           context:
             - mc-prod
           requires:
-            - build-and-push-lambda-dev
+            - build-and-push-lambda-queue
           filters:
             branches:
               only:
@@ -924,6 +1137,22 @@ workflows:
             branches:
               only:
                 - dev
+      - push-lambda-legacy-repo:
+          name: push-lambda-aws-queue
+          aws_ecr_repository: mcd-queue-agent
+          code_version: ${NEXT_VERSION}
+          push_latest: false
+          pre-steps:
+            - checkout
+            - generate-version-number-dev
+          context:
+            - aws-dev
+            - docker
+          requires:
+            - build-and-push-lambda-queue
+          filters:
+            branches:
+              only:
                 - /^gh-readonly-queue\/.*/
       - build-and-push-base-images:
           name: build-and-push-prod-base-images
@@ -1092,7 +1321,7 @@ workflows:
             - image-check-lambda  # image-check:lambda
             - image-check-azure  # image-check:azure
             # no golden agent uses this image, so gate on it directly
-            - build-and-push-dev-aws-proxied
+            - build-and-push-queue-aws-proxied
             - gcp-prod-update-and-validate-golden-agent-merge-queue
             - az-prod-update-and-validate-golden-agent-merge-queue
             - aws-prod-update-and-validate-golden-agent-merge-queue

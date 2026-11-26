@@ -132,6 +132,18 @@ You can use `BqProxyClient` as a reference, basically you just need to:
 In order to test in our dev environment you need to merge your branch into `dev`, that will automatically trigger a 
 dev build and upload the image to our `pre-release-agent` repository in DockerHub.
 
+### Where CI pushes images
+| Pipeline | Docker Hub | ECR | Tags | Golden agents upgraded |
+|---|---|---|---|---|
+| `dev` | `montecarlodata/pre-release-agent` | `mcd-pre-release-agent` | `<version>-<platform>` and `latest-<platform>` (ECR: `<version>`, `latest`) | dev |
+| Merge queue (`gh-readonly-queue/*`) | `montecarlodata/queue-agent` | `mcd-queue-agent` | `<version>-<platform>` only (ECR: `<version>` only) | prod |
+| `v*` tags | `montecarlodata/agent` | `mcd-agent` | `<version>-<platform>` and `latest-<platform>` (ECR: `<version>`, `latest`) | none |
+
+Merge-queue builds upgrade the prod golden agents before a change reaches `main`, but they
+haven't been through `dev`, so they get their own repositories and never a `latest` tag:
+`pre-release-agent:latest-*` is always the newest `dev` build. Use `pre-release-agent` (or
+`mcd-pre-release-agent`) to test; `queue-agent` images are for the golden agents only.
+
 Then, you can follow the instructions in our public docs to update the agents:
 - AWS: https://docs.getmontecarlo.com/docs/create-and-register-an-aws-agent#how-do-i-upgrade-the-agent
 - GCP: https://docs.getmontecarlo.com/docs/create-and-register-a-gcp-agent#how-do-i-upgrade-the-agent
