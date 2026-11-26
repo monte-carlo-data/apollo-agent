@@ -13,7 +13,11 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-CONFIG = (ROOT / ".circleci" / "continue_config.yml").read_text()
+CONFIG_PATH = ROOT / ".circleci" / "continue_config.yml"
+if not CONFIG_PATH.is_file():
+    # The `tests` Docker stages copy tests/ but not .circleci/; run-linter runs these.
+    pytest.skip(".circleci/ is not in this checkout", allow_module_level=True)
+CONFIG = CONFIG_PATH.read_text()
 QUEUE_FILTER = "/^gh-readonly-queue\\/.*/"
 
 
