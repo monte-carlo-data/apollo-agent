@@ -1,1 +1,16 @@
 apollo/interfaces/azure/local.settings.json
+
+# AI coding-agent instruction files and local env files. They are developer
+# context, not application code, and must never land in a published image layer
+# (SEC-4364). The COPY apollo/ step would otherwise carry every
+# apollo/integrations/*/CLAUDE.md into montecarlodata/agent.
+**/CLAUDE.md
+**/CLAUDE.local.md
+**/AGENTS.md
+**/.cursorrules
+.claude/
+.cursor/
+.env
+.env.*
+.envrc
+.envrc.*
