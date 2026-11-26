@@ -111,14 +111,17 @@ jobs:
             black --check .
             pyright
       # The `tests` Docker stages don't copy scripts/ or the .in files, so the CI scripts' tests
-      # run here, in a bare venv with only pytest: the scripts must work with the stdlib alone.
+      # run here, in a bare venv with only pytest (+ boto3 for scripts/layer3/agent_lease.py):
+      # the other scripts must work with the stdlib alone.
       # --noconftest: tests/conftest.py imports apollo. Test files that don't exist are skipped.
       - run:
-          name: Run CI script tests (image checks, impact map) with a bare Python
+          name: Run CI script tests (image checks, impact map, Layer 3) with a bare Python
           command: |
             python -m venv /tmp/bare-venv
-            /tmp/bare-venv/bin/pip install --no-cache-dir --quiet "$(grep -E '^pytest==' requirements-dev.txt)"
-            tests=$(find tests -maxdepth 1 \( -name 'test_image_checks*.py' -o -name 'test_impact_map*.py' \) | sort)
+            /tmp/bare-venv/bin/pip install --no-cache-dir --quiet "$(grep -E '^pytest==' requirements-dev.txt)" \
+              "$(grep -E '^boto3==' requirements.txt)" "$(grep -E '^botocore==' requirements.txt)"
+            tests=$(find tests -maxdepth 1 \( -name 'test_image_checks*.py' -o -name 'test_impact_map*.py' \
+              -o -name 'test_agent_lease.py' -o -name 'test_mc_check.py' \) | sort)
             # With no paths pytest would run all of tests/, which needs the agent's deps.
             if [ -z "$tests" ]; then echo "no CI script tests found"; exit 1; fi
             /tmp/bare-venv/bin/python -m pytest -p no:cacheprovider --noconftest $tests
