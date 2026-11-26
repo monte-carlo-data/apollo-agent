@@ -377,13 +377,13 @@ def test_validate_classifies_and_writes_report(fake, clock, tmp_path, outputs, c
             "connection_type": "athena",
             "connection_id": "conn-at",
             "outcome": "FAIL",
-            "failed_validations": [{"name": "query", "friendly_message": "denied"}],
+            "failed_validations": [{"name": "query"}],
         },
         {
             "connection_type": "glue",
             "connection_id": "conn-gl",
             "outcome": "WARN",
-            "failed_validations": [{"name": "perm", "friendly_message": "slow"}],
+            "failed_validations": [{"name": "perm"}],
         },
         {
             "connection_type": "sql-server",
@@ -403,11 +403,44 @@ def test_validate_classifies_and_writes_report(fake, clock, tmp_path, outputs, c
     assert SECRET not in everything
     assert "stack_trace" not in everything and "additional_data" not in everything
     assert "conn-pg" not in out.out
+    # Friendly messages can carry hosts and users: never on stdout, not in the report
+    # unless asked for.
+    assert "denied" not in everything and "slow" not in everything
+    assert "athena: FAIL\n  - query: FAIL\n" in out.out
+    assert "glue: WARN\n  - perm: WARN\n" in out.out
     assert "summary: FAIL=1 PASS=1 WARN=1 SKIP=1 BACKEND=0 NOT_COVERED=1" in out.out
     post = next(c for c in fake.calls if c[0] == "POST")
     assert post[2]["Authorization"] == "Bearer key-id:key-token"
     assert "x-mcd-id" not in post[2]
     assert 3 in clock.sleeps  # Retry-After from the 202
+
+
+def test_validate_include_messages_puts_them_in_the_report_only(
+    fake, clock, tmp_path, outputs, capsys
+):
+    fake.add("POST", "/api/v2/connections/conn-at/validate", accepted("r-at"))
+    failed = validation(
+        "query", passed=False, status="failed", errors=[issue("denied")]
+    )
+    fake.add(
+        "GET", "/api/v2/validations/r-at", (200, run_payload("completed", [failed]))
+    )
+    args = validate_args(outputs, tmp_path, "athena", "--include-messages")
+    assert mc.main(args) == 1
+    (result,) = report(tmp_path)["results"]
+    assert result["failed_validations"] == [
+        {"name": "query", "friendly_message": "denied"}
+    ]
+    out = capsys.readouterr()
+    assert "denied" not in out.out + out.err
+
+
+def test_include_messages_help_warns_not_to_publish(capsys):
+    with pytest.raises(SystemExit):
+        mc.main(["validate", "--help"])
+    help_text = " ".join(capsys.readouterr().out.split())
+    assert "--include-messages" in help_text
+    assert "must not be published" in help_text
 
 
 def test_validate_only_warnings_exit_0(fake, clock, tmp_path, outputs):
@@ -430,7 +463,8 @@ def test_validate_rate_limited_then_backend(fake, clock, tmp_path, outputs):
         "/api/v2/connections/conn-pg/validate",
         mc.HttpError(429, retry_after=30),
     )
-    assert mc.main(validate_args(outputs, tmp_path, "postgres")) == 0
+    args = validate_args(outputs, tmp_path, "postgres", "--include-messages")
+    assert mc.main(args) == 7
     (result,) = report(tmp_path)["results"]
     assert result["outcome"] == "BACKEND"
     assert (
@@ -463,7 +497,10 @@ def test_validate_transient_errors_recover(fake, clock, tmp_path, outputs):
 def test_validate_run_past_deadline_is_backend(fake, clock, tmp_path, outputs):
     fake.add("POST", "/api/v2/connections/conn-pg/validate", accepted("r-pg"))
     fake.add("GET", "/api/v2/validations/r-pg", (200, run_payload("running")))
-    assert mc.main(validate_args(outputs, tmp_path, "postgres", "--timeout", "10")) == 0
+    args = validate_args(
+        outputs, tmp_path, "postgres", "--timeout", "10", "--include-messages"
+    )
+    assert mc.main(args) == 7
     (result,) = report(tmp_path)["results"]
     assert result["outcome"] == "BACKEND"
     assert "deadline" in result["failed_validations"][0]["friendly_message"]
@@ -474,7 +511,10 @@ def test_validate_conflict_is_fail(fake, clock, tmp_path, outputs):
     assert mc.main(validate_args(outputs, tmp_path, "postgres")) == 1
     (result,) = report(tmp_path)["results"]
     assert result["outcome"] == "FAIL"
-    assert result["failed_validations"] == [
+    assert result["failed_validations"] == [{"name": "(validate)"}]
+    args = validate_args(outputs, tmp_path, "postgres", "--include-messages")
+    assert mc.main(args) == 1
+    assert report(tmp_path)["results"][0]["failed_validations"] == [
         {"name": "(validate)", "friendly_message": "API answered HTTP 409"}
     ]
 
@@ -506,8 +546,8 @@ def test_validate_respects_concurrency(fake, clock, tmp_path, outputs, monkeypat
     assert active["max"] <= 2
 
 
-def test_validate_no_types_writes_empty_report(fake, tmp_path, outputs):
-    assert mc.main(validate_args(outputs, tmp_path, "")) == 0
+def test_validate_no_types_writes_empty_report_and_exits_7(fake, tmp_path, outputs):
+    assert mc.main(validate_args(outputs, tmp_path, "")) == 7
     assert report(tmp_path) == {"platform": "aws", "results": []}
 
 
@@ -522,7 +562,7 @@ def test_validate_plain_map_file(fake, clock, tmp_path):
     path = tmp_path / "ids.json"
     path.write_text(json.dumps({"postgres": "conn-pg"}))
     args = ["validate", "--connection-ids", str(path), "--types", "mysql"]
-    assert mc.main(args + ["--report", str(tmp_path / "report.json")]) == 0
+    assert mc.main(args + ["--report", str(tmp_path / "report.json")]) == 7
     assert report(tmp_path) == {
         "platform": None,
         "results": [
@@ -540,3 +580,43 @@ def test_usage_error_exits_2():
     with pytest.raises(SystemExit) as exc:
         mc.main(["validate", "--types", "x"])
     assert exc.value.code == 2
+
+
+def completed_with(*validations):
+    return (200, run_payload("completed", list(validations)))
+
+
+@pytest.mark.parametrize(
+    "routes, rc",
+    [
+        # nothing validated: only BACKEND / NOT_COVERED / SKIP
+        ({"conn-pg": mc.HttpError(503)}, 7),
+        (
+            {"conn-pg": completed_with(validation("x", status="skipped", passed=None))},
+            7,
+        ),
+        # something validated: PASS or WARN wins over BACKEND
+        ({"conn-pg": completed_with(validation("a")), "conn-at": mc.HttpError(503)}, 0),
+        # FAIL always wins
+        ({"conn-pg": mc.HttpError(409), "conn-at": mc.HttpError(503)}, 1),
+    ],
+)
+def test_validate_nothing_validated_exits_7(
+    fake, clock, tmp_path, outputs, capsys, routes, rc
+):
+    for conn, response in routes.items():
+        if isinstance(response, Exception):
+            fake.add("POST", f"/api/v2/connections/{conn}/validate", response)
+        else:
+            fake.add(
+                "POST", f"/api/v2/connections/{conn}/validate", accepted(f"r-{conn}")
+            )
+            fake.add("GET", f"/api/v2/validations/r-{conn}", response)
+    types = ",".join({"conn-pg": "postgres", "conn-at": "athena"}[c] for c in routes)
+    assert mc.main(validate_args(outputs, tmp_path, types + ",snowflake")) == rc
+    err = capsys.readouterr().err
+    if rc == 7:
+        (line,) = [l for l in err.splitlines() if l.startswith("nothing validated")]
+        assert "NOT_COVERED=1" in line
+    else:
+        assert "nothing validated" not in err
