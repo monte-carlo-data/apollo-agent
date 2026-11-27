@@ -1,7 +1,10 @@
 import datetime
+import json
 from typing import List, Any, Optional
 from unittest import TestCase
 from unittest.mock import Mock, call, patch
+
+import duckdb
 from psycopg2.errors import InsufficientPrivilege  # noqa
 
 from apollo.agent.agent import Agent
@@ -150,3 +153,74 @@ class MotherDuckClientTests(TestCase):
             }
         else:
             return value
+
+
+class MotherDuckClientSerializationTests(TestCase):
+    """Runs queries on a real in-memory duckdb so results carry duckdb's own types."""
+
+    def test_query_result_is_json_serializable(self):
+        connection = duckdb.connect(":memory:")
+        query = (
+            "SELECT 1::INTEGER AS i, DATE '2024-01-02' AS d, "
+            "'5f0c3f4e-3b0a-4e1c-9d6a-2a3b4c5d6e7f'::UUID AS u, "
+            "INTERVAL 3 DAY AS iv, "
+            "['5f0c3f4e-3b0a-4e1c-9d6a-2a3b4c5d6e7f'::UUID] AS ul, "
+            "{'u': '5f0c3f4e-3b0a-4e1c-9d6a-2a3b4c5d6e7f'::UUID} AS s, "
+            "MAP {DATE '2024-01-01': 1} AS m"
+        )
+        operation_dict = {
+            "trace_id": "1234",
+            "skip_cache": True,
+            "commands": [
+                {"method": "cursor", "store": "_cursor"},
+                {"target": "_cursor", "method": "execute", "args": [query, None]},
+                {"target": "_cursor", "method": "fetchall", "store": "tmp_1"},
+                {"target": "_cursor", "method": "description", "store": "tmp_2"},
+                {
+                    "target": "__utils",
+                    "method": "build_dict",
+                    "kwargs": {
+                        "all_results": {"__reference__": "tmp_1"},
+                        "description": {"__reference__": "tmp_2"},
+                    },
+                },
+            ],
+        }
+
+        with patch("duckdb.connect", return_value=connection):
+            response = Agent(LoggingUtils()).execute_operation(
+                "motherduck",
+                "run_query",
+                operation_dict,
+                {"connect_args": _MOTHERDUCK_CREDENTIALS},
+            )
+
+        self.assertIsNone(response.result.get(ATTRIBUTE_NAME_ERROR))
+        result = json.loads(response.serialize_result())[ATTRIBUTE_NAME_RESULT]
+        self.assertEqual(
+            [
+                "INTEGER",
+                "DATE",
+                "UUID",
+                "INTERVAL",
+                "UUID[]",
+                "STRUCT(u UUID)",
+                "MAP(DATE, INTEGER)",
+            ],
+            [col[1] for col in result["description"]],
+        )
+        uuid_str = "5f0c3f4e-3b0a-4e1c-9d6a-2a3b4c5d6e7f"
+        self.assertEqual(
+            [
+                [
+                    1,
+                    {"__type__": "date", "__data__": "2024-01-02"},
+                    uuid_str,
+                    "3 days, 0:00:00",
+                    [uuid_str],
+                    {"u": uuid_str},
+                    {"2024-01-01": 1},
+                ]
+            ],
+            result["all_results"],
+        )
