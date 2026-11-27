@@ -148,6 +148,30 @@ Then, you can follow the instructions in our public docs to update the agents:
 - AWS: https://docs.getmontecarlo.com/docs/create-and-register-an-aws-agent#how-do-i-upgrade-the-agent
 - GCP: https://docs.getmontecarlo.com/docs/create-and-register-a-gcp-agent#how-do-i-upgrade-the-agent
 
+### Dev golden agents
+Every `dev` pipeline upgrades the shared dev golden agents (one per platform: GCP, Azure, AWS) to the new
+image and validates them, in the `{gcp,az,aws}-dev-update-and-validate-golden-agent` jobs of
+`.circleci/continue_config.yml`. Each of these jobs is in a CircleCI
+[serial group](https://circleci.com/docs/guides/orchestrate/controlling-serial-execution-across-your-organization/)
+per platform (`<project slug>/dev-golden-agent-{gcp,az,aws}`), so when two `dev` pipelines overlap, only one
+of them upgrades a given agent at a time; platforms still run in parallel. Jobs waiting for a group start in the
+order they reached it. A golden job that reaches its group after a newer pipeline's job for the same platform is
+already waiting or running is skipped (**not run**): a not-run golden job with a green build before it means a
+newer `dev` build superseded it, not a failure. The serial group never skips the newest pipeline's job.
+
+The skip only happens while the newer job is waiting or running. In the rare case that an older pipeline's job
+reaches its group after the newer one has already upgraded the agent (for example its build was much slower), it
+runs and asks the agent for an older version: dev versions are `X.Y.(Z+1)rc<pipeline number>`, and the agent's
+version floor (`validate_upgrade_image` in `apollo/agent/upgrade_validation.py`) rejects any image older than the
+one it runs. That job fails red in its `Update agent` step, whose output carries the agent's error (`downgrade
+blocked`). It means a newer build already upgraded the agent, not that the image is broken.
+
+CircleCI implements each group with two extra jobs in the workflow, `serial-start-N` (lock) before the golden
+job and `serial-end-N` (unlock) after it, so in the API the golden job depends on `serial-start-N`, not on the
+build job. While a job waits for its group, `serial-start-N` is `running` and the golden job is `blocked` (the
+workflow shows `queued` once that is all it is waiting on); when it is superseded, all three are `not_run` and
+the workflow still ends `success`.
+
 ### Deploying new agents
 You can also deploy new agents instead of using the existing dev agents, you can follow the instructions for each 
 platform in our public docs: [AWS](https://docs.getmontecarlo.com/docs/create-and-register-an-aws-agent) and [GCP](https://docs.getmontecarlo.com/docs/create-and-register-a-gcp-agent),

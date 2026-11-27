@@ -851,7 +851,10 @@ workflows:
               only:
                 - /^gh-readonly-queue\/.*/
       - update-and-validate-golden-agent:
+          # Serial group per platform so overlapping `dev` pipelines don't upgrade the same
+          # golden agent at once; see README "Dev golden agents" (YET-3662).
           name: gcp-dev-update-and-validate-golden-agent
+          serial-group: << pipeline.project.slug >>/dev-golden-agent-gcp
           image_variant: cloudrun
           upgrade_retry_minutes: 30
           agent_uuid: ${MCD_AGENT_UUID_WITH_GCP_AGENT}
@@ -870,6 +873,7 @@ workflows:
                 - dev
       - update-and-validate-golden-agent:
           name: az-dev-update-and-validate-golden-agent
+          serial-group: << pipeline.project.slug >>/dev-golden-agent-az
           image_variant: azure
           agent_uuid: ${MCD_AGENT_UUID_WITH_AZ_AGENT}
           agent_version: ${NEXT_VERSION}
@@ -1085,6 +1089,7 @@ workflows:
                 - /^gh-readonly-queue\/.*/
       - update-and-validate-golden-agent:
           name: aws-dev-update-and-validate-golden-agent
+          serial-group: << pipeline.project.slug >>/dev-golden-agent-aws
           image_variant: lambda
           agent_uuid: ${MCD_AGENT_UUID_WITH_AWS_AGENT}
           agent_version: ${NEXT_VERSION}
