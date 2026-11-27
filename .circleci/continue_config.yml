@@ -578,9 +578,9 @@ jobs:
                 # Pin the tag: without --image-tag the CLI installs the repo's most recently
                 # pushed tag, which may belong to a concurrent dev or merge-queue build.
                 # Cloud Run pulls Docker Hub images through mirror.gcr.io, which can take 20+
-                # minutes to resolve a freshly pushed tag, so 404s ("Image not found", then
-                # "Container import failed") and 429 import failures (rate limited) are
-                # retried for upgrade_retry_minutes. A 400 "Container import failed" isn't:
+                # minutes to resolve a freshly pushed tag, so any 404 (the message wording
+                # varies) and 429 (rate limited) are retried for upgrade_retry_minutes, matched
+                # on the HTTP code. A 400 "Container import failed" isn't:
                 # retrying the same image doesn't create a new revision, so the health check
                 # below decides. The mirror never has a tag right after the push, so jobs that
                 # retry wait 2 minutes first and then retry every 2 minutes: fewer pulls while
@@ -607,11 +607,11 @@ jobs:
                         --image-tag "$tag" </dev/null 2>&1 | tee /dev/stderr; exit "${PIPESTATUS[0]}") || rc=$?
                     if [ "$rc" -eq 0 ]; then exit 0; fi
                     if [ "$rc" -eq 124 ]; then echo "montecarlo agents upgrade did not finish within 300s"; fi
-                    if echo "$out" | grep -q "400 Container import failed"; then
+                    if echo "$out" | grep -q "Update failed: 400 Container import failed"; then
                       echo "Container import failed; leaving it to the version health check"
                       exit 0
                     fi
-                    if ! echo "$out" | grep -qE "404 Image '.*' not found|(404|429) Container import failed" \
+                    if ! echo "$out" | grep -qE "Update failed: (404|429) " \
                         || [ $SECONDS -ge $deadline ]; then
                       exit 1
                     fi
