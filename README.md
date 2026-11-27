@@ -161,10 +161,16 @@ newer `dev` build superseded it, not a failure. The serial group never skips the
 
 The skip only happens while the newer job is waiting or running. In the rare case that an older pipeline's job
 reaches its group after the newer one has already upgraded the agent (for example its build was much slower), it
-runs and asks the agent for an older version: dev versions are `X.Y.(Z+1)rc<pipeline number>`, and the agent's
-version floor (`validate_upgrade_image` in `apollo/agent/upgrade_validation.py`) rejects any image older than the
-one it runs. That job fails red in its `Update agent` step, whose output carries the agent's error (`downgrade
-blocked`). It means a newer build already upgraded the agent, not that the image is broken.
+would ask the agent for an older version: dev versions are `X.Y.(Z+1)rc<pipeline number>`, and the agent's version
+floor (`validate_upgrade_image` in `apollo/agent/upgrade_validation.py`) rejects any image older than the one it
+runs. So before upgrading, each dev golden job reads the agent's running version (one `montecarlo agents health`
+call) and compares it with its own target (`scripts/golden_agent/precheck.py`, numerically: `rc1701` < `rc1702`,
+`1.14.11rc9999` < `1.14.12rc5`). If the agent already runs a strictly newer version, the job logs a line with
+`golden-agent-superseded` and both versions, then ends **success** with `circleci-agent step halt` in its
+`Skip if a newer version is already installed` step, without upgrading or validating. An equal version (a rerun)
+upgrades and validates as usual, and so does a version that can't be read or parsed (the agent is unreachable,
+say), so a real problem still fails in the upgrade or the version check. The `*-prod-*-merge-queue` jobs don't
+run this check (`skip_if_superseded` defaults to off).
 
 CircleCI implements each group with two extra jobs in the workflow, `serial-start-N` (lock) before the golden
 job and `serial-end-N` (unlock) after it, so in the API the golden job depends on `serial-start-N`, not on the
