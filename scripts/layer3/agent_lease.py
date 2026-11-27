@@ -243,10 +243,6 @@ def hold(
 
 
 def release(client: Any, table: str, lease_path: Path) -> int:
-    if not lease_path.exists():
-        # release runs with `when: always`, also after an acquire that never got the lease.
-        print(f"no lease file at {lease_path}, nothing to release")
-        return EXIT_OK
     lease = read_lease(lease_path)
     try:
         client.delete_item(
@@ -346,7 +342,12 @@ def main(argv: list[str] | None = None, client: Any = None) -> int:
     args = parse_args(argv)
     if args.command == "check":
         return check(args.lease)
-    if args.command in ("hold", "renew") and not args.lease.exists():
+    if args.command in ("hold", "renew", "release") and not args.lease.exists():
+        if args.command == "release":
+            # Runs with `when: always`, also after an acquire that never got the lease:
+            # nothing to do, and no AWS client (or region, or credentials) needed.
+            print(f"no lease file at {args.lease}, nothing to release")
+            return EXIT_OK
         log(f"no lease file at {args.lease}")
         return EXIT_ERROR
     try:

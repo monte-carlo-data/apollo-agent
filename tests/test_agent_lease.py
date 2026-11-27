@@ -347,3 +347,28 @@ def test_usage_error_exits_2():
     with pytest.raises(SystemExit) as exc:
         lease_mod.main(["acquire", "--table", TABLE])
     assert exc.value.code == 2
+
+
+@pytest.fixture
+def no_aws_client(monkeypatch):
+    """boto3.client fails as it does with no AWS region configured."""
+    from botocore.exceptions import NoRegionError
+
+    def fail(*args, **kwargs):
+        raise NoRegionError()
+
+    monkeypatch.setattr(lease_mod.boto3, "client", fail)
+
+
+def test_release_without_lease_file_needs_no_aws_env(tmp_path, no_aws_client, capsys):
+    # The `when: always` cleanup after a failed acquire must pass whatever the AWS env.
+    path = tmp_path / "lease.json"
+    assert lease_mod.main(["release", "--table", TABLE, "--lease", str(path)]) == 0
+    assert "nothing to release" in capsys.readouterr().out
+
+
+def test_check_needs_no_aws_env(tmp_path, no_aws_client):
+    path = tmp_path / "lease.json"
+    assert lease_mod.main(["check", "--lease", str(path)]) == 0
+    (tmp_path / "lease.lost").write_text("lost\n")
+    assert lease_mod.main(["check", "--lease", str(path)]) == 4

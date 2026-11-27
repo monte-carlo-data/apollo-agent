@@ -10,11 +10,15 @@ Environment: MCD_API_ID, MCD_API_TOKEN, MCD_API_BASE (default the dev API).
 
 What reaches the log is deliberately narrow, because CI logs of this public repo are
 public: health prints only version, build and image tag (the reachability response also
-carries the agent's environment); validate prints connection types, outcomes and the
-validations' friendly messages, never raw responses, stack traces or additional_data.
+carries the agent's environment); validate prints connection types, validation names
+and outcomes only. The validations' friendly messages can carry the driver's error text
+(host, port, user, database, account), so they go into the report only with
+--include-messages, and that report must not be published. Raw responses, stack traces
+and additional_data are never kept.
 
-Exit codes: health 0 match, 6 timeout; validate 0 no FAIL, 1 any FAIL; 2 usage or
-credentials. Stdlib only.
+Exit codes: health 0 match, 6 timeout; validate 0 something validated and no FAIL, 1 any
+FAIL, 7 nothing validated (every connection BACKEND, NOT_COVERED or SKIP, or none
+selected); 2 usage or credentials. Stdlib only.
 """
 
 from __future__ import annotations
@@ -36,6 +40,7 @@ EXIT_OK = 0
 EXIT_FAIL = 1
 EXIT_USAGE = 2
 EXIT_TIMEOUT = 6
+EXIT_NOTHING_VALIDATED = 7
 
 HEALTH_QUERY = (
     "query($id: UUID!){ testAgentReachability(agentId:$id, "
@@ -303,15 +308,23 @@ class Result:
     connection_type: str
     connection_id: str | None
     outcome: str
+    # name, outcome and friendly_message of each failed (or warned) validation
     failed_validations: list[dict[str, str]] = field(default_factory=list)
 
-    def as_dict(self) -> dict[str, Any]:
+    def as_dict(self, include_messages: bool = False) -> dict[str, Any]:
+        keys = ("name", "friendly_message") if include_messages else ("name",)
         return {
             "connection_type": self.connection_type,
             "connection_id": self.connection_id,
             "outcome": self.outcome,
-            "failed_validations": self.failed_validations,
+            "failed_validations": [
+                {k: v[k] for k in keys} for v in self.failed_validations
+            ],
         }
+
+
+def entry(name: str, outcome: str, message: str) -> dict[str, str]:
+    return {"name": name, "outcome": outcome, "friendly_message": message}
 
 
 def first_message(items: Any) -> str:
@@ -343,8 +356,8 @@ def classify_run(
     connection_type: str, connection_id: str, run: dict[str, Any]
 ) -> Result:
     """Connection outcome: FAIL if any validation failed, else WARN if any warned, else
-    SKIP if every validation was skipped, else PASS. Lists only name and friendly message
-    of the failed (or, for WARN, warned) validations."""
+    SKIP if every validation was skipped, else PASS. Keeps only name, outcome and
+    friendly message of the failed (or, for WARN, warned) validations."""
     validations = [v for v in run.get("validations") or [] if isinstance(v, dict)]
     by_outcome: dict[str, list[dict[str, Any]]] = {}
     for validation in validations:
@@ -360,16 +373,15 @@ def classify_run(
     else:
         outcome, listed, key = PASS, [], ""
     failed = [
-        {
-            "name": str(v.get("name") or "?"),
-            "friendly_message": first_message(v.get(key)) or str(v.get("status") or ""),
-        }
+        entry(
+            str(v.get("name") or "?"),
+            outcome,
+            first_message(v.get(key)) or str(v.get("status") or ""),
+        )
         for v in listed
     ]
     if outcome == FAIL and not validations:
-        failed = [
-            {"name": "(run)", "friendly_message": "the run reported no validations"}
-        ]
+        failed = [entry("(run)", FAIL, "the run reported no validations")]
     return Result(connection_type, connection_id, outcome, failed)
 
 
@@ -412,49 +424,58 @@ def validate_one(
             connection_type,
             connection_id,
             BACKEND,
-            [{"name": "(run)", "friendly_message": message}],
+            [entry("(run)", BACKEND, message)],
         )
     except HttpError as error:
         return Result(
             connection_type,
             connection_id,
             FAIL,
-            [
-                {
-                    "name": "(validate)",
-                    "friendly_message": f"API answered {describe(error)}",
-                }
-            ],
+            [entry("(validate)", FAIL, f"API answered {describe(error)}")],
         )
     except ValueError:
         return Result(
             connection_type,
             connection_id,
             BACKEND,
-            [{"name": "(run)", "friendly_message": "response was not JSON"}],
+            [entry("(run)", BACKEND, "response was not JSON")],
         )
     return classify_run(connection_type, connection_id, run)
 
 
 def load_connection_ids(spec: str) -> tuple[dict[str, str], str | None]:
-    """``FILE[:dotted.path]`` → (type → connection id, platform). The platform is read
-    from a ``platform`` key next to the map (tfc_run.py outputs carry both)."""
+    """``FILE[:dotted.path]`` → (type → connection id, platform).
+
+    Made for ``terraform output -json`` of a Layer 3 stack
+    (``out.json:connection_ids.value``). The platform is the nearest ``platform`` key
+    on the path to the map, either a string or a Terraform output (``{"value": ...}``).
+    """
     path, _, dotted = spec.partition(":")
     try:
         data: Any = json.loads(Path(path).read_text())
     except (OSError, ValueError) as error:
         raise UsageError(f"cannot read {path}: {type(error).__name__}") from None
-    parent: Any = None
+    ancestors: list[Any] = []
     for key in [k for k in dotted.split(".") if k]:
         if not isinstance(data, dict) or key not in data:
             raise UsageError(f"{path} has no {dotted}")
-        parent, data = data, data[key]
+        ancestors.append(data)
+        data = data[key]
     if not isinstance(data, dict) or not all(
         isinstance(k, str) and isinstance(v, str) for k, v in data.items()
     ):
         raise UsageError(f"{spec} is not a map of connection type to id")
-    platform = parent.get("platform") if isinstance(parent, dict) else None
-    return data, platform if isinstance(platform, str) else None
+    return data, find_platform(ancestors)
+
+
+def find_platform(ancestors: list[Any]) -> str | None:
+    for node in reversed(ancestors):
+        platform = node.get("platform") if isinstance(node, dict) else None
+        if isinstance(platform, dict):
+            platform = platform.get("value")
+        if isinstance(platform, str):
+            return platform
+    return None
 
 
 def parse_types(value: str) -> list[str]:
@@ -467,7 +488,13 @@ def parse_types(value: str) -> list[str]:
 
 
 def validate(
-    api: Api, spec: str, types: list[str], concurrency: int, timeout: int, report: Path
+    api: Api,
+    spec: str,
+    types: list[str],
+    concurrency: int,
+    timeout: int,
+    report: Path,
+    include_messages: bool = False,
 ) -> int:
     connection_ids, platform = load_connection_ids(spec)
     covered = [t for t in types if t in connection_ids]
@@ -483,10 +510,14 @@ def validate(
     for result in results:
         print(f"{result.connection_type}: {result.outcome}")
         for failed in result.failed_validations:
-            print(f"  - {failed['name']}: {failed['friendly_message']}")
+            print(f"  - {failed['name']}: {failed['outcome']}")
     report.write_text(
         json.dumps(
-            {"platform": platform, "results": [r.as_dict() for r in results]}, indent=2
+            {
+                "platform": platform,
+                "results": [r.as_dict(include_messages) for r in results],
+            },
+            indent=2,
         )
         + "\n"
     )
@@ -497,7 +528,12 @@ def validate(
     counts[NOT_COVERED] = len(types) - len(covered)
     summary = " ".join(f"{k}={v}" for k, v in {FAIL: failures, **counts}.items())
     print(f"summary: {summary}")
-    return EXIT_FAIL if failures else EXIT_OK
+    if failures:
+        return EXIT_FAIL
+    if not any(r.outcome in (PASS, WARN) for r in results):
+        log(f"nothing validated: {summary}")
+        return EXIT_NOTHING_VALIDATED
+    return EXIT_OK
 
 
 # ---------------------------------------------------------------------------------------
@@ -553,6 +589,13 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         "--timeout", type=positive_int, default=900, help="seconds per connection"
     )
     p.add_argument("--report", required=True, type=Path)
+    p.add_argument(
+        "--include-messages",
+        action="store_true",
+        help="put the validations' friendly messages in the report. They may contain "
+        "hosts, ports, users, databases or account names: a report written with this "
+        "must not be published (no public CI artifacts)",
+    )
     return parser.parse_args(argv)
 
 
@@ -578,6 +621,7 @@ def main(argv: list[str] | None = None) -> int:
             args.concurrency,
             args.timeout,
             args.report,
+            args.include_messages,
         )
     except UsageError as error:
         log(f"error: {error}")
