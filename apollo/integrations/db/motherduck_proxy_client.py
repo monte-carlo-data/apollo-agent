@@ -1,11 +1,17 @@
 import os
-import duckdb
+import uuid
+from datetime import timedelta
 from typing import (
     Any,
     Dict,
+    List,
     Optional,
 )
 
+import duckdb
+from duckdb.sqltypes import DuckDBPyType
+
+from apollo.common.agent.serde import AgentSerializer
 from apollo.integrations.db.base_db_proxy_client import BaseDbProxyClient
 
 _ATTR_CONNECT_ARGS = "connect_args"
@@ -46,3 +52,28 @@ class MotherDuckProxyClient(BaseDbProxyClient):
     @property
     def wrapped_client(self):
         return self._connection
+
+    @classmethod
+    def _process_description(cls, description: List) -> List:
+        # duckdb returns type_code as a DuckDBPyType; send its SQL name (e.g. "INTEGER[]").
+        return [
+            str(v) if isinstance(v, DuckDBPyType) else AgentSerializer.serialize(v)
+            for v in description
+        ]
+
+    @staticmethod
+    def _process_row(row: List) -> List:
+        return [AgentSerializer.serialize(_to_json_compatible(v)) for v in row]
+
+
+def _to_json_compatible(value: Any) -> Any:
+    # UUID and INTERVAL (timedelta) values, also nested in LIST/STRUCT/MAP, aren't JSON-serializable.
+    if isinstance(value, (uuid.UUID, timedelta)):
+        return str(value)
+    if isinstance(value, (list, tuple)):
+        return [_to_json_compatible(v) for v in value]
+    if isinstance(value, dict):
+        return {
+            _to_json_compatible(k): _to_json_compatible(v) for k, v in value.items()
+        }
+    return value
