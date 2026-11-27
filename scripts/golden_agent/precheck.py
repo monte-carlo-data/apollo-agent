@@ -61,8 +61,8 @@ def main(argv: list[str] | None = None) -> int:
     if decision == SUPERSEDED:
         print(
             f"{MARKER}: the agent already runs {running}, newer than this job's target"
-            f" {target}; a newer dev pipeline upgraded it, so this job skips the upgrade"
-            " and validations and ends successfully"
+            f" {target} (normally a newer dev pipeline upgraded it first); skipping the"
+            " upgrade and validations, the job ends successfully"
         )
     elif parse(running) is None:
         print(

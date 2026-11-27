@@ -96,3 +96,32 @@ def test_main_proceed_has_no_marker(capsys, running):
     out = capsys.readouterr().out
     assert out.splitlines()[-1] == precheck.PROCEED
     assert "golden-agent-superseded" not in out
+
+
+def _golden_instances() -> dict[str, list[str]]:
+    """Each workflow instance of the golden job in continue_config.yml, by name, as its lines."""
+    lines = (ROOT / ".circleci" / "continue_config.yml").read_text().splitlines()
+    instances: dict[str, list[str]] = {}
+    for i, line in enumerate(lines):
+        if line.strip() != "- update-and-validate-golden-agent:":
+            continue
+        indent = len(line) - len(line.lstrip())
+        block = []
+        for following in lines[i + 1 :]:
+            if following.strip() and len(following) - len(following.lstrip()) <= indent:
+                break
+            block.append(following.strip())
+        name = next(b.split(":", 1)[1].strip() for b in block if b.startswith("name:"))
+        instances[name] = block
+    return instances
+
+
+def test_only_dev_golden_jobs_skip_when_superseded():
+    instances = _golden_instances()
+    dev = {n for n in instances if "-dev-" in n}
+    assert dev == {
+        f"{p}-dev-update-and-validate-golden-agent" for p in ("gcp", "az", "aws")
+    }
+    assert len(instances) == 6
+    for name, block in instances.items():
+        assert ("skip_if_superseded: true" in block) == (name in dev), name
