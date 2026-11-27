@@ -92,6 +92,29 @@ class AllowlistTests(TestCase):
             current_version="1.8.6",
         )
 
+    def test_golden_agent_moves_between_pre_release_and_queue_repos(self):
+        # The prod golden agents run merge-queue builds. Those moved from pre-release-agent
+        # to queue-agent (YET-3661): the first queue run upgrades across repos, and a
+        # rollback goes back, both within the montecarlodata namespace.
+        for platform in ("cloudrun", "azure"):
+            for current, candidate in (
+                ("pre-release-agent:1.9.1rc100", "queue-agent:1.9.1rc101"),
+                ("queue-agent:1.9.1rc101", "pre-release-agent:1.9.1rc102"),
+            ):
+                validate_upgrade_image(
+                    image=f"docker.io/montecarlodata/{candidate}-{platform}",
+                    current_image=f"docker.io/montecarlodata/{current}-{platform}",
+                    current_version=current.split(":")[1],
+                )
+
+    def test_rollback_to_an_older_pre_release_build_is_a_downgrade(self):
+        with self.assertRaisesRegex(AgentConfigurationError, "downgrade blocked"):
+            validate_upgrade_image(
+                image="docker.io/montecarlodata/pre-release-agent:1.9.1rc100-cloudrun",
+                current_image="docker.io/montecarlodata/queue-agent:1.9.1rc101-cloudrun",
+                current_version="1.9.1rc101",
+            )
+
     def test_different_namespace_rejected(self):
         with self.assertRaisesRegex(AgentConfigurationError, "not from an allowed"):
             validate_upgrade_image(
