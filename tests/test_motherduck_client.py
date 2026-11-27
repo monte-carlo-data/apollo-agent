@@ -165,7 +165,8 @@ class MotherDuckClientSerializationTests(TestCase):
             "'5f0c3f4e-3b0a-4e1c-9d6a-2a3b4c5d6e7f'::UUID AS u, "
             "INTERVAL 3 DAY AS iv, "
             "['5f0c3f4e-3b0a-4e1c-9d6a-2a3b4c5d6e7f'::UUID] AS ul, "
-            "{'u': '5f0c3f4e-3b0a-4e1c-9d6a-2a3b4c5d6e7f'::UUID} AS s"
+            "{'u': '5f0c3f4e-3b0a-4e1c-9d6a-2a3b4c5d6e7f'::UUID} AS s, "
+            "MAP {DATE '2024-01-01': 1} AS m"
         )
         operation_dict = {
             "trace_id": "1234",
@@ -197,7 +198,15 @@ class MotherDuckClientSerializationTests(TestCase):
         self.assertIsNone(response.result.get(ATTRIBUTE_NAME_ERROR))
         result = json.loads(response.serialize_result())[ATTRIBUTE_NAME_RESULT]
         self.assertEqual(
-            ["INTEGER", "DATE", "UUID", "INTERVAL", "UUID[]", "STRUCT(u UUID)"],
+            [
+                "INTEGER",
+                "DATE",
+                "UUID",
+                "INTERVAL",
+                "UUID[]",
+                "STRUCT(u UUID)",
+                "MAP(DATE, INTEGER)",
+            ],
             [col[1] for col in result["description"]],
         )
         uuid_str = "5f0c3f4e-3b0a-4e1c-9d6a-2a3b4c5d6e7f"
@@ -210,6 +219,7 @@ class MotherDuckClientSerializationTests(TestCase):
                     "3 days, 0:00:00",
                     [uuid_str],
                     {"u": uuid_str},
+                    {"2024-01-01": 1},
                 ]
             ],
             result["all_results"],

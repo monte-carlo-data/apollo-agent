@@ -73,7 +73,12 @@ def _to_json_compatible(value: Any) -> Any:
     if isinstance(value, (list, tuple)):
         return [_to_json_compatible(v) for v in value]
     if isinstance(value, dict):
-        return {
-            _to_json_compatible(k): _to_json_compatible(v) for k, v in value.items()
-        }
+        return {_json_key(k): _to_json_compatible(v) for k, v in value.items()}
     return value
+
+
+def _json_key(key: Any) -> Any:
+    # json.dumps never calls the encoder for keys, so MAP keys like DATE or DECIMAL need str here.
+    if key is None or isinstance(key, (str, int, float, bool)):
+        return key
+    return str(key)
