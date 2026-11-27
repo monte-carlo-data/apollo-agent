@@ -173,13 +173,14 @@ jobs:
       # the other scripts must work with the stdlib alone.
       # --noconftest: tests/conftest.py imports apollo. Test files that don't exist are skipped.
       - run:
-          name: Run CI script tests (image checks, impact map, Layer 3) with a bare Python
+          name: Run CI script tests (image checks, impact map, Layer 3, golden agent) with a bare Python
           command: |
             python -m venv /tmp/bare-venv
             /tmp/bare-venv/bin/pip install --no-cache-dir --quiet "$(grep -E '^pytest==' requirements-dev.txt)" \
               "$(grep -E '^boto3==' requirements.txt)" "$(grep -E '^botocore==' requirements.txt)"
             tests=$(find tests -maxdepth 1 \( -name 'test_image_checks*.py' -o -name 'test_impact_map*.py' \
-              -o -name 'test_agent_lease.py' -o -name 'test_mc_check.py' \) | sort)
+              -o -name 'test_agent_lease.py' -o -name 'test_mc_check.py' \
+              -o -name 'test_golden_agent_precheck.py' \) | sort)
             # With no paths pytest would run all of tests/, which needs the agent's deps.
             if [ -z "$tests" ]; then echo "no CI script tests found"; exit 1; fi
             /tmp/bare-venv/bin/python -m pytest -p no:cacheprovider --noconftest $tests
@@ -545,6 +546,10 @@ jobs:
         description: How long to keep retrying the upgrade while the new image tag isn't resolvable yet
         type: integer
         default: 0
+      skip_if_superseded:
+        description: Dev only. End the job successfully, without upgrading or validating, when the agent already runs a version newer than agent_version (a newer dev pipeline upgraded it first); see README "Dev golden agents"
+        type: boolean
+        default: false
     steps:
       - jq/install
       - run:
@@ -554,6 +559,23 @@ jobs:
             python get-pip.py
             pip install --no-cache-dir --upgrade pip
             pip install --no-cache-dir montecarlodata
+      - when:
+          condition: << parameters.skip_if_superseded >>
+          steps:
+            - run:
+                name: Skip if a newer version is already installed
+                # One health call, the same one the version check below polls. If the version
+                # can't be read or parsed, the script says proceed and the upgrade runs as usual.
+                # Only the version field is printed; health output can include secrets.
+                command: |
+                  export MCD_DEFAULT_API_ID=${MCD_SMOKE_TESTS_API_ID}
+                  export MCD_DEFAULT_API_TOKEN=${MCD_SMOKE_TESTS_API_TOKEN}
+                  if [ -z "<< parameters.agent_version >>" ]; then echo "agent_version is empty"; exit 1; fi
+                  running=$(timeout 120 montecarlo agents health --agent-id << parameters.agent_uuid >> 2>/dev/null \
+                    | grep -v "Agent health check" | jq -r '.version' 2>/dev/null) || running=""
+                  decision=$(python3 scripts/golden_agent/precheck.py --running "$running" \
+                    --target "<< parameters.agent_version >>" | tee /dev/stderr | tail -1) || decision=proceed
+                  if [ "$decision" = "superseded" ]; then circleci-agent step halt; fi
       - when:
           condition:
             equal: [ true, << parameters.use_aws_cli >> ]
@@ -859,6 +881,7 @@ workflows:
           upgrade_retry_minutes: 30
           agent_uuid: ${MCD_AGENT_UUID_WITH_GCP_AGENT}
           agent_version: ${NEXT_VERSION}
+          skip_if_superseded: true
           image_repo: pre-release-agent
           pre-steps:
             - checkout
@@ -877,6 +900,7 @@ workflows:
           image_variant: azure
           agent_uuid: ${MCD_AGENT_UUID_WITH_AZ_AGENT}
           agent_version: ${NEXT_VERSION}
+          skip_if_superseded: true
           initial_wait_seconds: 45
           image_repo: pre-release-agent
           pre-steps:
@@ -1093,6 +1117,7 @@ workflows:
           image_variant: lambda
           agent_uuid: ${MCD_AGENT_UUID_WITH_AWS_AGENT}
           agent_version: ${NEXT_VERSION}
+          skip_if_superseded: true
           image_repo: pre-release-agent
           pre-steps:
             - checkout
